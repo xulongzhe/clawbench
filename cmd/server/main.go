@@ -15,6 +15,7 @@ import (
 
 	"clawbench/internal/handler"
 	"clawbench/internal/model"
+	"clawbench/internal/platform"
 	"clawbench/internal/service"
 )
 
@@ -59,11 +60,16 @@ func (h *multiHandler) WithGroup(name string) slog.Handler {
 }
 
 func main() {
-	// Parse --dev flag
+	// Parse CLI flags
 	devMode := false
-	for _, arg := range os.Args[1:] {
+	cliPort := 0
+	for i, arg := range os.Args[1:] {
 		if arg == "--dev" {
 			devMode = true
+		} else if arg == "--port" && i+1 < len(os.Args[1:]) {
+			if p, err := strconv.Atoi(os.Args[i+2]); err == nil && p > 0 && p <= 65535 {
+				cliPort = p
+			}
 		}
 	}
 	if devMode {
@@ -89,8 +95,9 @@ func main() {
 	}
 
 	if cfg.WatchDir == "" {
-		cfg.WatchDir = "/tmp/md-test"
+		cfg.WatchDir = filepath.Join(platform.TempDir(), "clawbench-default")
 	}
+	cfg.WatchDir = platform.ExpandTilde(cfg.WatchDir)
 	model.WatchDir = cfg.WatchDir
 
 	// Set upload limits with defaults
@@ -109,6 +116,7 @@ func main() {
 	if cfg.LogDir == "" {
 		cfg.LogDir = filepath.Join(model.WatchDir, ".ClawBench", "logs")
 	}
+	cfg.LogDir = platform.ExpandTilde(cfg.LogDir)
 	// In dev mode, use a separate log directory
 	if devMode && cfg.LogDir != "" {
 		cfg.LogDir = cfg.LogDir + "-dev"
@@ -184,6 +192,10 @@ func main() {
 		if p, err := strconv.Atoi(portStr); err == nil && p > 0 && p <= 65535 {
 			port = p
 		}
+	}
+	// CLI --port flag takes highest priority
+	if cliPort > 0 {
+		port = cliPort
 	}
 	if port <= 0 || port > 65535 {
 		if devMode {

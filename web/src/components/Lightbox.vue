@@ -49,7 +49,7 @@
 <script setup>
 import { ref, computed, provide, onMounted, onUnmounted } from 'vue'
 import { store } from '@/stores/app.ts'
-import { getFileType } from '@/utils/helpers.ts'
+import { baseName, getFileType } from '@/utils/helpers.ts'
 
 const lightboxVisible = ref(false)
 const currentUrl = ref('')
@@ -83,7 +83,7 @@ const showNav = computed(() => currentIndex.value >= 0 && siblingFiles.value.len
 
 const currentFileName = computed(() => {
     if (!currentFilePath.value) return ''
-    return currentFilePath.value.split('/').pop()
+    return baseName(currentFilePath.value)
 })
 
 // Computed style for transform
@@ -114,7 +114,7 @@ function buildSiblingList(filePath) {
 
     siblingFiles.value = siblings
 
-    const fileName = filePath.split('/').pop()
+    const fileName = baseName(filePath)
     const dir = filePath.substring(0, filePath.lastIndexOf('/'))
     const idx = siblings.findIndex(e => {
         const entryPath = dir ? dir + '/' + e.name : e.name

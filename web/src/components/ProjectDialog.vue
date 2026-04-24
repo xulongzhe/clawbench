@@ -93,6 +93,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch, onMounted, inject, nextTick } from 'vue'
+import { baseName, splitPath } from '@/utils/helpers.ts'
 
 const props = defineProps({
   open: Boolean,
@@ -162,7 +163,7 @@ async function loadRecentProjects() {
     }
 }
 
-const browsePathParts = computed(() => browsePath.value.split('/').filter(Boolean))
+const browsePathParts = computed(() => splitPath(browsePath.value).filter(Boolean))
 
 const displayItems = computed(() => {
     if (tab.value === 'recent') {
@@ -170,7 +171,7 @@ const displayItems = computed(() => {
         const items = q ? recentItems.value.filter(p => p.toLowerCase().includes(q)) : recentItems.value
         return items.map(p => {
             const rel = toRelative(p)
-            const name = rel.split('/').pop() || rel
+            const name = baseName(rel)
             return { name, path: p, displayPath: rel }
         })
     }

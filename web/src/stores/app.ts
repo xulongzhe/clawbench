@@ -1,6 +1,7 @@
 // Global application state (singleton reactive store)
 import { reactive } from 'vue'
 import { apiGet, apiPost } from '@/utils/api.ts'
+import { baseName, dirName } from '@/utils/helpers.ts'
 
 interface DirEntry {
     name: string
@@ -93,7 +94,7 @@ async function loadProject(): Promise<void> {
         const data = await apiGet<{ path: string }>('/api/project')
         if (!data.path) return
         state.projectRoot = data.path
-        state.projectName = data.path.split('/').pop() || data.path
+        state.projectName = baseName(data.path)
         localStorage.setItem('currentProjectPath', data.path)
         // Add to recent projects
         apiPost('/api/recent-projects', { path: data.path }).catch(() => {})
@@ -147,18 +148,18 @@ async function selectFile(path: string, isImageFile = false, isAudioFile = false
     const isAudio = isAudioFile || audioExts.some(ext => lower.endsWith(ext))
     const isVideo = videoExts.some(ext => lower.endsWith(ext))
     if (isImage) {
-        const fileName = path.split('/').pop()!
+        const fileName = baseName(path)
         const isPdf = fileName.toLowerCase().endsWith('.pdf')
         state.currentFile = { name: fileName, path, content: null, isImage: true, isPdf }
         return
     }
     if (isAudio) {
-        const fileName = path.split('/').pop()!
+        const fileName = baseName(path)
         state.currentFile = { name: fileName, path, content: null, isAudio: true }
         return
     }
     if (isVideo) {
-        const fileName = path.split('/').pop()!
+        const fileName = baseName(path)
         state.currentFile = { name: fileName, path, content: null, isVideo: true }
         return
     }
@@ -168,7 +169,7 @@ async function selectFile(path: string, isImageFile = false, isAudioFile = false
         if (!resp.ok) {
             const err = await resp.json() as { error?: string }
             if (err.error && err.error.includes('文件过大')) {
-                const fileName = path.split('/').pop()!
+                const fileName = baseName(path)
                 const sizeInfo = state.dirEntries.find(e => e.name === fileName)
                 state.currentFile = { name: fileName, path, content: null, tooLarge: true, size: sizeInfo?.size }
                 return
@@ -178,12 +179,12 @@ async function selectFile(path: string, isImageFile = false, isAudioFile = false
         const data = await resp.json() as CurrentFile
         state.currentFile = data
     } catch (err) {
-        state.currentFile = { path, name: path.split('/').pop()!, error: (err as Error).message }
+        state.currentFile = { path, name: baseName(path), error: (err as Error).message }
     }
 }
 
 async function deleteFile(filePath: string): Promise<void> {
-    if (!confirm(`确定要删除"${filePath.split('/').pop()}"吗？`)) return
+    if (!confirm(`确定要删除"${baseName(filePath)}"吗？`)) return
     await apiPost('/api/file/delete', { path: filePath })
     if (state.currentFile?.path === filePath) {
         state.currentFile = null
@@ -207,9 +208,7 @@ async function navigateToDir(dirPath: string): Promise<void> {
 
 async function navigateUp(): Promise<void> {
     if (!state.currentDir) return
-    const parts = state.currentDir.split('/')
-    parts.pop()
-    state.currentDir = parts.join('/')
+    state.currentDir = dirName(state.currentDir)
     await loadFiles(state.currentDir)
 }
 

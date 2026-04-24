@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"clawbench/internal/platform"
 )
 
 // ClaudeBackend implements AIBackend for Claude CLI
@@ -19,13 +21,7 @@ var (
 
 // loadModelOverrides loads the model overrides from Claude settings.json
 func loadModelOverrides() {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		slog.Warn("failed to get home dir for loading model overrides", "error", err)
-		return
-	}
-
-	settingsPath := filepath.Join(homeDir, ".claude", "settings.json")
+	settingsPath := filepath.Join(platform.ClaudeConfigDir(), "settings.json")
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
 		slog.Debug("failed to read Claude settings.json", "error", err)

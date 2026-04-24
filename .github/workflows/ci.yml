@@ -23,6 +23,9 @@ jobs:
       - name: Go test
         run: go test ./...
 
+      - name: Cross-compile Windows
+        run: GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/server
+
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest

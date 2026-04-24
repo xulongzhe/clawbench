@@ -1,14 +1,20 @@
 # ClawBench 配置示例
 # 使用方法：
-# 1. 复制此文件为 config.yaml：cp config.example.yaml config.yaml
-# 2. 根据实际情况修改配置项
-# 3. 启动服务：./server.sh
+# Linux/macOS:
+#   1. 复制此文件为 config.yaml：cp config.example.yaml config.yaml
+#   2. 根据实际情况修改配置项
+#   3. 启动服务：./server.sh
+# Windows:
+#   1. 复制此文件为 config.yaml：copy config.example.yaml config.yaml
+#   2. 根据实际情况修改配置项
+#   3. 启动服务：.\server.ps1
 
 # 服务端口
 port: 20000
 
 # 项目监控目录（AI 可访问的文件根路径）
-# 修改为你的实际工作目录，例如：/home/your-username
+# Linux/macOS 示例：/home/your-username 或 /Users/your-username
+# Windows 示例：C:\Users\your-username
 watch_dir: "/home/your-username"
 
 # 访问密码（可选，留空则无需登录）
@@ -24,8 +30,12 @@ upload:
 # 公网部署时强烈建议启用 HTTPS
 tls:
   enabled: false     # 启用后需配置证书路径
+  # Linux/macOS 示例：
   cert_file: "/path/to/fullchain.pem"   # 证书文件，如 Let's Encrypt
   key_file: "/path/to/privkey.pem"      # 私钥文件
+  # Windows 示例：
+  # cert_file: "C:\certs\fullchain.pem"
+  # key_file: "C:\certs\privkey.pem"
 
 # Dev mode ports (separate from release to avoid conflicts)
 dev:
@@ -33,5 +43,7 @@ dev:
   frontend_port: 20001 # Vite 前端端口（HMR 热更新）
 
 # 日志配置（可选）
+# Linux/macOS 示例：~/.ClawBench/logs
+# Windows 示例：C:\Users\your-username\.ClawBench\logs
 log_dir: "~/.ClawBench/logs"  # 日志目录，默认 .ClawBench/logs/
 log_max_days: 7                # 日志保留天数，默认 7

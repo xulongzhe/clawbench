@@ -323,7 +323,7 @@
 import { ref, reactive, computed, watch, nextTick, onUnmounted, onMounted, inject } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import SessionManager from './SessionManager.vue'
-import { escapeHtml } from '@/utils/helpers.ts'
+import { escapeHtml, baseName, splitPath } from '@/utils/helpers.ts'
 import { cancelChat } from '@/utils/api.ts'
 import { marked, DOMPurify, mermaid } from '@/utils/globals.ts'
 import { renderKatexInString, renderMermaidInElement } from '@/composables/useMarkdownRenderer.ts'
@@ -1357,18 +1357,17 @@ function isImageFile(path) {
 }
 
 function getFileName(path) {
-    const parts = path.split('/')
-    return parts[parts.length - 1]
+    return baseName(path)
 }
 
 // Generate a human-readable summary for a tool call block
 function toolCallSummary(block) {
     if (!block.input) return ''
     const obj = block.input
-    if (obj.file_path) return obj.file_path.split('/').pop()
+    if (obj.file_path) return baseName(obj.file_path)
     if (obj.command) return obj.command.length > 60 ? obj.command.slice(0, 57) + '...' : obj.command
-    if (obj.path) return obj.path.split('/').pop()
-    if (obj.src_path && obj.dst_path) return `${obj.src_path.split('/').pop()} → ${obj.dst_path.split('/').pop()}`
+    if (obj.path) return baseName(obj.path)
+    if (obj.src_path && obj.dst_path) return `${baseName(obj.src_path)} → ${baseName(obj.dst_path)}`
     const firstVal = Object.values(obj)[0]
     if (typeof firstVal === 'string' && firstVal.length < 80) return firstVal
     return ''

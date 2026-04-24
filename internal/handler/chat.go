@@ -14,6 +14,7 @@ import (
 
 	"clawbench/internal/ai"
 	"clawbench/internal/model"
+	"clawbench/internal/platform"
 	"clawbench/internal/service"
 )
 
@@ -128,19 +129,8 @@ func ServeAISession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get Claude session directory: ~/.claude/projects/<mangled-path>/
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		model.WriteError(w, model.Internal(fmt.Errorf("failed to get home directory")))
-		return
-	}
-
-	absPath, err := filepath.Abs(projectPath)
-	if err != nil {
-		absPath = projectPath
-	}
-	mangled := strings.ReplaceAll(absPath, "/", "-")
-	sessionDir := filepath.Join(homeDir, ".claude", "projects", mangled)
+	// Get Claude session directory using cross-platform path mangling
+	sessionDir := platform.ClaudeProjectDir(projectPath)
 
 	// Delete all .jsonl session files
 	entries, err := os.ReadDir(sessionDir)
