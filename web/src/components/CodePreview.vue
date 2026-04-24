@@ -176,12 +176,12 @@ pre :deep(code) {
 .line-context-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 1999;
+    z-index: 2499;
 }
 
 .line-context-menu {
     position: fixed;
-    z-index: 2000;
+    z-index: 2500;
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
