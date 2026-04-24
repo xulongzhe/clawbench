@@ -94,7 +94,7 @@
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               </div>
-              <pre v-if="block.input && Object.keys(block.input).length && expandedTools[`${i}-${bi}`]" class="tool-detail" @click.stop>{{ formatToolInput(block.input) }}</pre>
+              <pre v-if="block.input && Object.keys(block.input).length && expandedTools[`${i}-${bi}`]" class="tool-detail" @click.stop v-html="formatToolInput(block.input)"></pre>
             </template>
             <!-- Error block -->
             <div v-else-if="block.type === 'error'" class="chat-error-card">
@@ -325,7 +325,7 @@ import BottomSheet from './BottomSheet.vue'
 import SessionManager from './SessionManager.vue'
 import { escapeHtml, baseName, splitPath } from '@/utils/helpers.ts'
 import { cancelChat } from '@/utils/api.ts'
-import { marked, DOMPurify, mermaid } from '@/utils/globals.ts'
+import { marked, DOMPurify, hljs, mermaid } from '@/utils/globals.ts'
 import { renderKatexInString, renderMermaidInElement } from '@/composables/useMarkdownRenderer.ts'
 import { useToast } from '@/composables/useToast.ts'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
@@ -1385,7 +1385,12 @@ function toggleThinking(key) {
 
 function formatToolInput(input) {
     if (!input) return ''
-    return JSON.stringify(input, null, 2)
+    try {
+        const json = JSON.stringify(input, null, 2)
+        return hljs.highlight(json, { language: 'json' }).value
+    } catch {
+        return JSON.stringify(input, null, 2)
+    }
 }
 
 function updateRenderedContents() {
@@ -2155,11 +2160,9 @@ watch(() => props.open, async (val) => {
   background: var(--bg-primary);
   border-radius: 4px;
   border: 1px solid var(--border-color);
-  white-space: pre-wrap;
-  word-break: break-all;
+  white-space: pre;
+  overflow-x: auto;
   max-height: 150px;
-  overflow-y: auto;
-  color: var(--text-secondary);
   cursor: default;
 }
 
