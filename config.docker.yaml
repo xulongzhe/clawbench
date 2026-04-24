@@ -1,0 +1,16 @@
+port: 20000
+watch_dir: "/data"
+
+# Authentication (change in production)
+# password: ""
+
+# Upload limits
+upload:
+  max_size_mb: 10
+  max_files: 20
+
+# TLS disabled by default in Docker (use reverse proxy for HTTPS)
+tls:
+  enabled: false
+
+log_max_days: 7

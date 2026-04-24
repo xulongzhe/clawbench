@@ -1,0 +1,31 @@
+# OS
+.DS_Store
+
+# Python (legacy scripts)
+venv/
+__pycache__/
+*.pyc
+
+# Go build output
+clawbench
+
+# Runtime
+nohup.out
+
+# Node/Vite
+node_modules/
+vite.log
+public/
+
+# App runtime data
+.ClawBench/
+.clawbench/
+.smartworkbench/
+*.db
+
+# IDE / AI tools
+.claude/
+.codebuddy/
+
+# Git worktrees
+.worktrees/

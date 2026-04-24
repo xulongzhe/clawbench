@@ -1,0 +1,145 @@
+package handler
+
+import (
+	"log/slog"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+
+	"clawbench/internal/middleware"
+	"clawbench/internal/model"
+)
+
+// requireProject extracts the project path from cookie and writes error if not set.
+// Returns the project path and true on success, or empty string and false on failure.
+func requireProject(w http.ResponseWriter, r *http.Request) (string, bool) {
+	projectPath := middleware.GetProjectFromCookie(r)
+	if projectPath == "" {
+		model.WriteError(w, model.Forbidden(model.ErrProjectNotSet, "no project selected"))
+		return "", false
+	}
+	return projectPath, true
+}
+
+// RegisterRoutes registers all HTTP routes with the given mux
+func RegisterRoutes(mux *http.ServeMux) {
+	register := func(pattern string, handler http.HandlerFunc) {
+		wrapped := middleware.RecoverPanic(middleware.WithRequestID(middleware.RequestLogger(handler)))
+		mux.HandleFunc(pattern, wrapped)
+	}
+
+	register("/", ServeIndex)
+	register("/login", ServeLogin)
+	register("/dialog/project", middleware.Auth(ServeProjectDialog))
+	register("/api/me", ServeAuthCheck)
+	register("/api/watch-dir", ServeWatchDir)
+	register("/api/projects", middleware.Auth(ServeProjects))
+	register("/api/project", ServeProjectSet)
+	register("/api/ai/chat", middleware.Auth(AIChat))
+	register("/api/ai/chat/stream", middleware.Auth(AIChatStream))
+	register("/api/ai/chat/cancel", middleware.Auth(CancelChat))
+	register("/api/ai/history", middleware.Auth(ServeChatHistory))
+	register("/api/ai/session", middleware.Auth(ServeAISession))
+	register("/api/ai/sessions", middleware.Auth(ServeSessions))
+	register("/api/ai/session/delete", middleware.Auth(DeleteSession))
+	register("/api/ai/chat/count", middleware.Auth(ServeChatCount))
+	register("/api/ai/chat/message", middleware.Auth(ServeChatMessageUpdate))
+	register("/api/upload/file", middleware.Auth(UploadFile))
+	register("/api/dir", middleware.Auth(ListDir))
+	register("/api/files", middleware.Auth(ListFiles))
+	register("/api/file/", middleware.Auth(GetFile))
+	register("/api/git/project-history", middleware.Auth(ServeGitProjectHistory))
+	register("/api/git/init", middleware.Auth(ServeGitInit))
+	register("/api/git/file-diff", middleware.Auth(ServeGitFileDiff))
+	register("/api/git/commit-files", middleware.Auth(ServeGitCommitFiles))
+	register("/api/git/history", middleware.Auth(ServeGitHistory))
+	register("/api/git/diff", middleware.Auth(ServeGitDiff))
+	register("/api/git/status", middleware.Auth(ServeGitStatus))
+	register("/api/git/working-tree", middleware.Auth(ServeGitWorkingTreeFiles))
+	register("/api/file/rename", middleware.Auth(ServeFileRename))
+	register("/api/file/edit-line", middleware.Auth(ServeFileEditLine))
+	register("/api/file/delete", middleware.Auth(ServeFileDelete))
+	register("/api/file/create", middleware.Auth(ServeFileCreate))
+	register("/api/file/copy", middleware.Auth(ServeFileCopy))
+	register("/api/dir/create", middleware.Auth(ServeDirCreate))
+	register("/api/file/move", middleware.Auth(ServeFileMove))
+	register("/api/recent-projects", middleware.Auth(ServeRecentProjects))
+	register("/api/local-file/", middleware.Auth(ServeLocalFile))
+	register("/api/agents", middleware.Auth(ServeAgents))
+	register("/api/tasks", middleware.Auth(ServeTasks))
+	register("/api/tasks/", middleware.Auth(ServeTaskByID))
+
+	if _, err := os.Stat("public"); err == nil {
+		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("public"))))
+	} else {
+		mux.Handle("/css/", http.StripPrefix("/css/", http.FileServer(http.Dir(filepath.Join("web", "css")))))
+		mux.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir(filepath.Join("web", "js")))))
+		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
+	}
+}
+
+// DirEntry represents a directory entry in API responses
+type DirEntry struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Modified  string `json:"modified,omitempty"`
+	Size      int64  `json:"size,omitempty"`
+	Supported bool   `json:"supported"`
+}
+
+// FileInfo represents file information in API responses
+type FileInfo struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Modified  string `json:"modified"`
+	Size      int64  `json:"size"`
+	Type      string `json:"type"`
+	Supported bool   `json:"supported"`
+}
+
+// FileContent represents file content in API responses
+type FileContent struct {
+	Content   string `json:"content"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Supported bool   `json:"supported"`
+	Size      int64  `json:"size"`
+}
+
+// buildDirEntries builds a sorted list of directory entries
+func buildDirEntries(entries []os.DirEntry) []DirEntry {
+	var items []DirEntry
+	for _, entry := range entries {
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			slog.Warn("failed to get file info", slog.String("name", entry.Name()), slog.String("err", infoErr.Error()))
+			continue
+		}
+		if entry.IsDir() {
+			modified := info.ModTime().Format(time.RFC3339)
+			items = append(items, DirEntry{Name: entry.Name(), Type: "dir", Modified: modified})
+		} else {
+			name := entry.Name()
+			entryType := "file"
+			if model.IsImageFile(name) {
+				entryType = "image"
+			}
+			items = append(items, DirEntry{
+				Name:      name,
+				Type:      entryType,
+				Modified:  info.ModTime().Format(time.RFC3339),
+				Size:      info.Size(),
+				Supported: model.IsSupportedFile(name),
+			})
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Type != items[j].Type {
+			return items[i].Type == "dir"
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items
+}

@@ -1,0 +1,88 @@
+/* ==========================================================================
+   Component Styles
+   ========================================================================== */
+
+/* ==========================================================================
+   Loading State
+   ========================================================================== */
+
+.spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--accent-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==========================================================================
+   Shared Context Menu
+   Used by: FileManager.vue, ProjectDialog.vue
+   ========================================================================== */
+
+.context-menu {
+    position: fixed;
+    z-index: 2000;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    min-width: 140px;
+    padding: 4px 0;
+    display: none;
+}
+
+.context-menu.visible {
+    display: block;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background 0.1s;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.context-menu-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.context-menu-item.danger {
+    color: #ef4444;
+}
+
+.context-menu-item.danger:hover {
+    background: #fef2f2;
+}
+
+[data-theme="dark"] .context-menu-item.danger:hover {
+    background: #2d1b1b;
+}
+
+.context-menu-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 0;
+}
+
+.context-menu-item.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.ctx-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1999;
+}
