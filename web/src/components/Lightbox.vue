@@ -36,7 +36,7 @@
           <button class="lb-btn lb-nav-btn" @click="navigatePrev" title="Previous">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <span class="lb-counter">{{ currentIndex + 1 }}/{{ siblingFiles.length }}</span>
+          <span class="lb-counter">{{ navCurrentIndex + 1 }}/{{ navTotalCount }}</span>
           <button class="lb-btn lb-nav-btn" @click="navigateNext" title="Next">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -65,10 +65,14 @@ const dragStartX = ref(0)
 const dragStartY = ref(0)
 const contentRef = ref(null)
 
-// Navigation state
+// Directory-based navigation state
 const siblingFiles = ref([])
 const currentIndex = ref(-1)
 const slideDirection = ref('') // '', 'left', 'right'
+
+// Markdown image navigation state
+const mdImages = ref([]) // [{src, name}]
+const mdCurrentIndex = ref(-1)
 
 // Touch state
 const pinchStartDist = ref(0)
@@ -79,9 +83,26 @@ const touchLastX = ref(0)
 const touchLastY = ref(0)
 const hasMoved = ref(false)
 
-const showNav = computed(() => currentIndex.value >= 0 && siblingFiles.value.length > 1)
+// Navigation mode: 'dir' = directory-based, 'md' = markdown images
+const navMode = computed(() => mdCurrentIndex.value >= 0 ? 'md' : 'dir')
+
+const showNav = computed(() =>
+    (currentIndex.value >= 0 && siblingFiles.value.length > 1) ||
+    (mdCurrentIndex.value >= 0 && mdImages.value.length > 1)
+)
+
+const navCurrentIndex = computed(() =>
+    navMode.value === 'md' ? mdCurrentIndex.value : currentIndex.value
+)
+
+const navTotalCount = computed(() =>
+    navMode.value === 'md' ? mdImages.value.length : siblingFiles.value.length
+)
 
 const currentFileName = computed(() => {
+    if (navMode.value === 'md' && mdImages.value.length > 0) {
+        return mdImages.value[mdCurrentIndex.value]?.name || ''
+    }
     if (!currentFilePath.value) return ''
     return baseName(currentFilePath.value)
 })
@@ -124,12 +145,24 @@ function buildSiblingList(filePath) {
 }
 
 function navigatePrev() {
+    if (navMode.value === 'md') {
+        if (mdImages.value.length <= 1) return
+        const newIdx = (mdCurrentIndex.value - 1 + mdImages.value.length) % mdImages.value.length
+        navigateMdImage(newIdx, 'right')
+        return
+    }
     if (!showNav.value) return
     const newIdx = (currentIndex.value - 1 + siblingFiles.value.length) % siblingFiles.value.length
     navigateToIndex(newIdx, 'right')
 }
 
 function navigateNext() {
+    if (navMode.value === 'md') {
+        if (mdImages.value.length <= 1) return
+        const newIdx = (mdCurrentIndex.value + 1) % mdImages.value.length
+        navigateMdImage(newIdx, 'left')
+        return
+    }
     if (!showNav.value) return
     const newIdx = (currentIndex.value + 1) % siblingFiles.value.length
     navigateToIndex(newIdx, 'left')
@@ -165,6 +198,26 @@ function navigateToIndex(newIdx, direction) {
     store.selectFile(entryPath)
 }
 
+function navigateMdImage(newIdx, direction) {
+    const img = mdImages.value[newIdx]
+    if (!img) return
+
+    // Animate slide direction
+    slideDirection.value = direction
+    setTimeout(() => { slideDirection.value = '' }, 200)
+
+    // Reset transform for new image
+    scale.value = 1
+    tx.value = 0
+    ty.value = 0
+    lastTx.value = 0
+    lastTy.value = 0
+
+    mdCurrentIndex.value = newIdx
+    currentUrl.value = img.src + (img.src.includes('?') ? '&' : '?') + 't=' + Date.now()
+    currentSvg.value = ''
+}
+
 function open(url, svg = '') {
     currentUrl.value = svg ? '' : url + (url.includes('?') ? '&' : '?') + 't=' + Date.now()
     currentSvg.value = svg
@@ -180,6 +233,10 @@ function open(url, svg = '') {
     hasMoved.value = false
     slideDirection.value = ''
 
+    // Reset markdown image navigation
+    mdImages.value = []
+    mdCurrentIndex.value = -1
+
     // Build navigation from store's current file
     if (!svg && store.state.currentFile?.path) {
         currentFilePath.value = store.state.currentFile.path
@@ -189,6 +246,34 @@ function open(url, svg = '') {
         siblingFiles.value = []
         currentIndex.value = -1
     }
+
+    document.body.style.overflow = 'hidden'
+}
+
+function openMdImages(imgs, startIndex) {
+    mdImages.value = imgs
+    mdCurrentIndex.value = startIndex
+
+    const img = imgs[startIndex]
+    currentUrl.value = img.src + (img.src.includes('?') ? '&' : '?') + 't=' + Date.now()
+    currentSvg.value = ''
+    currentFilePath.value = ''
+
+    lightboxVisible.value = true
+    scale.value = 1
+    tx.value = 0
+    ty.value = 0
+    lastTx.value = 0
+    lastTy.value = 0
+    pinchStartDist.value = 0
+    pinchStartScale.value = 1
+    isDragging.value = false
+    hasMoved.value = false
+    slideDirection.value = ''
+
+    // Disable directory-based navigation
+    siblingFiles.value = []
+    currentIndex.value = -1
 
     document.body.style.overflow = 'hidden'
 }
@@ -203,6 +288,8 @@ function close() {
     currentFilePath.value = ''
     siblingFiles.value = []
     currentIndex.value = -1
+    mdImages.value = []
+    mdCurrentIndex.value = -1
     document.body.style.overflow = ''
 }
 
@@ -340,6 +427,37 @@ function handleTouchEnd(e) {
     pinchStartDist.value = 0
 }
 
+function extractImageName(src) {
+    try {
+        // Remove query string and hash
+        const url = new URL(src, window.location.origin)
+        const path = decodeURIComponent(url.pathname)
+        // Extract from /api/local-file/ prefix or just get basename
+        const localPrefix = '/api/local-file/'
+        if (path.startsWith(localPrefix)) {
+            return baseName(path.slice(localPrefix.length))
+        }
+        return baseName(path)
+    } catch {
+        return ''
+    }
+}
+
+function collectMdImages(container, clickedImg) {
+    const imgs = container.querySelectorAll('img')
+    const list = []
+    let startIdx = 0
+    imgs.forEach((img, i) => {
+        const src = img.src
+        if (!src) return
+        const alt = img.alt || ''
+        const name = alt || extractImageName(src)
+        list.push({ src, name })
+        if (img === clickedImg) startIdx = list.length - 1
+    })
+    return { list, startIdx }
+}
+
 provide('openLightbox', open)
 provide('openSvgLightbox', openSvg)
 
@@ -349,7 +467,23 @@ onMounted(() => {
     // Listen for clicks on images and mermaid diagrams to open lightbox
     document.addEventListener('click', (e) => {
         const img = e.target.closest('.markdown-body img, .chat-message img, .image-preview-img')
-        if (img) { e.preventDefault(); open(img.src); return }
+        if (img) {
+            e.preventDefault()
+            // Check if the image is inside a markdown body — collect sibling images for navigation
+            const mdContainer = img.closest('.markdown-body, .chat-message')
+            if (mdContainer) {
+                const allImgs = mdContainer.querySelectorAll('img')
+                if (allImgs.length > 1) {
+                    const { list, startIdx } = collectMdImages(mdContainer, img)
+                    if (list.length > 1) {
+                        openMdImages(list, startIdx)
+                        return
+                    }
+                }
+            }
+            open(img.src)
+            return
+        }
         const mermaidDiv = e.target.closest('.markdown-body .mermaid, .chat-message .mermaid')
         if (mermaidDiv) {
             e.preventDefault()
