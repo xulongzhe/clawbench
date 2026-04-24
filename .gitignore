@@ -29,3 +29,4 @@ public/
 # Git worktrees
 .worktrees/
 dist/
+server
