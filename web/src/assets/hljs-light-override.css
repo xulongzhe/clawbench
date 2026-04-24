@@ -1,0 +1,93 @@
+/*
+ * highlight.js light theme override
+ * Code background: #f6f8fa (from variables.css --code-bg)
+ *
+ * Scoped to [data-hljs-theme="light"] so it never interferes
+ * with the dark theme (github-dark.css).
+ *
+ * Strategy: keep the github.css token structure, but push colours
+ * that are too pale on #f6f8fa toward more saturated, higher-contrast
+ * alternatives.
+ */
+
+[data-hljs-theme="light"] .hljs {
+  /* github.css sets .hljs { background: #fff } — keep parent #f6f8fa visible */
+  background: transparent;
+  color: #24292f;
+}
+
+/* ── Comments ─────────────────────────────────────────────── */
+/* github.css: #6a737d  (muted on #f6f8fa)                     */
+[data-hljs-theme="light"] .hljs-comment,
+[data-hljs-theme="light"] .hljs-quote        { color: #4b5563; font-style: italic; }
+
+/* ── Keywords & built-ins ──────────────────────────────────── */
+/* github.css: #d73a49 — already good, just ensure weight       */
+[data-hljs-theme="light"] .hljs-keyword,
+[data-hljs-theme="light"] .hljs-selector-tag,
+[data-hljs-theme="light"] .hljs-subst        { color: #cf222e; font-weight: 600; }
+
+/* ── Types & classes ───────────────────────────────────────── */
+/* github.css: #6f42c1 — already good                           */
+[data-hljs-theme="light"] .hljs-type,
+[data-hljs-theme="light"] .hljs-class .hljs-title { color: #6f42c1; }
+
+/* ── Functions & variables ──────────────────────────────────── */
+/* github.css: #6f42c1 (slightly dim on pale bg)               */
+[data-hljs-theme="light"] .hljs-title,
+[data-hljs-theme="light"] .hljs-title.class_,
+[data-hljs-theme="light"] .hljs-title.function_ { color: #5a35a8; }
+
+/* ── Strings ───────────────────────────────────────────────── */
+/* github.css: #032f62 — fine but a touch deeper for warmth    */
+[data-hljs-theme="light"] .hljs-string,
+[data-hljs-theme="light"] .hljs-attr         { color: #0a3069; }
+
+/* ── Numbers ───────────────────────────────────────────────── */
+/* github.css: #005cc5 — fine, keep                            */
+[data-hljs-theme="light"] .hljs-number,
+[data-hljs-theme="light"] .hljs-literal      { color: #0550ae; }
+
+/* ── Constants, symbols, bullets ────────────────────────────── */
+[data-hljs-theme="light"] .hljs-constant,
+[data-hljs-theme="light"] .hljs-symbol,
+[data-hljs-theme="light"] .hljs-bullet       { color: #0550ae; }
+
+/* ── Tags / HTML elements ──────────────────────────────────── */
+[data-hljs-theme="light"] .hljs-tag          { color: #116329; }
+[data-hljs-theme="light"] .hljs-name         { color: #116329; }
+
+/* ── Operators & punctuation ───────────────────────────────── */
+[data-hljs-theme="light"] .hljs-operator,
+[data-hljs-theme="light"] .hljs-punctuation  { color: #444d56; }
+
+/* ── Variables ─────────────────────────────────────────────── */
+[data-hljs-theme="light"] .hljs-variable,
+[data-hljs-theme="light"] .hljs-template-variable { color: #953800; }
+
+/* ── Attributes ────────────────────────────────────────────── */
+[data-hljs-theme="light"] .hljs-attribute    { color: #5a35a8; }
+
+/* ── Meta / preprocessor directives ───────────────────────── */
+[data-hljs-theme="light"] .hljs-meta         { color: #4b5563; }
+
+/* ── Regex ─────────────────────────────────────────────────── */
+[data-hljs-theme="light"] .hljs-regexp       { color: #b35900; }
+
+/* ── Selectors ─────────────────────────────────────────────── */
+[data-hljs-theme="light"] .hljs-section      { color: #005cc5; font-weight: 700; }
+[data-hljs-theme="light"] .hljs-selector-id,
+[data-hljs-theme="light"] .hljs-selector-class { color: #6f42c1; }
+
+/* ── Tag attributes in HTML/XML ────────────────────────────── */
+[data-hljs-theme="light"] .hljs-tag .hljs-attr { color: #0550ae; }
+
+/* ── Inline emphasis / strong ──────────────────────────────── */
+[data-hljs-theme="light"] .hljs-emphasis      { font-style: italic; }
+[data-hljs-theme="light"] .hljs-strong        { font-weight: 700; }
+
+/* ── Diffs inside code blocks ──────────────────────────────── */
+[data-hljs-theme="light"] .hljs-deletion      { background: rgba(207,34,46,.12); color: #cf222e; }
+[data-hljs-theme="light"] .hljs-addition      { background: rgba(34,126,62,.12); color: #116329; }
+[data-hljs-theme="light"] .hljs-deletion .hljs-meta { color: #cf222e; }
+[data-hljs-theme="light"] .hljs-addition .hljs-meta { color: #116329; }

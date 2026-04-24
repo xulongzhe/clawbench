@@ -1,0 +1,25 @@
+{
+  "name": "clawbench",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "dompurify": "^3.3.3",
+    "highlight.js": "^11.11.1",
+    "katex": "^0.16.45",
+    "marked": "^18.0.0",
+    "mermaid": "^11.14.0",
+    "vue": "^3.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "typescript": "^6.0.2",
+    "vite": "^5.0.0"
+  }
+}

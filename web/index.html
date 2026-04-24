@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0d1117">
+    <meta name="description" content="一款专为移动端设计的轻量级代码和文档工作台">
+
+    <!-- PWA Configuration -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ClawBench">
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
+    <link rel="apple-touch-icon" href="/assets/logo-180.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/logo-180.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="/assets/logo-512.png">
+
+    <title>ClawBench</title>
+
+    <!-- Application CSS -->
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/base.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/markdown-common.css">
+    <link rel="stylesheet" href="/css/content.css">
+    <link rel="stylesheet" href="/css/components.css">
+</head>
+<body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+
+    <!-- Register Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('[PWA] Service Worker registered:', registration.scope);
+            })
+            .catch((error) => {
+              console.log('[PWA] Service Worker registration failed:', error);
+            });
+        });
+      }
+    </script>
+</body>
+</html>

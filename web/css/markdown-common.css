@@ -1,0 +1,125 @@
+/* ==========================================================================
+   Common Markdown Styles
+   Shared by: .markdown-body (file preview) and .chat-message.assistant (chat)
+   ========================================================================== */
+
+/* Strong / Bold */
+.markdown-body strong,
+.markdown-body b,
+.chat-message.assistant strong,
+.chat-message.assistant b {
+    font-weight: bold;
+    -webkit-text-stroke: 0.3px currentColor;
+}
+
+/* Links */
+.markdown-body a,
+.chat-message.assistant a {
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+.markdown-body a:hover,
+.chat-message.assistant a:hover {
+    text-decoration: underline;
+}
+
+/* Blockquote */
+.markdown-body blockquote,
+.chat-message.assistant blockquote {
+    border-left: 3px solid var(--border-color);
+    background: var(--bg-secondary);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+/* Inline Code */
+.markdown-body code,
+.chat-message.assistant code {
+    background: var(--code-bg);
+    border-radius: 4px;
+}
+
+/* Code Block */
+.markdown-body pre,
+.chat-message.assistant pre {
+    background: var(--code-bg);
+    overflow-x: auto;
+}
+
+.markdown-body pre code,
+.chat-message.assistant pre code {
+    background: transparent;
+    padding: 0;
+}
+
+/* Lists */
+.markdown-body ul,
+.markdown-body ol,
+.chat-message.assistant ul,
+.chat-message.assistant ol {
+    padding-left: 20px;
+}
+
+.markdown-body li,
+.chat-message.assistant li {
+    margin: 3px 0;
+}
+
+/* Table */
+.markdown-body table,
+.chat-message.assistant table {
+    border-collapse: collapse;
+}
+
+.markdown-body th,
+.markdown-body td,
+.chat-message.assistant th,
+.chat-message.assistant td {
+    padding: 8px 14px;
+    border: 1px solid var(--table-border);
+    text-align: left;
+}
+
+.markdown-body th,
+.chat-message.assistant th {
+    background: var(--bg-tertiary);
+    font-weight: 600;
+}
+
+.markdown-body tr:nth-child(odd) td,
+.chat-message.assistant tr:nth-child(odd) td {
+    background: var(--bg-primary);
+}
+
+.markdown-body tr:nth-child(even) td,
+.chat-message.assistant tr:nth-child(even) td {
+    background: var(--bg-secondary);
+}
+
+/* Image */
+.markdown-body img,
+.chat-message.assistant img {
+    max-width: 100%;
+    max-height: 60dvh;
+    object-fit: contain;
+    border-radius: var(--radius-sm);
+}
+
+/* Image inside table */
+.markdown-body table img,
+.chat-message.assistant table img {
+    max-width: 80dvw;
+}
+
+/* Horizontal Rule */
+.markdown-body hr,
+.chat-message.assistant hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Deleted Text */
+.markdown-body del,
+.chat-message.assistant del {
+    opacity: 0.7;
+}
