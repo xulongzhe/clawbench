@@ -165,7 +165,7 @@
 <script setup>
 import { ref, computed, reactive, inject, nextTick, Teleport, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
-import { getFileType } from '@/utils/helpers.ts'
+import { getFileType, splitPath } from '@/utils/helpers.ts'
 import { store } from '@/stores/app.ts'
 
 const toast = inject('toast', null)
@@ -371,7 +371,7 @@ const filteredEntries = computed(() => {
 
 const dirBreadcrumbHtml = computed(() => {
     if (!props.currentDir || props.currentDir === '.') return ''
-    const parts = props.currentDir.split('/')
+    const parts = splitPath(props.currentDir)
     let crumbPath = ''
     return parts.map((part, i) => {
         crumbPath = i === 0 ? part : parts.slice(0, i + 1).join('/')
@@ -382,7 +382,7 @@ const dirBreadcrumbHtml = computed(() => {
 
 function navigateUp() {
     if (!props.currentDir) return
-    const parts = props.currentDir.split('/')
+    const parts = splitPath(props.currentDir)
     parts.pop()
     emit('navigateDir', parts.join('/'))
 }

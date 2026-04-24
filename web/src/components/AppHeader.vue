@@ -30,6 +30,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({
     projectRoot: String,
@@ -39,8 +40,7 @@ const emit = defineEmits(['toggleTheme', 'openProjectDialog'])
 
 const projectName = computed(() => {
     if (!props.projectRoot) return '选择项目'
-    const parts = props.projectRoot.replace(/\\/g, '/').split('/')
-    return parts.filter(Boolean).pop() || props.projectRoot
+    return baseName(props.projectRoot) || props.projectRoot
 })
 </script>
 

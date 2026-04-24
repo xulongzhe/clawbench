@@ -21,6 +21,7 @@ import CodePreview from './CodePreview.vue'
 import { useMarkdownRenderer } from '@/composables/useMarkdownRenderer.ts'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
 import { store } from '@/stores/app.ts'
+import { dirName, splitPath } from '@/utils/helpers.ts'
 
 const props = defineProps({
     file: Object,
@@ -37,12 +38,12 @@ const { renderMarkdown, renderMermaidInElement } = useMarkdownRenderer()
 
 // 处理相对路径链接点击
 async function handleOpenFile(href) {
-    const currentDir = props.file?.path ? props.file.path.split('/').slice(0, -1).join('/') : ''
+    const currentDir = props.file?.path ? dirName(props.file.path) : ''
     let resolvedPath = href
     
     // 解析相对路径
     if (currentDir) {
-        const parts = (currentDir + '/' + href).split('/')
+        const parts = splitPath(currentDir + '/' + href)
         const normalized = []
         for (const part of parts) {
             if (part === '.' || part === '') continue
@@ -74,14 +75,14 @@ function handleClick(event) {
 }
 
 function fixLocalImagePaths(html) {
-    const currentDir = props.file?.path ? props.file.path.split('/').slice(0, -1).join('/') : ''
+    const currentDir = props.file?.path ? dirName(props.file.path) : ''
     return html.replace(/<img\s+([^>]*src=[^>]*)>/gi, (match, attrs) => {
         const srcMatch = attrs.match(/src="([^"]*)"/)
         if (!srcMatch) return match
         const src = srcMatch[1]
         if (/^(https?:|\/\/|^\/)/i.test(src)) return match
         let resolved = currentDir ? currentDir + '/' + src : src
-        const parts = resolved.split('/')
+        const parts = splitPath(resolved)
         const normalized = []
         for (const part of parts) {
             if (part === '.' || part === '') continue
