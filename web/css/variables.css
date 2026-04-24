@@ -1,0 +1,70 @@
+/* ==========================================================================
+   CSS Custom Properties (Variables)
+   ========================================================================== */
+
+:root {
+    /* Light theme */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-tertiary: #e9ecef;
+    --text-primary: #212529;
+    --text-secondary: #495057;
+    --text-muted: #6c757d;
+    --border-color: #dee2e6;
+    --accent-color: #4a90d9;
+    --accent-hover: #3a7bc8;
+    --user-msg-color: #5b8fbf;
+    --header-height: 44px;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --code-bg: #f6f8fa;
+    --blockquote-border: #d0d7de;
+    --table-border: #d0d7de;
+    --scrollbar-thumb: #c1c1c1;
+    --scrollbar-track: #f1f1f1;
+    --dock-bg: rgba(248, 249, 250, 0.75);
+    --dock-border: rgba(0, 0, 0, 0.08);
+    --dock-height: calc(52px + env(safe-area-inset-bottom, 0));
+
+    /* Lightbox */
+    --lb-bg: rgba(0,0,0,0.92);
+    --lb-toolbar-bg: rgba(255,255,255,0.9);
+
+    /* Vkey buttons */
+    --bg-key: #f0f0f0;
+    --text-color: #212529;
+    --bg-key-active: #e0e0e0;
+}
+
+[data-theme="dark"] {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #6e7681;
+    --border-color: #30363d;
+    --accent-color: #58a6ff;
+    --accent-hover: #79b8ff;
+    --user-msg-color: #3d6a9e;
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+    --code-bg: #161b22;
+    --blockquote-border: #30363d;
+    --table-border: #30363d;
+    --scrollbar-thumb: #484f58;
+    --scrollbar-track: #21262d;
+    --dock-bg: rgba(22, 27, 34, 0.75);
+    --dock-border: rgba(255, 255, 255, 0.06);
+
+    /* Lightbox */
+    --lb-bg: rgba(0,0,0,0.92);
+    --lb-toolbar-bg: rgba(30,35,42,0.95);
+
+    /* Vkey buttons */
+    --bg-key: #2d2d2d;
+    --text-color: #e0e0e0;
+    --bg-key-active: #3d3d3d;
+}

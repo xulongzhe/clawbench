@@ -1,0 +1,19 @@
+port: 20000
+watch_dir: "/home/xulongzhe"
+password: "88909090"
+
+# Upload limits
+upload:
+  max_size_mb: 10    # Maximum single file upload size in MB
+  max_files: 20      # Maximum number of files per upload
+
+# TLS (HTTPS) configuration
+tls:
+  enabled: true
+  cert_file: "/home/xulongzhe/.certs/letsencrypt/etc/live/xulongzhe.top/fullchain.pem"
+  key_file: "/home/xulongzhe/.certs/letsencrypt/etc/live/xulongzhe.top/privkey.pem"
+
+# Dev mode ports (separate from release to avoid conflicts)
+dev:
+  port: 20002
+  frontend_port: 20001
