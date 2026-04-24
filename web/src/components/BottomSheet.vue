@@ -241,9 +241,9 @@ function handleClose() {
   min-height: 0;
 }
 
-/* Compact mode body - scrollable */
+/* Compact mode body - flex container for sticky tab bar */
 .bs-panel.bs-compact .bs-body {
-  overflow-y: auto;
+  overflow-y: hidden;
 }
 
 /* ── Footer ── */

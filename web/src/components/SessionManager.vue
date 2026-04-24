@@ -359,6 +359,7 @@ watch(() => props.open, async (val) => {
   align-items: center;
   padding: 6px 6px 4px;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .drag-handle {
@@ -401,6 +402,8 @@ watch(() => props.open, async (val) => {
 
 .tab-content {
   min-height: 0;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .session-list {
@@ -408,7 +411,6 @@ watch(() => props.open, async (val) => {
   flex-direction: column;
   gap: 2px;
   padding: 6px;
-  overflow-y: auto;
   min-height: 0;
 }
 
@@ -744,7 +746,6 @@ watch(() => props.open, async (val) => {
   flex-direction: column;
   gap: 2px;
   padding: 6px;
-  overflow-y: auto;
   min-height: 0;
 }
 
