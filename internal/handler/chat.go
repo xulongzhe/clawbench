@@ -435,14 +435,24 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+		// For OpenCode backend, resolve external session ID when resuming
+		effectiveSessionID := sessionID
+		resume := service.SessionHasAssistant(sessionID)
+		if backendName == "opencode" && resume {
+			extID := service.GetExternalSessionID(sessionID)
+			if extID != "" {
+				effectiveSessionID = extID
+			}
+		}
+
 		chatReq := ai.ChatRequest{
 			Prompt:       prompt,
-			SessionID:    sessionID,
+			SessionID:    effectiveSessionID,
 			WorkDir:      fileDir,
 			SystemPrompt: systemPrompt,
 			Model:        agentModel,
 			AgentID:      agentID,
-			Resume:       service.SessionHasAssistant(sessionID),
+			Resume:       resume,
 		}
 
 		// Use independent context with cancel + timeout to prevent goroutine leaks
@@ -524,10 +534,23 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 					goto finalize
 				}
 
-				accumulateBlock(&blocks, &currentText, event)
-				if event.Type == "metadata" && event.Meta != nil {
-					responseMetadata = event.Meta
+			accumulateBlock(&blocks, &currentText, event)
+			if event.Type == "metadata" && event.Meta != nil {
+				responseMetadata = event.Meta
+				// Capture OpenCode's external session ID on first response
+				if backendName == "opencode" && event.Meta.SessionID != "" {
+					existingExtID := service.GetExternalSessionID(sessionID)
+					if existingExtID == "" {
+						if err := service.UpdateExternalSessionID(sessionID, event.Meta.SessionID); err != nil {
+							slog.Error("failed to save external session ID",
+								slog.String("session", sessionID),
+								slog.String("external_id", event.Meta.SessionID),
+								slog.String("err", err.Error()),
+							)
+						}
+					}
 				}
+			}
 				eventCount++
 				if eventCount%5 == 0 {
 					if err := service.UpdateStreamingMessage(projectPath, backendName, sessionID, serializeBlocks()); err != nil {

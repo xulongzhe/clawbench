@@ -470,3 +470,21 @@ func UpdateMessageContent(messageID int, content string) error {
 	_, err := DB.Exec("UPDATE chat_history SET content = ? WHERE id = ?", content, messageID)
 	return err
 }
+
+// UpdateExternalSessionID sets the external session ID for a ClawBench session.
+// This is used by the OpenCode backend, which manages its own session IDs internally.
+func UpdateExternalSessionID(sessionID, externalID string) error {
+	_, err := DB.Exec("UPDATE chat_sessions SET external_session_id = ? WHERE id = ?", externalID, sessionID)
+	return err
+}
+
+// GetExternalSessionID returns the external session ID for a ClawBench session.
+// Returns empty string if not set or on error.
+func GetExternalSessionID(sessionID string) string {
+	var externalID string
+	err := DB.QueryRow("SELECT external_session_id FROM chat_sessions WHERE id = ?", sessionID).Scan(&externalID)
+	if err != nil {
+		return ""
+	}
+	return externalID
+}

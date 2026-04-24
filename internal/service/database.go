@@ -110,5 +110,17 @@ func InitDB() error {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
+	// Add external_session_id column if it doesn't exist (for OpenCode backend session mapping)
+	var hasExternalSessionID int
+	row := DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_sessions') WHERE name = 'external_session_id'")
+	if err := row.Scan(&hasExternalSessionID); err != nil {
+		return fmt.Errorf("failed to check external_session_id column: %w", err)
+	}
+	if hasExternalSessionID == 0 {
+		if _, err := DB.Exec("ALTER TABLE chat_sessions ADD COLUMN external_session_id TEXT DEFAULT ''"); err != nil {
+			return fmt.Errorf("failed to add external_session_id column: %w", err)
+		}
+	}
+
 	return nil
 }

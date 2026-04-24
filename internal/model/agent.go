@@ -27,9 +27,13 @@ var (
 
 // LoadAgents reads all YAML files from the given directory and registers them as agents.
 // If no agents are found, a default agent is created from existing global config.
+// It also loads the common prompt from common_prompt.md and prepends it to each agent's system prompt.
 func LoadAgents(dir string) error {
 	Agents = make(map[string]*Agent)
 	AgentList = nil
+
+	// Load common prompt shared by all agents
+	commonPrompt := loadCommonPrompt(dir)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -51,22 +55,44 @@ func LoadAgents(dir string) error {
 		if agent.ID == "" {
 			continue
 		}
+
+		// Prepend common prompt to agent's role-specific system prompt
+		if commonPrompt != "" && agent.SystemPrompt != "" {
+			agent.SystemPrompt = commonPrompt + "\n\n" + agent.SystemPrompt
+		} else if commonPrompt != "" {
+			agent.SystemPrompt = commonPrompt
+		}
+
 		Agents[agent.ID] = &agent
 		AgentList = append(AgentList, &agent)
 	}
 
-	// Inject available agent list into assistant's system prompt
-	if assistant, ok := Agents["assistant"]; ok {
-		var agentLines []string
-		for _, a := range AgentList {
-			if a.ID == "assistant" {
-				continue
-			}
-			agentLines = append(agentLines, fmt.Sprintf("    - %s：%s", a.ID, a.Specialty))
+	// Build available agent list for {{AVAILABLE_AGENTS}} placeholder
+	var agentLines []string
+	for _, a := range AgentList {
+		if a.ID == "assistant" {
+			continue
 		}
-		replacement := strings.Join(agentLines, "\n")
-		assistant.SystemPrompt = strings.Replace(assistant.SystemPrompt, "{{AVAILABLE_AGENTS}}", replacement, 1)
+		agentLines = append(agentLines, fmt.Sprintf("    - %s：%s", a.ID, a.Specialty))
+	}
+	agentListReplacement := strings.Join(agentLines, "\n")
+
+	// Inject available agent list into all agents' system prompts
+	for _, agent := range Agents {
+		if strings.Contains(agent.SystemPrompt, "{{AVAILABLE_AGENTS}}") {
+			agent.SystemPrompt = strings.Replace(agent.SystemPrompt, "{{AVAILABLE_AGENTS}}", agentListReplacement, 1)
+		}
 	}
 
 	return nil
+}
+
+// loadCommonPrompt reads the common prompt file from the agents directory.
+// Returns empty string if the file does not exist or cannot be read.
+func loadCommonPrompt(dir string) string {
+	data, err := os.ReadFile(filepath.Join(dir, "common_prompt.md"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }

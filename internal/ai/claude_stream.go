@@ -297,6 +297,10 @@ func buildClaudeStreamArgs(req ChatRequest) []string {
 
 	args = append(args, "--add-dir", req.WorkDir, "--dangerously-skip-permissions")
 
+	// Disable built-in scheduling/timer tools to force use of ClawBench's
+	// <schedule-proposal> mechanism instead of native CronCreate/CronDelete/CronList.
+	args = append(args, "--disallowedTools", "CronCreate", "CronDelete", "CronList")
+
 	if req.SystemPrompt != "" {
 		args = append(args, "--system-prompt", req.SystemPrompt)
 	}
