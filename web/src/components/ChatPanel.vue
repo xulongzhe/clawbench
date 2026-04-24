@@ -2459,7 +2459,7 @@ watch(() => props.open, async (val) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 2000;
+    z-index: 2500;
     animation: fadeIn 0.15s ease;
 }
 
