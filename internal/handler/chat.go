@@ -811,10 +811,6 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		// Set running status for each session and convert model name for Claude backend
 		for i := range sessions {
 			sessions[i].Running = service.IsSessionRunning(sessions[i].ID)
-			// Convert Claude model name to actual model name (e.g., claude-sonnet-4-6 -> MiniMax-M2.7)
-			if sessions[i].Backend == "claude" && sessions[i].Model != "" {
-				sessions[i].Model = ai.GetActualModel(sessions[i].Model)
-			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"sessions": sessions})

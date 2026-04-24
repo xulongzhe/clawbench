@@ -200,12 +200,7 @@ func (p *StreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 				}
 			}
 		}
-		// Map display model name to actual model name if override exists
-		if meta.Model != "" {
-			if actual := getActualModel(meta.Model); actual != "" {
-				meta.Model = actual
-			}
-		}
+
 
 		if msg.IsError {
 			meta.ErrorMessage = msg.Result
