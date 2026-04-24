@@ -28,15 +28,15 @@
 
 ### Markdown 与文档预览
 
-| LaTeX 公式 | Mermaid 图表 | README 目录 |
-|------------|-------------|-------------|
-| ![LaTeX 公式](docs/screenshots/screenshot-5.jpg) | ![Mermaid 图表](docs/screenshots/screenshot-8.jpg) | ![README 目录](docs/screenshots/screenshot-9.jpg) |
+| LaTeX 公式 | Mermaid 图表 |
+|------------|-------------|
+| ![LaTeX 公式](docs/screenshots/screenshot-5.jpg) | ![Mermaid 图表](docs/screenshots/screenshot-8.jpg) |
 
 ### AI 智能体
 
-| AI 全能助手 | AI 对话 | 会话管理 |
-|-------------|---------|----------|
-| ![AI 全能助手](docs/screenshots/screenshot-6.jpg) | ![AI 对话](docs/screenshots/screenshot-9.jpg) | ![会话管理](docs/screenshots/screenshot-9.jpg) |
+| AI 全能助手 | 会话管理 |
+|-------------|----------|
+| ![AI 全能助手](docs/screenshots/screenshot-6.jpg) | ![会话管理](docs/screenshots/screenshot-9.jpg) |
 
 ### Git 集成
 
