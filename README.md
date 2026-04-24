@@ -14,9 +14,41 @@
 
 ## 截图预览
 
-| 登录 | 首页 | AI 对话 | Git Diff |
-|------|------|---------|----------|
-| ![登录](docs/screenshots/screenshot-12.jpg) | ![首页](docs/screenshots/screenshot-13.jpg) | ![AI 对话](docs/screenshots/screenshot-6.jpg) | ![Git Diff](docs/screenshots/screenshot-1.jpg) |
+### 登录与导航
+
+| 登录 | 首页 | 选择项目 |
+|------|------|----------|
+| ![登录](docs/screenshots/screenshot-12.jpg) | ![首页](docs/screenshots/screenshot-13.jpg) | ![选择项目](docs/screenshots/screenshot-10.jpg) |
+
+### 文件浏览与代码编辑
+
+| 代码编辑器 | 搜索 | 文件浏览 |
+|------------|------|----------|
+| ![代码编辑器](docs/screenshots/screenshot-11.jpg) | ![搜索](docs/screenshots/screenshot-2.jpg) | ![文件浏览](docs/screenshots/screenshot-3.jpg) |
+
+### Markdown 与文档预览
+
+| LaTeX 公式 | Mermaid 图表 | README 目录 |
+|------------|-------------|-------------|
+| ![LaTeX 公式](docs/screenshots/screenshot-5.jpg) | ![Mermaid 图表](docs/screenshots/screenshot-8.jpg) | ![README 目录](docs/screenshots/screenshot-9.jpg) |
+
+### AI 智能体
+
+| AI 全能助手 | AI 对话 | 会话管理 |
+|-------------|---------|----------|
+| ![AI 全能助手](docs/screenshots/screenshot-6.jpg) | ![AI 对话](docs/screenshots/screenshot-9.jpg) | ![会话管理](docs/screenshots/screenshot-9.jpg) |
+
+### Git 集成
+
+| Git Diff | 提交历史 |
+|----------|----------|
+| ![Git Diff](docs/screenshots/screenshot-1.jpg) | ![提交历史](docs/screenshots/screenshot-4.jpg) |
+
+### 媒体预览
+
+| 图片查看 | 视频播放 | 音频播放 | PDF 预览 |
+|----------|----------|----------|----------|
+| ![图片查看](docs/screenshots/screenshot-14.jpg) | ![视频播放](docs/screenshots/screenshot-15.jpg) | ![音频播放](docs/screenshots/screenshot-16.jpg) | ![PDF 预览](docs/screenshots/screenshot-17.jpg) |
 
 ---
 
