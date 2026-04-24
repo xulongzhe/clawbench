@@ -46,7 +46,7 @@ export default defineConfig({
   publicDir: srcAssets,
   server: {
     host: '0.0.0.0',
-    allowedHosts: ['xulongzhe.top'],
+    allowedHosts: ['your-domain.com', 'localhost', '127.0.0.1'],
     port: 20001,
     proxy: {
       '/api': {

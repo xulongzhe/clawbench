@@ -1,6 +1,9 @@
 # OS
 .DS_Store
 
+# Configuration files (keep local config private)
+config.yaml
+
 # Python (legacy scripts)
 venv/
 __pycache__/
@@ -22,10 +25,6 @@ public/
 .clawbench/
 .smartworkbench/
 *.db
-
-# IDE / AI tools
-.claude/
-.codebuddy/
 
 # Git worktrees
 .worktrees/

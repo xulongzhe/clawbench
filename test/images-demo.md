@@ -4,7 +4,7 @@
 
 ## 图片目录
 
-测试图片位于 `/home/xulongzhe/images/` 目录下。
+测试图片位于 `/path/to/images/` 目录下。请根据你的实际环境修改此路径。
 
 ---
 
