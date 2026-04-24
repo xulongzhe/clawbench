@@ -373,11 +373,12 @@ let streamTimeout = null // Timeout for detecting stale SSE connections
 let reconnectAttempts = 0
 const MAX_RECONNECT_ATTEMPTS = 3
 const STREAM_TIMEOUT_MS = 60000 // 60 seconds without any SSE event = try reconnect
+let lastScrollTime = 0 // Track last scroll time to reduce frequency
 const toast = useToast()
 const theme = inject('theme', ref('light'))
 watch(theme, () => {
     renderCache.clear()
-    updateRenderedContents()
+    updateRenderedContents(true)
 })
 const { handleDblClick } = useDoubleClickCopy()
 
@@ -537,7 +538,7 @@ async function loadHistory() {
         currentAgentId.value = data.agentId || ''
         console.log('loadHistory - agentId:', data.agentId, 'currentAgentId:', currentAgentId.value)
         extractScheduleProposals(messages.value)
-        updateRenderedContents()
+        updateRenderedContents(true)
         if (data.running) {
             inputDisabled.value = true
             loading.value = true
@@ -587,7 +588,7 @@ async function switchSession(sessionId) {
         currentBackend.value = data.backend || ''
         currentAgentId.value = data.agentId || ''
         extractScheduleProposals(messages.value)
-        updateRenderedContents()
+        updateRenderedContents(true)
         if (data.running) {
             inputDisabled.value = true
             loading.value = true
@@ -625,7 +626,6 @@ async function createSession(agentId) {
             Object.keys(blockProposals).forEach(k => delete blockProposals[k])
             inputDisabled.value = false
             loading.value = false
-            sessionManagerOpen.value = false
             toast.show('已创建新会话', { icon: '✨', duration: 1500 })
         } else {
             throw new Error(data.error || '创建失败')
@@ -781,7 +781,7 @@ function resetStreamTimeout() {
             const streamingMsg = messages.value.find(m => m.role === 'assistant' && m.streaming)
             if (streamingMsg) {
                 delete streamingMsg.streaming
-                updateRenderedContents()
+                updateRenderedContents(true)
             }
             inputDisabled.value = false
             loading.value = false
@@ -794,9 +794,13 @@ function debouncedRender() {
     if (renderTimer) clearTimeout(renderTimer)
     renderTimer = window.setTimeout(() => {
         updateRenderedContents()
-        scrollBottom()
+        // 减少scrollBottom调用频率，每500ms最多一次
+        if (Date.now() - lastScrollTime > 500) {
+            scrollBottom()
+            lastScrollTime = Date.now()
+        }
         renderTimer = null
-    }, 100)
+    }, 200) // 增加防抖时间到200ms
 }
 
 // Global polling to monitor all running sessions
@@ -887,7 +891,7 @@ async function pollUntilDone() {
                 })
                 currentSessionId.value = data.sessionId || currentSessionId.value
                 currentSessionTitle.value = data.sessionTitle || currentSessionTitle.value
-                updateRenderedContents()
+                updateRenderedContents(true)
                 inputDisabled.value = false
                 loading.value = false
                 emit('message')
@@ -1393,26 +1397,66 @@ function formatToolInput(input) {
     }
 }
 
-function updateRenderedContents() {
-    renderedContents.value = messages.value.map(msg => {
-        if (msg.role === 'assistant' && msg.blocks) {
-            return ''
-        }
-        const key = msg.content || ''
-        if (key && renderCache.has(key)) {
-            return renderCache.get(key)
-        }
-        const html = renderMsg(msg)
-        if (key) {
-            renderCache.set(key, html)
-            trimRenderCache()
-        }
-        return html
-    })
-    nextTick(() => {
-        const el = document.getElementById('aiChatMessages')
-        if (el) renderMermaidInElement(el, 'chat-mermaid')
-    })
+function updateRenderedContents(forceFullRender = false) {
+    if (forceFullRender) {
+        // 全量渲染：用于加载历史、主题变化、切换会话等场景
+        renderedContents.value = messages.value.map(msg => {
+            if (msg.role === 'assistant' && msg.blocks) {
+                return ''
+            }
+            const key = msg.content || ''
+            if (key && renderCache.has(key)) {
+                return renderCache.get(key)
+            }
+            const html = renderMsg(msg)
+            if (key) {
+                renderCache.set(key, html)
+                trimRenderCache()
+            }
+            return html
+        })
+        nextTick(() => {
+            const el = document.getElementById('aiChatMessages')
+            if (el) renderMermaidInElement(el, 'chat-mermaid')
+        })
+    } else {
+        // 增量渲染：只渲染新增的消息（流式输出场景）
+        const startIdx = renderedContents.value.length
+        const newMsgs = messages.value.slice(startIdx)
+        
+        if (newMsgs.length === 0) return
+        
+        // 只渲染新消息
+        const newContents = newMsgs.map(msg => {
+            if (msg.role === 'assistant' && msg.blocks) {
+                return ''
+            }
+            const key = msg.content || ''
+            if (key && renderCache.has(key)) {
+                return renderCache.get(key)
+            }
+            const html = renderMsg(msg)
+            if (key) {
+                renderCache.set(key, html)
+                trimRenderCache()
+            }
+            return html
+        })
+        
+        renderedContents.value = [...renderedContents.value, ...newContents]
+        
+        // 只为新增内容渲染Mermaid（如果它们在视口中）
+        nextTick(() => {
+            const el = document.getElementById('aiChatMessages')
+            if (el) {
+                // 使用IntersectionObserver只为可见的mermaid块渲染
+                const newBlocks = el.querySelectorAll(`.chat-message:nth-last-child(n+${startIdx + 1}) pre.mermaid:not([data-rendered])`)
+                if (newBlocks.length > 0) {
+                    renderMermaidInElement(el, 'chat-mermaid', newBlocks)
+                }
+            }
+        })
+    }
 }
 
 function formatMessageTime(createdAt) {

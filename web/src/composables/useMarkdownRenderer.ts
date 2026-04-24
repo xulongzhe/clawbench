@@ -130,14 +130,16 @@ export function renderMarkdown(
  * 在DOM元素中渲染Mermaid图表
  * @param el DOM元素
  * @param prefix 图表ID前缀，默认 'mermaid'
+ * @param specificBlocks 可选：只渲染指定的块（NodeList）
  */
 export async function renderMermaidInElement(
     el: HTMLElement,
-    prefix: string = 'mermaid'
+    prefix: string = 'mermaid',
+    specificBlocks?: NodeList
 ): Promise<void> {
     // marked配置会将 ```mermaid 渲染为 <pre class="mermaid">
     // 而不是 <pre><code class="language-mermaid">
-    const blocks = el.querySelectorAll('pre.mermaid:not([data-rendered])')
+    const blocks = specificBlocks || el.querySelectorAll('pre.mermaid:not([data-rendered])')
     if (blocks.length === 0) return
 
     const renderPromises = Array.from(blocks).map(async (block, index) => {
