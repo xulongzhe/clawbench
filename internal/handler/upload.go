@@ -15,7 +15,11 @@ import (
 
 // maxUploadSize returns the maximum allowed upload size in bytes from config.
 func maxUploadSize() int64 {
-	return int64(model.UploadMaxSizeMB) * 1024 * 1024
+	mb := model.UploadMaxSizeMB
+	if mb <= 0 {
+		mb = 10
+	}
+	return int64(mb) * 1024 * 1024
 }
 
 // UploadFile handles POST /api/upload/file

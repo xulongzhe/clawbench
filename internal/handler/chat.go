@@ -42,9 +42,11 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 				if len(sessions) == 0 {
 					// Create default session with default agent
 					defaultAgentID := "assistant"
-					defaultAgent := model.Agents[defaultAgentID]
-					backend := defaultAgent.Backend
-					defaultModel := defaultAgent.Model
+					var backend, defaultModel string
+					if agent, ok := model.Agents[defaultAgentID]; ok && agent != nil {
+						backend = agent.Backend
+						defaultModel = agent.Model
+					}
 					if backend == "" {
 						backend = "codebuddy"
 					}
@@ -238,12 +240,14 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			if len(allSessions) == 0 {
 				// No sessions exist, create a new one with default agent
 				defaultAgentID := "assistant"
-				defaultAgent := model.Agents[defaultAgentID]
-				sessionBackend := defaultAgent.Backend
+				var sessionBackend, defaultModel string
+				if agent, ok := model.Agents[defaultAgentID]; ok && agent != nil {
+					sessionBackend = agent.Backend
+					defaultModel = agent.Model
+				}
 				if sessionBackend == "" {
 					sessionBackend = "codebuddy"
 				}
-				defaultModel := defaultAgent.Model
 				if defaultModel == "" {
 					defaultModel = "glm-5.1"
 				}
@@ -284,16 +288,17 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 	// Get backend from session, not from global state
 	sessionID := getSessionID(r)
-	var sessionBackend string
 	if sessionID == "" {
 		// No session yet — auto-create one (same logic as GET)
 		defaultAgentID := "assistant"
-		defaultAgent := model.Agents[defaultAgentID]
-		sessionBackend = defaultAgent.Backend
+		var sessionBackend, defaultModel string
+		if agent, ok := model.Agents[defaultAgentID]; ok && agent != nil {
+			sessionBackend = agent.Backend
+			defaultModel = agent.Model
+		}
 		if sessionBackend == "" {
 			sessionBackend = "codebuddy"
 		}
-		defaultModel := defaultAgent.Model
 		if defaultModel == "" {
 			defaultModel = "glm-5.1"
 		}

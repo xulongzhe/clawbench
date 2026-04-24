@@ -476,7 +476,8 @@ func TestCancelSession_NoCancelFunc(t *testing.T) {
 	setupDB(t)
 
 	ok := service.CancelSession("non-existent-session")
-	assert.False(t, ok)
+	// Non-running session with no cancel func is considered already cancelled (idempotent)
+	assert.True(t, ok)
 }
 
 func TestCancelSession_WithCancelFunc(t *testing.T) {
@@ -501,9 +502,9 @@ func TestCancelSession_WithCancelFunc(t *testing.T) {
 	// Session should no longer be running
 	assert.False(t, service.IsSessionRunning(sid))
 
-	// Second cancel should return false (cancel func already consumed)
+	// Second cancel should return true (idempotent: session is no longer running)
 	ok = service.CancelSession(sid)
-	assert.False(t, ok)
+	assert.True(t, ok)
 }
 
 func TestCancelSession_WithStreamChannel(t *testing.T) {
@@ -668,9 +669,9 @@ func TestRegisterUnregisterSessionCancel(t *testing.T) {
 	service.RegisterSessionCancel(sid, cancel2)
 	service.UnregisterSessionCancel(sid)
 
-	// After unregister, cancel should return false
+	// After unregister, cancel returns true (session not running → idempotent)
 	ok = service.CancelSession(sid)
-	assert.False(t, ok)
+	assert.True(t, ok)
 }
 
 func TestFinalizeStreamingMessage_NoStreamingRow(t *testing.T) {

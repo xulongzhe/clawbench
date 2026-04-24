@@ -635,7 +635,8 @@ func TestCancelChat_NoRunningSession(t *testing.T) {
 	req := newRequest(t, http.MethodPost, "/api/ai/chat/cancel?session_id=nonexistent", nil)
 
 	w := callHandler(CancelChat, req)
-	assertStatus(t, w, http.StatusNotFound)
+	// Idempotent: cancelling a non-running session succeeds
+	assertStatus(t, w, http.StatusOK)
 }
 
 func TestCancelChat_MissingSessionID(t *testing.T) {
@@ -709,10 +710,12 @@ func TestServeWatchDir(t *testing.T) {
 	w := callHandler(ServeWatchDir, req)
 	assertOK(t, w)
 
-	var result map[string]string
+	var result map[string]interface{}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 	assert.Contains(t, result, "watchDir")
-	assert.NotEmpty(t, result["watchDir"])
+	watchDir, ok := result["watchDir"].(string)
+	assert.True(t, ok)
+	assert.NotEmpty(t, watchDir)
 }
 
 // --- UploadFile ---
