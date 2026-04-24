@@ -6,9 +6,12 @@ on:
       - 'v*'
 
 jobs:
-  build-binary:
-    name: Build Linux Binary
+  build:
+    name: Build Release Package
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -16,32 +19,29 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Build frontend
+        run: npm ci && npm run build
+
+      - name: Build binary
         run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o clawbench-linux-amd64 ./cmd/server
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: clawbench-linux-amd64
-          path: clawbench-linux-amd64
-
-  create-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [build-binary]
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: clawbench-linux-amd64
-
-      - name: Make binary executable
-        run: chmod +x clawbench-linux-amd64
+      - name: Package release
+        run: |
+          mkdir -p release/clawbench
+          cp clawbench-linux-amd64 release/clawbench/
+          cp -r public release/clawbench/public
+          cp config.docker.yaml release/clawbench/config.example.yaml
+          cp -r agents release/clawbench/agents
+          cp server.sh release/clawbench/
+          chmod +x release/clawbench/clawbench-linux-amd64 release/clawbench/server.sh
+          cd release && zip -r clawbench-linux-amd64.zip clawbench/
 
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          files: clawbench-linux-amd64
+          files: release/clawbench-linux-amd64.zip
