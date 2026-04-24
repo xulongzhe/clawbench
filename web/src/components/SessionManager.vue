@@ -129,7 +129,14 @@
                 @click="createSession(agent.id)"
               >
                 <span class="agent-option-icon">{{ agent.icon }}</span>
-                <span class="agent-option-name">{{ agent.name }}</span>
+                <div class="agent-option-detail">
+                  <span class="agent-option-name">{{ agent.name }}</span>
+                  <span class="agent-option-specialty">{{ agent.specialty }}</span>
+                  <div class="agent-option-tags">
+                    <span class="agent-tag backend-tag">{{ agent.backend }}</span>
+                    <span class="agent-tag model-tag">{{ agent.model }}</span>
+                  </div>
+                </div>
               </button>
             </div>
             <button class="close-selector-btn" @click="showAgentSelector = false">取消</button>
@@ -663,10 +670,55 @@ watch(() => props.open, async (val) => {
   flex-shrink: 0;
 }
 
+.agent-option-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .agent-option-name {
   font-size: 13px;
   color: var(--text-primary, #1a1a1a);
-  flex: 1;
+  font-weight: 500;
+}
+
+.agent-option-specialty {
+  font-size: 11px;
+  color: var(--text-secondary, #666);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-option-tags {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.agent-tag {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.backend-tag {
+  background: rgba(0, 102, 204, 0.1);
+  color: var(--accent-color, #0066cc);
+  text-transform: lowercase;
+}
+
+.model-tag {
+  background: rgba(100, 100, 100, 0.08);
+  color: var(--text-muted, #999);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .close-selector-btn {
