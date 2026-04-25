@@ -39,7 +39,7 @@
         <div v-if="msg.role === 'user' && msg.files && msg.files.length > 0 && !hasImagesInContent(msg.content)" class="chat-files">
           <template v-for="(fPath, idx) in msg.files" :key="idx">
             <img v-if="isImageFile(fPath)" :src="`/api/local-file/${fPath}`" class="chat-image-thumb" alt="Uploaded image" />
-            <a v-else :href="`/api/local-file/${fPath}`" class="chat-file-attachment" target="_blank">
+            <span v-else class="chat-file-attachment" @click="handleFileTagClick(fPath)" title="打开文件">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14,2 14,8 20,8"/>
@@ -47,7 +47,7 @@
                 <line x1="16" y1="17" x2="8" y2="17"/>
               </svg>
               <span class="chat-file-name">{{ getFileName(fPath) }}</span>
-            </a>
+            </span>
           </template>
         </div>
 
