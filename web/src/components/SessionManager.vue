@@ -119,7 +119,7 @@
         <!-- Agent selector modal -->
         <div v-if="showAgentSelector" class="agent-selector-modal" @click.self="showAgentSelector = false">
           <div class="agent-selector-content">
-            <div class="agent-selector-header">选择助手类型</div>
+            <div class="agent-selector-header">选择智能体</div>
             <div class="agent-list">
               <button
                 v-for="agent in agents"
@@ -170,7 +170,7 @@ const activeTab = ref('sessions')
 const sessions = ref([])
 const loading = ref(false)
 const agents = ref([])
-const selectedAgentId = ref('coder')
+const selectedAgentId = ref('')
 const showAgentSelector = ref(false)
 
 // Tasks
@@ -248,9 +248,6 @@ async function loadAgents() {
     const resp = await fetch('/api/agents')
     const data = await resp.json()
     agents.value = data.agents || []
-    if (agents.value.length > 0 && !agents.value.find(a => a.id === selectedAgentId.value)) {
-      selectedAgentId.value = agents.value[0].id
-    }
   } catch (err) {
     console.error('Failed to load agents:', err)
   }

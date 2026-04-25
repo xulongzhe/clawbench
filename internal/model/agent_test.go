@@ -128,6 +128,10 @@ system_prompt: You are coder.
 	os.WriteFile(filepath.Join(dir, "assistant.yaml"), []byte(yaml1), 0644)
 	os.WriteFile(filepath.Join(dir, "coder.yaml"), []byte(yaml2), 0644)
 
+	// Set DefaultAgentID so assistant is excluded from {{AVAILABLE_AGENTS}}
+	model.DefaultAgentID = "assistant"
+	t.Cleanup(func() { model.DefaultAgentID = "" })
+
 	err := model.LoadAgents(dir)
 	assert.NoError(t, err)
 	agent := model.Agents["assistant"]
@@ -148,4 +152,51 @@ func TestLoadAgents_InvalidYAML(t *testing.T) {
 	err := model.LoadAgents(dir)
 	assert.NoError(t, err)
 	assert.Empty(t, model.AgentList)
+}
+
+func TestGetDefaultAgentID_Configured(t *testing.T) {
+	model.DefaultAgentID = "coder"
+	model.Agents = map[string]*model.Agent{"coder": {ID: "coder"}}
+	model.AgentList = []*model.Agent{{ID: "assistant"}, {ID: "coder"}}
+	t.Cleanup(func() {
+		model.DefaultAgentID = ""
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	assert.Equal(t, "coder", model.GetDefaultAgentID())
+}
+
+func TestGetDefaultAgentID_ConfiguredNotFound(t *testing.T) {
+	model.DefaultAgentID = "nonexistent"
+	model.Agents = map[string]*model.Agent{"assistant": {ID: "assistant"}}
+	model.AgentList = []*model.Agent{{ID: "assistant"}}
+	t.Cleanup(func() {
+		model.DefaultAgentID = ""
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Configured agent not found, fallback to first in list
+	assert.Equal(t, "assistant", model.GetDefaultAgentID())
+}
+
+func TestGetDefaultAgentID_FallbackFirst(t *testing.T) {
+	model.DefaultAgentID = ""
+	model.Agents = map[string]*model.Agent{"coder": {ID: "coder"}}
+	model.AgentList = []*model.Agent{{ID: "coder"}}
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	assert.Equal(t, "coder", model.GetDefaultAgentID())
+}
+
+func TestGetDefaultAgentID_NoAgents(t *testing.T) {
+	model.DefaultAgentID = ""
+	model.Agents = nil
+	model.AgentList = nil
+
+	assert.Equal(t, "", model.GetDefaultAgentID())
 }

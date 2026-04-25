@@ -521,6 +521,10 @@ async function loadHistory() {
             ? `/api/ai/chat?session_id=${encodeURIComponent(currentSessionId.value)}`
             : '/api/ai/chat'
         const resp = await fetch(url)
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}))
+            throw new Error(errData.error || `请求失败 (${resp.status})`)
+        }
         const data = await resp.json()
         messages.value = (data.messages || []).map(msg => {
             if (msg.role === 'assistant') {
@@ -554,7 +558,7 @@ async function loadHistory() {
         }
     } catch (err) {
         console.error('Failed to load chat history:', err)
-        toast.show('加载聊天记录失败', { icon: '⚠️' })
+        toast.show(err.message || '加载聊天记录失败', { icon: '⚠️' })
     }
 }
 
@@ -618,23 +622,22 @@ async function createSession(agentId) {
             body: JSON.stringify(body),
         })
         const data = await resp.json()
-        if (data.ok && data.sessionId) {
-            currentSessionId.value = data.sessionId
-            currentSessionTitle.value = ''
-            currentBackend.value = data.backend || ''
-            currentAgentId.value = data.agentId || agentId || ''
-            messages.value = []
-            renderedContents.value = []
-            Object.keys(blockProposals).forEach(k => delete blockProposals[k])
-            inputDisabled.value = false
-            loading.value = false
-            toast.show('已创建新会话', { icon: '✨', duration: 1500 })
-        } else {
-            throw new Error(data.error || '创建失败')
+        if (!resp.ok || !data.ok) {
+            throw new Error(data.error || `创建失败 (${resp.status})`)
         }
+        currentSessionId.value = data.sessionId
+        currentSessionTitle.value = ''
+        currentBackend.value = data.backend || ''
+        currentAgentId.value = data.agentId || agentId || ''
+        messages.value = []
+        renderedContents.value = []
+        Object.keys(blockProposals).forEach(k => delete blockProposals[k])
+        inputDisabled.value = false
+        loading.value = false
+        toast.show('已创建新会话', { icon: '✨', duration: 1500 })
     } catch (err) {
         console.error('Failed to create session:', err)
-        toast.show('创建会话失败', { icon: '⚠️' })
+        toast.show(err.message || '创建会话失败', { icon: '⚠️' })
     }
 }
 

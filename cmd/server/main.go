@@ -154,6 +154,24 @@ func main() {
 	}
 	slog.Info("agents loaded", slog.Int("count", len(model.AgentList)))
 
+	// Set default agent ID from config, or fall back to first agent
+	if cfg.DefaultAgent != "" {
+		if _, ok := model.Agents[cfg.DefaultAgent]; ok {
+			model.DefaultAgentID = cfg.DefaultAgent
+		} else {
+			slog.Warn("configured default_agent not found, using first agent",
+				slog.String("configured", cfg.DefaultAgent))
+		}
+	}
+	if model.DefaultAgentID == "" && len(model.AgentList) > 0 {
+		model.DefaultAgentID = model.AgentList[0].ID
+	}
+	if model.DefaultAgentID != "" {
+		slog.Info("default agent", slog.String("id", model.DefaultAgentID))
+	} else {
+		slog.Warn("no agents available, session creation will fail")
+	}
+
 	// Hash the password for session comparison
 	if cfg.Password != "" {
 		hash := sha256.Sum256([]byte(cfg.Password + "clawbench-salt"))

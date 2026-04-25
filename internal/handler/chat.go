@@ -42,17 +42,15 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 				}
 				if len(sessions) == 0 {
 					// Create default session with default agent
-					defaultAgentID := "assistant"
+					defaultAgentID := model.GetDefaultAgentID()
+					if defaultAgentID == "" {
+						model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
+						return
+					}
 					var backend, defaultModel string
-					if agent, ok := model.Agents[defaultAgentID]; ok && agent != nil {
+					if agent, ok := model.Agents[defaultAgentID]; ok {
 						backend = agent.Backend
 						defaultModel = agent.Model
-					}
-					if backend == "" {
-						backend = "codebuddy"
-					}
-					if defaultModel == "" {
-						defaultModel = "glm-5.1"
 					}
 					sessionID, err = service.CreateSession(projectPath, backend, "新会话", defaultAgentID, defaultModel)
 					if err != nil {
@@ -229,17 +227,15 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 			if len(allSessions) == 0 {
 				// No sessions exist, create a new one with default agent
-				defaultAgentID := "assistant"
+				defaultAgentID := model.GetDefaultAgentID()
+				if defaultAgentID == "" {
+					model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
+					return
+				}
 				var sessionBackend, defaultModel string
-				if agent, ok := model.Agents[defaultAgentID]; ok && agent != nil {
+				if agent, ok := model.Agents[defaultAgentID]; ok {
 					sessionBackend = agent.Backend
 					defaultModel = agent.Model
-				}
-				if sessionBackend == "" {
-					sessionBackend = "codebuddy"
-				}
-				if defaultModel == "" {
-					defaultModel = "glm-5.1"
 				}
 				sessionID, err = service.CreateSession(projectPath, sessionBackend, "新会话", defaultAgentID, defaultModel)
 				if err != nil {
@@ -279,21 +275,19 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	// Get backend from session, not from global state
 	sessionID := getSessionID(r)
 	if sessionID == "" {
-		// No session yet — auto-create one (same logic as GET)
-		defaultAgentID := "assistant"
-		var sessionBackend, defaultModel string
-		if agent, ok := model.Agents[defaultAgentID]; ok && agent != nil {
-			sessionBackend = agent.Backend
-			defaultModel = agent.Model
-		}
-		if sessionBackend == "" {
-			sessionBackend = "codebuddy"
-		}
-		if defaultModel == "" {
-			defaultModel = "glm-5.1"
-		}
-		var err error
-		sessionID, err = service.CreateSession(projectPath, sessionBackend, "新会话", defaultAgentID, defaultModel)
+	// No session yet — auto-create one (same logic as GET)
+	defaultAgentID := model.GetDefaultAgentID()
+	if defaultAgentID == "" {
+		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
+		return
+	}
+	var sessionBackend, defaultModel string
+	if agent, ok := model.Agents[defaultAgentID]; ok {
+		sessionBackend = agent.Backend
+		defaultModel = agent.Model
+	}
+	var err error
+	sessionID, err = service.CreateSession(projectPath, sessionBackend, "新会话", defaultAgentID, defaultModel)
 		if err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 			return
@@ -427,7 +421,11 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	agentCommand := ""
 
 	if agentID == "" {
-		agentID = "assistant"
+		agentID = model.GetDefaultAgentID()
+	}
+	if agentID == "" {
+		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
+		return
 	}
 	if agent, ok := model.Agents[agentID]; ok {
 		systemPrompt = agent.SystemPrompt
@@ -857,24 +855,25 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		// Resolve backend and model from agent config if agent_id is provided
 		backend := req.Backend
 		agentModel := ""
-		agentID := req.AgentID
-		if agentID == "" {
-			agentID = "assistant"
+	agentID := req.AgentID
+	if agentID == "" {
+		agentID = model.GetDefaultAgentID()
+	}
+	if agentID == "" {
+		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
+		return
+	}
+	if agent, ok := model.Agents[agentID]; ok {
+		if agent.Backend != "" {
+			backend = agent.Backend
 		}
-		if agent, ok := model.Agents[agentID]; ok {
-			if agent.Backend != "" {
-				backend = agent.Backend
-			}
-			if agent.Model != "" {
-				agentModel = agent.Model
-			}
+		if agent.Model != "" {
+			agentModel = agent.Model
 		}
-		if backend == "" {
-			backend = "codebuddy"
-		}
-		if agentModel == "" {
-			agentModel = "glm-5.1"
-		}
+	}
+	if backend == "" {
+		backend = "codebuddy"
+	}
 		title := req.Title
 		if title == "" {
 			// Auto-generate title

@@ -2,11 +2,12 @@ package model
 
 // Config holds the application configuration.
 type Config struct {
-	Port       int    `yaml:"port"`
-	WatchDir   string `yaml:"watch_dir"`
-	Password   string `yaml:"password"`
-	LogDir     string `yaml:"log_dir"`
-	LogMaxDays int    `yaml:"log_max_days"`
+	Port         int    `yaml:"port"`
+	WatchDir     string `yaml:"watch_dir"`
+	Password     string `yaml:"password"`
+	DefaultAgent string `yaml:"default_agent"`
+	LogDir       string `yaml:"log_dir"`
+	LogMaxDays   int    `yaml:"log_max_days"`
 	TLS        struct {
 		Enabled  bool   `yaml:"enabled"`
 		CertFile string `yaml:"cert_file"`
@@ -28,6 +29,7 @@ var (
 	SessionToken   string
 	SessionCookie  = "clawbench_session"
 	DevMode        bool   // True when running in debug/development mode
+	DefaultAgentID string // Default agent for new sessions, set from config or first agent
 
 	// Upload limits (set from config, with defaults)
 	UploadMaxSizeMB int // Default: 10

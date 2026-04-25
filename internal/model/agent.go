@@ -26,6 +26,20 @@ var (
 	AgentList []*Agent          // ordered list for API responses
 )
 
+// GetDefaultAgentID returns the default agent ID for new sessions.
+// Priority: configured DefaultAgentID > first agent in AgentList > empty string.
+func GetDefaultAgentID() string {
+	if DefaultAgentID != "" {
+		if _, ok := Agents[DefaultAgentID]; ok {
+			return DefaultAgentID
+		}
+	}
+	if len(AgentList) > 0 {
+		return AgentList[0].ID
+	}
+	return ""
+}
+
 // LoadAgents reads all YAML files from the given directory and registers them as agents.
 // If no agents are found, a default agent is created from existing global config.
 // It also loads the common prompt from common_prompt.md and prepends it to each agent's system prompt.
@@ -71,9 +85,9 @@ func LoadAgents(dir string) error {
 	// Build available agent list for {{AVAILABLE_AGENTS}} placeholder
 	var agentLines []string
 	for _, a := range AgentList {
-		if a.ID == "assistant" {
-			continue
-		}
+	if a.ID == DefaultAgentID {
+		continue
+	}
 		agentLines = append(agentLines, fmt.Sprintf("    - %s：%s", a.ID, a.Specialty))
 	}
 	agentListReplacement := strings.Join(agentLines, "\n")
