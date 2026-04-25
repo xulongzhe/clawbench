@@ -20,6 +20,7 @@ import { ref, watch, nextTick } from 'vue'
 import CodePreview from './CodePreview.vue'
 import { useMarkdownRenderer } from '@/composables/useMarkdownRenderer.ts'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
+import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { store } from '@/stores/app.ts'
 import { dirName, splitPath } from '@/utils/helpers.ts'
 
@@ -28,50 +29,31 @@ const props = defineProps({
     viewMode: String,
 })
 
-const emit = defineEmits(['openFile', 'openDir'])
-
 const renderedHtml = ref('')
 const bodyRef = ref(null)
 let currentRenderId = 0
 const { handleDblClick } = useDoubleClickCopy()
 const { renderMarkdown, renderMermaidInElement } = useMarkdownRenderer()
-
-// 处理相对路径链接点击
-async function handleOpenFile(href) {
-    const currentDir = props.file?.path ? dirName(props.file.path) : ''
-    let resolvedPath = href
-    
-    // 解析相对路径
-    if (currentDir) {
-        const parts = splitPath(currentDir + '/' + href)
-        const normalized = []
-        for (const part of parts) {
-            if (part === '.' || part === '') continue
-            if (part === '..') { normalized.pop(); continue }
-            normalized.push(part)
-        }
-        resolvedPath = normalized.join('/')
-    }
-    
-    // 检查路径是否为目录
-    try {
-        const resp = await fetch(`/api/dir?path=${encodeURIComponent(resolvedPath)}`)
-        if (resp.ok) {
-            // 是目录，导航到该目录并打开文件管理器
-            await store.navigateToDir(resolvedPath)
-            window.dispatchEvent(new CustomEvent('open-sidebar'))
-            return
-        }
-    } catch {
-        // 忽略，回退到打开文件
-    }
-    
-    // 通过 store 打开文件
-    store.selectFile(resolvedPath)
-}
+const { annotateFilePaths, verifyFilePaths, resolveRelativePath, openFilePath } = useFilePathAnnotation()
 
 function handleClick(event) {
-    handleDblClick(event, handleOpenFile)
+    // Check for file-open button click first
+    const btn = (event.target).closest('.chat-file-open-btn')
+    if (btn) {
+        event.preventDefault()
+        event.stopPropagation()
+        const filePath = btn.getAttribute('data-file-path')
+        if (filePath) {
+            openFilePath(filePath)
+        }
+        return
+    }
+    // Handle <a> link clicks (relative paths) + double-click copy
+    handleDblClick(event, (href) => {
+        const currentDir = props.file?.path ? dirName(props.file.path) : ''
+        const resolvedPath = resolveRelativePath(href, currentDir)
+        openFilePath(resolvedPath)
+    })
 }
 
 function fixLocalImagePaths(html) {
@@ -95,15 +77,31 @@ function fixLocalImagePaths(html) {
 
 async function doRender(f) {
     const renderId = ++currentRenderId
-    renderedHtml.value = renderMarkdown(f.content, {
+    let html = renderMarkdown(f.content, {
         sanitize: false, // MarkdownPreview不需要净化，因为是受信任的文件内容
         fixImagePaths: fixLocalImagePaths
     })
+
+    // Annotate file paths with open buttons
+    const currentDir = f?.path ? dirName(f.path) : ''
+    const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, {
+        projectRoot: store.state.projectRoot,
+        baseDir: currentDir
+    })
+    renderedHtml.value = annotatedHtml
+
     if (renderId !== currentRenderId) return
     await nextTick()
     if (renderId !== currentRenderId) return
     const el = bodyRef.value
     if (!el) return
+
+    // Verify file existence and hide buttons for non-existent files
+    if (detectedPaths.length > 0) {
+        const uniquePaths = [...new Set(detectedPaths)]
+        verifyFilePaths(uniquePaths, el)
+    }
+
     // 【注意】KaTeX 已在 renderMarkdown 内的 renderKatexInString 完成字符串级渲染，
     // 这里只做 Mermaid 的 DOM 级渲染（Mermaid 是整体节点替换，与 v-html 不冲突）
     await renderMermaidInElement(el, 'md-preview')

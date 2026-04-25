@@ -328,6 +328,7 @@ import { marked, DOMPurify, hljs, mermaid } from '@/utils/globals.ts'
 import { renderKatexInString, renderMermaidInElement } from '@/composables/useMarkdownRenderer.ts'
 import { useToast } from '@/composables/useToast.ts'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
+import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useNotification } from '@/composables/useNotification.ts'
 import { store } from '@/stores/app.ts'
 
@@ -384,6 +385,7 @@ watch(theme, () => {
     updateRenderedContents(true)
 })
 const { handleDblClick } = useDoubleClickCopy()
+const { annotateFilePaths, verifyFilePaths, openFilePath } = useFilePathAnnotation()
 
 function handleChatClick(event) {
     // Check for file-open button click first
@@ -393,13 +395,17 @@ function handleChatClick(event) {
         event.stopPropagation()
         const filePath = btn.getAttribute('data-file-path')
         if (filePath) {
-            store.selectFile(filePath)
+            openFilePath(filePath)
             // Use BottomSheet's close method to trigger the exit animation
             bottomSheetRef.value?.close()
         }
         return
     }
-    handleDblClick(event)
+    // Handle <a> link clicks (relative paths) + double-click copy
+    handleDblClick(event, (href) => {
+        openFilePath(href)
+        bottomSheetRef.value?.close()
+    })
 }
 
 function copyValue(value, event) {
@@ -1372,152 +1378,16 @@ function renderMarkdown(text) {
         }
         return match
     })
-    html = annotateFilePaths(html)
-    return html
-}
-
-/**
- * Detect file paths in rendered HTML and insert open-file buttons after them.
- * Supports:
- *   - Absolute paths: /home/user/project/src/main.go
- *   - Project-relative paths: src/main.go, ./lib/utils.ts
- * A path must contain at least one / and a file extension to qualify.
- * Only paths within the current project get a button.
- */
-function annotateFilePaths(html) {
-    const projectRoot = store.state.projectRoot
-
-    // Protect <pre> blocks from annotation (multi-line code blocks should not get buttons)
-    // But allow <code> (inline code) — AI often references file paths inside inline code
-    const preBlocks = []
-    html = html.replace(/<pre[^>]*>[\s\S]*?<\/pre>/gi, (match) => {
-        preBlocks.push(match)
-        return `<!--PREBLOCK${preBlocks.length - 1}-->`
-    })
-
-    const detectedPaths = []
-
-    // Absolute paths: /.../.../file.ext  (only if projectRoot is available)
-    if (projectRoot) {
-        html = html.replace(/(^|[\s(>"'])(\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)+\.[a-zA-Z][a-zA-Z0-9]*)/gm, (match, prefix, path) => {
-            const resolved = resolveFilePath(path, projectRoot)
-            if (!resolved) return match
-            detectedPaths.push(resolved)
-            return `${prefix}<span class="chat-file-path" data-file-path="${escapeHtml(resolved)}">${escapeHtml(path)}</span>${fileOpenButtonHtml(resolved)}`
-        })
-    }
-
-    // Relative paths starting with ./ or ../
-    html = html.replace(/(^|[\s(>"'])(\.\.?\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)*\.[a-zA-Z][a-zA-Z0-9]*)/gm, (match, prefix, path) => {
-        const resolved = resolveFilePath(path, projectRoot)
-        if (!resolved) return match
-        detectedPaths.push(resolved)
-        return `${prefix}<span class="chat-file-path" data-file-path="${escapeHtml(resolved)}">${escapeHtml(path)}</span>${fileOpenButtonHtml(resolved)}`
-    })
-
-    // Bare relative paths: word/word/file.ext  (at least two path segments + extension)
-    html = html.replace(/(^|[\s("'()])([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z][a-zA-Z0-9]*)/gm, (match, prefix, path) => {
-        if (prefix === '>') return match
-        const resolved = resolveFilePath(path, projectRoot)
-        if (!resolved) return match
-        detectedPaths.push(resolved)
-        return `${prefix}<span class="chat-file-path" data-file-path="${escapeHtml(resolved)}">${escapeHtml(path)}</span>${fileOpenButtonHtml(resolved)}`
-    })
-
-    // Also annotate file paths inside <code> tags (AI often wraps paths in inline code)
-    html = html.replace(/<code>([\s\S]*?)<\/code>/gi, (match, codeContent) => {
-        const stripped = codeContent.replace(/<[^>]+>/g, '').trim()
-        const resolved = resolveFilePath(stripped, projectRoot)
-        if (!resolved) return match
-        detectedPaths.push(resolved)
-        return `<code class="chat-file-path" data-file-path="${escapeHtml(resolved)}">${codeContent}</code>${fileOpenButtonHtml(resolved)}`
-    })
-
-    // Restore pre blocks
-    html = html.replace(/<!--PREBLOCK(\d+)-->/g, (_, idx) => preBlocks[parseInt(idx)])
-
-    // Async: verify file existence and hide buttons for non-existent files
+    const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, { projectRoot: store.state.projectRoot })
+    html = annotatedHtml
     if (detectedPaths.length > 0) {
         const uniquePaths = [...new Set(detectedPaths)]
-        nextTick(() => verifyFilePaths(uniquePaths))
+        nextTick(() => {
+            const el = document.getElementById('aiChatMessages')
+            if (el) verifyFilePaths(uniquePaths, el)
+        })
     }
-
     return html
-}
-
-/**
- * Check which file paths actually exist on the server,
- * and hide buttons for files that don't exist.
- */
-async function verifyFilePaths(paths) {
-    const el = document.getElementById('aiChatMessages')
-    if (!el) return
-    await Promise.all(paths.map(async (path) => {
-        try {
-            const resp = await fetch(`/api/file/${encodeURIComponent(path)}`, { method: 'HEAD' })
-            if (!resp.ok) {
-                // File doesn't exist — hide the button
-                el.querySelectorAll(`.chat-file-open-btn[data-file-path="${CSS.escape(path)}"]`).forEach(btn => {
-                    btn.remove()
-                })
-                // Also remove the chat-file-path styling (it's just normal text if no button)
-                el.querySelectorAll(`.chat-file-path[data-file-path="${CSS.escape(path)}"]`).forEach(span => {
-                    span.replaceWith(...span.childNodes)
-                })
-            }
-        } catch {
-            // Network error — leave button visible (best effort)
-        }
-    }))
-}
-
-/**
- * Resolve a file path to a project-relative path usable by store.selectFile().
- * Returns null if the path is not within the current project.
- * When projectRoot is empty, relative paths are returned as-is (best-effort).
- */
-function resolveFilePath(path, projectRoot) {
-    if (path.startsWith('/')) {
-        // Absolute path: must be under projectRoot
-        if (!projectRoot) return null
-        if (!path.startsWith(projectRoot)) return null
-        const absolutePath = path
-        if (absolutePath.startsWith(projectRoot + '/')) {
-            return absolutePath.slice(projectRoot.length + 1)
-        }
-        if (absolutePath === projectRoot) return null
-        return null
-    }
-
-    // Relative path
-    if (!projectRoot) {
-        // No projectRoot — strip leading ./ and return as-is (best-effort)
-        let clean = path.replace(/^\.\//, '')
-        // Reject paths that go above root (../) when we can't verify
-        if (clean.startsWith('../')) return null
-        return clean
-    }
-
-    // Resolve ./ and ../ against projectRoot
-    const parts = projectRoot.split('/').filter(Boolean)
-    const segments = path.split('/')
-    for (const seg of segments) {
-        if (seg === '..') {
-            if (parts.length > 0) parts.pop()
-            else return null // goes above project root
-        } else if (seg !== '.' && seg !== '') {
-            parts.push(seg)
-        }
-    }
-    const absolutePath = '/' + parts.join('/')
-    if (absolutePath.startsWith(projectRoot + '/')) {
-        return absolutePath.slice(projectRoot.length + 1)
-    }
-    return null
-}
-
-function fileOpenButtonHtml(resolvedPath) {
-    return `<button class="chat-file-open-btn" data-file-path="${escapeHtml(resolvedPath)}" title="打开文件"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`
 }
 
 function renderTextBlock(text, msgId, blockIdx) {
@@ -2420,45 +2290,6 @@ watch(() => props.open, async (val) => {
 
 <style>
 /* Chat message - non-scoped for v-html penetration */
-
-/* File path annotation & open button (must be non-scoped: v-html content) */
-.chat-file-path {
-  font-family: monospace;
-  background: var(--bg-secondary);
-  border-radius: 3px;
-  padding: 0 3px;
-}
-
-.chat-file-open-btn {
-  display: inline-flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  width: 16px !important;
-  height: 16px !important;
-  border-radius: 50% !important;
-  border: none !important;
-  background: transparent !important;
-  color: var(--text-secondary) !important;
-  cursor: pointer !important;
-  vertical-align: middle !important;
-  margin-left: 1px !important;
-  padding: 0 !important;
-  line-height: 1 !important;
-  opacity: 0.5 !important;
-  transition: opacity 0.15s, color 0.15s !important;
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-.chat-file-open-btn:hover {
-  opacity: 1 !important;
-  color: var(--accent-color, #3b82f6) !important;
-}
-
-.chat-file-open-btn svg {
-  display: block;
-}
-
 .chat-message {
     padding: 8px 12px;
     border-radius: var(--radius-md);
