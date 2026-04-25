@@ -215,11 +215,13 @@ async function loadSessions() {
 
 function selectSession(sessionId, backend) {
   emit('select', sessionId, backend)
+  emit('close')
 }
 
 function createSession(agentId) {
   showAgentSelector.value = false
   emit('create', agentId)
+  emit('close')
 }
 
 async function deleteSession(sessionId) {
