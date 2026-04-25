@@ -27,6 +27,13 @@ func TestNewBackend_OpenCode(t *testing.T) {
 	assert.Equal(t, "opencode", backend.Name())
 }
 
+func TestNewBackend_Gemini(t *testing.T) {
+	backend, err := NewBackend("gemini")
+	assert.NoError(t, err)
+	assert.NotNil(t, backend)
+	assert.Equal(t, "gemini", backend.Name())
+}
+
 func TestNewBackend_Unsupported(t *testing.T) {
 	_, err := NewBackend("unsupported")
 	assert.Error(t, err)
