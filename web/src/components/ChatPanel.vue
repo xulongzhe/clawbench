@@ -28,11 +28,11 @@
         class="chat-message" :class="[msg.role, { 'has-metadata': msg.role === 'assistant' && msg.metadata }]">
 
         <!-- File tag -->
-        <div v-if="msg.filePath" class="chat-file-tag">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="chat-file-tag-icon">
+        <div v-if="msg.filePath" class="chat-file-tag" @click="handleFileTagClick(msg.filePath)" title="打开文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10" class="chat-file-tag-icon">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
-          <span class="chat-file-tag-path">{{ escapeHtml(msg.filePath) }}</span>
+          <span class="chat-file-tag-path">{{ getFileName(msg.filePath) }}</span>
         </div>
 
         <!-- Files display (only if content doesn't already render them) -->
@@ -386,6 +386,13 @@ watch(theme, () => {
 })
 const { handleDblClick } = useDoubleClickCopy()
 const { annotateFilePaths, verifyFilePaths, openFilePath } = useFilePathAnnotation()
+
+function handleFileTagClick(filePath) {
+    if (filePath) {
+        openFilePath(filePath)
+        bottomSheetRef.value?.close()
+    }
+}
 
 function handleChatClick(event) {
     // Check for file-open button click first
@@ -2037,14 +2044,15 @@ watch(() => props.open, async (val) => {
 .chat-file-attachment {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 4px;
-  padding: 2px 8px;
-  margin-bottom: 6px;
-  font-size: 12px;
+  gap: 3px;
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
   text-decoration: none;
-  max-width: 200px;
-  overflow: hidden;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
 }
 
 .chat-file-tag-icon,
@@ -2087,7 +2095,8 @@ watch(() => props.open, async (val) => {
   stroke: rgba(255, 255, 255, 0.95);
 }
 
-.chat-message.user .chat-file-attachment:hover {
+.chat-message.user .chat-file-attachment:hover,
+.chat-message.user .chat-file-tag:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
@@ -2108,7 +2117,8 @@ watch(() => props.open, async (val) => {
   stroke: var(--text-secondary);
 }
 
-.chat-message.assistant .chat-file-attachment:hover {
+.chat-message.assistant .chat-file-attachment:hover,
+.chat-message.assistant .chat-file-tag:hover {
   background: var(--bg-secondary);
 }
 

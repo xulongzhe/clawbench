@@ -1,32 +1,37 @@
 /* ==========================================================================
    Common Markdown Styles
-   Shared by: .markdown-body (file preview) and .chat-message.assistant (chat)
+   Shared by: .markdown-body (file preview), .chat-message.assistant and .chat-message.user (chat)
    ========================================================================== */
 
 /* Strong / Bold */
 .markdown-body strong,
 .markdown-body b,
 .chat-message.assistant strong,
-.chat-message.assistant b {
+.chat-message.assistant b,
+.chat-message.user strong,
+.chat-message.user b {
     font-weight: bold;
     -webkit-text-stroke: 0.3px currentColor;
 }
 
 /* Links */
 .markdown-body a,
-.chat-message.assistant a {
+.chat-message.assistant a,
+.chat-message.user a {
     color: var(--accent-color);
     text-decoration: none;
 }
 
 .markdown-body a:hover,
-.chat-message.assistant a:hover {
+.chat-message.assistant a:hover,
+.chat-message.user a:hover {
     text-decoration: underline;
 }
 
 /* Blockquote */
 .markdown-body blockquote,
-.chat-message.assistant blockquote {
+.chat-message.assistant blockquote,
+.chat-message.user blockquote {
     border-left: 3px solid var(--border-color);
     background: var(--bg-secondary);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
@@ -34,20 +39,23 @@
 
 /* Inline Code */
 .markdown-body code,
-.chat-message.assistant code {
+.chat-message.assistant code,
+.chat-message.user code {
     background: var(--code-bg);
     border-radius: 4px;
 }
 
 /* Code Block */
 .markdown-body pre,
-.chat-message.assistant pre {
+.chat-message.assistant pre,
+.chat-message.user pre {
     background: var(--code-bg);
     overflow-x: auto;
 }
 
 .markdown-body pre code,
-.chat-message.assistant pre code {
+.chat-message.assistant pre code,
+.chat-message.user pre code {
     background: transparent;
     padding: 0;
 }
@@ -56,49 +64,59 @@
 .markdown-body ul,
 .markdown-body ol,
 .chat-message.assistant ul,
-.chat-message.assistant ol {
+.chat-message.assistant ol,
+.chat-message.user ul,
+.chat-message.user ol {
     padding-left: 20px;
 }
 
 .markdown-body li,
-.chat-message.assistant li {
+.chat-message.assistant li,
+.chat-message.user li {
     margin: 3px 0;
 }
 
 /* Table */
 .markdown-body table,
-.chat-message.assistant table {
+.chat-message.assistant table,
+.chat-message.user table {
     border-collapse: collapse;
 }
 
 .markdown-body th,
 .markdown-body td,
 .chat-message.assistant th,
-.chat-message.assistant td {
+.chat-message.assistant td,
+.chat-message.user th,
+.chat-message.user td {
     padding: 8px 14px;
     border: 1px solid var(--table-border);
     text-align: left;
 }
 
 .markdown-body th,
-.chat-message.assistant th {
+.chat-message.assistant th,
+.chat-message.user th {
     background: var(--bg-tertiary);
     font-weight: 600;
 }
 
 .markdown-body tr:nth-child(odd) td,
-.chat-message.assistant tr:nth-child(odd) td {
+.chat-message.assistant tr:nth-child(odd) td,
+.chat-message.user tr:nth-child(odd) td {
     background: var(--bg-primary);
 }
 
 .markdown-body tr:nth-child(even) td,
-.chat-message.assistant tr:nth-child(even) td {
+.chat-message.assistant tr:nth-child(even) td,
+.chat-message.user tr:nth-child(even) td {
     background: var(--bg-secondary);
 }
 
 /* Image */
 .markdown-body img,
-.chat-message.assistant img {
+.chat-message.assistant img,
+.chat-message.user img {
     max-width: 100%;
     max-height: 60dvh;
     object-fit: contain;
@@ -107,26 +125,30 @@
 
 /* Image inside table */
 .markdown-body table img,
-.chat-message.assistant table img {
+.chat-message.assistant table img,
+.chat-message.user table img {
     max-width: 80dvw;
 }
 
 /* Horizontal Rule */
 .markdown-body hr,
-.chat-message.assistant hr {
+.chat-message.assistant hr,
+.chat-message.user hr {
     border: none;
     border-top: 1px solid var(--border-color);
 }
 
 /* Deleted Text */
 .markdown-body del,
-.chat-message.assistant del {
+.chat-message.assistant del,
+.chat-message.user del {
     opacity: 0.7;
 }
 
 /* File path annotation & open button */
 .markdown-body .chat-file-path,
-.chat-message.assistant .chat-file-path {
+.chat-message.assistant .chat-file-path,
+.chat-message.user .chat-file-path {
     font-family: monospace;
     background: var(--bg-secondary);
     border-radius: 3px;
@@ -134,7 +156,8 @@
 }
 
 .markdown-body .chat-file-open-btn,
-.chat-message.assistant .chat-file-open-btn {
+.chat-message.assistant .chat-file-open-btn,
+.chat-message.user .chat-file-open-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -156,12 +179,14 @@
 }
 
 .markdown-body .chat-file-open-btn:hover,
-.chat-message.assistant .chat-file-open-btn:hover {
+.chat-message.assistant .chat-file-open-btn:hover,
+.chat-message.user .chat-file-open-btn:hover {
     opacity: 1;
     color: var(--accent-color, #3b82f6);
 }
 
 .markdown-body .chat-file-open-btn svg,
-.chat-message.assistant .chat-file-open-btn svg {
+.chat-message.assistant .chat-file-open-btn svg,
+.chat-message.user .chat-file-open-btn svg {
     display: block;
 }
