@@ -175,6 +175,16 @@
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
         </button>
+        <button class="chat-toolbar-btn" @click="openSessionTab('sessions')" title="会话管理">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </button>
+        <button class="chat-toolbar-btn" @click="openSessionTab('tasks')" title="定时任务">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </button>
       </div>
       <!-- Attachment tags -->
       <div v-if="attachedFiles.length > 0 || pendingFiles.length > 0" class="chat-attachment-tags">
@@ -220,22 +230,6 @@
       </div>
     </div>
 
-    <!-- Floating Session Manager Button -->
-    <button
-      v-show="!sessionManagerOpen"
-      ref="floatingBtnRef"
-      class="floating-session-btn"
-      :class="{ 'btn-left': btnPosition === 'left' }"
-      @pointerdown="startDrag"
-      title="会话管理（可拖动切换左右位置）"
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
-        <rect x="3" y="3" width="7" height="7" rx="1"/>
-        <rect x="14" y="3" width="7" height="7" rx="1"/>
-        <rect x="14" y="14" width="7" height="7" rx="1"/>
-        <rect x="3" y="14" width="7" height="7" rx="1"/>
-      </svg>
-    </button>
   </BottomSheet>
 
   <!-- Metadata Modal -->
@@ -305,23 +299,31 @@
   </Teleport>
 
 
-  <!-- Session Manager Dialog -->
-  <SessionManager
-    ref="sessionManagerRef"
-    :open="sessionManagerOpen"
+  <!-- Session Drawer -->
+  <SessionDrawer
+    ref="sessionDrawerRef"
+    :open="sessionDrawerOpen"
     :currentSessionId="currentSessionId"
     :runningSessionIds="runningSessions"
-    @close="sessionManagerOpen = false"
+    @close="sessionDrawerOpen = false"
     @select="switchSession"
     @create="createSession"
     @delete="deleteSession"
+  />
+
+  <!-- Task Drawer -->
+  <TaskDrawer
+    ref="taskDrawerRef"
+    :open="taskDrawerOpen"
+    @close="taskDrawerOpen = false"
   />
 </template>
 
 <script setup>
 import { ref, reactive, computed, watch, nextTick, onUnmounted, onMounted, inject } from 'vue'
 import BottomSheet from './BottomSheet.vue'
-import SessionManager from './SessionManager.vue'
+import SessionDrawer from './SessionDrawer.vue'
+import TaskDrawer from './TaskDrawer.vue'
 import { escapeHtml, baseName, splitPath } from '@/utils/helpers.ts'
 import { cancelChat } from '@/utils/api.ts'
 import { marked, DOMPurify, hljs, mermaid } from '@/utils/globals.ts'
@@ -356,7 +358,7 @@ const inputDisabled = ref(true)
 const loading = ref(false)
 const messagesRef = ref(null)
 const fileInputRef = ref(null)
-const sessionManagerRef = ref(null)
+const sessionDrawerRef = ref(null)
 const bottomSheetRef = ref(null)
 const pendingFiles = ref([])
 const attachedFiles = ref([]) // 附带的文件路径列表
@@ -462,7 +464,8 @@ const currentSessionId = ref('')
 const currentSessionTitle = ref('')
 const currentBackend = ref('')
 const currentAgentId = ref('')
-const sessionManagerOpen = ref(false)
+const sessionDrawerOpen = ref(false)
+const taskDrawerOpen = ref(false)
 const agents = ref([])
 
 const agentHeaderTitle = computed(() => {
@@ -470,51 +473,6 @@ const agentHeaderTitle = computed(() => {
     if (agent) return `${agent.icon} ${agent.name}`
     return 'AI 对话'
 })
-
-// Floating button position (left or right)
-const floatingBtnRef = ref(null)
-const btnPosition = ref('right')
-const dragStartX = ref(0)
-const totalDragX = ref(0)
-const isPointerDown = ref(false)
-
-function startDrag(e) {
-  isPointerDown.value = true
-  totalDragX.value = 0
-  dragStartX.value = e.clientX
-  const target = e.currentTarget
-  const downTime = Date.now()
-  target.setPointerCapture(e.pointerId)
-
-  const onMove = (moveEvent) => {
-    totalDragX.value = moveEvent.clientX - dragStartX.value
-  }
-
-  const onEnd = (endEvent) => {
-    totalDragX.value = endEvent.clientX - dragStartX.value
-
-    // Snap to left or right based on drag direction (threshold: 30px)
-    if (totalDragX.value < -30) {
-      btnPosition.value = 'left'
-    } else if (totalDragX.value > 30) {
-      btnPosition.value = 'right'
-    } else if (Math.abs(totalDragX.value) < 10) {
-      // Only treat as click if pointerup target is still the button itself
-      // (prevents modal appearing mid-click from triggering buttons inside it)
-      if (endEvent.target === target || target.contains(endEvent.target)) {
-        sessionManagerOpen.value = true
-      }
-    }
-
-    isPointerDown.value = false
-    target.releasePointerCapture(endEvent.pointerId)
-    target.removeEventListener('pointermove', onMove)
-    target.removeEventListener('pointerup', onEnd)
-  }
-
-  target.addEventListener('pointermove', onMove)
-  target.addEventListener('pointerup', onEnd)
-}
 
 // Extract schedule proposals from loaded messages for display only.
 // Task creation happens exclusively during streaming (see renderTextBlock).
@@ -734,7 +692,7 @@ async function deleteSession(sessionId, backend) {
                 }
             }
             // Refresh session list in SessionManager
-            sessionManagerRef.value?.loadSessions()
+            sessionDrawerRef.value?.loadSessions()
             toast.show('会话已删除', { icon: '🗑️', duration: 2000 })
         }
     } catch (err) {
@@ -743,8 +701,12 @@ async function deleteSession(sessionId, backend) {
     }
 }
 
-function openSessionSelector() {
-    sessionManagerOpen.value = true
+function openSessionTab(tab) {
+    if (tab === 'tasks') {
+        taskDrawerOpen.value = true
+    } else {
+        sessionDrawerOpen.value = true
+    }
 }
 
 function stopPolling() {
@@ -1660,49 +1622,6 @@ watch(() => props.open, async (val) => {
   font-size: 13px;
   color: var(--text-primary, #1a1a1a);
   flex-shrink: 0;
-}
-
-/* Floating session manager button */
-.floating-session-btn {
-  position: absolute;
-  bottom: 96px;
-  right: 16px;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: color-mix(in srgb, var(--bg-primary, #fff) 60%, transparent);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
-  cursor: grab;
-  color: var(--text-primary, #1a1a1a);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  transition: transform 0.4s cubic-bezier(0.34, 1.2, 0.64, 1), box-shadow 0.2s ease, background 0.2s ease;
-  touch-action: none;
-  user-select: none;
-}
-
-.floating-session-btn.btn-left {
-  right: 16px;
-  transform: translateX(calc(-100vw + 80px));
-}
-
-.floating-session-btn:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.08);
-}
-
-.floating-session-btn:active {
-  cursor: grabbing;
-  background: color-mix(in srgb, var(--bg-primary, #fff) 95%, transparent);
-}
-
-.floating-session-btn svg {
-  flex-shrink: 0;
-  pointer-events: none;
 }
 
 .ai-backend-label {
