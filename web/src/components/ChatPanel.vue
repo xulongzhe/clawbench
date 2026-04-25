@@ -1536,9 +1536,11 @@ function handleVisibilityChange() {
 }
 
 // Start global polling when component mounts
-onMounted(async () => {
+onMounted(() => {
     // Request notification permission on mount
-    await notification.requestPermission()
+    notification.requestPermission().catch(err => {
+        console.warn('Failed to request notification permission:', err)
+    })
 
     startGlobalPolling()
     document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -1553,6 +1555,7 @@ onUnmounted(() => {
     stopGlobalPolling()
     stopMsgCountPolling()
     document.removeEventListener('visibilitychange', handleVisibilityChange)
+    notification.closeAll()
 })
 
 watch(() => props.open, async (val) => {
