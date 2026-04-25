@@ -1290,7 +1290,7 @@ async function sendMessage() {
 
     inputDisabled.value = true
     loading.value = true
-    scrollBottom()
+    scrollBottom(true)
 
     try {
         // Use currentAgentId as-is (backend will use default agent if empty)
@@ -1334,9 +1334,14 @@ async function sendMessage() {
     }
 }
 
-function scrollBottom() {
+function scrollBottom(force = false) {
     nextTick(() => {
-        if (messagesRef.value) messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+        if (!messagesRef.value) return
+        const el = messagesRef.value
+        // Only auto-scroll if user is near the bottom, or force=true (e.g. user sent a message)
+        if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
+            el.scrollTop = el.scrollHeight
+        }
     })
 }
 
@@ -1623,7 +1628,6 @@ onUnmounted(() => {
 watch(() => props.open, async (val) => {
     if (val) {
         await loadHistory()
-        nextTick(() => scrollBottom())
     }
 })
 </script>

@@ -1,7 +1,8 @@
 <template>
   <Teleport to="body">
     <div
-      v-if="open"
+      v-if="everOpened"
+      v-show="open || leaving"
       class="bs-overlay"
       :class="{ 'bs-leaving': leaving, 'bs-instant': instant }"
       @click.self="handleClose"
@@ -43,29 +44,32 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 
 const leaving = ref(false)
-const justOpened = ref(false)
+const everOpened = ref(false)
+let leaveTimer = null
 
-// Prevent click-through when just opened
 watch(() => props.open, (val) => {
+  clearTimeout(leaveTimer)
   if (val) {
-    justOpened.value = true
-    setTimeout(() => {
-      justOpened.value = false
-    }, 100)
+    everOpened.value = true
+    leaving.value = false
+  } else if (leaving.value) {
+    // Close triggered externally while animating — cancel animation, hide now
+    leaving.value = false
   }
 })
 
 function handleClose() {
-  if (leaving.value || justOpened.value) return  // prevent double-trigger or click-through
+  if (leaving.value) return
   if (props.instant) {
     emit('close')
     return
   }
   leaving.value = true
-  setTimeout(() => {
+  leaveTimer = setTimeout(() => {
     leaving.value = false
+    leaveTimer = null
     emit('close')
-  }, 250)  // match animation duration
+  }, 250)
 }
 
 defineExpose({
