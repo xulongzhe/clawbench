@@ -8,6 +8,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestIsSupportedFile(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"text file", "main.go", true},
+		{"image file", "photo.png", true},
+		{"audio file", "song.mp3", true},
+		{"video file", "movie.mp4", true},
+		{"unsupported file", "data.bin", false},
+		{"empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := model.IsSupportedFile(tt.input)
+			assert.Equal(t, tt.want, got, "IsSupportedFile(%q)", tt.input)
+		})
+	}
+}
+
 func TestIsTextFile(t *testing.T) {
 	tests := []struct {
 		name string

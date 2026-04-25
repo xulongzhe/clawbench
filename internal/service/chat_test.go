@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"clawbench/internal/ai"
 	"clawbench/internal/service"
 
 	_ "modernc.org/sqlite"
@@ -778,4 +779,198 @@ func TestCancelSession_CleansUpRunningState(t *testing.T) {
 
 	service.CancelSession(sid)
 	assert.False(t, service.IsSessionRunning(sid))
+}
+
+// ---------- GetChatMessageCount ----------
+
+func TestGetChatMessageCount(t *testing.T) {
+	setupDB(t)
+	sid := helperCreateSession(t, "/project", "claude", "Test")
+	// Initially 0
+	assert.Equal(t, 0, service.GetChatMessageCount(sid))
+	// Add messages
+	service.AddChatMessage("/project", "claude", sid, "user", "Hello", "", nil, false)
+	service.AddChatMessage("/project", "claude", sid, "assistant", "Hi", "", nil, false)
+	assert.Equal(t, 2, service.GetChatMessageCount(sid))
+}
+
+func TestGetChatMessageCount_NonExistent(t *testing.T) {
+	setupDB(t)
+	assert.Equal(t, 0, service.GetChatMessageCount("non-existent"))
+}
+
+// ---------- UpdateLastRead ----------
+
+func TestUpdateLastRead(t *testing.T) {
+	setupDB(t)
+	sid := helperCreateSession(t, "/project", "claude", "Test")
+	// Should not panic and should succeed
+	service.UpdateLastRead(sid)
+	// Verify by checking sessions - last_read_at should be set
+	var lastRead sql.NullTime
+	err := service.DB.QueryRow("SELECT last_read_at FROM chat_sessions WHERE id = ?", sid).Scan(&lastRead)
+	assert.NoError(t, err)
+	assert.True(t, lastRead.Valid)
+}
+
+// ---------- GetSessionAgentID ----------
+
+func TestGetSessionAgentID(t *testing.T) {
+	setupDB(t)
+	// Create session with agent ID
+	sid, err := service.CreateSession("/project", "claude", "Test", "my-agent", "gpt-4")
+	assert.NoError(t, err)
+	assert.Equal(t, "my-agent", service.GetSessionAgentID(sid))
+}
+
+func TestGetSessionAgentID_NonExistent(t *testing.T) {
+	setupDB(t)
+	assert.Equal(t, "", service.GetSessionAgentID("non-existent"))
+}
+
+func TestGetSessionAgentID_EmptyAgent(t *testing.T) {
+	setupDB(t)
+	sid := helperCreateSession(t, "/project", "claude", "No Agent")
+	assert.Equal(t, "", service.GetSessionAgentID(sid))
+}
+
+// ---------- GetAndClearCancelReason ----------
+
+func TestGetAndClearCancelReason_NoReason(t *testing.T) {
+	setupDB(t)
+	assert.Equal(t, "", service.GetAndClearCancelReason("non-existent"))
+}
+
+func TestGetAndClearCancelReason_WithReason(t *testing.T) {
+	setupDB(t)
+	sid := "test-reason-session"
+	// Simulate setting cancel reason (as CancelSession does)
+	service.RegisterSessionCancel(sid, func() {})
+	service.SetSessionRunning(sid, true)
+	// Cancel sets "user" reason
+	service.CancelSession(sid)
+	// Should return "user"
+	assert.Equal(t, "user", service.GetAndClearCancelReason(sid))
+	// Second call should return "" (cleared)
+	assert.Equal(t, "", service.GetAndClearCancelReason(sid))
+}
+
+// ---------- ForceCancelSession ----------
+
+func TestForceCancelSession(t *testing.T) {
+	setupDB(t)
+	sid := "force-cancel-test"
+	ctx, cancel := context.WithCancel(context.Background())
+	service.RegisterSessionCancel(sid, cancel)
+	service.SetSessionRunning(sid, true)
+
+	service.ForceCancelSession(sid)
+
+	// Context should be cancelled
+	<-ctx.Done()
+	// Reason should be "disconnect"
+	assert.Equal(t, "disconnect", service.GetAndClearCancelReason(sid))
+}
+
+func TestForceCancelSession_NoCancelFunc(t *testing.T) {
+	setupDB(t)
+	// Should not panic when no cancel func exists
+	service.ForceCancelSession("non-existent")
+}
+
+// ---------- SendSessionEvent ----------
+
+func TestSendSessionEvent(t *testing.T) {
+	setupDB(t)
+	sid := "send-event-test"
+	ch := service.RegisterSessionStream(sid)
+
+	// Send event
+	ok := service.SendSessionEvent(sid, ai.StreamEvent{Type: "content", Content: "hello"})
+	assert.True(t, ok)
+
+	// Receive event
+	event := <-ch
+	assert.Equal(t, "content", event.Type)
+	assert.Equal(t, "hello", event.Content)
+
+	service.UnregisterSessionStream(sid)
+}
+
+func TestSendSessionEvent_NoStream(t *testing.T) {
+	setupDB(t)
+	ok := service.SendSessionEvent("non-existent", ai.StreamEvent{Type: "content"})
+	assert.False(t, ok)
+}
+
+func TestSendSessionEvent_FullChannel(t *testing.T) {
+	setupDB(t)
+	sid := "full-channel-test"
+	// Register stream with small buffer (64 is the default)
+	ch := service.RegisterSessionStream(sid)
+
+	// Fill the channel buffer
+	for i := 0; i < 64; i++ {
+		ok := service.SendSessionEvent(sid, ai.StreamEvent{Type: "content", Content: fmt.Sprintf("msg-%d", i)})
+		assert.True(t, ok)
+	}
+
+	// Next send should fail (non-blocking)
+	ok := service.SendSessionEvent(sid, ai.StreamEvent{Type: "content", Content: "overflow"})
+	assert.False(t, ok)
+
+	// Drain the channel to clean up
+	for i := 0; i < 64; i++ {
+		<-ch
+	}
+	service.UnregisterSessionStream(sid)
+}
+
+// ---------- UpdateMessageContent ----------
+
+func TestUpdateMessageContent(t *testing.T) {
+	setupDB(t)
+	sid := helperCreateSession(t, "/project", "claude", "Test")
+
+	msgID, err := service.AddChatMessage("/project", "claude", sid, "user", "original", "", nil, false)
+	assert.NoError(t, err)
+
+	err = service.UpdateMessageContent(int(msgID), "updated content")
+	assert.NoError(t, err)
+
+	msgs, _ := service.GetChatHistory("/project", "claude", sid)
+	assert.Equal(t, "updated content", msgs[0].Content)
+}
+
+func TestUpdateMessageContent_NonExistent(t *testing.T) {
+	setupDB(t)
+	// Updating non-existent message should not error (UPDATE affects 0 rows)
+	err := service.UpdateMessageContent(99999, "content")
+	assert.NoError(t, err)
+}
+
+// ---------- UpdateExternalSessionID / GetExternalSessionID ----------
+
+func TestUpdateAndGetExternalSessionID(t *testing.T) {
+	db := setupDB(t)
+	// Add external_session_id column (not in base schema)
+	_, err := db.Exec("ALTER TABLE chat_sessions ADD COLUMN external_session_id TEXT DEFAULT ''")
+	assert.NoError(t, err)
+
+	sid := helperCreateSession(t, "/project", "opencode", "Test")
+
+	// Initially empty
+	assert.Equal(t, "", service.GetExternalSessionID(sid))
+
+	// Set external ID
+	err = service.UpdateExternalSessionID(sid, "ext-session-123")
+	assert.NoError(t, err)
+
+	// Get external ID
+	assert.Equal(t, "ext-session-123", service.GetExternalSessionID(sid))
+}
+
+func TestGetExternalSessionID_NonExistent(t *testing.T) {
+	setupDB(t)
+	assert.Equal(t, "", service.GetExternalSessionID("non-existent"))
 }
