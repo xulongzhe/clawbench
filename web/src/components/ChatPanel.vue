@@ -1621,13 +1621,13 @@ watch(() => props.open, async (val) => {
 /* Floating session manager button */
 .floating-session-btn {
   position: absolute;
-  bottom: 72px;
+  bottom: 96px;
   right: 16px;
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: none;
-  background: color-mix(in srgb, var(--bg-primary, #fff) 80%, transparent);
+  background: color-mix(in srgb, var(--bg-primary, #fff) 60%, transparent);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
