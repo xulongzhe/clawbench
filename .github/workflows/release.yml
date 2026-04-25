@@ -33,12 +33,15 @@ jobs:
       - name: Build Windows binary
         run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o clawbench-windows-amd64.exe ./cmd/server
 
+      - name: Build macOS binary
+        run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o clawbench-darwin-arm64 ./cmd/server
+
       - name: Package Linux release
         run: |
           mkdir -p release/clawbench
           cp clawbench-linux-amd64 release/clawbench/
           cp -r public release/clawbench/public
-          cp config.docker.yaml release/clawbench/config.example.yaml
+          cp config.example.yaml release/clawbench/config.example.yaml
           cp -r agents release/clawbench/agents
           cp server.sh release/clawbench/
           chmod +x release/clawbench/clawbench-linux-amd64 release/clawbench/server.sh
@@ -49,10 +52,21 @@ jobs:
           mkdir -p release-win/clawbench
           cp clawbench-windows-amd64.exe release-win/clawbench/
           cp -r public release-win/clawbench/public
-          cp config.docker.yaml release-win/clawbench/config.example.yaml
+          cp config.example.yaml release-win/clawbench/config.example.yaml
           cp -r agents release-win/clawbench/agents
           cp server.ps1 release-win/clawbench/
           cd release-win && zip -r clawbench-windows-amd64.zip clawbench/
+
+      - name: Package macOS release
+        run: |
+          mkdir -p release-mac/clawbench
+          cp clawbench-darwin-arm64 release-mac/clawbench/
+          cp -r public release-mac/clawbench/public
+          cp config.example.yaml release-mac/clawbench/config.example.yaml
+          cp -r agents release-mac/clawbench/agents
+          cp server.sh release-mac/clawbench/
+          chmod +x release-mac/clawbench/clawbench-darwin-arm64 release-mac/clawbench/server.sh
+          cd release-mac && zip -r clawbench-darwin-arm64.zip clawbench/
 
       - uses: softprops/action-gh-release@v2
         with:
@@ -60,3 +74,4 @@ jobs:
           files: |
             release/clawbench-linux-amd64.zip
             release-win/clawbench-windows-amd64.zip
+            release-mac/clawbench-darwin-arm64.zip
