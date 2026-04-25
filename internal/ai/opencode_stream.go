@@ -188,7 +188,11 @@ func buildOpenCodeStreamArgs(req ChatRequest) []string {
 func (o *OpenCodeBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
 	args := buildOpenCodeStreamArgs(req)
 
-	cmd := exec.CommandContext(ctx, "opencode", args...)
+	cmdName := req.Command
+	if cmdName == "" {
+		cmdName = "opencode"
+	}
+	cmd := exec.CommandContext(ctx, cmdName, args...)
 	cmd.Dir = req.WorkDir
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf

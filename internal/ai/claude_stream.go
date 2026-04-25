@@ -324,7 +324,11 @@ func buildClaudeStreamArgs(req ChatRequest) []string {
 func (c *ClaudeBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
 	args := buildClaudeStreamArgs(req)
 
-	cmd := exec.CommandContext(ctx, "claude", args...)
+	cmdName := req.Command
+	if cmdName == "" {
+		cmdName = "claude"
+	}
+	cmd := exec.CommandContext(ctx, cmdName, args...)
 	cmd.Dir = req.WorkDir
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf

@@ -11,6 +11,7 @@ type ChatRequest struct {
 	WorkDir      string
 	SystemPrompt string
 	Model        string // per-request model override (empty = use global default)
+	Command      string // optional: custom command path for the AI backend CLI
 	AgentID      string // agent ID for logging and persistence
 	Resume       bool   // If true, resume an existing session instead of creating new
 }

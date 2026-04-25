@@ -85,20 +85,31 @@ const state = reactive<AppState>({
 
 async function loadProject(): Promise<void> {
     try {
+        console.log('[loadProject] 开始加载项目...')
         try {
             const wd = await apiGet<{ watchDir: string; uploadMaxSizeMB: number; uploadMaxFiles: number }>('/api/watch-dir')
             state.watchDir = wd.watchDir || ''
             if (wd.uploadMaxSizeMB > 0) state.uploadMaxSizeMB = wd.uploadMaxSizeMB
             if (wd.uploadMaxFiles > 0) state.uploadMaxFiles = wd.uploadMaxFiles
-        } catch (_) {}
+            console.log('[loadProject] watchDir 加载成功:', state.watchDir)
+        } catch (error) {
+            console.error('[loadProject] watchDir 加载失败:', error)
+        }
         const data = await apiGet<{ path: string }>('/api/project')
-        if (!data.path) return
+        console.log('[loadProject] /api/project 响应:', data)
+        if (!data.path) {
+            console.warn('[loadProject] 项目路径为空，停止加载')
+            return
+        }
         state.projectRoot = data.path
         state.projectName = baseName(data.path)
         localStorage.setItem('currentProjectPath', data.path)
+        console.log('[loadProject] 项目加载成功:', state.projectRoot, state.projectName)
         // Add to recent projects
         apiPost('/api/recent-projects', { path: data.path }).catch(() => {})
-    } catch (_) {}
+    } catch (error) {
+        console.error('[loadProject] 加载项目失败:', error)
+    }
 }
 
 async function setProject(path: string): Promise<void> {

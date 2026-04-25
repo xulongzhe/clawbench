@@ -424,6 +424,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	agentID := req.AgentID
 	systemPrompt := ""
 	agentModel := ""
+	agentCommand := ""
 
 	if agentID == "" {
 		agentID = "assistant"
@@ -432,6 +433,9 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		systemPrompt = agent.SystemPrompt
 		if agent.Model != "" {
 			agentModel = agent.Model
+		}
+		if agent.Command != "" {
+			agentCommand = agent.Command
 		}
 	}
 
@@ -451,6 +455,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			WorkDir:      fileDir,
 			SystemPrompt: systemPrompt,
 			Model:        agentModel,
+			Command:      agentCommand,
 			AgentID:      agentID,
 			Resume:       resume,
 		}

@@ -17,6 +17,7 @@ type Agent struct {
 	Specialty    string `yaml:"specialty" json:"specialty"`
 	Backend      string `yaml:"backend" json:"backend"`
 	Model        string `yaml:"model" json:"model"`
+	Command      string `yaml:"command" json:"command"`           // optional: custom command path for the AI backend CLI
 	SystemPrompt string `yaml:"system_prompt" json:"systemPrompt"`
 }
 

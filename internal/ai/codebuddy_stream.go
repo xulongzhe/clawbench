@@ -47,7 +47,11 @@ func buildCodebuddyStreamArgs(req ChatRequest) []string {
 func (c *CodebuddyBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
 	args := buildCodebuddyStreamArgs(req)
 
-	cmd := exec.CommandContext(ctx, "codebuddy", args...)
+	cmdName := req.Command
+	if cmdName == "" {
+		cmdName = "codebuddy"
+	}
+	cmd := exec.CommandContext(ctx, cmdName, args...)
 	cmd.Dir = req.WorkDir
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
