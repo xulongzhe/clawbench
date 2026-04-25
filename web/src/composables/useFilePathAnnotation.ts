@@ -169,32 +169,73 @@ export function annotateFilePaths(
     return { html, detectedPaths }
 }
 
+// Cache of verified paths: path -> true (exists) | false (not found)
+const verifiedCache = new Map<string, boolean>()
+// In-flight verification requests to avoid duplicates
+const inFlight = new Map<string, Promise<boolean>>()
+
+async function checkPathExists(path: string): Promise<boolean> {
+    if (verifiedCache.has(path)) return verifiedCache.get(path)!
+    if (inFlight.has(path)) return inFlight.get(path)!
+
+    const promise = (async () => {
+        try {
+            const [fileResp, dirResp] = await Promise.all([
+                fetch(`/api/file/${encodeURIComponent(path)}`, { method: 'HEAD' }),
+                fetch(`/api/dir?path=${encodeURIComponent(path)}`, { method: 'HEAD' }),
+            ])
+            return fileResp.ok || dirResp.ok
+        } catch {
+            return true // Network error — assume exists (best effort)
+        }
+    })()
+
+    inFlight.set(path, promise)
+    const exists = await promise
+    verifiedCache.set(path, exists)
+    inFlight.delete(path)
+    return exists
+}
+
 /**
  * Check which file paths actually exist on the server,
  * and hide buttons for files that don't exist.
  */
 export async function verifyFilePaths(paths: string[], containerEl: HTMLElement): Promise<void> {
-    await Promise.all(paths.map(async (path) => {
-        try {
-            // Check both file and dir endpoints — a path may be a directory
-            const [fileResp, dirResp] = await Promise.all([
-                fetch(`/api/file/${encodeURIComponent(path)}`, { method: 'HEAD' }),
-                fetch(`/api/dir?path=${encodeURIComponent(path)}`, { method: 'HEAD' }),
-            ])
-            if (!fileResp.ok && !dirResp.ok) {
-                // File doesn't exist — hide the button
-                containerEl.querySelectorAll(`.chat-file-open-btn[data-file-path="${CSS.escape(path)}"]`).forEach(btn => {
-                    btn.remove()
-                })
-                // Also remove the chat-file-path styling (it's just normal text if no button)
-                containerEl.querySelectorAll(`.chat-file-path[data-file-path="${CSS.escape(path)}"]`).forEach(span => {
-                    span.replaceWith(...span.childNodes)
-                })
-            }
-        } catch {
-            // Network error — leave button visible (best effort)
+    // Batch verification with concurrency limit
+    const limit = 6
+    const unique = [...new Set(paths)]
+    const results = new Map<string, boolean>()
+
+    for (let i = 0; i < unique.length; i += limit) {
+        const batch = unique.slice(i, i + limit)
+        const batchResults = await Promise.all(batch.map(async (path) => {
+            const exists = await checkPathExists(path)
+            return { path, exists }
+        }))
+        for (const { path, exists } of batchResults) {
+            results.set(path, exists)
         }
-    }))
+    }
+
+    for (const [path, exists] of results) {
+        if (!exists) {
+            containerEl.querySelectorAll(`.chat-file-open-btn[data-file-path="${CSS.escape(path)}"]`).forEach(btn => {
+                btn.remove()
+            })
+            containerEl.querySelectorAll(`.chat-file-path[data-file-path="${CSS.escape(path)}"]`).forEach(span => {
+                span.replaceWith(...span.childNodes)
+            })
+        }
+    }
+}
+
+/**
+ * Clear the verification cache (e.g. when switching projects).
+ */
+export function clearVerifiedCache(): void {
+    verifiedCache.clear()
+    inFlight.clear()
 }
 
 /**
@@ -208,6 +249,7 @@ export function useFilePathAnnotation() {
         verifyFilePaths,
         resolveRelativePath,
         openFilePath,
+        clearVerifiedCache,
     }
 }
 

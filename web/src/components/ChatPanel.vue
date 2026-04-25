@@ -37,16 +37,21 @@
 
         <!-- Files display (only if content doesn't already render them) -->
         <div v-if="msg.role === 'user' && msg.files && msg.files.length > 0 && !hasImagesInContent(msg.content)" class="chat-files">
-          <template v-for="(fPath, idx) in msg.files" :key="idx">
-            <img v-if="isImageFile(fPath)" :src="`/api/local-file/${fPath}`" class="chat-image-thumb" alt="Uploaded image" />
-            <span v-else class="chat-file-attachment" @click="handleFileTagClick(fPath)" title="打开文件">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+          <template v-for="(f, idx) in msg.files" :key="idx">
+            <span class="chat-file-attachment" @click="handleFileTagClick(normalizeFileEntry(f).path)" title="打开文件">
+              <svg v-if="isImageFile(normalizeFileEntry(f).path)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <circle cx="10" cy="13" r="2"/>
+                <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14,2 14,8 20,8"/>
                 <line x1="16" y1="13" x2="8" y2="13"/>
                 <line x1="16" y1="17" x2="8" y2="17"/>
               </svg>
-              <span class="chat-file-name">{{ getFileName(fPath) }}</span>
+              <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
             </span>
           </template>
         </div>
@@ -212,7 +217,7 @@
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
           </svg>
-          <span class="attachment-tag-name">{{ f.name }}</span>
+          <span class="attachment-tag-name">{{ getFileName(f.path) }}</span>
           <button class="attachment-tag-remove" @click="removeFile(idx)" title="移除">×</button>
         </span>
       </div>
@@ -1190,7 +1195,6 @@ async function handleFileSelect(e) {
                 pendingFiles.value.push({
                     path: data.path,
                     previewUrl,
-                    name: file.name,
                     isImage
                 })
             } else {
@@ -1244,21 +1248,14 @@ async function sendMessage() {
     if ((!text && !hasFiles) || inputDisabled.value) return
 
     const filePaths = attachedFiles.value.length > 0 ? [...attachedFiles.value] : []
-    const uploadedFilePaths = pendingFiles.value.map(f => f.path)
-    const imagePaths = pendingFiles.value.filter(f => f.isImage).map(f => f.path)
-
-    // Build display content for message
-    let displayContent = text
-    if (hasFiles && imagePaths.length > 0) {
-        const imgMarkdown = imagePaths.map(p => `![图片](/api/local-file/${p})`).join('\n')
-        displayContent = imgMarkdown + (text ? '\n\n' + text : '')
-    }
+    const uploadedFiles = pendingFiles.value.map(f => ({ path: f.path }))
+    const projectFiles = filePaths.slice(1).map(p => ({ path: p }))
 
     messages.value.push({
         role: 'user',
-        content: displayContent,
+        content: text,
         filePath: filePaths.length > 0 ? filePaths[0] : '',
-        files: [...uploadedFilePaths, ...filePaths.slice(1)],
+        files: [...uploadedFiles, ...projectFiles],
         createdAt: new Date().toISOString()
     })
 
@@ -1287,7 +1284,7 @@ async function sendMessage() {
         const resp = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, filePaths, files: uploadedFilePaths, agentId: effectiveAgentId }),
+            body: JSON.stringify({ message: text, filePaths, files: uploadedFiles.map(f => f.path), agentId: effectiveAgentId }),
         })
         const data = await resp.json()
         if (!resp.ok) {
@@ -1426,7 +1423,13 @@ function hasImagesInContent(content) {
     return content && content.includes('![')
 }
 
+function normalizeFileEntry(f) {
+    if (typeof f === 'string') return { path: f }
+    return { path: f.path || '' }
+}
+
 function isImageFile(path) {
+    if (!path) return false
     const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.tif', '.avif']
     const lower = path.toLowerCase()
     return imageExts.some(ext => lower.endsWith(ext))
@@ -1997,6 +2000,7 @@ watch(() => props.open, async (val) => {
   cursor: pointer;
   transition: opacity 0.15s;
   white-space: nowrap;
+  max-width: 120px;
 }
 
 .chat-file-tag-icon,
@@ -2012,14 +2016,15 @@ watch(() => props.open, async (val) => {
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
-  -ms-overflow-style: none;
   scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .chat-file-tag-path::-webkit-scrollbar,
 .chat-file-name::-webkit-scrollbar {
   display: none;
 }
+
 
 /* User message file tags */
 .chat-message.user .chat-file-tag,

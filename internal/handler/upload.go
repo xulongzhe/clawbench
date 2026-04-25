@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"clawbench/internal/model"
 )
@@ -73,9 +72,22 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate unique filename
-	filename := fmt.Sprintf("%d-%d%s", time.Now().UnixMilli(), time.Now().Nanosecond()%10000, ext)
+	// Generate filename: use original name, append sequential number if exists
+	baseName := filepath.Base(header.Filename)
+	nameWithoutExt := strings.TrimSuffix(baseName, filepath.Ext(baseName))
+	// Replace spaces with underscores for safety
+	nameWithoutExt = strings.ReplaceAll(nameWithoutExt, " ", "_")
+	filename := nameWithoutExt + ext
 	dstPath := filepath.Join(uploadsDir, filename)
+	if _, err := os.Stat(dstPath); err == nil {
+		for i := 1; i <= 9999; i++ {
+			filename = fmt.Sprintf("%s_%d%s", nameWithoutExt, i, ext)
+			dstPath = filepath.Join(uploadsDir, filename)
+			if _, err := os.Stat(dstPath); err != nil {
+				break
+			}
+		}
+	}
 
 	// Create destination file
 	dst, err := os.Create(dstPath)
