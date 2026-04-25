@@ -27,15 +27,6 @@
       <div v-for="(msg, i) in messages" :key="`${msg.createdAt || ''}-${i}`"
         class="chat-message" :class="[msg.role, { 'has-metadata': msg.role === 'assistant' && msg.metadata }]">
 
-        <!-- File tag -->
-        <div v-if="msg.filePath" class="chat-file-tag" @click="handleFileTagClick(msg.filePath)" title="打开文件">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10" class="chat-file-tag-icon">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-          </svg>
-          <span class="chat-file-tag-path">{{ getFileName(msg.filePath) }}</span>
-        </div>
-
-        <!-- Files display (only if content doesn't already render them) -->
         <div v-if="msg.role === 'user' && msg.files && msg.files.length > 0 && !hasImagesInContent(msg.content)" class="chat-files">
           <template v-for="(f, idx) in msg.files" :key="idx">
             <span v-if="isUploadPath(normalizeFileEntry(f).path)" class="chat-file-attachment attachment-upload" @click="handleFileTagClick(normalizeFileEntry(f).path)" title="打开文件">
@@ -1247,7 +1238,7 @@ async function sendMessage() {
 
     const filePaths = attachedFiles.value.length > 0 ? [...attachedFiles.value] : []
     const uploadedFiles = pendingFiles.value.map(f => ({ path: f.path }))
-    const projectFiles = filePaths.slice(1).map(p => ({ path: p }))
+    const projectFiles = filePaths.map(p => ({ path: p }))
 
     messages.value.push({
         role: 'user',
@@ -1282,7 +1273,7 @@ async function sendMessage() {
         const resp = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, filePaths, files: uploadedFiles.map(f => f.path), agentId: effectiveAgentId }),
+            body: JSON.stringify({ message: text, filePaths, files: [...uploadedFiles, ...projectFiles].map(f => f.path), agentId: effectiveAgentId }),
         })
         const data = await resp.json()
         if (!resp.ok) {
@@ -1792,7 +1783,7 @@ watch(() => props.open, async (val) => {
 
 .chat-attachment-tags .attachment-ref {
   background: color-mix(in srgb, var(--text-muted, #999) 8%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--text-muted, #999) 30%, transparent);
+  border: 1px dashed var(--text-secondary, #666);
   color: var(--text-secondary, #666);
 }
 
@@ -2070,8 +2061,8 @@ watch(() => props.open, async (val) => {
 
 /* User message: referenced - dashed border */
 .chat-message.user .attachment-ref {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px dashed rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px dashed rgba(255, 255, 255, 0.6);
 }
 
 .chat-message.user .attachment-ref:hover,
@@ -2104,7 +2095,7 @@ watch(() => props.open, async (val) => {
 /* Assistant message: referenced - dashed border */
 .chat-message.assistant .attachment-ref {
   background: color-mix(in srgb, var(--text-muted, #999) 8%, transparent);
-  border: 1px dashed var(--border-color);
+  border: 1px dashed var(--text-secondary);
 }
 
 .chat-message.assistant .attachment-ref:hover,
