@@ -329,6 +329,7 @@ import { marked, DOMPurify, hljs, mermaid } from '@/utils/globals.ts'
 import { renderKatexInString, renderMermaidInElement } from '@/composables/useMarkdownRenderer.ts'
 import { useToast } from '@/composables/useToast.ts'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
+import { useNotification } from '@/composables/useNotification.ts'
 import { store } from '@/stores/app.ts'
 
 const props = defineProps({
@@ -375,6 +376,7 @@ const MAX_RECONNECT_ATTEMPTS = 3
 const STREAM_TIMEOUT_MS = 60000 // 60 seconds without any SSE event = try reconnect
 let lastScrollTime = 0 // Track last scroll time to reduce frequency
 const toast = useToast()
+const notification = useNotification()
 const theme = inject('theme', ref('light'))
 watch(theme, () => {
     renderCache.clear()
@@ -834,6 +836,14 @@ async function startGlobalPolling() {
                                     emit('open')
                                 }
                             })
+                            // Also show browser notification for completed session
+                            notification.show('会话已完成', {
+                                body: '点击查看详情',
+                                onClick: () => {
+                                    switchSession(sessionId, session.backend)
+                                    emit('open')
+                                }
+                            })
                         }
                     }
                 }
@@ -901,6 +911,11 @@ async function pollUntilDone() {
                     const lastMsg = messages.value[messages.value.length - 1]
                     if (lastMsg?.role === 'assistant') {
                         toast.show('AI 已回复', { icon: '🤖', duration: 5000, onClick: () => emit('open') })
+                        // Also show browser notification
+                        notification.show('AI 已回复', {
+                            body: '点击查看回复详情',
+                            onClick: () => emit('open')
+                        })
                     }
                 }
                 return
@@ -1049,6 +1064,11 @@ function connectStream(sessionId) {
                 const lastMsg = messages.value[messages.value.length - 1]
                 if (lastMsg?.role === 'assistant') {
                     toast.show('AI 已回复', { icon: '🤖', duration: 5000, onClick: () => emit('open') })
+                    // Also show browser notification
+                    notification.show('AI 已回复', {
+                        body: '点击查看回复详情',
+                        onClick: () => emit('open')
+                    })
                 }
             }
         })
@@ -1516,7 +1536,10 @@ function handleVisibilityChange() {
 }
 
 // Start global polling when component mounts
-onMounted(() => {
+onMounted(async () => {
+    // Request notification permission on mount
+    await notification.requestPermission()
+
     startGlobalPolling()
     document.addEventListener('visibilitychange', handleVisibilityChange)
 })

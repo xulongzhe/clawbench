@@ -1,6 +1,6 @@
 {
   "name": "ClawBench",
-  "short_name": "SmartWB",
+  "short_name": "ClawBench",
   "description": "一款专为移动端设计的轻量级代码和文档工作台",
   "start_url": "/",
   "scope": "/",
