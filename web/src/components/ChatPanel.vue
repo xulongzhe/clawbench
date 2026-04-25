@@ -157,7 +157,7 @@
 
     <!-- Unified input container -->
     <div class="chat-input-container">
-      <input type="file" ref="fileInputRef" @change="handleFileSelect" style="display:none" />
+      <input type="file" ref="fileInputRef" @change="handleFileSelect" style="display:none" multiple />
       <!-- Toolbar -->
       <div class="chat-toolbar">
         <button class="chat-toolbar-btn" @click="$refs.fileInputRef.click()" :disabled="inputDisabled" title="上传文件">
@@ -189,18 +189,28 @@
       <!-- Attachment tags -->
       <div v-if="attachedFiles.length > 0 || pendingFiles.length > 0" class="chat-attachment-tags">
         <span v-for="(filePath, idx) in attachedFiles" :key="'att-' + filePath" class="attachment-tag">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+          <svg v-if="isImageFile(filePath)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14,2 14,8 20,8"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <circle cx="10" cy="13" r="2"/>
+            <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
           <span class="attachment-tag-name">{{ getFileName(filePath) }}</span>
           <button class="attachment-tag-remove" @click="removeAttachedFile(idx)" title="移除">×</button>
         </span>
         <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="attachment-tag">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
+          <svg v-if="f.isImage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <circle cx="10" cy="13" r="2"/>
+            <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
           </svg>
           <span class="attachment-tag-name">{{ f.name }}</span>
           <button class="attachment-tag-remove" @click="removeFile(idx)" title="移除">×</button>
@@ -1140,51 +1150,57 @@ function connectStream(sessionId) {
 }
 
 async function handleFileSelect(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
     e.target.value = ''
 
-    // Check file count limit
     const maxFiles = store.state.uploadMaxFiles
-    if (pendingFiles.value.length >= maxFiles) {
+    const remaining = maxFiles - pendingFiles.value.length
+    if (remaining <= 0) {
         toast.show(`最多上传 ${maxFiles} 个文件`, { icon: '⚠️' })
         return
     }
 
-    // Validate file size
-    const maxSizeBytes = store.state.uploadMaxSizeMB * 1024 * 1024
-    if (file.size > maxSizeBytes) {
-        toast.show(`文件大小不能超过 ${store.state.uploadMaxSizeMB}MB`, { icon: '⚠️' })
-        return
+    const toUpload = files.slice(0, remaining)
+    if (files.length > remaining) {
+        toast.show(`已选择 ${files.length} 个文件，但仅剩 ${remaining} 个名额`, { icon: '⚠️' })
     }
 
-    const isImage = file.type.startsWith('image/')
-    const previewUrl = isImage ? URL.createObjectURL(file) : null
+    const maxSizeBytes = store.state.uploadMaxSizeMB * 1024 * 1024
 
-    // Upload file
-    const formData = new FormData()
-    formData.append('file', file)
-
-    try {
-        const resp = await fetch('/api/upload/file', {
-            method: 'POST',
-            body: formData
-        })
-        const data = await resp.json()
-        if (data.ok) {
-            pendingFiles.value.push({
-                path: data.path,
-                previewUrl,
-                name: file.name,
-                isImage
-            })
-        } else {
-            if (previewUrl) URL.revokeObjectURL(previewUrl)
-            toast.show('上传失败: ' + (data.error || '未知错误'), { icon: '⚠️' })
+    for (const file of toUpload) {
+        if (file.size > maxSizeBytes) {
+            toast.show(`${file.name} 超过 ${store.state.uploadMaxSizeMB}MB 限制`, { icon: '⚠️' })
+            continue
         }
-    } catch (err) {
-        if (previewUrl) URL.revokeObjectURL(previewUrl)
-        toast.show('上传失败: ' + err.message, { icon: '⚠️' })
+
+        const isImage = file.type.startsWith('image/')
+        const previewUrl = isImage ? URL.createObjectURL(file) : null
+
+        const formData = new FormData()
+        formData.append('file', file)
+
+        try {
+            const resp = await fetch('/api/upload/file', {
+                method: 'POST',
+                body: formData
+            })
+            const data = await resp.json()
+            if (data.ok) {
+                pendingFiles.value.push({
+                    path: data.path,
+                    previewUrl,
+                    name: file.name,
+                    isImage
+                })
+            } else {
+                if (previewUrl) URL.revokeObjectURL(previewUrl)
+                toast.show('上传失败: ' + (data.error || '未知错误'), { icon: '⚠️' })
+            }
+        } catch (err) {
+            if (previewUrl) URL.revokeObjectURL(previewUrl)
+            toast.show('上传失败: ' + err.message, { icon: '⚠️' })
+        }
     }
 }
 
@@ -1757,11 +1773,20 @@ watch(() => props.open, async (val) => {
   max-width: 160px;
 }
 
+.attachment-tag svg {
+  flex-shrink: 0;
+}
+
 .attachment-tag-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-x: auto;
   white-space: nowrap;
   min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.attachment-tag-name::-webkit-scrollbar {
+  display: none;
 }
 
 .attachment-tag-remove {
