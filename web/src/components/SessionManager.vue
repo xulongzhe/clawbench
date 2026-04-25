@@ -1,5 +1,5 @@
 <template>
-  <BottomSheet :open="open" compact no-header @close="$emit('close')">
+  <BottomSheet ref="bottomSheetRef" :open="open" compact no-header @close="$emit('close')">
     <!-- Tab Switcher with drag handle -->
     <div class="tab-bar">
       <div class="drag-handle"></div>
@@ -160,6 +160,9 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'select', 'create', 'delete'])
 
+// BottomSheet ref for animated close
+const bottomSheetRef = ref(null)
+
 // Tab management
 const activeTab = ref('sessions')
 
@@ -215,13 +218,13 @@ async function loadSessions() {
 
 function selectSession(sessionId, backend) {
   emit('select', sessionId, backend)
-  emit('close')
+  bottomSheetRef.value?.close()
 }
 
 function createSession(agentId) {
   showAgentSelector.value = false
   emit('create', agentId)
-  emit('close')
+  bottomSheetRef.value?.close()
 }
 
 async function deleteSession(sessionId) {

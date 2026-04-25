@@ -67,6 +67,10 @@ function handleClose() {
     emit('close')
   }, 250)  // match animation duration
 }
+
+defineExpose({
+  close: handleClose,
+})
 </script>
 
 <style>
