@@ -121,13 +121,38 @@ func ServeGitInit(w http.ResponseWriter, r *http.Request) {
 }
 
 // gitDiff returns the diff for a file at a specific commit (or HEAD for working tree).
+// For working tree diffs, it combines both staged and unstaged changes so that
+// users see the complete picture of uncommitted modifications.
 func gitDiff(projectPath, relPath, commit string) ([]byte, error) {
-	var cmd *exec.Cmd
 	if commit == "" || commit == "HEAD" {
-		cmd = exec.Command("git", "diff", "HEAD", "--", relPath)
-	} else {
-		cmd = exec.Command("git", "show", commit, "--", relPath)
+		// Staged changes (diff between HEAD and index)
+		cmdCached := exec.Command("git", "diff", "--cached", "--", relPath)
+		cmdCached.Dir = projectPath
+		cached, cachedErr := cmdCached.CombinedOutput()
+
+		// Unstaged changes (diff between index and working tree)
+		cmdUnstaged := exec.Command("git", "diff", "--", relPath)
+		cmdUnstaged.Dir = projectPath
+		unstaged, unstagedErr := cmdUnstaged.CombinedOutput()
+
+		var combined []byte
+		if cachedErr == nil && len(cached) > 0 {
+			combined = append(combined, cached...)
+		}
+		if unstagedErr == nil && len(unstaged) > 0 {
+			if len(combined) > 0 {
+				combined = append(combined, '\n')
+			}
+			combined = append(combined, unstaged...)
+		}
+
+		if cachedErr != nil && unstagedErr != nil {
+			return nil, cachedErr
+		}
+		return combined, nil
 	}
+
+	cmd := exec.Command("git", "show", commit, "--", relPath)
 	cmd.Dir = projectPath
 	return cmd.CombinedOutput()
 }
@@ -342,6 +367,56 @@ func ServeGitStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"isGit": true, "hasUncommitted": hasUncommitted})
 }
 
+// wtFileInfo extends commitInfo with a staged flag for working tree files.
+type wtFileInfo struct {
+	Path   string `json:"path"`
+	Type   string `json:"type"`   // A=added, M=modified, D=deleted, ?=untracked
+	Staged bool   `json:"staged"` // true if changes are staged (in index)
+}
+
+// parseGitStatusPorcelain parses `git status --porcelain` output into wtFileInfo slice.
+// XY format: X=index status, Y=worktree status. ?=untracked.
+// Path extraction: skip the 2-char XY prefix, then skip any leading spaces/tabs.
+func parseGitStatusPorcelain(output string) []wtFileInfo {
+	var files []wtFileInfo
+	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
+		if len(line) < 3 {
+			continue
+		}
+		x := line[0] // index (staged) status
+		y := line[1] // worktree (unstaged) status
+		// Skip the 2-char XY status, then skip leading whitespace to get path
+		path := strings.TrimLeft(line[2:], " \t")
+		// Handle quoted paths (git quotes paths with special chars)
+		path = strings.Trim(path, "\"")
+
+		// Determine display type and staged status
+		switch {
+		case x == '?' && y == '?':
+			// Untracked file
+			files = append(files, wtFileInfo{Path: path, Type: "?", Staged: false})
+		case x != ' ' && x != '?':
+			// Staged change (add/modify/delete/rename)
+			t := string(x)
+			if t == "R" {
+				// Rename: path is "old -> new", extract new name after arrow
+				if idx := strings.Index(path, "->"); idx >= 0 {
+					path = strings.TrimLeft(path[idx+2:], " ")
+				}
+			}
+			files = append(files, wtFileInfo{Path: path, Type: t, Staged: true})
+			// If also modified in worktree, add a second entry
+			if y == 'M' {
+				files = append(files, wtFileInfo{Path: path, Type: "M", Staged: false})
+			}
+		case y != ' ':
+			// Unstaged change only
+			files = append(files, wtFileInfo{Path: path, Type: string(y), Staged: false})
+		}
+	}
+	return files
+}
+
 // ServeGitWorkingTreeFiles returns uncommitted file changes for the project or a specific file.
 func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -370,53 +445,23 @@ func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 		cmd.Dir = projectPath
 		output, err := cmd.CombinedOutput()
 		hasUncommitted := err == nil && len(strings.TrimSpace(string(output))) > 0
+		// Also check untracked
+		if !hasUncommitted {
+			lsCmd := exec.Command("git", "ls-files", "--error-unmatch", relPath)
+			lsCmd.Dir = projectPath
+			_, lsErr := lsCmd.CombinedOutput()
+			hasUncommitted = lsErr != nil // not tracked = untracked file
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"isGit": true, "hasUncommitted": hasUncommitted, "files": []interface{}{}})
 		return
 	}
 
-	// For project: return all uncommitted files (staged + unstaged)
-	var allFiles []FileInfo
-
-	// Staged changes
-	cmdStaged := exec.Command("git", "diff", "--cached", "--name-status")
-	cmdStaged.Dir = projectPath
-	outputStaged, _ := cmdStaged.CombinedOutput()
-	for _, line := range strings.Split(strings.TrimSpace(string(outputStaged)), "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) == 2 {
-			// Staged files marked with type prefix "S"
-			t := "S" + parts[0]
-			allFiles = append(allFiles, FileInfo{Path: parts[1], Type: t})
-		}
-	}
-
-	// Unstaged changes
-	cmdUnstaged := exec.Command("git", "diff", "--name-status", "HEAD")
-	cmdUnstaged.Dir = projectPath
-	outputUnstaged, _ := cmdUnstaged.CombinedOutput()
-	for _, line := range strings.Split(strings.TrimSpace(string(outputUnstaged)), "\n") {
-		if line == "" {
-			continue
-		}
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) == 2 {
-			// Only add if not already staged
-			already := false
-			for _, f := range allFiles {
-				if f.Path == parts[1] {
-					already = true
-					break
-				}
-			}
-			if !already {
-				allFiles = append(allFiles, FileInfo{Path: parts[1], Type: parts[0]})
-			}
-		}
-	}
+	// For project: return all uncommitted files using git status --porcelain
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = projectPath
+	output, _ := cmd.CombinedOutput()
+	allFiles := parseGitStatusPorcelain(string(output))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
