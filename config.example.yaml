@@ -42,6 +42,10 @@ dev:
   port: 20002        # 开发版后端端口
   frontend_port: 20001 # Vite 前端端口（HMR 热更新）
 
+# 默认智能体（可选，留空则使用 agents/ 目录下的第一个智能体）
+# 可用智能体：assistant（全能助手）、coder（编码专家）、handyman（勤杂工）、codebuddy2（Gemini）、gpt54（GPT）
+default_agent: "assistant"
+
 # 日志配置（可选）
 # Linux/macOS 示例：~/.ClawBench/logs
 # Windows 示例：C:\Users\your-username\.ClawBench\logs
