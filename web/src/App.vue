@@ -57,8 +57,6 @@
         :initial-tab="initialChatTab"
       />
 
-      <ToastNotification :toast="toast" />
-
       <GitHistoryDrawer
         :open="projectHistoryOpen"
         mode="project"
@@ -99,6 +97,9 @@
       />
 
     </div>
+
+    <!-- Toast - always rendered regardless of auth state -->
+    <ToastNotification :toast="toast" />
 
     <!-- Bottom dock - visible only when authenticated -->
     <div
@@ -375,16 +376,36 @@ function handleOpenSidebar() {
 onMounted(async () => {
     window.addEventListener('open-sidebar', handleOpenSidebar)
     applyTheme(theme.value)
+    let resp
     try {
-        const resp = await fetch('/api/me')
-        isAuthenticated.value = resp.ok
+        resp = await fetch('/api/me')
     } catch (_) {
         isAuthenticated.value = false
+        toast.show('无法连接到服务器，请检查后端服务是否启动', { icon: '⚠️', duration: 0, onClick: () => location.reload() })
+        return
     }
-    if (!isAuthenticated.value) return
+    if (resp.ok) {
+        isAuthenticated.value = true
+    } else if (resp.status === 401 || resp.status === 403) {
+        isAuthenticated.value = false
+        return
+    } else {
+        isAuthenticated.value = false
+        toast.show('服务器响应异常，后端服务可能未正确启动', { icon: '⚠️', duration: 0, onClick: () => location.reload() })
+        return
+    }
     initMermaid()
-    await store.loadProject()
-    await store.loadFiles('')
+    try {
+        await store.loadProject()
+    } catch (_) {
+        toast.show('项目加载失败，后端服务可能未正确启动', { icon: '⚠️', duration: 0, onClick: () => location.reload() })
+        return
+    }
+    try {
+        await store.loadFiles('')
+    } catch (_) {
+        toast.show('文件列表加载失败', { icon: '⚠️', duration: 6000 })
+    }
     const lastFile = localStorage.getItem('clawbenchLastFile_' + store.state.projectRoot)
     if (lastFile && lastFile !== store.state.currentFile?.path) {
         const lastSlash = lastFile.lastIndexOf('/')
