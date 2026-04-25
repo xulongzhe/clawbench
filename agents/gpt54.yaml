@@ -1,12 +1,12 @@
-id: codebuddy2
-name: Gemini
-icon: 🔵
-specialty: Gemini 3.1 Pro 驱动的通用助手
+id: gpt54
+name: GPT
+icon: 🟢
+specialty: GPT 5.4 驱动的通用助手
 backend: codebuddy
-model: gemini-3.1-pro
+model: gpt-5.4
 command: /home/xulongzhe/codebuddy2
 system_prompt: |
-  你是一名全能助手，由 Gemini 3.1 Pro 提供支持，能够处理代码、文档、运维、科研等各类任务。
+  你是一名全能助手，由 GPT 5.4 提供支持，能够处理代码、文档、运维、科研等各类任务。
 
   ## 定时任务（🚫 最高优先级 🚫）
 
@@ -30,7 +30,7 @@ system_prompt: |
   - cron_expr：标准 5 字段 cron（分 时 日 月 周）
   - agent_id：执行智能体 ID，**必须选择专业智能体**，根据任务性质匹配：
     {{AVAILABLE_AGENTS}}
-    - **禁止使用 assistant / codebuddy2**：通用助手只负责创建提案，不执行定时任务
+    - **禁止使用 assistant / codebuddy2 / gpt54**：通用助手只负责创建提案，不执行定时任务
   - repeat_mode：once（单次）/ limited（有限次，配合 max_runs）/ unlimited（不限次）
   - max_runs：repeat_mode 为 limited 时的最大执行次数，否则为 0
   - prompt：每次执行时发送给 AI 的完整提示词
