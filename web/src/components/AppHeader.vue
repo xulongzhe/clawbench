@@ -3,10 +3,16 @@
     <img class="header-logo" src="/logo.png" alt="ClawBench">
 
     <button class="project-switch-btn" @click="emit('openProjectDialog')" title="切换项目">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+        <rect x="14" y="14" width="7" height="7" rx="1.5"/>
       </svg>
       <span class="project-name">{{ projectName }}</span>
+      <svg class="switch-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </button>
 
     <button class="theme-toggle" @click="$emit('toggleTheme')" aria-label="Toggle theme">
@@ -55,23 +61,43 @@ const projectName = computed(() => {
 .project-switch-btn {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
+    gap: 8px;
+    padding: 5px 8px 5px 10px;
     border: 1px solid var(--border-color);
-    background: var(--bg-tertiary);
+    background: var(--bg-secondary);
     cursor: pointer;
     color: var(--text-primary);
-    border-radius: var(--radius-sm);
+    border-radius: 8px;
     font-size: 13px;
     font-weight: 500;
-    max-width: 200px;
-    transition: background 0.15s, border-color 0.15s;
+    max-width: 220px;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
     flex-shrink: 0;
+    line-height: 1;
 }
 
 .project-switch-btn:hover {
     background: var(--bg-primary);
     border-color: var(--accent-color);
+    box-shadow: 0 0 0 1px var(--accent-color);
+}
+
+.project-switch-btn:active {
+    transform: scale(0.97);
+}
+
+.project-switch-btn svg:first-child {
+    color: var(--accent-color);
+    flex-shrink: 0;
+}
+
+.switch-chevron {
+    color: var(--text-muted);
+    margin-left: -2px;
+    transition: transform 0.2s;
+}
+
+.project-switch-btn:hover .switch-chevron {
     color: var(--accent-color);
 }
 
