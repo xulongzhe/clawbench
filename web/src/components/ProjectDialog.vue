@@ -1,108 +1,83 @@
 <template>
-  <Teleport to="body">
-    <div v-show="open" class="modal-overlay" @click.self="$emit('close')">
-      <div class="modal-dialog">
-        <div class="modal-header">
-          <span class="modal-title">选择项目</span>
-          <button class="modal-close" @click="$emit('close')" title="关闭">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        <div class="modal-body">
-          <!-- Tabs row -->
-          <div class="dialog-tabs-row">
-            <div class="dialog-tabs">
-              <button class="dialog-tab" :class="{ active: tab === 'recent' }" @click="tab = 'recent'">最近</button>
-              <button class="dialog-tab" :class="{ active: tab === 'browse' }" @click="tab = 'browse'">浏览</button>
-            </div>
-          </div>
-
-          <!-- Browse nav - v-show to prevent layout shift -->
-          <div class="dialog-nav" v-show="tab === 'browse'">
-            <div class="dialog-toolbar-row">
-              <button class="toolbar-btn" :disabled="browsePath === '/'" @click="browseNavigate('/')" title="返回根目录">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-              </button>
-              <button class="toolbar-btn" :disabled="browsePathParts.length === 0" @click="navigateUp" title="返回上级">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15,18 9,12 15,6"/></svg>
-              </button>
-              <button class="toolbar-btn" @click="doNewFolder" title="新建文件夹">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><line x1="12" y1="10" x2="12" y2="14"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
-              </button>
-              <button class="toolbar-btn" :class="{ active: !showHidden }" @click="showHidden = !showHidden" title="隐藏隐藏文件">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="1"/><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-              </button>
-            </div>
-            <div class="dialog-breadcrumb">
-              <span @click="browseNavigate('/')">根目录</span>
-              <span v-for="(_, i) in browsePathParts" :key="i" @click="browseNavigate('/' + browsePathParts.slice(0, i + 1).join('/'))">
-                / {{ browsePathParts[i] }}
-              </span>
-            </div>
-          </div>
-
-          <!-- Content -->
-          <div class="dialog-content">
-            <div v-if="loading" class="dialog-loading">加载中...</div>
-            <div v-else-if="displayItems.length === 0" class="dialog-empty">{{ tab === 'recent' ? '暂无最近项目' : (searchQuery ? '没有匹配的目录' : '空目录') }}</div>
-            <div
-              v-else
-              v-for="item in displayItems"
-              :key="item.path"
-              class="dialog-item"
-              :class="{ selected: selectedPath === item.path }"
-              @click="selectItem(item)"
-              @dblclick="tab === 'browse' && enterDir(item)"
-            >
-              <!-- Recent tab: project grid icon -->
-              <svg v-if="tab === 'recent'" class="item-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                <rect x="3" y="3" width="7" height="7" rx="1.5"/>
-                <rect x="14" y="3" width="7" height="7" rx="1.5"/>
-                <rect x="3" y="14" width="7" height="7" rx="1.5"/>
-                <rect x="14" y="14" width="7" height="7" rx="1.5"/>
-              </svg>
-              <!-- Browse tab: folder icon -->
-              <svg v-else class="item-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
-              <span class="item-name">{{ item.displayPath || item.name || item.path }}</span>
-              <button v-if="tab === 'browse'" class="item-action-btn" @click.stop="toggleItemMenu(item, $event)" title="操作">
-                <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <input type="text" class="search-input" v-model="searchQuery" placeholder="搜索..." @dblclick="searchQuery = ''" />
-          <button class="confirm-btn" :disabled="tab === 'recent' && !selectedPath" @click="confirm">
-            <span>确定</span>
-          </button>
-        </div>
-
-        <!-- Item action popup -->
-        <div v-if="itemMenu.visible" class="item-menu-popup" :style="{ left: itemMenu.x + 'px', top: itemMenu.y + 'px' }" @click.stop>
-          <div class="item-menu-popup-item" @click.stop="doRename">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            重命名
-          </div>
-          <div class="item-menu-popup-item danger" @click.stop="doDelete">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            删除
-          </div>
-        </div>
-        <div v-if="itemMenu.visible" class="ctx-overlay" @click="itemMenu.visible = false" @touchstart="itemMenu.visible = false" />
+  <ModalDialog :open="open" title="选择项目" max-width="480px" full-height :z-index="2500" @close="$emit('close')">
+    <!-- Tabs row -->
+    <div class="dialog-tabs-row">
+      <div class="dialog-tabs">
+        <button class="dialog-tab" :class="{ active: tab === 'recent' }" @click="tab = 'recent'">最近</button>
+        <button class="dialog-tab" :class="{ active: tab === 'browse' }" @click="tab = 'browse'">浏览</button>
       </div>
     </div>
-  </Teleport>
+
+    <!-- Browse nav - v-show to prevent layout shift -->
+    <div class="dialog-nav" v-show="tab === 'browse'">
+      <div class="dialog-toolbar-row">
+        <button class="toolbar-btn" :disabled="browsePath === '/'" @click="browseNavigate('/')" title="返回根目录">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        </button>
+        <button class="toolbar-btn" :disabled="browsePathParts.length === 0" @click="navigateUp" title="返回上级">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15,18 9,12 15,6"/></svg>
+        </button>
+        <button class="toolbar-btn" @click="doNewFolder" title="新建文件夹">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+        </button>
+        <button class="toolbar-btn" :class="{ active: !showHidden }" @click="showHidden = !showHidden" title="隐藏隐藏文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="1"/><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        </button>
+      </div>
+      <div class="dialog-breadcrumb">
+        <span @click="browseNavigate('/')">根目录</span>
+        <span v-for="(_, i) in browsePathParts" :key="i" @click="browseNavigate('/' + browsePathParts.slice(0, i + 1).join('/'))">
+          / {{ browsePathParts[i] }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="dialog-content">
+      <div v-if="loading" class="dialog-loading">加载中...</div>
+      <div v-else-if="displayItems.length === 0" class="dialog-empty">{{ tab === 'recent' ? '暂无最近项目' : (searchQuery ? '没有匹配的目录' : '空目录') }}</div>
+      <div
+        v-else
+        v-for="item in displayItems"
+        :key="item.path"
+        class="dialog-item"
+        :class="{ selected: selectedPath === item.path }"
+        @click="selectItem(item)"
+        @dblclick="tab === 'browse' && enterDir(item)"
+      >
+        <!-- Recent tab: project grid icon -->
+        <svg v-if="tab === 'recent'" class="item-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        </svg>
+        <!-- Browse tab: folder icon -->
+        <svg v-else class="item-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span class="item-name">{{ item.displayPath || item.name || item.path }}</span>
+        <button v-if="tab === 'browse'" class="item-action-btn" @click.stop="doRename(item)" title="重命名">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button v-if="tab === 'browse'" class="item-action-btn danger" @click.stop="doDelete(item)" title="删除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <template #footer>
+      <input type="text" class="search-input" v-model="searchQuery" placeholder="搜索..." @dblclick="searchQuery = ''" />
+      <button class="confirm-btn" :disabled="tab === 'recent' && !selectedPath" @click="confirm">
+        <span>确定</span>
+      </button>
+    </template>
+  </ModalDialog>
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, onMounted, inject, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, inject } from 'vue'
+import ModalDialog from './ModalDialog.vue'
 import { baseName, splitPath } from '@/utils/helpers.ts'
 
 const props = defineProps({
@@ -122,7 +97,6 @@ const recentItems = ref([])
 
 // Browse state
 const browsePath = ref('/')
-const itemMenu = reactive({ visible: false, x: 0, y: 0, entry: null })
 const browseItems = ref([])
 let watchBase = ''
 let currentBrowseAbs = ''
@@ -135,7 +109,6 @@ function toRelative(absPath) {
 
 // Load browse when tab switches to browse
 watch(tab, (newTab) => {
-    itemMenu.visible = false
     if (newTab === 'browse' && browseItems.value.length === 0) {
         loadBrowse()
     }
@@ -146,7 +119,6 @@ watch(() => props.open, (isOpen) => {
     if (isOpen) {
         selectedPath.value = ''
         searchQuery.value = ''
-        itemMenu.visible = false
 
         if (tab.value === 'recent') {
             loadRecentProjects()
@@ -241,34 +213,8 @@ async function loadBrowse() {
     }
 }
 
-function toggleItemMenu(item, e) {
-    if (itemMenu.visible && itemMenu.entry?.path === item.path) {
-        itemMenu.visible = false
-        return
-    }
-    const rect = e.currentTarget.getBoundingClientRect()
-    itemMenu.x = rect.right - 140
-    itemMenu.y = rect.bottom + 4
-    itemMenu.entry = item
-    itemMenu.visible = true
-    nextTick(() => clampItemMenu())
-}
-
-function clampItemMenu() {
-    const menu = document.querySelector('.item-menu-popup')
-    if (!menu) return
-    const w = menu.offsetWidth
-    const h = menu.offsetHeight
-    const vw = window.innerWidth
-    const vh = window.innerHeight
-    const pad = 8
-    itemMenu.x = Math.max(pad, Math.min(itemMenu.x, vw - w - pad))
-    itemMenu.y = Math.max(pad, Math.min(itemMenu.y, vh - h - pad))
-}
-
 async function doNewFolder() {
     if (tab.value !== 'browse') return
-    itemMenu.visible = false
     const name = prompt('输入文件夹名：')
     if (!name || !name.trim()) return
     const dir = browsePath.value
@@ -283,16 +229,14 @@ async function doNewFolder() {
     } catch (_) { alert('创建失败') }
 }
 
-async function doRename() {
-    if (!itemMenu.entry) return
-    itemMenu.visible = false
-    const newName = prompt('输入新名称：', itemMenu.entry.name)
-    if (!newName || newName === itemMenu.entry.name) return
+async function doRename(item) {
+    const newName = prompt('输入新名称：', item.name)
+    if (!newName || newName === item.name) return
     try {
         const resp = await fetch('/api/file/rename', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: itemMenu.entry.name, name: newName, basePath: currentBrowseAbs })
+            body: JSON.stringify({ path: item.name, name: newName, basePath: currentBrowseAbs })
         })
         if (resp.ok) await loadBrowse()
         else {
@@ -302,21 +246,18 @@ async function doRename() {
     } catch (_) { alert('重命名失败') }
 }
 
-async function doDelete() {
-    if (!itemMenu.entry) return
-    itemMenu.visible = false
-    if (!window.confirm('确认删除目录 "' + itemMenu.entry.name + '" 及其所有内容？')) return
+async function doDelete(item) {
+    if (!window.confirm('确认删除目录 "' + item.name + '" 及其所有内容？')) return
     try {
         const resp = await fetch('/api/file/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: itemMenu.entry.name, basePath: currentBrowseAbs })
+            body: JSON.stringify({ path: item.name, basePath: currentBrowseAbs })
         })
         if (resp.ok) {
             selectedPath.value = ''
             await loadBrowse()
-        }
-        else {
+        } else {
             const err = await resp.json()
             alert('删除失败: ' + (err.error || ''))
         }
@@ -355,78 +296,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.85);
-  z-index: 2500;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 16px;
-}
-
-.modal-dialog {
-  background: var(--bg-secondary, #fff);
-  border-radius: var(--radius-md, 10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  width: 100%;
-  max-width: 480px;
-  height: calc(100dvh - 48px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border-color, #e5e5e5);
-  flex-shrink: 0;
-}
-
-.modal-title {
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--text-primary, #1a1a1a);
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted, #999);
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-}
-
-.modal-close:hover {
-  color: var(--text-primary, #1a1a1a);
-  background: var(--bg-tertiary, #f0f0f0);
-}
-
-.modal-body {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-footer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-color, #e5e5e5);
-  flex-shrink: 0;
-}
-
 /* Tabs row */
 .dialog-tabs-row {
   display: flex;
@@ -530,14 +399,13 @@ onMounted(() => {
 }
 .dialog-item:hover { background: var(--bg-tertiary, #f0f0f0); }
 .dialog-item.selected { background: var(--accent-color, #0066cc); color: #fff; }
-.dialog-item.selected .item-icon,
 .dialog-item.selected .item-name { color: #fff; }
 
 .item-icon-svg { flex-shrink: 0; color: var(--accent-color, #0066cc); }
 .dialog-item.selected .item-icon-svg { color: #fff; }
 .item-name { flex: 1; font-size: 14px; color: var(--text-primary, #1a1a1a); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Item action button */
+/* Item action buttons */
 .item-action-btn {
   display: flex;
   align-items: center;
@@ -557,47 +425,15 @@ onMounted(() => {
   background: var(--bg-tertiary, #f0f0f0);
   color: var(--text-primary, #1a1a1a);
 }
+.item-action-btn.danger:hover {
+  color: #dc2626;
+}
 .dialog-item.selected .item-action-btn {
   color: rgba(255,255,255,0.7);
 }
 .dialog-item.selected .item-action-btn:hover {
   background: rgba(255,255,255,0.15);
   color: #fff;
-}
-
-/* Item menu popup */
-.item-menu-popup {
-  position: fixed;
-  z-index: 3000;
-  background: var(--bg-secondary, #fff);
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: var(--radius-md, 8px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  padding: 4px 0;
-  min-width: 120px;
-}
-
-.item-menu-popup-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: var(--text-primary, #212529);
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.item-menu-popup-item:hover {
-  background: var(--bg-tertiary, #f0f0f0);
-}
-.item-menu-popup-item.danger {
-  color: #dc2626;
-}
-
-.ctx-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2900;
 }
 
 .dialog-empty, .dialog-loading {

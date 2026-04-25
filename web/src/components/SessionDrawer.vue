@@ -53,41 +53,41 @@
           </svg>
           新建会话
         </button>
-
-        <!-- Agent selector modal -->
-        <div v-if="showAgentSelector" class="agent-selector-modal" @click.self="showAgentSelector = false">
-          <div class="agent-selector-content">
-            <div class="agent-selector-header">选择智能体</div>
-            <div class="agent-list">
-              <button
-                v-for="agent in agents"
-                :key="agent.id"
-                class="agent-option"
-                :class="{ selected: selectedAgentId === agent.id }"
-                @click="createSession(agent.id)"
-              >
-                <span class="agent-option-icon">{{ agent.icon }}</span>
-                <div class="agent-option-detail">
-                  <span class="agent-option-name">{{ agent.name }}</span>
-                  <span class="agent-option-specialty">{{ agent.specialty }}</span>
-                  <div class="agent-option-tags">
-                    <span class="agent-tag backend-tag">{{ agent.backend }}</span>
-                    <span class="agent-tag model-tag">{{ agent.model }}</span>
-                  </div>
-                </div>
-              </button>
-            </div>
-            <button class="close-selector-btn" @click="showAgentSelector = false">取消</button>
-          </div>
-        </div>
       </div>
     </template>
   </BottomSheet>
+
+  <!-- Agent selector dialog -->
+  <ModalDialog :open="showAgentSelector" title="选择智能体" max-width="320px" @close="showAgentSelector = false">
+    <div class="agent-list">
+      <button
+        v-for="agent in agents"
+        :key="agent.id"
+        class="agent-option"
+        :class="{ selected: selectedAgentId === agent.id }"
+        @click="createSession(agent.id)"
+      >
+        <span class="agent-option-icon">{{ agent.icon }}</span>
+        <div class="agent-option-detail">
+          <span class="agent-option-name">{{ agent.name }}</span>
+          <span class="agent-option-specialty">{{ agent.specialty }}</span>
+          <div class="agent-option-tags">
+            <span class="agent-tag backend-tag">{{ agent.backend }}</span>
+            <span class="agent-tag model-tag">{{ agent.model }}</span>
+          </div>
+        </div>
+      </button>
+    </div>
+    <template #footer>
+      <button class="btn btn-secondary" @click="showAgentSelector = false">取消</button>
+    </template>
+  </ModalDialog>
 </template>
 
 <script setup>
 import { ref, watch, computed } from 'vue'
 import BottomSheet from './BottomSheet.vue'
+import ModalDialog from './ModalDialog.vue'
 
 const props = defineProps({
   open: Boolean,
@@ -397,42 +397,13 @@ watch(() => props.open, async (val) => {
   background: #0055aa;
 }
 
-/* Agent selector modal */
-.agent-selector-modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1001;
-}
-
-.agent-selector-content {
-  background: var(--bg-primary, #fff);
-  border-radius: 12px;
-  padding: 20px;
-  max-width: 320px;
-  width: 90%;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.agent-selector-header {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary, #1a1a1a);
-  margin-bottom: 16px;
-  text-align: center;
-}
-
+/* Agent selector content */
 .agent-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 16px;
+  padding: 10px;
+  overflow-y: auto;
 }
 
 .agent-option {
@@ -514,20 +485,17 @@ watch(() => props.open, async (val) => {
   white-space: nowrap;
 }
 
-.close-selector-btn {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 6px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-secondary, #495057);
+.btn-secondary {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 4px;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  background: var(--bg-tertiary, #f0f0f0);
+  color: var(--text-primary, #1a1a1a);
+  transition: background 0.15s;
 }
 
-.close-selector-btn:hover {
-  background: var(--bg-secondary, #f8f9fa);
-  color: var(--text-primary, #1a1a1a);
-}
+.btn-secondary:hover { background: #e0e0e0; }
 </style>

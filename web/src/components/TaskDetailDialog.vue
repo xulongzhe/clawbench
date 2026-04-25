@@ -1,108 +1,93 @@
 <template>
-  <Teleport to="body">
-    <div v-show="open" class="modal-overlay" @click.self="$emit('close')">
-      <div class="modal-dialog" @click.stop>
-        <div class="modal-header">
-          <span class="modal-title">定时任务</span>
-          <button class="modal-close" @click="$emit('close')" title="关闭">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        <div class="modal-body">
-          <!-- Tabs -->
-          <div class="dialog-tabs-row">
-            <div class="dialog-tabs">
-              <button class="dialog-tab" :class="{ active: tab === 'details' }" @click="tab = 'details'">详情</button>
-              <button class="dialog-tab" :class="{ active: tab === 'executions' }" @click="tab = 'executions'">执行记录</button>
-            </div>
-          </div>
-
-          <!-- Details tab -->
-          <div v-if="tab === 'details'" class="details-content">
-            <div v-if="saving" class="saving-indicator">保存中...</div>
-
-            <div class="form-group">
-              <label class="form-label">任务名称</label>
-              <input type="text" class="form-input" v-model="form.name" placeholder="任务名称" />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Cron 表达式</label>
-              <input type="text" class="form-input" v-model="form.cronExpr" placeholder="0 */10 * * *" />
-              <div class="form-hint">示例: 0 */10 * * * (每10分钟), 0 9 * * * (每天9点)</div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">执行 Agent</label>
-              <select class="form-select" v-model="form.agentId">
-                <option v-for="agent in agents" :key="agent.id" :value="agent.id">
-                  {{ agent.icon }} {{ agent.name }}
-                </option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">执行模式</label>
-              <div class="radio-group">
-                <label class="radio-label">
-                  <input type="radio" v-model="form.repeatMode" value="once" />
-                  <span>单次执行</span>
-                </label>
-                <label class="radio-label">
-                  <input type="radio" v-model="form.repeatMode" value="limited" />
-                  <span>限制次数</span>
-                </label>
-                <label class="radio-label">
-                  <input type="radio" v-model="form.repeatMode" value="unlimited" />
-                  <span>不限次数</span>
-                </label>
-              </div>
-            </div>
-
-            <div v-if="form.repeatMode === 'limited'" class="form-group">
-              <label class="form-label">最大执行次数</label>
-              <input type="number" class="form-input" v-model.number="form.maxRuns" min="1" />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">提示词 (Prompt)</label>
-              <textarea class="form-textarea" v-model="form.prompt" rows="10" placeholder="输入要发送给AI的提示词..."></textarea>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">描述</label>
-              <textarea class="form-textarea" v-model="form.description" rows="3" placeholder="任务描述（可选）"></textarea>
-            </div>
-          </div>
-
-          <!-- Executions tab -->
-          <div v-if="tab === 'executions'" class="executions-content">
-            <div v-if="executionsLoading" class="dialog-loading">加载中...</div>
-            <div v-else-if="executions.length === 0" class="dialog-empty">暂无执行记录</div>
-            <div v-for="(exec, idx) in executions" :key="idx" class="execution-item">
-              <div class="execution-time">{{ exec.createdAt }}</div>
-              <div class="execution-reply">{{ exec.summary }}</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="modal-footer">
-          <button v-if="tab === 'details'" class="btn btn-primary" :disabled="saving" @click="saveTask">
-            保存
-          </button>
-          <button class="btn btn-secondary" @click="$emit('close')">关闭</button>
-        </div>
+  <ModalDialog :open="open" title="定时任务" @close="$emit('close')">
+    <!-- Tabs -->
+    <div class="dialog-tabs-row">
+      <div class="dialog-tabs">
+        <button class="dialog-tab" :class="{ active: tab === 'details' }" @click="tab = 'details'">详情</button>
+        <button class="dialog-tab" :class="{ active: tab === 'executions' }" @click="tab = 'executions'">执行记录</button>
       </div>
     </div>
-  </Teleport>
+
+    <!-- Details tab -->
+    <div v-if="tab === 'details'" class="details-content">
+      <div v-if="saving" class="saving-indicator">保存中...</div>
+
+      <div class="form-group">
+        <label class="form-label">任务名称</label>
+        <input type="text" class="form-input" v-model="form.name" placeholder="任务名称" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Cron 表达式</label>
+        <input type="text" class="form-input" v-model="form.cronExpr" placeholder="0 */10 * * *" />
+        <div class="form-hint">示例: 0 */10 * * * (每10分钟), 0 9 * * * (每天9点)</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">执行 Agent</label>
+        <select class="form-select" v-model="form.agentId">
+          <option v-for="agent in agents" :key="agent.id" :value="agent.id">
+            {{ agent.icon }} {{ agent.name }}
+          </option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">执行模式</label>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" v-model="form.repeatMode" value="once" />
+            <span>单次执行</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" v-model="form.repeatMode" value="limited" />
+            <span>限制次数</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" v-model="form.repeatMode" value="unlimited" />
+            <span>不限次数</span>
+          </label>
+        </div>
+      </div>
+
+      <div v-if="form.repeatMode === 'limited'" class="form-group">
+        <label class="form-label">最大执行次数</label>
+        <input type="number" class="form-input" v-model.number="form.maxRuns" min="1" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">提示词 (Prompt)</label>
+        <textarea class="form-textarea" v-model="form.prompt" rows="10" placeholder="输入要发送给AI的提示词..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">描述</label>
+        <textarea class="form-textarea" v-model="form.description" rows="3" placeholder="任务描述（可选）"></textarea>
+      </div>
+    </div>
+
+    <!-- Executions tab -->
+    <div v-if="tab === 'executions'" class="executions-content">
+      <div v-if="executionsLoading" class="dialog-loading">加载中...</div>
+      <div v-else-if="executions.length === 0" class="dialog-empty">暂无执行记录</div>
+      <div v-for="(exec, idx) in executions" :key="idx" class="execution-item">
+        <div class="execution-time">{{ exec.createdAt }}</div>
+        <div class="execution-reply">{{ exec.summary }}</div>
+      </div>
+    </div>
+
+    <template #footer>
+      <button v-if="tab === 'details'" class="btn btn-primary" :disabled="saving" @click="saveTask">
+        保存
+      </button>
+      <button class="btn btn-secondary" @click="$emit('close')">关闭</button>
+    </template>
+  </ModalDialog>
 </template>
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
+import ModalDialog from './ModalDialog.vue'
 
 const props = defineProps({
   open: Boolean,
@@ -236,79 +221,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.85);
-  z-index: 2100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 16px;
-}
-
-.modal-dialog {
-  background: var(--bg-secondary, #fff);
-  border-radius: var(--radius-md, 10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-  width: 100%;
-  max-width: 600px;
-  max-height: calc(100dvh - 64px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border-color, #e5e5e5);
-  flex-shrink: 0;
-}
-
-.modal-title {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text-primary, #1a1a1a);
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted, #999);
-  padding: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-}
-
-.modal-close:hover {
-  color: var(--text-primary, #1a1a1a);
-  background: var(--bg-tertiary, #f0f0f0);
-}
-
-.modal-body {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-top: 1px solid var(--border-color, #e5e5e5);
-  flex-shrink: 0;
-  justify-content: flex-end;
-}
-
 /* Tabs */
 .dialog-tabs-row {
   display: flex;
