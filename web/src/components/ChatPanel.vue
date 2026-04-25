@@ -38,18 +38,22 @@
         <!-- Files display (only if content doesn't already render them) -->
         <div v-if="msg.role === 'user' && msg.files && msg.files.length > 0 && !hasImagesInContent(msg.content)" class="chat-files">
           <template v-for="(f, idx) in msg.files" :key="idx">
-            <span class="chat-file-attachment" @click="handleFileTagClick(normalizeFileEntry(f).path)" title="打开文件">
-              <svg v-if="isImageFile(normalizeFileEntry(f).path)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+            <span v-if="isUploadPath(normalizeFileEntry(f).path)" class="chat-file-attachment attachment-upload" @click="handleFileTagClick(normalizeFileEntry(f).path)" title="打开文件">
+              <svg v-if="isImageFile(normalizeFileEntry(f).path)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14 2 14 8 20 8"/>
                 <circle cx="10" cy="13" r="2"/>
                 <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
               </svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14,2 14,8 20,8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
+            </span>
+            <span v-else class="chat-file-attachment attachment-ref" @click="handleFileTagClick(normalizeFileEntry(f).path)" title="打开文件">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
               </svg>
               <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
             </span>
@@ -193,20 +197,14 @@
       </div>
       <!-- Attachment tags -->
       <div v-if="attachedFiles.length > 0 || pendingFiles.length > 0" class="chat-attachment-tags">
-        <span v-for="(filePath, idx) in attachedFiles" :key="'att-' + filePath" class="attachment-tag">
-          <svg v-if="isImageFile(filePath)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <circle cx="10" cy="13" r="2"/>
-            <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+        <span v-for="(filePath, idx) in attachedFiles" :key="'att-' + filePath" class="chat-file-attachment attachment-ref" @click="handleFileTagClick(filePath)" title="打开文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
-          <span class="attachment-tag-name">{{ getFileName(filePath) }}</span>
-          <button class="attachment-tag-remove" @click="removeAttachedFile(idx)" title="移除">×</button>
+          <span class="chat-file-name">{{ getFileName(filePath) }}</span>
+          <button class="attachment-tag-remove" @click.stop="removeAttachedFile(idx)" title="移除">×</button>
         </span>
-        <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="attachment-tag">
+        <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="chat-file-attachment attachment-upload">
           <svg v-if="f.isImage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
@@ -217,8 +215,8 @@
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
           </svg>
-          <span class="attachment-tag-name">{{ getFileName(f.path) }}</span>
-          <button class="attachment-tag-remove" @click="removeFile(idx)" title="移除">×</button>
+          <span class="chat-file-name">{{ getFileName(f.path) }}</span>
+          <button class="attachment-tag-remove" @click.stop="removeFile(idx)" title="移除">×</button>
         </span>
       </div>
       <!-- Input row -->
@@ -1428,6 +1426,10 @@ function normalizeFileEntry(f) {
     return { path: f.path || '' }
 }
 
+function isUploadPath(path) {
+    return path.startsWith('.clawbench/uploads/') || path.startsWith('.clawbench\\uploads\\')
+}
+
 function isImageFile(path) {
     if (!path) return false
     const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.tif', '.avif']
@@ -1764,32 +1766,46 @@ watch(() => props.open, async (val) => {
   padding: 4px 8px;
 }
 
-.attachment-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 2px 6px;
-  border-radius: 4px;
+/* Input area attachment tags */
+.chat-attachment-tags .chat-file-attachment {
+  max-width: 120px;
+}
+
+.chat-attachment-tags .attachment-upload {
   background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-color, #0066cc) 20%, transparent);
   color: var(--accent-color, #0066cc);
-  font-size: 11px;
-  max-width: 160px;
+  cursor: default;
 }
 
-.attachment-tag svg {
-  flex-shrink: 0;
+.chat-attachment-tags .attachment-upload .chat-file-name {
+  color: var(--accent-color, #0066cc);
 }
 
-.attachment-tag-name {
-  overflow-x: auto;
-  white-space: nowrap;
-  min-width: 0;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+.chat-attachment-tags .attachment-upload svg {
+  stroke: var(--accent-color, #0066cc);
 }
 
-.attachment-tag-name::-webkit-scrollbar {
-  display: none;
+.chat-attachment-tags .attachment-upload:hover {
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 18%, transparent);
+}
+
+.chat-attachment-tags .attachment-ref {
+  background: color-mix(in srgb, var(--text-muted, #999) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--text-muted, #999) 30%, transparent);
+  color: var(--text-secondary, #666);
+}
+
+.chat-attachment-tags .attachment-ref .chat-file-name {
+  color: var(--text-secondary, #666);
+}
+
+.chat-attachment-tags .attachment-ref svg {
+  stroke: var(--text-secondary, #666);
+}
+
+.chat-attachment-tags .attachment-ref:hover {
+  background: color-mix(in srgb, var(--text-muted, #999) 15%, transparent);
 }
 
 .attachment-tag-remove {
@@ -2025,12 +2041,14 @@ watch(() => props.open, async (val) => {
   display: none;
 }
 
+/* Upload tags in input area: not clickable */
+.chat-attachment-tags .attachment-upload {
+  cursor: default;
+}
 
-/* User message file tags */
+/* User message: common colors */
 .chat-message.user .chat-file-tag,
 .chat-message.user .chat-file-attachment {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.35);
   color: rgba(255, 255, 255, 0.95);
 }
 
@@ -2044,16 +2062,27 @@ watch(() => props.open, async (val) => {
   stroke: rgba(255, 255, 255, 0.95);
 }
 
-.chat-message.user .chat-file-attachment:hover,
-.chat-message.user .chat-file-tag:hover {
-  background: rgba(255, 255, 255, 0.3);
+/* User message: uploaded - solid border */
+.chat-message.user .attachment-upload {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.35);
 }
 
-/* Assistant message file tags */
+/* User message: referenced - dashed border */
+.chat-message.user .attachment-ref {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+}
+
+.chat-message.user .attachment-ref:hover,
+.chat-message.user .chat-file-tag:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Assistant message: common colors */
 .chat-message.assistant .chat-file-tag,
 .chat-message.assistant .chat-file-attachment {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
 }
 
 .chat-message.assistant .chat-file-tag-path,
@@ -2066,7 +2095,19 @@ watch(() => props.open, async (val) => {
   stroke: var(--text-secondary);
 }
 
-.chat-message.assistant .chat-file-attachment:hover,
+/* Assistant message: uploaded - solid border */
+.chat-message.assistant .attachment-upload {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+}
+
+/* Assistant message: referenced - dashed border */
+.chat-message.assistant .attachment-ref {
+  background: color-mix(in srgb, var(--text-muted, #999) 8%, transparent);
+  border: 1px dashed var(--border-color);
+}
+
+.chat-message.assistant .attachment-ref:hover,
 .chat-message.assistant .chat-file-tag:hover {
   background: var(--bg-secondary);
 }
