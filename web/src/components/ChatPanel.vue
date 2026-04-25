@@ -155,70 +155,69 @@
 
     </div>
 
-    <!-- File preview area -->
-    <div v-if="pendingFiles.length > 0" class="chat-file-preview">
-      <div v-for="(f, i) in pendingFiles" :key="i" class="preview-item" :class="{ 'preview-item-file': !f.isImage }">
-        <template v-if="f.isImage">
-          <img :src="f.previewUrl" class="preview-thumb" />
-        </template>
-        <template v-else>
-          <div class="preview-file-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14,2 14,8 20,8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-            </svg>
-          </div>
-          <span class="preview-file-name">{{ f.name }}</span>
-        </template>
-        <button class="preview-remove" @click="removeFile(i)" title="移除">×</button>
-      </div>
-    </div>
-
-    <!-- Current file attachment indicator -->
-    <div v-if="attachCurrentFile && props.currentFile?.path" class="chat-attached-file">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-        <polyline points="14,2 14,8 20,8"/>
-      </svg>
-      <span class="attached-file-name">{{ getFileName(props.currentFile.path) }}</span>
-      <button class="attached-remove" @click="attachCurrentFile = false" title="取消附带">×</button>
-    </div>
-
-    <!-- Input area -->
-    <div class="chat-input-area">
+    <!-- Unified input container -->
+    <div class="chat-input-container">
       <input type="file" ref="fileInputRef" @change="handleFileSelect" style="display:none" />
-      <button class="chat-image-btn" @click="$refs.fileInputRef.click()" :disabled="inputDisabled" title="上传文件">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-      </button>
-      <!-- Attach current file button -->
-      <button v-if="props.currentFile?.path"
-        class="chat-attach-file-btn"
-        :class="{ active: attachCurrentFile }"
-        @click="attachCurrentFile = !attachCurrentFile"
-        :disabled="inputDisabled"
-        :title="attachCurrentFile ? '取消附带当前文件' : '附带当前文件'">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
-          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-        </svg>
-      </button>
-      <input type="text" class="chat-input"
-        v-model="inputText"
-        :disabled="inputDisabled"
-        :placeholder="pendingFiles.length > 0 ? '添加描述（可选）...' : '输入消息...'"
-        @keypress.enter.prevent="sendMessage"
-        @dblclick="inputText = ''" />
-      <button v-if="loading" class="chat-stop-btn" @click="cancelStream" title="停止生成">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-      </button>
-      <button v-else class="chat-send-btn" @click="sendMessage" :class="{ disabled: inputDisabled && pendingFiles.length === 0 }">
-        <span class="btn-text">发送</span>
-      </button>
+      <!-- Toolbar -->
+      <div class="chat-toolbar">
+        <button class="chat-toolbar-btn" @click="$refs.fileInputRef.click()" :disabled="inputDisabled" title="上传文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+        </button>
+        <button class="chat-toolbar-btn"
+          @click="addAttachedFile(props.currentFile?.path)"
+          :disabled="inputDisabled || !props.currentFile?.path || attachedFiles.includes(props.currentFile?.path)"
+          :title="!props.currentFile?.path ? '无当前文件' : attachedFiles.includes(props.currentFile?.path) ? '已附带此文件' : '附带当前文件'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+      </div>
+      <!-- Attachment tags -->
+      <div v-if="attachedFiles.length > 0 || pendingFiles.length > 0" class="chat-attachment-tags">
+        <span v-for="(filePath, idx) in attachedFiles" :key="'att-' + filePath" class="attachment-tag">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14,2 14,8 20,8"/>
+          </svg>
+          <span class="attachment-tag-name">{{ getFileName(filePath) }}</span>
+          <button class="attachment-tag-remove" @click="removeAttachedFile(idx)" title="移除">×</button>
+        </span>
+        <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="attachment-tag">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span class="attachment-tag-name">{{ f.name }}</span>
+          <button class="attachment-tag-remove" @click="removeFile(idx)" title="移除">×</button>
+        </span>
+      </div>
+      <!-- Input row -->
+      <div class="chat-input-row">
+        <textarea class="chat-textarea"
+          ref="textareaRef"
+          v-model="inputText"
+          :disabled="inputDisabled"
+          :placeholder="pendingFiles.length > 0 ? '添加描述（可选）...' : '输入消息...'"
+          rows="1"
+          @keydown.enter.exact.prevent="sendMessage"
+          @input="autoResizeTextarea"
+          @blur="collapseTextarea"
+          @dblclick="inputText = ''"></textarea>
+        <button v-if="loading" class="chat-stop-btn" @click="cancelStream" title="停止生成">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
+        <button v-else class="chat-send-btn" @click="sendMessage" :class="{ disabled: inputDisabled && pendingFiles.length === 0 && attachedFiles.length === 0 }" title="发送">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- Floating Session Manager Button -->
@@ -358,7 +357,8 @@ const messagesRef = ref(null)
 const fileInputRef = ref(null)
 const sessionManagerRef = ref(null)
 const pendingFiles = ref([])
-const attachCurrentFile = ref(false) // 是否附带当前文件
+const attachedFiles = ref([]) // 附带的文件路径列表
+const textareaRef = ref(null)
 const metadataModal = ref({
   show: false,
   data: {},
@@ -1203,15 +1203,39 @@ function removeFile(index) {
     pendingFiles.value.splice(index, 1)
 }
 
+function addAttachedFile(filePath) {
+    if (filePath && !attachedFiles.value.includes(filePath)) {
+        attachedFiles.value.push(filePath)
+    }
+}
+
+function removeAttachedFile(index) {
+    attachedFiles.value.splice(index, 1)
+}
+
+function autoResizeTextarea() {
+    const el = textareaRef.value
+    if (!el) return
+    el.style.height = 'auto'
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20
+    const maxHeight = lineHeight * 3 + 8 // ~3 lines + padding
+    el.style.height = Math.min(el.scrollHeight, maxHeight) + 'px'
+}
+
+function collapseTextarea() {
+    const el = textareaRef.value
+    if (!el) return
+    el.style.height = 'auto'
+}
+
 async function sendMessage() {
     const text = inputText.value.trim()
-    const hasFiles = pendingFiles.value.length > 0
+    const hasFiles = pendingFiles.value.length > 0 || attachedFiles.value.length > 0
 
     if ((!text && !hasFiles) || inputDisabled.value) return
 
-    // Only attach file if explicitly requested
-    const filePath = attachCurrentFile.value ? (props.currentFile?.path || '') : ''
-    const filePaths = pendingFiles.value.map(f => f.path)
+    const filePaths = attachedFiles.value.length > 0 ? [...attachedFiles.value] : []
+    const uploadedFilePaths = pendingFiles.value.map(f => f.path)
     const imagePaths = pendingFiles.value.filter(f => f.isImage).map(f => f.path)
 
     // Build display content for message
@@ -1224,14 +1248,16 @@ async function sendMessage() {
     messages.value.push({
         role: 'user',
         content: displayContent,
-        filePath: filePath,
-        files: filePaths,
+        filePath: filePaths.length > 0 ? filePaths[0] : '',
+        files: [...uploadedFilePaths, ...filePaths.slice(1)],
         createdAt: new Date().toISOString()
     })
 
     updateRenderedContents()
 
     inputText.value = ''
+    attachedFiles.value = []
+    nextTick(() => collapseTextarea())
     // Clear pending files
     pendingFiles.value.forEach(f => {
         if (f.previewUrl) URL.revokeObjectURL(f.previewUrl)
@@ -1252,7 +1278,7 @@ async function sendMessage() {
         const resp = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, filePath, files: filePaths, agentId: effectiveAgentId }),
+            body: JSON.stringify({ message: text, filePaths, files: uploadedFilePaths, agentId: effectiveAgentId }),
         })
         const data = await resp.json()
         if (!resp.ok) {
@@ -1704,214 +1730,140 @@ watch(() => props.open, async (val) => {
   40% { transform: scale(1); opacity: 1; }
 }
 
-/* ── File preview (pending) ── */
-.chat-file-preview {
+/* ── Unified input container ── */
+.chat-input-container {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px 10px;
-  background: var(--bg-secondary, #f8f9fa);
-  border-top: 1px solid var(--border-color, #e5e5e5);
-}
-
-.preview-item-file {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  width: auto;
-  min-width: 60px;
-  max-width: 140px;
-  height: auto;
-  min-height: 32px;
-  padding: 4px 6px;
+  flex-direction: column;
   background: var(--bg-primary, #fff);
+  flex-shrink: 0;
+  margin: 0 8px 8px;
   border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 6px;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
-.preview-file-icon {
-  color: var(--text-muted, #999);
+/* Toolbar row */
+.chat-toolbar {
   display: flex;
   align-items: center;
+  gap: 2px;
+  padding: 4px 6px 0;
+}
+
+.chat-toolbar-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
   flex-shrink: 0;
 }
 
-.preview-file-name {
+.chat-toolbar-btn:hover:not(:disabled) {
+  color: var(--accent-color, #0066cc);
+  background: var(--bg-tertiary, #f0f0f0);
+}
+
+.chat-toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Attachment tags row */
+.chat-attachment-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.attachment-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
+  color: var(--accent-color, #0066cc);
   font-size: 11px;
-  color: var(--text-primary, #1a1a1a);
+  max-width: 160px;
+}
+
+.attachment-tag-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
 }
 
-.preview-item {
-  position: relative;
-  width: 60px;
-  height: 60px;
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid var(--border-color, #e5e5e5);
-}
-
-.preview-thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.preview-remove {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
+.attachment-tag-remove {
+  background: none;
   border: none;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  padding: 0;
   font-size: 14px;
   line-height: 1;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.preview-remove:hover {
-  background: rgba(220, 53, 69, 0.9);
-}
-
-/* ── Input area ── */
-.chat-input-area {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
-  border-top: 1px solid var(--border-color, #e5e5e5);
-  background: var(--bg-secondary, #f8f9fa);
-  flex-shrink: 0;
-}
-
-.chat-image-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted, #999);
-  padding: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
+  border-radius: 2px;
   transition: color 0.15s, background 0.15s;
-  flex-shrink: 0;
 }
 
-.chat-image-btn:hover:not(:disabled) {
-  color: var(--accent-color, #0066cc);
-  background: var(--bg-tertiary, #f0f0f0);
+.attachment-tag-remove:hover {
+  color: var(--danger-color, #dc3545);
+  background: color-mix(in srgb, var(--danger-color, #dc3545) 10%, transparent);
 }
 
-.chat-image-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Attach current file button */
-.chat-attach-file-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted, #999);
-  padding: 6px;
+/* Input row */
+.chat-input-row {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 4px;
-  border-radius: 6px;
-  transition: color 0.15s, background 0.15s;
-  flex-shrink: 0;
-  max-width: 150px;
+  padding: 4px 6px 6px;
 }
 
-.chat-attach-file-btn:hover:not(:disabled) {
-  color: var(--accent-color, #0066cc);
-  background: var(--bg-tertiary, #f0f0f0);
-}
-
-.chat-attach-file-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.chat-attach-file-btn.active {
-  color: var(--accent-color, #0066cc);
-  background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
-}
-
-/* Attached file indicator above input */
-.chat-attached-file {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
-  border-top: 1px solid var(--border-color, #e5e5e5);
-  color: var(--accent-color, #0066cc);
-}
-
-.attached-file-name {
-  font-size: 12px;
+.chat-textarea {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attached-remove {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-muted, #999);
+  padding: 4px 8px;
   border: none;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.attached-remove:hover {
-  background: var(--bg-tertiary, #f0f0f0);
-  color: var(--text-primary);
-}
-
-.chat-input {
-  flex: 1;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--bg-primary, #fff);
+  background: transparent;
   color: var(--text-primary);
   font-size: 14px;
+  line-height: 20px;
   outline: none;
-  transition: border-color 0.15s;
+  resize: none;
+  overflow-y: auto;
+  min-height: 28px;
+  max-height: 68px; /* ~3 lines */
+  font-family: inherit;
 }
-.chat-input:focus { border-color: var(--accent-color, #0066cc); }
-.chat-input:disabled { opacity: 0.5; }
+
+.chat-textarea::placeholder {
+  color: var(--text-muted, #999);
+}
+
+.chat-textarea:disabled {
+  opacity: 0.5;
+}
 
 .chat-send-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   background: var(--accent-color, #0066cc);
   color: #fff;
   border: none;
-  border-radius: var(--radius-sm, 6px);
-  font-size: 13px;
-  font-weight: 500;
+  border-radius: 50%;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
   flex-shrink: 0;
@@ -1920,30 +1872,18 @@ watch(() => props.open, async (val) => {
 .chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .chat-send-btn.disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-spinner {
-  display: none;
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-.chat-send-btn.loading .btn-text { display: none; }
-.chat-send-btn.loading .btn-spinner { display: block; }
-
 /* Stop button */
 .chat-stop-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   background: var(--danger-color, #dc3545);
   color: #fff;
   border: none;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: 50%;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
   flex-shrink: 0;

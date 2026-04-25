@@ -309,7 +309,8 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Message  string   `json:"message"`
-		FilePath string   `json:"filePath"`
+		FilePath string   `json:"filePath"`    // legacy: single file path
+		FilePaths []string `json:"filePaths"`   // new: multiple file paths
 		Files    []string `json:"files"`
 		AgentID  string   `json:"agentId"`
 	}
@@ -321,29 +322,57 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Allow empty message if files are provided
-	if req.Message == "" && len(req.Files) == 0 {
+	if req.Message == "" && len(req.Files) == 0 && len(req.FilePaths) == 0 {
 		service.SetSessionRunning(sessionID, false)
 		model.WriteErrorf(w, http.StatusBadRequest, "Message or files required")
 		return
 	}
 
+	// Merge legacy filePath into filePaths for unified handling
+	allFilePaths := make([]string, 0, len(req.FilePaths)+1)
+	if req.FilePath != "" {
+		allFilePaths = append(allFilePaths, req.FilePath)
+	}
+	for _, p := range req.FilePaths {
+		if p != req.FilePath { // dedup
+			allFilePaths = append(allFilePaths, p)
+		}
+	}
+
 	basePath, _ := filepath.Abs(projectPath)
 	var fileDir string
-	if req.FilePath == "" {
-		fileDir = basePath
-	} else {
-		fileAbsPath, ok := model.ValidatePath(basePath, req.FilePath)
+	if len(allFilePaths) > 0 {
+		firstAbsPath, ok := model.ValidatePath(basePath, allFilePaths[0])
 		if !ok {
 			service.SetSessionRunning(sessionID, false)
 			model.WriteError(w, model.Forbidden(nil, "Access denied"))
 			return
 		}
-		if _, err := os.Stat(fileAbsPath); err != nil {
+		if _, err := os.Stat(firstAbsPath); err != nil {
 			service.SetSessionRunning(sessionID, false)
 			model.WriteError(w, model.NotFound(nil, "File not found"))
 			return
 		}
-		fileDir = filepath.Dir(fileAbsPath)
+		fileDir = filepath.Dir(firstAbsPath)
+	} else {
+		fileDir = basePath
+	}
+
+	// Validate all attached file paths are within project
+	validatedFilePaths := make([]string, 0, len(allFilePaths))
+	for _, fp := range allFilePaths {
+		fAbsPath, ok := model.ValidatePath(basePath, fp)
+		if !ok {
+			service.SetSessionRunning(sessionID, false)
+			model.WriteError(w, model.Forbidden(nil, "Access denied"))
+			return
+		}
+		if _, err := os.Stat(fAbsPath); err != nil {
+			service.SetSessionRunning(sessionID, false)
+			model.WriteError(w, model.NotFound(nil, "File not found: "+fp))
+			return
+		}
+		validatedFilePaths = append(validatedFilePaths, fAbsPath)
 	}
 
 	// Validate file paths are within project and collect absolute paths
@@ -364,14 +393,24 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	prompt := req.Message
-	if req.FilePath != "" {
-		prompt = fmt.Sprintf("[当前文件: %s]\n%s", req.FilePath, req.Message)
+	if len(validatedFilePaths) > 0 {
+		prompt = fmt.Sprintf("[当前文件: %s]\n%s", strings.Join(validatedFilePaths, ", "), req.Message)
 	}
 	if len(fileAbsPaths) > 0 {
 		prompt = fmt.Sprintf("[用户上传了 %d 个文件: %s]\n%s", len(fileAbsPaths), strings.Join(fileAbsPaths, ", "), prompt)
 	}
 
-	if _, err := service.AddChatMessage(projectPath, backendName, sessionID, "user", req.Message, req.FilePath, req.Files, false); err != nil {
+	// For DB storage: use first filePath for legacy column, rest go into files
+	legacyFilePath := ""
+	if len(allFilePaths) > 0 {
+		legacyFilePath = allFilePaths[0]
+	}
+	// Merge remaining filePaths into files for storage
+	allFiles := req.Files
+	if len(allFilePaths) > 1 {
+		allFiles = append(allFiles, allFilePaths[1:]...)
+	}
+	if _, err := service.AddChatMessage(projectPath, backendName, sessionID, "user", req.Message, legacyFilePath, allFiles, false); err != nil {
 		service.SetSessionRunning(sessionID, false)
 		model.WriteError(w, model.Internal(fmt.Errorf("failed to save message")))
 		return
