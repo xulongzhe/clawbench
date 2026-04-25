@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    name: Build Release Binaries
+    name: Build Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -19,25 +19,59 @@ jobs:
         with:
           go-version: '1.21'
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Build frontend
+        run: npm ci && npm run build
+
       - name: Build Linux binary
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o clawbench-linux-amd64 ./cmd/server
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o clawbench ./cmd/server
 
       - name: Build Windows binary
-        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o clawbench-windows-amd64.exe ./cmd/server
+        run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o clawbench.exe ./cmd/server
 
       - name: Build macOS binary
-        run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o clawbench-darwin-arm64 ./cmd/server
+        run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o clawbench ./cmd/server
 
-      - name: Package binaries
+      - name: Package Linux
         run: |
-          zip clawbench-linux-amd64.zip clawbench-linux-amd64
-          zip clawbench-windows-amd64.zip clawbench-windows-amd64.exe
-          zip clawbench-darwin-arm64.zip clawbench-darwin-arm64
+          mkdir -p pkg-linux/clawbench
+          cp clawbench pkg-linux/clawbench/
+          cp -r public pkg-linux/clawbench/public
+          cp config.example.yaml pkg-linux/clawbench/
+          cp -r agents pkg-linux/clawbench/agents
+          cp server.sh pkg-linux/clawbench/
+          chmod +x pkg-linux/clawbench/clawbench pkg-linux/clawbench/server.sh
+          cd pkg-linux && zip -r clawbench-linux-amd64.zip clawbench/
+
+      - name: Package Windows
+        run: |
+          mkdir -p pkg-windows/clawbench
+          cp clawbench.exe pkg-windows/clawbench/
+          cp -r public pkg-windows/clawbench/public
+          cp config.example.yaml pkg-windows/clawbench/
+          cp -r agents pkg-windows/clawbench/agents
+          cp server.ps1 pkg-windows/clawbench/
+          cd pkg-windows && zip -r clawbench-windows-amd64.zip clawbench/
+
+      - name: Package macOS
+        run: |
+          mkdir -p pkg-mac/clawbench
+          cp clawbench pkg-mac/clawbench/
+          cp -r public pkg-mac/clawbench/public
+          cp config.example.yaml pkg-mac/clawbench/
+          cp -r agents pkg-mac/clawbench/agents
+          cp server.sh pkg-mac/clawbench/
+          chmod +x pkg-mac/clawbench/clawbench pkg-mac/clawbench/server.sh
+          cd pkg-mac && zip -r clawbench-darwin-arm64.zip clawbench/
 
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           files: |
-            clawbench-linux-amd64.zip
-            clawbench-windows-amd64.zip
-            clawbench-darwin-arm64.zip
+            pkg-linux/clawbench-linux-amd64.zip
+            pkg-windows/clawbench-windows-amd64.zip
+            pkg-mac/clawbench-darwin-arm64.zip
