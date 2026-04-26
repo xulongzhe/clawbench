@@ -21,7 +21,7 @@
       <span class="chat-toolbar-divider"></span>
       <button class="chat-toolbar-btn" @click="$emit('open-session-tab', 'sessions')" title="会话管理">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <rect x="3" y="6" width="18" height="12" rx="2"/><line x1="12" y1="2" x2="12" y2="6"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><line x1="1" y1="10" x2="3" y2="10"/><line x1="1" y1="14" x2="3" y2="14"/><line x1="21" y1="10" x2="23" y2="10"/><line x1="21" y1="14" x2="23" y2="14"/>
         </svg>
       </button>
       <button class="chat-toolbar-btn" @click="$emit('open-session-tab', 'tasks')" title="定时任务">
