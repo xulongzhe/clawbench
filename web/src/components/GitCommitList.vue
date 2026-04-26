@@ -53,9 +53,11 @@
           class="commit-list-graph"
           :commits="filteredCommits"
           :row-height="46"
+          :collapsed="graphCollapsed"
+          @update:collapsed="graphCollapsed = $event"
         />
         <!-- Commit rows -->
-        <div class="commit-list-content">
+        <div class="commit-list-content" ref="contentRef" @touchstart="onTouchStart" @touchend="onTouchEnd">
           <div
             v-for="c in filteredCommits"
             :key="c.sha"
@@ -103,7 +105,36 @@ const emit = defineEmits(['select', 'search', 'load-more', 'init-git'])
 
 const commitSearch = ref('')
 const listRef = ref(null)
+const contentRef = ref(null)
 const observer = ref(null)
+const graphCollapsed = ref(false)
+
+// Touch swipe handling for graph toggle
+const SWIPE_THRESHOLD = 50
+let touchStartX = 0
+let touchStartY = 0
+let touchStartTime = 0
+
+function onTouchStart(e) {
+  touchStartX = e.touches[0].clientX
+  touchStartY = e.touches[0].clientY
+  touchStartTime = Date.now()
+}
+
+function onTouchEnd(e) {
+  const dx = e.changedTouches[0].clientX - touchStartX
+  const dy = e.changedTouches[0].clientY - touchStartY
+  const dt = Date.now() - touchStartTime
+  // Only trigger on primarily horizontal swipes, fast enough
+  if (dt > 500 || Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < SWIPE_THRESHOLD) return
+  if (dx < 0) {
+    // Swipe left: hide graph
+    graphCollapsed.value = true
+  } else {
+    // Swipe right: show graph
+    graphCollapsed.value = false
+  }
+}
 
 const isSearching = computed(() => commitSearch.value.trim().length > 0)
 

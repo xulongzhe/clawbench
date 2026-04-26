@@ -22,84 +22,61 @@
       <!-- Commit nodes -->
       <g class="git-graph-nodes">
         <g v-for="(node, i) in nodes" :key="'node-' + i">
-          <!-- Collapsed: simple dot -->
-          <template v-if="collapsed">
+          <!-- WT node: amber with glow -->
+          <template v-if="node.isWT">
             <circle
-              :cx="10"
+              :cx="collapsed ? 10 : node.cx"
               :cy="node.cy"
-              :r="node.refs && node.refs.length ? 4 : 3"
-              :fill="node.isWT ? '#f59e0b' : node.color"
+              r="7"
+              fill="none"
+              stroke="#f59e0b"
+              stroke-width="1.5"
+              opacity="0.3"
+            />
+            <circle
+              :cx="collapsed ? 10 : node.cx"
+              :cy="node.cy"
+              r="5"
+              fill="#f59e0b"
             />
           </template>
-          <!-- Expanded: full node rendering -->
-          <template v-else>
-            <!-- WT node: amber with glow -->
-            <template v-if="node.isWT">
-              <circle
-                :cx="node.cx"
-                :cy="node.cy"
-                r="7"
-                fill="none"
-                stroke="#f59e0b"
-                stroke-width="1.5"
-                opacity="0.3"
-              />
-              <circle
-                :cx="node.cx"
-                :cy="node.cy"
-                r="5"
-                fill="#f59e0b"
-              />
-            </template>
-            <!-- Node with refs: double ring style -->
-            <template v-else-if="node.refs && node.refs.length">
-              <circle
-                :cx="node.cx"
-                :cy="node.cy"
-                r="6"
-                fill="none"
-                :stroke="node.color"
-                stroke-width="1.5"
-                opacity="0.4"
-                class="git-graph-ref-node"
-                @click.stop="onNodeClick(node, $event)"
-              />
-              <circle
-                :cx="node.cx"
-                :cy="node.cy"
-                r="3.5"
-                :fill="node.color"
-                stroke="var(--bg-primary, #fff)"
-                stroke-width="1.5"
-                class="git-graph-ref-node"
-                @click.stop="onNodeClick(node, $event)"
-              />
-            </template>
-            <!-- Normal node: simple circle -->
+          <!-- Node with refs: double ring style -->
+          <template v-else-if="node.refs && node.refs.length">
             <circle
-              v-else
-              :cx="node.cx"
+              :cx="collapsed ? 10 : node.cx"
               :cy="node.cy"
-              r="4"
+              r="6"
+              fill="none"
+              :stroke="node.color"
+              stroke-width="1.5"
+              opacity="0.4"
+              class="git-graph-ref-node"
+              @click.stop="onNodeClick(node, $event)"
+            />
+            <circle
+              :cx="collapsed ? 10 : node.cx"
+              :cy="node.cy"
+              r="3.5"
               :fill="node.color"
               stroke="var(--bg-primary, #fff)"
               stroke-width="1.5"
+              class="git-graph-ref-node"
+              @click.stop="onNodeClick(node, $event)"
             />
           </template>
+          <!-- Normal node: simple circle -->
+          <circle
+            v-else
+            :cx="collapsed ? 10 : node.cx"
+            :cy="node.cy"
+            r="4"
+            :fill="node.color"
+            stroke="var(--bg-primary, #fff)"
+            stroke-width="1.5"
+          />
         </g>
       </g>
     </svg>
-    <!-- Collapse/expand toggle -->
-    <button
-      class="graph-toggle-btn"
-      @click.stop="collapsed = !collapsed"
-      :title="collapsed ? '展开分支图' : '收起分支图'"
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12">
-        <polyline v-if="!collapsed" points="6 9 12 15 18 9"/>
-        <polyline v-else points="9 6 15 12 9 18"/>
-      </svg>
-    </button>
     <!-- Tooltip (refs or branch name) -->
     <Teleport to="body">
       <div
@@ -125,9 +102,11 @@ import { computeGraphData, refLabelText } from './gitGraphUtils'
 const props = defineProps({
   commits: { type: Array, default: () => [] },
   rowHeight: { type: Number, default: 46 },
+  collapsed: { type: Boolean, default: false },
 })
 
-const collapsed = ref(false)
+const emit = defineEmits(['update:collapsed'])
+
 const scrollRef = ref(null)
 
 // ── Tooltip ──
@@ -169,7 +148,7 @@ const svgHeight = computed(() => props.commits.length * props.rowHeight + 4)
 
 // SVG width: only lanes, no ref labels (refs shown via tooltip)
 const svgWidth = computed(() => {
-  if (collapsed.value) return 20
+  if (props.collapsed) return 20
   return graphData.value.graphWidth || 40
 })
 
@@ -306,30 +285,5 @@ const tooltipStyle = computed(() => {
   height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
-}
-
-.graph-toggle-btn {
-  position: sticky;
-  top: 4px;
-  z-index: 3;
-  width: 18px;
-  height: 18px;
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: 3px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-muted, #999);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  margin-bottom: -18px;
-  margin-left: 2px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.graph-toggle-btn:hover {
-  background: var(--bg-secondary, #f8f9fa);
-  color: var(--text-primary, #212529);
 }
 </style>
