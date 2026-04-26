@@ -19,11 +19,11 @@
         :entries="dirEntries"
         :current-dir="currentDir"
         :current-file="currentFile"
-        :open="sidebarOpen"
+        :open="fileManagerOpen"
         :show-hidden="showHidden"
         :sort-field="sortField"
         :sort-dir="sortDir"
-        @close="sidebarOpen = false"
+        @close="fileManagerOpen = false"
         @navigate-dir="handleNavigateDir"
         @select-file="handleSelectFile"
         @toggle-sort="handleToggleSort"
@@ -122,7 +122,7 @@
           </svg>
           <span v-if="chatUnread" class="dock-badge"></span>
         </button>
-        <button class="dock-btn" :class="{ active: sidebarOpen }" @click.stop="openDrawer('sidebar')" title="文件管理器">
+        <button class="dock-btn" :class="{ active: fileManagerOpen }" @click.stop="openDrawer('fileManager')" title="文件管理器">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
@@ -201,8 +201,8 @@ provide('toast', toast)
 // TOC state
 const tocOpen = ref(false)
 
-// Sidebar state (文件管理器)
-const sidebarOpen = ref(false)
+// FileManager state
+const fileManagerOpen = ref(false)
 const showHidden = ref(JSON.parse(localStorage.getItem('clawbenchShowHidden') || 'false'))
 const sortField = ref(null)
 const sortDir = ref('asc')
@@ -210,7 +210,7 @@ const sortDir = ref('asc')
 // 抽屉互斥：打开一个时关闭其他（瞬间关闭，无动画）
 const drawerStates = {
   chat: chatOpen,
-  sidebar: sidebarOpen,
+  fileManager: fileManagerOpen,
   projectHistory: projectHistoryOpen,
   fileHistory: fileHistoryOpen,
   toc: tocOpen,
@@ -270,7 +270,7 @@ function handleOpenProjectDialog() {
 const theme = ref(localStorage.getItem('theme') ||
     (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))
 
-// Sync sidebar state from store
+// Sync fileManager state from store
 const dirEntries = computed(() => store.state.dirEntries)
 const currentDir = computed(() => store.state.currentDir)
 const currentFile = computed(() => store.state.currentFile)
@@ -405,12 +405,12 @@ const contentSwipeStyle = computed(() => {
   }
 })
 
-function handleOpenSidebar() {
-    openDrawer('sidebar')
+function handleOpenFileManager() {
+    openDrawer('fileManager')
 }
 
 onMounted(async () => {
-    window.addEventListener('open-sidebar', handleOpenSidebar)
+    window.addEventListener('open-file-manager', handleOpenFileManager)
     applyTheme(theme.value)
     let resp
     try {
@@ -465,7 +465,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-    window.removeEventListener('open-sidebar', handleOpenSidebar)
+    window.removeEventListener('open-file-manager', handleOpenFileManager)
 })
 </script>
 

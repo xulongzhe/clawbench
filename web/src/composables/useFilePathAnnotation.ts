@@ -272,7 +272,7 @@ export function resolveRelativePath(href: string, baseDir: string): string {
 
 /**
  * Open a file or directory path.
- * If the path is a directory, navigates to it and opens the sidebar.
+ * If the path is a directory, navigates to it and opens the file manager.
  * If it's a file, selects it in the store.
  */
 export async function openFilePath(resolvedPath: string): Promise<void> {
@@ -281,7 +281,7 @@ export async function openFilePath(resolvedPath: string): Promise<void> {
         const resp = await fetch(`/api/dir?path=${encodeURIComponent(resolvedPath)}`)
         if (resp.ok) {
             await store.navigateToDir(resolvedPath)
-            window.dispatchEvent(new CustomEvent('open-sidebar'))
+            window.dispatchEvent(new CustomEvent('open-file-manager'))
             return
         }
     } catch {
