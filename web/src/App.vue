@@ -48,7 +48,7 @@
             :markdown-view-mode="markdownViewMode"
             @delete="handleDelete(currentFile?.path)"
             @show-details="detailsOpen = true"
-            @open-git-history="fileHistoryOpen = true"
+            @open-git-history="openDrawer('fileHistory')"
             @toggle-toc="openDrawer('toc')"
             @toggle-search="currentFile?.content && openDrawer('search')"
             @toggle-view="markdownViewMode = markdownViewMode === 'rendered' ? 'raw' : 'rendered'"
@@ -127,7 +127,7 @@
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
         </button>
-        <button class="dock-btn" :class="{ active: projectHistoryOpen }" @click.stop="openDrawer('projectHistory')" title="历史">
+        <button class="dock-btn" :class="{ active: projectHistoryOpen || fileHistoryOpen }" @click.stop="toggleHistoryDrawer" title="历史">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
@@ -210,6 +210,7 @@ const drawerStates = {
   chat: chatOpen,
   sidebar: sidebarOpen,
   projectHistory: projectHistoryOpen,
+  fileHistory: fileHistoryOpen,
   toc: tocOpen,
   search: searchOpen,
   details: detailsOpen,
@@ -237,6 +238,16 @@ function openDrawer(name, tab = null) {
   }
   // 打开目标抽屉
   drawerStates[name].value = true
+}
+
+function toggleHistoryDrawer() {
+  // 如果任一历史抽屉打开，关闭它
+  if (projectHistoryOpen.value || fileHistoryOpen.value) {
+    projectHistoryOpen.value = false
+    fileHistoryOpen.value = false
+  } else {
+    openDrawer('projectHistory')
+  }
 }
 
 async function handleLoginSuccess() {

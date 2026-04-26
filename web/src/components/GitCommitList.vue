@@ -1,12 +1,12 @@
 <template>
   <div class="drilldown-page">
-    <div class="drilldown-header">
+    <div v-if="!(commits.length === 0 && untracked)" class="drilldown-header">
       <div class="drilldown-title">
         <span v-if="commits.length > 0" class="drilldown-count">
           {{ searchLoading ? '加载中…' : filteredCommits.length + (hasMore && !commitSearch ? '+' : '') + ' 条' + countLabel }}
         </span>
         <span v-else-if="!isGit" class="drilldown-count">未初始化</span>
-        <span v-else class="drilldown-count">加载中…</span>
+        <span v-else-if="!untracked" class="drilldown-count">加载中…</span>
       </div>
       <input
         v-if="commits.length > 0"
@@ -351,10 +351,6 @@ defineExpose({ observeList, unobserveList, commitSearch })
     align-items: center;
     text-align: center;
     padding: 32px 24px;
-    margin: 12px;
-    background: var(--bg-secondary);
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
     gap: 8px;
 }
 
