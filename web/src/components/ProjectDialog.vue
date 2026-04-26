@@ -267,26 +267,24 @@ async function confirm() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: var(--radius-sm, 6px);
-  background: var(--bg-primary, #fff);
+  border: none;
+  border-radius: 50%;
+  background: var(--bg-tertiary, #f0f0f0);
   color: var(--text-secondary, #666);
   cursor: pointer;
   transition: all 0.15s;
   flex-shrink: 0;
 }
 .toolbar-btn:hover {
-  background: var(--bg-tertiary, #f0f0f0);
-  border-color: var(--accent-color, #0066cc);
+  background: var(--bg-secondary, #e0e0e0);
   color: var(--accent-color, #0066cc);
 }
 .toolbar-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .toolbar-btn.active {
   background: var(--accent-color, #0066cc);
-  border-color: var(--accent-color, #0066cc);
   color: #fff;
 }
 

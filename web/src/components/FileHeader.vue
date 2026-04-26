@@ -210,22 +210,23 @@ onBeforeUnmount(() => {
 
 .file-header-btn {
     margin-left: auto;
-    padding: 4px 12px;
-    border: 1px solid var(--border-color);
+    padding: 0;
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: 50%;
     background: var(--bg-tertiary);
-    border-radius: var(--radius-sm);
     font-size: 12px;
     cursor: pointer;
-    color: var(--text-primary);
+    color: var(--text-secondary);
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
 }
 .file-header-btn:hover {
-    background: var(--accent-color);
-    color: #fff;
-    border-color: var(--accent-color);
+    background: var(--bg-secondary);
+    color: var(--accent-color);
 }
 .file-header-btn svg {
     width: 13px;
@@ -237,14 +238,12 @@ onBeforeUnmount(() => {
     pointer-events: none;
 }
 .file-header-btn:disabled:hover {
-    background: var(--bg-tertiary);
-    color: var(--text-primary);
-    border-color: var(--border-color);
+    background: transparent;
+    color: var(--text-secondary);
 }
 .file-header-btn.active {
     background: var(--accent-color);
     color: #fff;
-    border-color: var(--accent-color);
 }
 
 /* Dropdown */

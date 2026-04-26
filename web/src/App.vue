@@ -486,11 +486,11 @@ onUnmounted(() => {
 
 .dock-btn {
     position: relative;
-    width: 40px;
-    height: 40px;
+    width: 34px;
+    height: 34px;
     border: none;
-    border-radius: 12px;
-    background: transparent;
+    border-radius: 50%;
+    background: var(--bg-tertiary);
     color: var(--text-secondary);
     cursor: pointer;
     display: flex;
@@ -500,7 +500,7 @@ onUnmounted(() => {
 }
 
 .dock-btn:hover {
-    background: var(--bg-tertiary);
+    background: var(--bg-secondary);
     color: var(--text-primary);
 }
 
@@ -519,8 +519,8 @@ onUnmounted(() => {
 }
 
 .dock-btn svg {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
 }
 
 .dock-btn.disabled {

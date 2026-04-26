@@ -585,12 +585,12 @@ if (typeof window !== 'undefined') {
     align-items: center;
     justify-content: center;
     gap: 3px;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     padding: 0;
-    border: 1px solid var(--border-color, #e5e5e5);
-    border-radius: var(--radius-sm, 6px);
-    background: var(--bg-primary, #fff);
+    border: none;
+    border-radius: 50%;
+    background: var(--bg-tertiary, #f0f0f0);
     color: var(--text-secondary, #666);
     cursor: pointer;
     transition: all 0.15s;
@@ -598,8 +598,7 @@ if (typeof window !== 'undefined') {
 }
 
 .toolbar-btn:hover {
-    background: var(--bg-tertiary, #f0f0f0);
-    border-color: var(--accent-color, #4a90d9);
+    background: var(--bg-secondary, #e0e0e0);
     color: var(--accent-color, #4a90d9);
 }
 
@@ -609,20 +608,17 @@ if (typeof window !== 'undefined') {
 }
 
 .toolbar-btn:disabled:hover {
-    background: var(--bg-primary, #fff);
-    border-color: var(--border-color, #e5e5e5);
+    background: transparent;
     color: var(--text-secondary, #666);
 }
 
 .toolbar-btn.active {
     background: var(--accent-color, #4a90d9);
-    border-color: var(--accent-color, #4a90d9);
     color: #fff;
 }
 
 .toolbar-btn.active:hover {
     background: var(--accent-hover, #3a80c9);
-    border-color: var(--accent-hover, #3a80c9);
     color: #fff;
 }
 
