@@ -46,6 +46,8 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	origWatch := model.WatchDir
 	origDB := service.DB
 	origDev := model.DevMode
+	origAgents := model.Agents
+	origAgentList := model.AgentList
 
 	// Set test globals
 	model.SessionToken = ""
@@ -126,6 +128,13 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 
 	service.DB = db
 
+	// Register mock agents so GetDefaultAgentID() works
+	model.Agents = map[string]*model.Agent{
+		"assistant": {ID: "assistant", Name: "Test", Backend: "codebuddy", Model: "glm-5.1"},
+		"handyman":  {ID: "handyman", Name: "Handyman", Backend: "claude", Model: "claude-sonnet-4-6"},
+	}
+	model.AgentList = []*model.Agent{model.Agents["assistant"], model.Agents["handyman"]}
+
 	env := &testEnv{
 		ProjectDir: projectDir,
 		WatchDir:   watchDir,
@@ -139,6 +148,8 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		model.SessionToken = origToken
 		model.WatchDir = origWatch
 		model.DevMode = origDev
+		model.Agents = origAgents
+		model.AgentList = origAgentList
 		service.DB = origDB
 		db.Close()
 	}

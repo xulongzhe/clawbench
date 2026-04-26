@@ -476,10 +476,10 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-		// For OpenCode backend, resolve external session ID when resuming
+		// For OpenCode/Codex backends, resolve external session ID when resuming
 		effectiveSessionID := sessionID
 		resume := service.SessionHasAssistant(sessionID)
-		if backendName == "opencode" && resume {
+		if (backendName == "opencode" || backendName == "codex") && resume {
 			extID := service.GetExternalSessionID(sessionID)
 			if extID != "" {
 				effectiveSessionID = extID
@@ -579,8 +579,8 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			accumulateBlock(&blocks, &currentText, event)
 			if event.Type == "metadata" && event.Meta != nil {
 				responseMetadata = event.Meta
-				// Capture OpenCode's external session ID on first response
-				if backendName == "opencode" && event.Meta.SessionID != "" {
+				// Capture external session ID on first response (OpenCode/Codex)
+				if (backendName == "opencode" || backendName == "codex") && event.Meta.SessionID != "" {
 					existingExtID := service.GetExternalSessionID(sessionID)
 					if existingExtID == "" {
 						if err := service.UpdateExternalSessionID(sessionID, event.Meta.SessionID); err != nil {
