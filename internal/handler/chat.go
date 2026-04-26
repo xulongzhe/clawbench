@@ -1032,6 +1032,13 @@ func accumulateBlock(blocks *[]model.ContentBlock, currentText *strings.Builder,
 			currentText.Reset()
 		}
 		*blocks = append(*blocks, model.ContentBlock{Type: "warning", Text: event.Content})
+	case "error":
+		// Flush pending text first
+		if currentText.Len() > 0 {
+			*blocks = append(*blocks, model.ContentBlock{Type: "text", Text: currentText.String()})
+			currentText.Reset()
+		}
+		*blocks = append(*blocks, model.ContentBlock{Type: "warning", Text: event.Error})
 	}
 }
 

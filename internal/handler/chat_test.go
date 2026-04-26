@@ -814,3 +814,156 @@ func TestUploadFile_DangerousBatExtension(t *testing.T) {
 	w := callHandler(UploadFile, req)
 	assertStatus(t, w, http.StatusBadRequest)
 }
+
+func TestAccumulateBlock_ErrorEvent(t *testing.T) {
+	events := []ai.StreamEvent{
+		{Type: "content", Content: "Some text"},
+		{Type: "error", Error: "Rate limit exceeded"},
+	}
+
+	blocks := feedEvents(events)
+
+	// Should have: text block + warning block (error is stored as warning)
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks (text + warning from error), got %d", len(blocks))
+	}
+	if blocks[0].Type != "text" {
+		t.Errorf("expected first block to be text, got %q", blocks[0].Type)
+	}
+	if blocks[1].Type != "warning" {
+		t.Errorf("expected second block to be warning (from error event), got %q", blocks[1].Type)
+	}
+	if blocks[1].Text != "Rate limit exceeded" {
+		t.Errorf("expected 'Rate limit exceeded', got %q", blocks[1].Text)
+	}
+}
+
+func TestAccumulateBlock_ErrorEventOnly(t *testing.T) {
+	events := []ai.StreamEvent{
+		{Type: "error", Error: "AI 请求失败"},
+	}
+
+	blocks := feedEvents(events)
+
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block (warning from error), got %d", len(blocks))
+	}
+	if blocks[0].Type != "warning" {
+		t.Errorf("expected warning block from error event, got %q", blocks[0].Type)
+	}
+	if blocks[0].Text != "AI 请求失败" {
+		t.Errorf("expected 'AI 请求失败', got %q", blocks[0].Text)
+	}
+}
+
+// --- Second session (resume) scenario tests ---
+
+func TestAccumulateBlock_ResumeSessionWithThinkingAndContent(t *testing.T) {
+	// Simulates events from a codex resume session parsed from stderr:
+	// thinking -> content -> content -> metadata
+	events := []ai.StreamEvent{
+		{Type: "thinking", Content: "The user is asking about the code."},
+		{Type: "content", Content: "Here's what I found:\n"},
+		{Type: "content", Content: "The main function is in main.go.\n"},
+		{Type: "metadata", Meta: &ai.Metadata{SessionID: "019dc814-0f5e-7260-a32b-b274fee09be1"}},
+	}
+
+	blocks := feedEvents(events)
+
+	// Two consecutive content events are coalesced into one text block
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks (thinking + text), got %d: %+v", len(blocks), blocks)
+	}
+	if blocks[0].Type != "thinking" {
+		t.Errorf("expected first block to be thinking, got %q", blocks[0].Type)
+	}
+	if blocks[0].Text != "The user is asking about the code." {
+		t.Errorf("expected thinking content, got %q", blocks[0].Text)
+	}
+	if blocks[1].Type != "text" {
+		t.Errorf("expected text block, got %q", blocks[1].Type)
+	}
+	// Content should be coalesced
+	if !strings.Contains(blocks[1].Text, "Here's what I found") || !strings.Contains(blocks[1].Text, "main.go") {
+		t.Errorf("expected coalesced content, got %q", blocks[1].Text)
+	}
+}
+
+func TestAccumulateBlock_ResumeSessionWithToolUse(t *testing.T) {
+	// Simulates resume session where codex executes a command
+	events := []ai.StreamEvent{
+		{Type: "content", Content: "Let me check that.\n"},
+		{Type: "tool_use", Tool: &ai.ToolCall{
+			Name:  "command_execution",
+			ID:    "exec-1",
+			Input: "bash -c 'ls'",
+			Done:  false,
+		}},
+		{Type: "tool_use", Tool: &ai.ToolCall{
+			Name:  "command_execution",
+			ID:    "exec-1",
+			Input: "bash -c 'ls'\n\nOutput:\nfile1.txt\nfile2.txt",
+			Done:  true,
+		}},
+		{Type: "content", Content: "Here are the files.\n"},
+	}
+
+	blocks := feedEvents(events)
+
+	// text + tool_use + text = 3 blocks
+	if len(blocks) != 3 {
+		t.Fatalf("expected 3 blocks, got %d", len(blocks))
+	}
+	if blocks[0].Type != "text" {
+		t.Errorf("expected first block text, got %q", blocks[0].Type)
+	}
+	if blocks[1].Type != "tool_use" {
+		t.Errorf("expected second block tool_use, got %q", blocks[1].Type)
+	}
+	if blocks[2].Type != "text" {
+		t.Errorf("expected third block text, got %q", blocks[2].Type)
+	}
+}
+
+func TestAccumulateBlock_ResumeSessionError(t *testing.T) {
+	// When codex resume fails (e.g., turn.failed), error event should
+	// produce a warning block instead of the generic "AI未返回任何内容"
+	events := []ai.StreamEvent{
+		{Type: "error", Error: "Rate limit exceeded"},
+	}
+
+	blocks := feedEvents(events)
+
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 warning block from error, got %d", len(blocks))
+	}
+	if blocks[0].Type != "warning" {
+		t.Errorf("expected warning block, got %q", blocks[0].Type)
+	}
+	if blocks[0].Text != "Rate limit exceeded" {
+		t.Errorf("expected actual error message 'Rate limit exceeded', got %q", blocks[0].Text)
+	}
+}
+
+func TestAccumulateBlock_ResumeSession_ContentThenError(t *testing.T) {
+	// Partial content received before an error
+	events := []ai.StreamEvent{
+		{Type: "content", Content: "I was working on "},
+		{Type: "error", Error: "Connection lost"},
+	}
+
+	blocks := feedEvents(events)
+
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks (text + warning), got %d", len(blocks))
+	}
+	if blocks[0].Type != "text" {
+		t.Errorf("expected text block, got %q", blocks[0].Type)
+	}
+	if blocks[1].Type != "warning" {
+		t.Errorf("expected warning block from error, got %q", blocks[1].Type)
+	}
+	if blocks[1].Text != "Connection lost" {
+		t.Errorf("expected 'Connection lost', got %q", blocks[1].Text)
+	}
+}

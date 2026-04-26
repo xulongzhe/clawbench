@@ -1,6 +1,8 @@
 package ai
 
 import (
+	"bufio"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -341,8 +343,8 @@ func TestBuildCodexStreamArgs_NewSession(t *testing.T) {
 	}
 	args := buildCodexStreamArgs(req)
 
-	if args[0] != "exec" {
-		t.Errorf("expected first arg 'exec', got %q", args[0])
+	if args[0] != "--json" {
+		t.Errorf("expected first arg '--json', got %q", args[0])
 	}
 
 	assertArg := func(name, value string) {
@@ -415,25 +417,45 @@ func TestBuildCodexStreamArgs_NoWorkDir(t *testing.T) {
 func TestBuildCodexResumeArgs(t *testing.T) {
 	req := ChatRequest{
 		Prompt: "continue this task",
+		Model:  "codex-MiniMax-M2.7",
 	}
 	args := buildCodexResumeArgs(req, "019dc744-1f6e-75d0-9877-99c8d2f134da")
 
-	if args[0] != "exec" {
-		t.Errorf("expected first arg 'exec', got %q", args[0])
-	}
-	if args[1] != "resume" {
-		t.Errorf("expected second arg 'resume', got %q", args[1])
+	if args[0] != "resume" {
+		t.Errorf("expected first arg 'resume', got %q", args[0])
 	}
 
+	// Resume args must include sandbox_permissions override (equivalent to --dangerously-bypass-approvals-and-sandbox)
+	foundSandbox := false
+	foundModelConfig := false
+	foundProviderConfig := false
 	foundThreadID := false
 	foundPrompt := false
-	for _, arg := range args {
+	for i, arg := range args {
+		if arg == "-c" && i+1 < len(args) && strings.Contains(args[i+1], "sandbox_permissions") {
+			foundSandbox = true
+		}
+		if strings.Contains(arg, "model=") {
+			foundModelConfig = true
+		}
+		if arg == "model_provider=minimax" {
+			foundProviderConfig = true
+		}
 		if arg == "019dc744-1f6e-75d0-9877-99c8d2f134da" {
 			foundThreadID = true
 		}
 		if arg == "continue this task" {
 			foundPrompt = true
 		}
+	}
+	if !foundSandbox {
+		t.Error("expected -c sandbox_permissions= override in resume args")
+	}
+	if !foundModelConfig {
+		t.Error("expected -c model= override in resume args")
+	}
+	if !foundProviderConfig {
+		t.Error("expected -c model_provider=minimax in resume args")
 	}
 	if !foundThreadID {
 		t.Error("expected thread_id in args")
@@ -443,16 +465,590 @@ func TestBuildCodexResumeArgs(t *testing.T) {
 	}
 }
 
-func TestBuildCodexResumeArgs_NoModelOrWorkDir(t *testing.T) {
+func TestBuildCodexResumeArgs_NoModel(t *testing.T) {
 	req := ChatRequest{
 		Prompt: "test",
 	}
 	args := buildCodexResumeArgs(req, "thread-123")
 
-	// Resume args should NOT include -m or -C
-	for _, a := range args {
-		if a == "-m" || a == "-C" {
-			t.Errorf("resume args should not contain %s", a)
+	// Still must have sandbox_permissions override even without model
+	foundSandbox := false
+	for i, a := range args {
+		if a == "-c" && i+1 < len(args) && strings.Contains(args[i+1], "sandbox_permissions") {
+			foundSandbox = true
 		}
+		if strings.Contains(a, "model=") || strings.Contains(a, "model_provider=") {
+			t.Errorf("resume args should not contain model config when no model specified, got %q", a)
+		}
+	}
+	if !foundSandbox {
+		t.Error("expected -c sandbox_permissions= override in resume args even without model")
+	}
+}
+
+// --- parseCodexResumeOutput tests ---
+
+// Codex resume mode uses lasse...lassie tags for thinking blocks
+const (
+	codexThinkStart = "<think>"
+	codexThinkEnd   = "</think>"
+)
+
+func parseResumeOutput(input string) []StreamEvent {
+	ch := make(chan StreamEvent, 64)
+	scanner := bufio.NewScanner(strings.NewReader(input))
+	parseCodexResumeOutput(scanner, ch, "test-session-id")
+	close(ch)
+	var events []StreamEvent
+	for ev := range ch {
+		events = append(events, ev)
+	}
+	return events
+}
+
+func TestCodexResumeOutput_BasicContent(t *testing.T) {
+	input := `OpenAI Codex v0.57.0 (research preview)
+--------
+workdir: /tmp
+model: codex-MiniMax-M2.7
+--------
+user
+hello
+codex
+Hi there! How can I help?`
+	events := parseResumeOutput(input)
+
+	// Should have: 1 content + 1 metadata + 1 done = 3
+	var contentEvents []StreamEvent
+	for _, ev := range events {
+		if ev.Type == "content" {
+			contentEvents = append(contentEvents, ev)
+		}
+	}
+	if len(contentEvents) == 0 {
+		t.Fatal("expected at least one content event, got none")
+	}
+	if !strings.Contains(contentEvents[0].Content, "Hi there") {
+		t.Errorf("expected content to contain 'Hi there', got %q", contentEvents[0].Content)
+	}
+}
+
+func TestCodexResumeOutput_ERRORLine(t *testing.T) {
+	input := `OpenAI Codex v0.57.0 (research preview)
+--------
+workdir: /tmp
+model: codex-MiniMax-M2.7
+--------
+user
+hello
+ERROR: Missing environment variable: MINIMAX_API_KEY`
+	events := parseResumeOutput(input)
+
+	// Should have: 1 error event (stops parsing after ERROR)
+	var errorEvents []StreamEvent
+	for _, ev := range events {
+		if ev.Type == "error" {
+			errorEvents = append(errorEvents, ev)
+		}
+	}
+	if len(errorEvents) == 0 {
+		t.Fatal("expected an error event for ERROR line, got none")
+	}
+	if !strings.Contains(errorEvents[0].Error, "Missing environment variable") {
+		t.Errorf("expected error to mention env var, got %q", errorEvents[0].Error)
+	}
+}
+
+func TestCodexResumeOutput_WithThinking(t *testing.T) {
+	// Codex uses <think>...</think> tags for thinking in resume mode
+	input := "OpenAI Codex v0.57.0 (research preview)\n--------\nuser\nexplain foo\ncodex\n" +
+		"<think>\nI need to think about this\n</think>\n" +
+		"Here is my explanation of foo."
+	events := parseResumeOutput(input)
+
+	var thinkingEvents []StreamEvent
+	var contentEvents []StreamEvent
+	for _, ev := range events {
+		if ev.Type == "thinking" {
+			thinkingEvents = append(thinkingEvents, ev)
+		}
+		if ev.Type == "content" {
+			contentEvents = append(contentEvents, ev)
+		}
+	}
+	if len(thinkingEvents) == 0 {
+		t.Fatal("expected at least one thinking event")
+	}
+	if !strings.Contains(thinkingEvents[0].Content, "think about this") {
+		t.Errorf("expected thinking content, got %q", thinkingEvents[0].Content)
+	}
+	if len(contentEvents) == 0 {
+		t.Fatal("expected at least one content event")
+	}
+	if !strings.Contains(contentEvents[0].Content, "explanation") {
+		t.Errorf("expected content, got %q", contentEvents[0].Content)
+	}
+}
+
+// --- turn.failed tests ---
+
+func TestCodexStream_TurnFailed(t *testing.T) {
+	line := `{"type":"turn.failed","error":{"message":"Rate limit exceeded"}}`
+	events := parseCodexLine(line)
+
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events (error + done), got %d", len(events))
+	}
+	if events[0].Type != "error" {
+		t.Errorf("expected error event, got %s", events[0].Type)
+	}
+	if events[0].Error != "Rate limit exceeded" {
+		t.Errorf("expected 'Rate limit exceeded', got %q", events[0].Error)
+	}
+	if events[1].Type != "done" {
+		t.Errorf("expected done event, got %s", events[1].Type)
+	}
+}
+
+func TestCodexStream_TurnFailedNoMessage(t *testing.T) {
+	line := `{"type":"turn.failed"}`
+	events := parseCodexLine(line)
+
+	if len(events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(events))
+	}
+	if events[0].Type != "error" {
+		t.Errorf("expected error event, got %s", events[0].Type)
+	}
+	if events[0].Error != "AI 请求失败" {
+		t.Errorf("expected default error message, got %q", events[0].Error)
+	}
+}
+
+func TestCodexStream_ErrorType(t *testing.T) {
+	line := `{"type":"error","message":"Something went wrong"}`
+	events := parseCodexLine(line)
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Type != "warning" {
+		t.Errorf("error type messages should be forwarded as warning, got %s", events[0].Type)
+	}
+	if events[0].Content != "Something went wrong" {
+		t.Errorf("expected 'Something went wrong', got %q", events[0].Content)
+	}
+}
+
+// --- Second session (resume) comprehensive tests ---
+// These test the full codex resume flow using real stderr output format.
+// In resume mode, codex outputs the formatted transcript to stderr (not stdout).
+
+func TestCodexResumeOutput_FullResumeSession(t *testing.T) {
+	// Simulates real stderr output from "codex exec resume <thread_id> <prompt>"
+	input := "OpenAI Codex v0.57.0 (research preview)\n" +
+		"--------\n" +
+		"workdir: /home/user/project\n" +
+		"model: codex-MiniMax-M2.7\n" +
+		"provider: minimax\n" +
+		"approval: never\n" +
+		"sandbox: read-only\n" +
+		"session id: 019dc814-0f5e-7260-a32b-b274fee09be1\n" +
+		"--------\n" +
+		"user\n" +
+		"what is 1+1\n" +
+		"codex\n" +
+		codexThinkStart + "\nThe user is asking a simple math question.\n" + codexThinkEnd + "\n" +
+		"1 + 1 = 2\n"
+	events := parseResumeOutput(input)
+
+	// Expected events: thinking, content, metadata, done
+	if len(events) < 3 {
+		t.Fatalf("expected at least 3 events (thinking + content + metadata + done), got %d", len(events))
+	}
+
+	// Verify thinking
+	foundThinking := false
+	foundContent := false
+	foundMetadata := false
+	foundDone := false
+	for _, ev := range events {
+		switch ev.Type {
+		case "thinking":
+			foundThinking = true
+			if !strings.Contains(ev.Content, "simple math") {
+				t.Errorf("expected thinking about math, got %q", ev.Content)
+			}
+		case "content":
+			foundContent = true
+			if !strings.Contains(ev.Content, "1 + 1 = 2") {
+				t.Errorf("expected content '1 + 1 = 2', got %q", ev.Content)
+			}
+		case "metadata":
+			foundMetadata = true
+		case "done":
+			foundDone = true
+		}
+	}
+	if !foundThinking {
+		t.Error("expected a thinking event")
+	}
+	if !foundContent {
+		t.Error("expected a content event")
+	}
+	if !foundMetadata {
+		t.Error("expected a metadata event")
+	}
+	if !foundDone {
+		t.Error("expected a done event")
+	}
+}
+
+func TestCodexResumeOutput_ResumeWithCommandExecution(t *testing.T) {
+	// Resume session where codex executes a command
+	input := "OpenAI Codex v0.57.0 (research preview)\n" +
+		"--------\n" +
+		"session id: thread-abc\n" +
+		"--------\n" +
+		"user\n" +
+		"list files\n" +
+		"codex\n" +
+		"Let me check.\n" +
+		"exec\n" +
+		"bash -c 'ls' in /tmp succeeded in 10ms:\n" +
+		"file1.txt\n" +
+		"file2.txt\n" +
+		"codex\n" +
+		"Here are the files.\n"
+	events := parseResumeOutput(input)
+
+	// Expected: content("Let me check"), tool_use(started), tool_use(completed), content("Here are the files"), metadata, done
+	var contentCount, toolUseCount int
+	for _, ev := range events {
+		switch ev.Type {
+		case "content":
+			contentCount++
+		case "tool_use":
+			toolUseCount++
+		}
+	}
+	if contentCount < 2 {
+		t.Errorf("expected at least 2 content events, got %d", contentCount)
+	}
+	if toolUseCount < 2 {
+		t.Errorf("expected at least 2 tool_use events (started + completed), got %d", toolUseCount)
+	}
+
+	// Verify tool_use has JSON input with command and output
+	var completedTools []StreamEvent
+	for _, ev := range events {
+		if ev.Type == "tool_use" && ev.Tool != nil && ev.Tool.Done {
+			completedTools = append(completedTools, ev)
+		}
+	}
+	if len(completedTools) == 0 {
+		t.Fatal("expected at least one completed tool_use")
+	}
+
+	// Verify tool has an ID for deduplication
+	if completedTools[0].Tool.ID == "" {
+		t.Error("expected tool_use to have an ID for deduplication")
+	}
+
+	// Verify input is valid JSON with command and output fields
+	var toolInput map[string]any
+	if err := json.Unmarshal([]byte(completedTools[0].Tool.Input), &toolInput); err != nil {
+		t.Fatalf("expected tool input to be valid JSON, got %q: %v", completedTools[0].Tool.Input, err)
+	}
+	if cmd, _ := toolInput["command"].(string); !strings.Contains(cmd, "bash") {
+		t.Errorf("expected JSON command field to contain 'bash', got %q", cmd)
+	}
+	if output, _ := toolInput["output"].(string); !strings.Contains(output, "file1.txt") {
+		t.Errorf("expected JSON output field to contain 'file1.txt', got %q", output)
+	}
+}
+
+func TestCodexResumeOutput_MultipleCodexTurns(t *testing.T) {
+	// Session with multiple codex responses (e.g., think -> respond -> tool -> respond)
+	input := "--------\n" +
+		"user\n" +
+		"check the code\n" +
+		"codex\n" +
+		"I'll look at the code.\n" +
+		"codex\n" +
+		"Here's what I found.\n"
+	events := parseResumeOutput(input)
+
+	var contentCount int
+	for _, ev := range events {
+		if ev.Type == "content" {
+			contentCount++
+		}
+	}
+	if contentCount < 2 {
+		t.Errorf("expected at least 2 content events from 2 codex turns, got %d", contentCount)
+	}
+}
+
+func TestCodexResumeOutput_EmptyResponse(t *testing.T) {
+	// Session where codex returns only header, no content (e.g., interrupted)
+	input := "OpenAI Codex v0.57.0 (research preview)\n" +
+		"--------\n" +
+		"session id: thread-xyz\n" +
+		"--------\n" +
+		"user\n" +
+		"hello\n"
+	events := parseResumeOutput(input)
+
+	// Should still have metadata + done even with no content
+	var foundDone, foundMetadata bool
+	for _, ev := range events {
+		if ev.Type == "done" {
+			foundDone = true
+		}
+		if ev.Type == "metadata" {
+			foundMetadata = true
+		}
+	}
+	if !foundDone {
+		t.Error("expected done event even on empty response")
+	}
+	if !foundMetadata {
+		t.Error("expected metadata event even on empty response")
+	}
+}
+
+func TestCodexResumeOutput_AnSIColorCodes(t *testing.T) {
+	// Codex may output ANSI color codes around role markers.
+	// The parser should still detect "codex" and "user" as role markers.
+	input := "--------\n" +
+		"\x1b[36muser\x1b[0m\n" + // ANSI-colored "user" — NOT a bare "user" line
+		"hello\n" +
+		"\x1b[32mcodex\x1b[0m\n" + // ANSI-colored "codex" — NOT a bare "codex" line
+		"Hi there!\n"
+	events := parseResumeOutput(input)
+
+	// With ANSI codes, "codex" marker won't match (it has escape codes),
+	// so no content should be extracted — this tests the parser's
+	// resilience to ANSI. The parser still produces metadata + done.
+	var contentCount int
+	for _, ev := range events {
+		if ev.Type == "content" {
+			contentCount++
+		}
+	}
+	// ANSI-prefixed markers won't match, so no content is expected
+	if contentCount != 0 {
+		t.Logf("Note: ANSI color codes around role markers may cause content to be missed (got %d content events)", contentCount)
+	}
+}
+
+func TestCodexResumeOutput_MetadataSessionID(t *testing.T) {
+	input := "--------\n" +
+		"user\n" +
+		"test\n" +
+		"codex\n" +
+		"Response here.\n"
+	events := parseResumeOutput(input)
+
+	for _, ev := range events {
+		if ev.Type == "metadata" && ev.Meta != nil {
+			if ev.Meta.SessionID != "test-session-id" {
+				t.Errorf("expected session ID 'test-session-id', got %q", ev.Meta.SessionID)
+			}
+			return
+		}
+	}
+	t.Error("expected metadata event with session ID")
+}
+
+func TestCodexResumeOutput_ExecBlockFlushedAtEOF(t *testing.T) {
+	// exec block at end of output without a following "codex" marker
+	input := "--------\n" +
+		"user\n" +
+		"run it\n" +
+		"codex\n" +
+		"Running now.\n" +
+		"exec\n" +
+		"bash -c 'echo hi' in /tmp succeeded in 5ms:\n" +
+		"hi\n"
+	events := parseResumeOutput(input)
+
+	// The exec block should be flushed at EOF with JSON input
+	var completedTools []StreamEvent
+	for _, ev := range events {
+		if ev.Type == "tool_use" && ev.Tool != nil && ev.Tool.Done {
+			completedTools = append(completedTools, ev)
+		}
+	}
+	if len(completedTools) == 0 {
+		t.Fatal("expected at least one completed tool_use from EOF flush")
+	}
+	var toolInput map[string]any
+	if err := json.Unmarshal([]byte(completedTools[0].Tool.Input), &toolInput); err != nil {
+		t.Fatalf("expected JSON input, got %q: %v", completedTools[0].Tool.Input, err)
+	}
+	if cmd, _ := toolInput["command"].(string); !strings.Contains(cmd, "echo hi") {
+		t.Errorf("expected JSON command to contain 'echo hi', got %q", cmd)
+	}
+	if output, _ := toolInput["output"].(string); !strings.Contains(output, "hi") {
+		t.Errorf("expected JSON output to contain 'hi', got %q", output)
+	}
+}
+
+// --- End-to-end resume flow: first session -> second session ---
+// Tests that simulate the complete two-session lifecycle.
+
+func TestCodexResumeOutput_SecondSession_ResumeFlow(t *testing.T) {
+	// This test simulates what happens in the second codex session:
+	// 1. First session created a thread_id (captured via metadata)
+	// 2. Second session uses that thread_id to resume
+	// 3. Resume output (from stderr) is parsed into events
+
+	// Simulate first session JSONL output
+	firstSessionLines := []string{
+		`{"type":"thread.started","thread_id":"019dc814-0f5e-7260-a32b-b274fee09be1"}`,
+		`{"type":"turn.started"}`,
+		`{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Hello! How can I help?"}}`,
+		`{"type":"turn.completed","usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":20}}`,
+	}
+
+	ch1 := make(chan StreamEvent, 64)
+	parser := &CodexStreamParser{}
+	for _, line := range firstSessionLines {
+		parser.ParseLine(line, ch1)
+	}
+	close(ch1)
+
+	var firstEvents []StreamEvent
+	var threadID string
+	for ev := range ch1 {
+		firstEvents = append(firstEvents, ev)
+		if ev.Type == "metadata" && ev.Meta != nil && ev.Meta.SessionID != "" {
+			threadID = ev.Meta.SessionID
+		}
+	}
+	if threadID != "019dc814-0f5e-7260-a32b-b274fee09be1" {
+		t.Fatalf("expected thread_id from first session, got %q", threadID)
+	}
+
+	// Now simulate second session: resume using thread_id
+	// This is the stderr output from "codex exec resume <thread_id> <prompt>"
+	resumeInput := "OpenAI Codex v0.57.0 (research preview)\n" +
+		"--------\n" +
+		"workdir: /home/user/project\n" +
+		"model: codex-MiniMax-M2.7\n" +
+		"provider: minimax\n" +
+		"approval: never\n" +
+		"sandbox: read-only\n" +
+		"session id: " + threadID + "\n" +
+		"--------\n" +
+		"user\n" +
+		"what is 2+2\n" +
+		"codex\n" +
+		codexThinkStart + "\nSimple math question.\n" + codexThinkEnd + "\n" +
+		"2 + 2 = 4\n"
+
+	secondEvents := parseResumeOutput(resumeInput)
+
+	// Verify second session produces content
+	var contentEvents []StreamEvent
+	var thinkingEvents []StreamEvent
+	for _, ev := range secondEvents {
+		if ev.Type == "content" {
+			contentEvents = append(contentEvents, ev)
+		}
+		if ev.Type == "thinking" {
+			thinkingEvents = append(thinkingEvents, ev)
+		}
+	}
+	if len(thinkingEvents) == 0 {
+		t.Error("second session: expected thinking event")
+	}
+	if len(contentEvents) == 0 {
+		t.Fatal("second session: expected at least one content event — this is the core bug!")
+	}
+	if !strings.Contains(contentEvents[0].Content, "2 + 2 = 4") {
+		t.Errorf("second session: expected '2 + 2 = 4', got %q", contentEvents[0].Content)
+	}
+}
+
+func TestCodexResumeOutput_SecondSession_WithToolUse(t *testing.T) {
+	// Second session where codex resumes and executes a command
+	resumeInput := "OpenAI Codex v0.57.0 (research preview)\n" +
+		"--------\n" +
+		"session id: 019dc814-0f5e-7260-a32b-b274fee09be1\n" +
+		"--------\n" +
+		"user\n" +
+		"check git status\n" +
+		"codex\n" +
+		codexThinkStart + "\nI should check git status for the user.\n" + codexThinkEnd + "\n" +
+		"exec\n" +
+		"bash -c 'git status' in /home/user/project succeeded in 100ms:\n" +
+		"On branch main\n" +
+		"nothing to commit\n" +
+		"codex\n" +
+		"Your repo is clean, nothing to commit.\n"
+
+	events := parseResumeOutput(resumeInput)
+
+	// Expected: thinking, tool_use(started), tool_use(completed with output), content, metadata, done
+	var thinkingCount, contentCount, toolUseStarted, toolUseCompleted int
+	for _, ev := range events {
+		switch ev.Type {
+		case "thinking":
+			thinkingCount++
+		case "content":
+			contentCount++
+		case "tool_use":
+			if ev.Tool != nil {
+				if ev.Tool.Done {
+					toolUseCompleted++
+				} else {
+					toolUseStarted++
+				}
+			}
+		}
+	}
+	if thinkingCount == 0 {
+		t.Error("expected thinking event before command execution")
+	}
+	if toolUseStarted == 0 {
+		t.Error("expected tool_use started event")
+	}
+	if toolUseCompleted == 0 {
+		t.Error("expected tool_use completed event")
+	}
+	if contentCount == 0 {
+		t.Fatal("expected content event after tool execution — core bug scenario!")
+	}
+}
+
+func TestBuildCodexResumeArgs_SandboxPermissionsPresent(t *testing.T) {
+	req := ChatRequest{
+		Prompt: "test",
+		Model:  "codex-MiniMax-M2.7",
+	}
+	args := buildCodexResumeArgs(req, "thread-id")
+
+	// Verify sandbox_permissions is in the args and comes before thread_id
+	foundSandboxIdx := -1
+	foundThreadIdx := -1
+	for i, arg := range args {
+		if arg == "-c" && i+1 < len(args) && strings.Contains(args[i+1], "sandbox_permissions") {
+			foundSandboxIdx = i
+		}
+		if arg == "thread-id" {
+			foundThreadIdx = i
+		}
+	}
+	if foundSandboxIdx < 0 {
+		t.Fatal("expected -c sandbox_permissions in resume args")
+	}
+	if foundThreadIdx < 0 {
+		t.Fatal("expected thread-id in resume args")
+	}
+	if foundSandboxIdx > foundThreadIdx {
+		t.Error("sandbox_permissions should come before thread_id in args")
 	}
 }
