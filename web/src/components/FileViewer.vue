@@ -11,7 +11,7 @@
       @open-git-history="emit('openGitHistory')"
     />
 
-    <div class="file-viewer-content">
+    <div class="file-viewer-content" ref="contentRef">
       <!-- Loading -->
       <div v-if="loading" class="loading">
         <div class="spinner" />
@@ -83,7 +83,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import ImagePreview from './ImagePreview.vue'
 import AudioPreview from './AudioPreview.vue'
 import VideoPreview from './VideoPreview.vue'
@@ -101,10 +101,83 @@ const fileType = computed(() => props.file ? getFileType(props.file.name) : null
 const isMarkdown = computed(() => fileType.value?.isMarkdown || false)
 const loading = ref(false)
 const markdownViewMode = ref('rendered')
+const contentRef = ref(null)
 
-// Reset view mode and scroll to top when switching to a different file
+// Per-file scroll position cache
+const scrollPositions = new Map()
+let pendingRestore = null // { path, scrollTop }
+let restoreTimer = null
+let currentFilePath = null
+let scrollHandler = null
+let scrollEl = null // reference to the element we attached scroll listener to
+
+function clearRestoreTimer() {
+    if (restoreTimer) {
+        clearInterval(restoreTimer)
+        restoreTimer = null
+    }
+}
+
+// Find the actual scroll container based on file type
+function getScrollEl() {
+    const el = contentRef.value
+    if (!el) return null
+    if (isMarkdown.value) {
+        return el.querySelector('.markdown-body')
+    }
+    return el.querySelector('.raw-content-pre')
+}
+
+// Listen for scroll events on the actual scroll container and save position
+function attachScrollListener() {
+    detachScrollListener()
+    const el = getScrollEl()
+    if (!el || !currentFilePath) return
+    scrollEl = el
+    scrollHandler = () => {
+        scrollPositions.set(currentFilePath, el.scrollTop)
+    }
+    el.addEventListener('scroll', scrollHandler, { passive: true })
+}
+
+function detachScrollListener() {
+    if (scrollHandler && scrollEl) {
+        scrollEl.removeEventListener('scroll', scrollHandler)
+    }
+    scrollHandler = null
+    scrollEl = null
+}
+
+function tryRestoreOrAttach() {
+    if (loading.value) return
+    const el = getScrollEl()
+    if (!el) return
+    // Content must be scrollable (scrollHeight > clientHeight)
+    if (el.scrollHeight <= el.clientHeight) return
+
+    // Restore scroll if needed
+    if (pendingRestore) {
+        el.scrollTop = pendingRestore.scrollTop
+        pendingRestore = null
+        clearRestoreTimer()
+    }
+    // Always attach listener once content is ready
+    attachScrollListener()
+}
+
+onBeforeUnmount(() => {
+    detachScrollListener()
+    clearRestoreTimer()
+})
+
+// Save/restore scroll position when switching files
 watch(() => props.file, (f, oldF) => {
-    if (!f) { loading.value = true; return }
+    // Stop listening on old scroll container
+    detachScrollListener()
+
+    clearRestoreTimer()
+    if (!f) { currentFilePath = null; loading.value = true; return }
+    currentFilePath = f.path
     if (f.isImage || f.isAudio || f.isVideo || f.tooLarge || f.error) {
         loading.value = false
     } else {
@@ -112,9 +185,13 @@ watch(() => props.file, (f, oldF) => {
     }
     if (f?.path !== oldF?.path) {
         markdownViewMode.value = 'rendered'
-        // Scroll to top when file changes
-        const contentEl = document.querySelector('.file-viewer-content')
-        if (contentEl) contentEl.scrollTop = 0
+        const savedScroll = scrollPositions.get(f.path)
+        if (savedScroll != null) {
+            pendingRestore = { path: f.path, scrollTop: savedScroll }
+        }
+        // Poll until content is rendered and scrollable
+        restoreTimer = setInterval(tryRestoreOrAttach, 50)
+        tryRestoreOrAttach()
     }
 }, { immediate: true })
 
@@ -122,6 +199,10 @@ watch(() => props.file?.content, (content) => {
     if (!props.file) return
     if (props.file.isImage || props.file.isAudio || props.file.isVideo || props.file.tooLarge || props.file.error) return
     loading.value = content == null
+    // Content loaded, try restore or attach listener
+    if (content != null) {
+        tryRestoreOrAttach()
+    }
 })
 
 function formatSize(bytes) {
@@ -143,7 +224,6 @@ function formatSize(bytes) {
     display: flex;
     flex: 1;
     flex-direction: column;
-    overflow-y: auto;
     min-height: 0;
 }
 
