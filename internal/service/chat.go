@@ -1,29 +1,70 @@
 package service
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sync"
 
-	"clawbench/internal/ai"
 	"clawbench/internal/model"
 )
 
 // GetChatHistory retrieves all chat messages for a given project path, backend, and session.
 func GetChatHistory(projectPath, backend, sessionID string) ([]model.ChatMessage, error) {
+	return GetChatHistoryPaged(projectPath, backend, sessionID, 0, "")
+}
+
+// GetChatHistoryPaged retrieves chat messages with pagination.
+// limit=0 means no limit (all messages).
+// beforeTime: if non-empty, only return messages created before this timestamp (cursor-based for lazy load).
+// When beforeTime is empty and limit > 0, returns the most recent (limit) messages.
+// Returns messages in chronological (ASC) order.
+func GetChatHistoryPaged(projectPath, backend, sessionID string, limit int, beforeTime string) ([]model.ChatMessage, error) {
 	messages := []model.ChatMessage{}
-	rows, err := DB.Query(
-		"SELECT id, role, content, file_path, files, backend, streaming, created_at FROM chat_history WHERE project_path = ? AND session_id = ? ORDER BY created_at ASC",
-		projectPath, sessionID,
-	)
+
+	if limit > 0 && beforeTime != "" {
+		// Cursor-based: load messages older than beforeTime
+		query := `SELECT id, role, content, file_path, files, backend, streaming, created_at FROM (
+			SELECT id, role, content, file_path, files, backend, streaming, created_at FROM chat_history
+			WHERE project_path = ? AND session_id = ? AND created_at < ?
+			ORDER BY created_at DESC LIMIT ?
+		) sub ORDER BY created_at ASC`
+		rows, err := DB.Query(query, projectPath, sessionID, beforeTime, limit)
+		if err != nil {
+			return messages, err
+		}
+		defer rows.Close()
+		return scanMessages(rows, sessionID)
+	}
+
+	if limit > 0 {
+		// Initial load: get the most recent (limit) messages
+		query := `SELECT id, role, content, file_path, files, backend, streaming, created_at FROM (
+			SELECT id, role, content, file_path, files, backend, streaming, created_at FROM chat_history
+			WHERE project_path = ? AND session_id = ?
+			ORDER BY created_at DESC LIMIT ?
+		) sub ORDER BY created_at ASC`
+		rows, err := DB.Query(query, projectPath, sessionID, limit)
+		if err != nil {
+			return messages, err
+		}
+		defer rows.Close()
+		return scanMessages(rows, sessionID)
+	}
+
+	// No limit: return all messages in chronological order
+	query := `SELECT id, role, content, file_path, files, backend, streaming, created_at FROM chat_history WHERE project_path = ? AND session_id = ? ORDER BY created_at ASC`
+	rows, err := DB.Query(query, projectPath, sessionID)
 	if err != nil {
 		return messages, err
 	}
 	defer rows.Close()
+	return scanMessages(rows, sessionID)
+}
 
+// scanMessages scans rows into ChatMessage slice.
+func scanMessages(rows *sql.Rows, sessionID string) ([]model.ChatMessage, error) {
+	messages := []model.ChatMessage{}
 	for rows.Next() {
 		var msg model.ChatMessage
 		var filesJSON sql.NullString
@@ -87,22 +128,21 @@ func AddChatMessage(projectPath, backend, sessionID, role, content, filePath str
 		var count int
 		err = tx.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = ?", sessionID).Scan(&count)
 		if err == nil && count == 1 {
-		// Truncate title to 50 runes (characters), not bytes
-		title := content
-		if len(files) > 0 && title == "" {
-			title = "文件消息"
-		}
-		if title == "" {
-			title = "新会话"
-		}
-		runes := []rune(title)
-		if len(runes) > 50 {
-			title = string(runes[:50]) + "..."
-		}
-		_, err = tx.Exec("UPDATE chat_sessions SET title = ? WHERE id = ?", title, sessionID)
-		if err != nil {
-			return 0, err
-		}
+			title := content
+			if len(files) > 0 && title == "" {
+				title = "文件消息"
+			}
+			if title == "" {
+				title = "新会话"
+			}
+			runes := []rune(title)
+			if len(runes) > 50 {
+				title = string(runes[:50]) + "..."
+			}
+			_, err = tx.Exec("UPDATE chat_sessions SET title = ? WHERE id = ?", title, sessionID)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
 
@@ -157,7 +197,7 @@ func generateSessionID() string {
 func GetSessions(projectPath, backend string) ([]model.ChatSession, error) {
 	sessions := []model.ChatSession{}
 	query := `SELECT s.id, s.title, s.backend, s.agent_id, s.model, s.created_at, s.updated_at, s.last_read_at,
-		(SELECT COUNT(*) FROM chat_history h WHERE h.session_id = s.id AND h.role = 'assistant'
+		(SELECT COUNT(*) FROM chat_history h WHERE h.session_id = s.id AND h.role = 'assistant' AND h.streaming = 0
 		 AND (s.last_read_at IS NULL OR h.created_at > s.last_read_at)) AS unread_count
 		FROM chat_sessions s WHERE s.project_path = ?`
 	args := []interface{}{projectPath}
@@ -231,7 +271,6 @@ func DeleteSession(projectPath, backend, sessionID string) error {
 		slog.Warn("failed to delete tasks referencing deleted session",
 			slog.String("session", sessionID),
 			slog.String("err", err.Error()))
-		// Continue to delete session anyway
 	}
 	// Delete the session record
 	_, err = DB.Exec("DELETE FROM chat_sessions WHERE project_path = ? AND backend = ? AND id = ?", projectPath, backend, sessionID)
@@ -255,174 +294,11 @@ func GetSessionAgentID(sessionID string) string {
 	return agentID
 }
 
-// Active session tracking - keyed by sessionID
-var (
-	activeSessions = make(map[string]bool)
-	activeMu      sync.Mutex
-)
-
-// IsSessionRunning checks if a session is currently running.
-func IsSessionRunning(sessionID string) bool {
-	activeMu.Lock()
-	defer activeMu.Unlock()
-	return activeSessions[sessionID]
-}
-
 // SessionHasAssistant checks if a session already has finalized assistant replies (for Claude --resume).
 func SessionHasAssistant(sessionID string) bool {
 	var count int
 	DB.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = ? AND role = 'assistant' AND streaming = 0", sessionID).Scan(&count)
 	return count > 0
-}
-
-// SetSessionRunning sets the running state for a session.
-func SetSessionRunning(sessionID string, running bool) {
-	activeMu.Lock()
-	defer activeMu.Unlock()
-	if running {
-		activeSessions[sessionID] = true
-	} else {
-		delete(activeSessions, sessionID)
-	}
-}
-
-// TrySetSessionRunning atomically checks and sets running state.
-// Returns true if session was successfully marked as running (was not running before).
-// Returns false if session was already running.
-func TrySetSessionRunning(sessionID string) bool {
-	activeMu.Lock()
-	defer activeMu.Unlock()
-
-	if activeSessions[sessionID] {
-		return false
-	}
-	activeSessions[sessionID] = true
-	return true
-}
-
-// Session stream channel management for SSE streaming
-var sessionStreams sync.Map // map[string]chan ai.StreamEvent
-
-// Session cancel functions for aborting AI responses
-var sessionCancels sync.Map // map[string]context.CancelFunc
-var sessionCancelReasons sync.Map // map[string]string — "user", "disconnect"
-
-// RegisterSessionCancel stores the cancel function for a session
-func RegisterSessionCancel(sessionID string, cancel context.CancelFunc) {
-	sessionCancels.Store(sessionID, cancel)
-}
-
-// GetAndClearCancelReason returns the reason for the most recent cancellation of a session.
-// Returns "user" for user-initiated cancel, "disconnect" for SSE client disconnect.
-// Returns "" if no reason was recorded (e.g. timeout or no cancel).
-func GetAndClearCancelReason(sessionID string) string {
-	val, ok := sessionCancelReasons.LoadAndDelete(sessionID)
-	if !ok {
-		return ""
-	}
-	return val.(string)
-}
-
-// UnregisterSessionCancel removes the cancel function for a session
-func UnregisterSessionCancel(sessionID string) {
-	sessionCancels.Delete(sessionID)
-}
-
-// CancelSession cancels an ongoing AI stream for a session.
-// Returns true if session was found and cancelled, or if session is already not running (idempotent).
-func CancelSession(sessionID string) bool {
-	// Load and delete the cancel function
-	val, ok := sessionCancels.LoadAndDelete(sessionID)
-	if !ok {
-		// If session is not in running state, consider it already cancelled (idempotent)
-		if !IsSessionRunning(sessionID) {
-			return true
-		}
-		return false
-	}
-	cancel, ok := val.(context.CancelFunc)
-	if !ok {
-		return false
-	}
-
-	// Cancel the context first (kills CLI subprocess), which causes the goroutine
-	// to stop producing events and drain the channel, making room for the cancelled event.
-	sessionCancelReasons.Store(sessionID, "user")
-	cancel()
-
-	// Send cancelled event to SSE stream after cancelling context (non-blocking)
-	if streamVal, ok := sessionStreams.Load(sessionID); ok {
-		if ch, ok := streamVal.(chan ai.StreamEvent); ok {
-			select {
-			case ch <- ai.StreamEvent{Type: "cancelled"}:
-			default:
-				// Channel full — SSE handler will detect session not running via checkSSE loop
-			}
-		}
-	}
-
-	// Mark session as not running
-	SetSessionRunning(sessionID, false)
-
-	return true
-}
-
-// ForceCancelSession cancels the AI context for a session without sending SSE events.
-// Used when the SSE client has disconnected and we want to stop the AI goroutine
-// to prevent zombie processes.
-func ForceCancelSession(sessionID string) {
-	val, ok := sessionCancels.LoadAndDelete(sessionID)
-	if !ok {
-		return
-	}
-	sessionCancelReasons.Store(sessionID, "disconnect")
-	if cancel, ok := val.(context.CancelFunc); ok {
-		cancel()
-	}
-}
-
-// RegisterSessionStream creates and registers a stream channel for a session
-func RegisterSessionStream(sessionID string) chan ai.StreamEvent {
-	ch := make(chan ai.StreamEvent, 64)
-	sessionStreams.Store(sessionID, ch)
-	return ch
-}
-
-// GetSessionStream returns the stream channel for a session
-func GetSessionStream(sessionID string) (<-chan ai.StreamEvent, bool) {
-	val, ok := sessionStreams.Load(sessionID)
-	if !ok {
-		return nil, false
-	}
-	ch, ok := val.(chan ai.StreamEvent)
-	if !ok {
-		return nil, false
-	}
-	return ch, true
-}
-
-// UnregisterSessionStream removes and closes the stream channel for a session
-func UnregisterSessionStream(sessionID string) {
-	if val, ok := sessionStreams.LoadAndDelete(sessionID); ok {
-		if ch, ok := val.(chan ai.StreamEvent); ok {
-			close(ch)
-		}
-	}
-}
-
-// SendSessionEvent sends an event to the session stream channel (non-blocking).
-// Returns true if the event was sent successfully.
-func SendSessionEvent(sessionID string, event ai.StreamEvent) bool {
-	if streamVal, ok := sessionStreams.Load(sessionID); ok {
-		if ch, ok := streamVal.(chan ai.StreamEvent); ok {
-			select {
-			case ch <- event:
-				return true
-			default:
-			}
-		}
-	}
-	return false
 }
 
 // UpdateStreamingMessage updates the content of the streaming assistant message for a session.
@@ -450,14 +326,12 @@ func UpdateMessageContent(messageID int, content string) error {
 }
 
 // UpdateExternalSessionID sets the external session ID for a ClawBench session.
-// This is used by the OpenCode backend, which manages its own session IDs internally.
 func UpdateExternalSessionID(sessionID, externalID string) error {
 	_, err := DB.Exec("UPDATE chat_sessions SET external_session_id = ? WHERE id = ?", externalID, sessionID)
 	return err
 }
 
 // GetExternalSessionID returns the external session ID for a ClawBench session.
-// Returns empty string if not set or on error.
 func GetExternalSessionID(sessionID string) string {
 	var externalID string
 	err := DB.QueryRow("SELECT external_session_id FROM chat_sessions WHERE id = ?", sessionID).Scan(&externalID)
