@@ -21,13 +21,8 @@ import (
 // and returns the resulting blocks.
 func feedEvents(events []ai.StreamEvent) []model.ContentBlock {
 	var blocks []model.ContentBlock
-	var currentText strings.Builder
 	for _, event := range events {
-		accumulateBlock(&blocks, &currentText, event)
-	}
-	// Flush remaining text (matches handler behavior)
-	if currentText.Len() > 0 {
-		blocks = append(blocks, model.ContentBlock{Type: "text", Text: currentText.String()})
+		accumulateBlock(&blocks, event)
 	}
 	return blocks
 }
@@ -70,27 +65,84 @@ func TestAccumulateBlock_ThinkingCoalescing(t *testing.T) {
 	}
 }
 
-func TestAccumulateBlock_ThinkingBreaksOnText(t *testing.T) {
-	// Text between thinking deltas should create separate blocks
+func TestAccumulateBlock_ThinkingAndTextCoalescing(t *testing.T) {
+	// When thinking and text events interleave (e.g. GLM-5.1 token-level interleaving),
+	// they should be coalesced into their respective blocks, not fragmented.
 	events := []ai.StreamEvent{
 		{Type: "thinking", Content: "First thought"},
 		{Type: "content", Content: "Some text"},
-		{Type: "thinking", Content: "Second thought"},
+		{Type: "thinking", Content: " continues"},
+		{Type: "content", Content: " more"},
+	}
+
+	blocks := feedEvents(events)
+
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks (thinking, text), got %d: %+v", len(blocks), blocks)
+	}
+	if blocks[0].Type != "thinking" || blocks[0].Text != "First thought continues" {
+		t.Errorf("expected coalesced thinking block, got %+v", blocks[0])
+	}
+	if blocks[1].Type != "text" || blocks[1].Text != "Some text more" {
+		t.Errorf("expected coalesced text block, got %+v", blocks[1])
+	}
+}
+
+func TestAccumulateBlock_InterleavedThinkingText(t *testing.T) {
+	// Simulates GLM-5.1 interleaving: thinking and text tokens arrive alternately.
+	// This is the exact pattern seen in the bug: 16 thinking blocks + 14 text blocks
+	// should be coalesced into 1 thinking + 1 text.
+	events := []ai.StreamEvent{
+		{Type: "thinking", Content: ".\n\nLet"},
+		{Type: "content", Content: "I"},
+		{Type: "thinking", Content: " me start"},
+		{Type: "content", Content: "'ll thoroughly"},
+		{Type: "thinking", Content: " by listing"},
+		{Type: "content", Content: " explore the"},
+		{Type: "thinking", Content: " all Go"},
+		{Type: "content", Content: " frontend"},
+		{Type: "thinking", Content: " files under"},
+		{Type: "content", Content: " source code"},
+	}
+
+	blocks := feedEvents(events)
+
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks (1 thinking + 1 text), got %d: %+v", len(blocks), blocks)
+	}
+	if blocks[0].Type != "thinking" {
+		t.Errorf("expected thinking block, got %q", blocks[0].Type)
+	}
+	if blocks[0].Text != ".\n\nLet me start by listing all Go files under" {
+		t.Errorf("expected coalesced thinking, got %q", blocks[0].Text)
+	}
+	if blocks[1].Type != "text" {
+		t.Errorf("expected text block, got %q", blocks[1].Type)
+	}
+	if blocks[1].Text != "I'll thoroughly explore the frontend source code" {
+		t.Errorf("expected coalesced text, got %q", blocks[1].Text)
+	}
+}
+
+func TestAccumulateBlock_ToolUseBoundary(t *testing.T) {
+	// tool_use acts as a boundary: text after tool_use should NOT merge
+	// with text before tool_use.
+	events := []ai.StreamEvent{
+		{Type: "content", Content: "Before tool. "},
+		{Type: "tool_use", Tool: &ai.ToolCall{Name: "Read", ID: "t1", Input: `{"file_path":"/a"}`, Done: true}},
+		{Type: "content", Content: "After tool."},
 	}
 
 	blocks := feedEvents(events)
 
 	if len(blocks) != 3 {
-		t.Fatalf("expected 3 blocks (thinking, text, thinking), got %d", len(blocks))
+		t.Fatalf("expected 3 blocks (text, tool, text), got %d: %+v", len(blocks), blocks)
 	}
-	if blocks[0].Type != "thinking" || blocks[0].Text != "First thought" {
-		t.Errorf("expected first thinking block, got %+v", blocks[0])
+	if blocks[0].Text != "Before tool. " {
+		t.Errorf("expected 'Before tool. ', got %q", blocks[0].Text)
 	}
-	if blocks[1].Type != "text" || blocks[1].Text != "Some text" {
-		t.Errorf("expected text block, got %+v", blocks[1])
-	}
-	if blocks[2].Type != "thinking" || blocks[2].Text != "Second thought" {
-		t.Errorf("expected second thinking block, got %+v", blocks[2])
+	if blocks[2].Text != "After tool." {
+		t.Errorf("expected 'After tool.', got %q", blocks[2].Text)
 	}
 }
 
@@ -200,7 +252,7 @@ func TestAccumulateBlock_MixedFlow(t *testing.T) {
 		t.Errorf("block 3: expected Edit tool_use, got %+v", blocks[3])
 	}
 
-	// Block 4: text
+	// Block 4: text (new text block after tool_use — tool_use is a natural boundary)
 	if blocks[4].Type != "text" || blocks[4].Text != " Done!" {
 		t.Errorf("block 4: expected text, got %+v", blocks[4])
 	}

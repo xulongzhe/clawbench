@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,94 +20,6 @@ import (
 )
 
 const maxChatBodySize = 10 << 20 // 10MB
-
-// ServeChatHistory handles GET (list), POST (add), DELETE (clear) for chat history.
-func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
-	projectPath, ok := requireProject(w, r)
-	if !ok {
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		sessionID := r.URL.Query().Get("session_id")
-		if sessionID == "" {
-			// Get current session from cookie or create default
-			sessionID = getSessionID(r)
-			if sessionID == "" {
-				// Try to get or create default session
-				sessions, err := service.GetSessions(projectPath, "")
-				if err != nil {
-					model.WriteError(w, model.Internal(fmt.Errorf("failed to load sessions")))
-					return
-				}
-		if len(sessions) == 0 {
-				// Create default session with default agent
-				agentID := model.GetDefaultAgentID()
-				backend, defaultModel, _, _, ok := resolveAgentConfig(agentID)
-				if !ok {
-					model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
-					return
-				}
-				sessionID, err = service.CreateSession(projectPath, backend, "新会话", agentID, defaultModel)
-					if err != nil {
-						model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
-						return
-					}
-				} else {
-					sessionID = sessions[0].ID
-				}
-				// Set session cookie
-				setSessionID(w, sessionID)
-			}
-		}
-		backend := service.GetSessionBackend(sessionID)
-		if backend == "" {
-			model.WriteErrorf(w, http.StatusNotFound, "session not found")
-			return
-		}
-		messages, err := service.GetChatHistory(projectPath, backend, sessionID)
-		if err != nil {
-			model.WriteError(w, model.Internal(fmt.Errorf("failed to load history")))
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{"messages": messages, "sessionId": sessionID})
-
-	case http.MethodPost:
-		var req struct {
-			Role     string   `json:"role"`
-			Content  string   `json:"content"`
-			FilePath string   `json:"file_path"`
-			Files    []string `json:"files"`
-			SessionID string   `json:"session_id"`
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxChatBodySize)
-		if !decodeJSON(w, r, &req) {
-			return
-		}
-		if req.Role != "user" && req.Role != "assistant" {
-			model.WriteErrorf(w, http.StatusBadRequest, "Invalid role")
-			return
-		}
-		sessionID := req.SessionID
-		if sessionID == "" {
-			sessionID = getSessionID(r)
-		}
-		backend := service.GetSessionBackend(sessionID)
-		if backend == "" {
-			model.WriteErrorf(w, http.StatusBadRequest, "session not found")
-			return
-		}
-		if _, err := service.AddChatMessage(projectPath, backend, sessionID, req.Role, req.Content, req.FilePath, req.Files, false); err != nil {
-			model.WriteError(w, model.Internal(fmt.Errorf("failed to save message")))
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "savedAt": time.Now().UTC()})
-
-	default:
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
-	}
-}
 
 // ServeAISession handles DELETE for Claude CLI internal session files.
 func ServeAISession(w http.ResponseWriter, r *http.Request) {
@@ -140,43 +53,6 @@ func ServeAISession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": deleted})
-}
-
-// ServeChatCount returns the message count for a session (lightweight polling endpoint).
-func ServeChatCount(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
-		return
-	}
-	sessionID, ok := requireSessionID(w, r)
-	if !ok {
-		return
-	}
-	_ = sessionID
-	count := service.GetChatMessageCount(sessionID)
-	writeJSON(w, http.StatusOK, map[string]any{"count": count})
-}
-
-// ServeChatMessageUpdate handles PUT to update a specific message's content.
-func ServeChatMessageUpdate(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodPut) {
-		return
-	}
-	var req struct {
-		MessageID int64  `json:"messageId"`
-		Content   string `json:"content"`
-	}
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	if req.MessageID == 0 {
-		model.WriteErrorf(w, http.StatusBadRequest, "messageId required")
-		return
-	}
-	if err := service.UpdateMessageContent(int(req.MessageID), req.Content); err != nil {
-		model.WriteError(w, model.Internal(fmt.Errorf("failed to update message")))
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // AIChat handles GET (status/history) and POST (send message) for AI chat.
@@ -234,16 +110,39 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		setSessionID(w, sessionID)
 		// Mark session as read
 		service.UpdateLastRead(sessionID)
-		messages, err := service.GetChatHistory(projectPath, sessionBackend, sessionID)
+
+		// Parse pagination params
+		limit := 0
+		beforeTime := ""
+		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+				limit = l
+			}
+		}
+		if bt := r.URL.Query().Get("before"); bt != "" {
+			beforeTime = bt
+		}
+
+		// If limit not specified, use config default
+		if limit == 0 {
+			limit = model.ChatInitialMessages
+		}
+		// Cap limit to prevent abuse
+		if limit > 100 {
+			limit = 100
+		}
+
+		totalCount := service.GetChatMessageCount(sessionID)
+		messages, err := service.GetChatHistoryPaged(projectPath, sessionBackend, sessionID, limit, beforeTime)
 		// Get session title and agent info
 		sessionTitle, _ := service.GetSessionTitle(sessionID)
-	sessionAgentID := service.GetSessionAgentID(sessionID)
-	running := service.IsSessionRunning(sessionID)
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"messages": []any{}, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"messages": messages, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID})
+		sessionAgentID := service.GetSessionAgentID(sessionID)
+		running := service.IsSessionRunning(sessionID)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"messages": []any{}, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID, "total": totalCount})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"messages": messages, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID, "total": totalCount})
 		return
 	}
 
@@ -255,15 +154,15 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	// Get backend from session, not from global state
 	sessionID := getSessionID(r)
 	if sessionID == "" {
-	// No session yet — auto-create one (same logic as GET)
-	agentID2 := model.GetDefaultAgentID()
-	sessionBackend2, defaultModel2, _, _, ok := resolveAgentConfig(agentID2)
-	if !ok {
-		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
-		return
-	}
-	var err error
-	sessionID, err = service.CreateSession(projectPath, sessionBackend2, "新会话", agentID2, defaultModel2)
+		// No session yet — auto-create one (same logic as GET)
+		agentID2 := model.GetDefaultAgentID()
+		sessionBackend2, defaultModel2, _, _, ok := resolveAgentConfig(agentID2)
+		if !ok {
+			model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
+			return
+		}
+		var err error
+		sessionID, err = service.CreateSession(projectPath, sessionBackend2, "新会话", agentID2, defaultModel2)
 		if err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 			return
@@ -283,11 +182,11 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Message  string   `json:"message"`
-		FilePath string   `json:"filePath"`    // legacy: single file path
+		Message   string   `json:"message"`
+		FilePath  string   `json:"filePath"`    // legacy: single file path
 		FilePaths []string `json:"filePaths"`   // new: multiple file paths
-		Files    []string `json:"files"`
-		AgentID  string   `json:"agentId"`
+		Files     []string `json:"files"`
+		AgentID   string   `json:"agentId"`
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxChatBodySize)
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -424,28 +323,28 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			slog.String("work_dir", fileDir),
 		)
 
-	// Resolve agent config for system prompt and model override
-	agentID := req.AgentID
-	systemPrompt := ""
-	agentModel := ""
-	agentCommand := ""
+		// Resolve agent config for system prompt and model override
+		agentID := req.AgentID
+		systemPrompt := ""
+		agentModel := ""
+		agentCommand := ""
 
-	if agentID == "" {
-		agentID = model.GetDefaultAgentID()
-	}
-	if agentID == "" {
-		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
-		return
-	}
-	if agent, ok := model.Agents[agentID]; ok {
-		systemPrompt = agent.SystemPrompt
-		if agent.Model != "" {
-			agentModel = agent.Model
+		if agentID == "" {
+			agentID = model.GetDefaultAgentID()
 		}
-		if agent.Command != "" {
-			agentCommand = agent.Command
+		if agentID == "" {
+			model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
+			return
 		}
-	}
+		if agent, ok := model.Agents[agentID]; ok {
+			systemPrompt = agent.SystemPrompt
+			if agent.Model != "" {
+				agentModel = agent.Model
+			}
+			if agent.Command != "" {
+				agentCommand = agent.Command
+			}
+		}
 
 		// For OpenCode/Codex backends, resolve external session ID when resuming
 		effectiveSessionID := sessionID
@@ -503,7 +402,6 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		_, _ = service.AddChatMessage(projectPath, backendName, sessionID, "assistant", string(emptyContent), "", nil, true)
 
 		var blocks []model.ContentBlock
-		var currentText strings.Builder
 		var responseMetadata *ai.Metadata
 
 		// Incremental persistence: flush every 1s or every 5 events
@@ -512,13 +410,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		eventCount := 0
 
 		serializeBlocks := func() string {
-			// Snapshot current blocks including pending text
-			snapshotBlocks := make([]model.ContentBlock, len(blocks))
-			copy(snapshotBlocks, blocks)
-			if currentText.Len() > 0 {
-				snapshotBlocks = append(snapshotBlocks, model.ContentBlock{Type: "text", Text: currentText.String()})
-			}
-			contentMap := map[string]any{"blocks": snapshotBlocks}
+			contentMap := map[string]any{"blocks": blocks}
 			if responseMetadata != nil {
 				contentMap["metadata"] = responseMetadata
 			}
@@ -545,23 +437,23 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 					goto finalize
 				}
 
-			accumulateBlock(&blocks, &currentText, event)
-			if event.Type == "metadata" && event.Meta != nil {
-				responseMetadata = event.Meta
-				// Capture external session ID on first response (OpenCode/Codex)
-				if (backendName == "opencode" || backendName == "codex") && event.Meta.SessionID != "" {
-					existingExtID := service.GetExternalSessionID(sessionID)
-					if existingExtID == "" {
-						if err := service.UpdateExternalSessionID(sessionID, event.Meta.SessionID); err != nil {
-							slog.Error("failed to save external session ID",
-								slog.String("session", sessionID),
-								slog.String("external_id", event.Meta.SessionID),
-								slog.String("err", err.Error()),
-							)
+				accumulateBlock(&blocks, event)
+				if event.Type == "metadata" && event.Meta != nil {
+					responseMetadata = event.Meta
+					// Capture external session ID on first response (OpenCode/Codex)
+					if (backendName == "opencode" || backendName == "codex") && event.Meta.SessionID != "" {
+						existingExtID := service.GetExternalSessionID(sessionID)
+						if existingExtID == "" {
+							if err := service.UpdateExternalSessionID(sessionID, event.Meta.SessionID); err != nil {
+								slog.Error("failed to save external session ID",
+									slog.String("session", sessionID),
+									slog.String("external_id", event.Meta.SessionID),
+									slog.String("err", err.Error()),
+								)
+							}
 						}
 					}
 				}
-			}
 				eventCount++
 				if eventCount%5 == 0 {
 					if err := service.UpdateStreamingMessage(projectPath, backendName, sessionID, serializeBlocks()); err != nil {
@@ -572,7 +464,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case <-flushTicker.C:
-				if len(blocks) > 0 || currentText.Len() > 0 {
+				if len(blocks) > 0 {
 					if err := service.UpdateStreamingMessage(projectPath, backendName, sessionID, serializeBlocks()); err != nil {
 						slog.Error("failed to update streaming message",
 							slog.String("session", sessionID),
@@ -584,11 +476,6 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		}
 
 	finalize:
-		// Flush remaining text
-		if currentText.Len() > 0 {
-			blocks = append(blocks, model.ContentBlock{Type: "text", Text: currentText.String()})
-		}
-
 		// Determine cancellation reason
 		cancelReason := service.GetAndClearCancelReason(sessionID)
 
@@ -685,276 +572,51 @@ func CancelChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-// AIChatStream handles SSE streaming for AI chat responses
-func AIChatStream(w http.ResponseWriter, r *http.Request) {
-	if !requireMethod(w, r, http.MethodGet) {
-		return
-	}
-
-	_, ok := requireProject(w, r)
-	if !ok {
-		return
-	}
-
-	sessionID := r.URL.Query().Get("session_id")
-	if sessionID == "" {
-		sessionID = getSessionID(r)
-	}
-	if sessionID == "" {
-		model.WriteErrorf(w, http.StatusBadRequest, "session_id required")
-		return
-	}
-
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
-	// Check if session is running
-	if !service.IsSessionRunning(sessionID) {
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"会话未在运行\"}\n\n")
-		if canFlush, ok := w.(http.Flusher); ok {
-			canFlush.Flush()
-		}
-		return
-	}
-
-	// Get the stream channel
-	streamCh, ok := service.GetSessionStream(sessionID)
-	if !ok {
-		fmt.Fprintf(w, "event: error\ndata: {\"error\":\"未找到会话流\"}\n\n")
-		if canFlush, ok := w.(http.Flusher); ok {
-			canFlush.Flush()
-		}
-		return
-	}
-
-	flusher, canFlush := w.(http.Flusher)
-
-	// Periodically check if session is still running.
-	// If the cancelled event was dropped (channel full), this is the fallback.
-	checkTicker := time.NewTicker(2 * time.Second)
-	defer checkTicker.Stop()
-
-	for {
-		select {
-		case event, ok := <-streamCh:
-			if !ok {
-				// Channel closed, stream ended
-				fmt.Fprintf(w, "event: done\ndata: {}\n\n")
-				if canFlush {
-					flusher.Flush()
-				}
-				return
-			}
-
-			switch event.Type {
-			case "content":
-				data, _ := json.Marshal(map[string]string{"content": event.Content})
-				fmt.Fprintf(w, "event: content\ndata: %s\n\n", data)
-			case "thinking":
-				data, _ := json.Marshal(map[string]string{"text": event.Content})
-				fmt.Fprintf(w, "event: thinking\ndata: %s\n\n", data)
-			case "tool_use":
-				if event.Tool != nil {
-					var input any
-					if event.Tool.Input != "" {
-						json.Unmarshal([]byte(event.Tool.Input), &input)
-					}
-					data, _ := json.Marshal(map[string]any{
-						"name":  event.Tool.Name,
-						"id":    event.Tool.ID,
-						"input": input,
-						"done":  event.Tool.Done,
-					})
-					fmt.Fprintf(w, "event: tool_use\ndata: %s\n\n", data)
-				}
-			case "metadata":
-				data, _ := json.Marshal(event.Meta)
-				fmt.Fprintf(w, "event: metadata\ndata: %s\n\n", data)
-			case "done":
-				fmt.Fprintf(w, "event: done\ndata: {}\n\n")
-				if canFlush {
-					flusher.Flush()
-				}
-				return
-			case "cancelled":
-				data, _ := json.Marshal(map[string]string{"reason": "cancelled"})
-				fmt.Fprintf(w, "event: cancelled\ndata: %s\n\n", data)
-				if canFlush {
-					flusher.Flush()
-				}
-				return
-			case "error":
-				data, _ := json.Marshal(map[string]string{"error": event.Error})
-				fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
-				if canFlush {
-					flusher.Flush()
-				}
-				return
-			case "warning":
-				data, _ := json.Marshal(map[string]string{"text": event.Content})
-				fmt.Fprintf(w, "event: warning\ndata: %s\n\n", data)
-			}
-
-			if canFlush {
-				flusher.Flush()
-			}
-
-		case <-checkTicker.C:
-			// Fallback: if session stopped running but no cancelled event arrived
-			// (e.g., channel was full when CancelSession tried to send), synthesize one.
-			if !service.IsSessionRunning(sessionID) {
-				fmt.Fprintf(w, "event: cancelled\ndata: {\"reason\":\"cancelled\"}\n\n")
-				if canFlush {
-					flusher.Flush()
-				}
-				return
-			}
-
-		case <-r.Context().Done():
-			// Client disconnected — do NOT kill the AI session.
-			// The AI goroutine continues running and writing to DB.
-			// The frontend will reconnect SSE when it reloads the session.
-			slog.Info("sse client disconnected, ai session continues",
-				slog.String("session_id", sessionID),
-			)
-			return
-		}
-	}
-}
-
-// ServeSessions handles GET (list) and POST (create) for chat sessions.
-func ServeSessions(w http.ResponseWriter, r *http.Request) {
-	projectPath, ok := requireProject(w, r)
-	if !ok {
-		return
-	}
-
-	switch r.Method {
-	case http.MethodGet:
-		// Get all sessions across all backends
-		sessions, err := service.GetSessions(projectPath, "")
-		if err != nil {
-			model.WriteError(w, model.Internal(fmt.Errorf("failed to load sessions")))
-			return
-		}
-		// Set running status for each session and convert model name for Claude backend
-		for i := range sessions {
-			sessions[i].Running = service.IsSessionRunning(sessions[i].ID)
-		}
-		writeJSON(w, http.StatusOK, map[string]interface{}{"sessions": sessions})
-
-	case http.MethodPost:
-		var req struct {
-			Title   string `json:"title"`
-			Backend string `json:"backend"`
-			AgentID string `json:"agentId"`
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, maxChatBodySize)
-		if !decodeJSON(w, r, &req) {
-			return
-		}
-		// Resolve backend and model from agent config if agent_id is provided
-		backend := req.Backend
-		agentModel := ""
-	agentID := req.AgentID
-	resolvedAgentID := agentID
-	backend2, model2, _, _, ok := resolveAgentConfig(agentID)
-	if !ok {
-		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
-		return
-	}
-	if backend2 != "" {
-		backend = backend2
-	}
-	agentModel = model2
-	if resolvedAgentID == "" {
-		resolvedAgentID = model.GetDefaultAgentID()
-	}
-	if backend == "" {
-		backend = "codebuddy"
-	}
-		title := req.Title
-		if title == "" {
-			// Auto-generate title
-			existingSessions, err := service.GetSessions(projectPath, backend)
-			if err == nil {
-				title = fmt.Sprintf("新会话 %d", len(existingSessions)+1)
-			} else {
-				title = "新会话"
-			}
-		}
-		sessionID, err := service.CreateSession(projectPath, backend, title, resolvedAgentID, agentModel)
-		if err != nil {
-			model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
-			return
-		}
-		// Set the new session ID in cookie
-		setSessionID(w, sessionID)
-		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "sessionId": sessionID, "backend": backend, "agentId": resolvedAgentID})
-
-	default:
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
-	}
-}
-
-// DeleteSession handles DELETE for a single session.
-func DeleteSession(w http.ResponseWriter, r *http.Request) {
-	projectPath, ok := requireProject(w, r)
-	if !ok {
-		return
-	}
-
-	if !requireMethod(w, r, http.MethodDelete) {
-		return
-	}
-
-	sessionID, ok := requireSessionID(w, r)
-	if !ok {
-		return
-	}
-
-	// Get backend from query param, required for deleting sessions across backends
-	backend := r.URL.Query().Get("backend")
-	if backend == "" {
-		backend = "codebuddy"
-	}
-
-	if err := service.DeleteSession(projectPath, backend, sessionID); err != nil {
-		model.WriteError(w, model.Internal(fmt.Errorf("failed to delete session")))
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-}
-
 // accumulateBlock processes a single StreamEvent and updates the blocks slice.
-// Text events are batched into currentText; thinking events are coalesced;
-// tool_use events are deduplicated by ID.
-func accumulateBlock(blocks *[]model.ContentBlock, currentText *strings.Builder, event ai.StreamEvent) {
+// Both text and thinking events are coalesced into the most recent block of
+// the same type; tool_use events are deduplicated by ID.
+//
+// When AI models (e.g. GLM-5.1) interleave thinking_delta and text_delta events,
+// the last block may not be the same type as the incoming event. Instead of only
+// checking the last block, we search backward for the most recent block of the
+// same type and merge into it. However, tool_use blocks act as natural boundaries —
+// text/thinking after a tool_use should not be merged with text/thinking before it.
+// This prevents a single thinking or text block from being fragmented into many
+// tiny blocks when events alternate, while preserving the semantic separation
+// around tool calls.
+func accumulateBlock(blocks *[]model.ContentBlock, event ai.StreamEvent) {
+	// findLastBlockOfType searches backward for the most recent block of the
+	// given type, but stops at tool_use boundaries (they are natural separators).
+	findLastBlockOfType := func(typ string) (int, bool) {
+		for i := len(*blocks) - 1; i >= 0; i-- {
+			if (*blocks)[i].Type == typ {
+				return i, true
+			}
+			// tool_use blocks are natural boundaries — don't merge across them
+			if (*blocks)[i].Type == "tool_use" {
+				return -1, false
+			}
+		}
+		return -1, false
+	}
+
 	switch event.Type {
 	case "content":
-		currentText.WriteString(event.Content)
-	case "thinking":
-		// Flush pending text first
-		if currentText.Len() > 0 {
-			*blocks = append(*blocks, model.ContentBlock{Type: "text", Text: currentText.String()})
-			currentText.Reset()
+		// Coalesce incremental content deltas into the most recent text block.
+		if idx, found := findLastBlockOfType("text"); found {
+			(*blocks)[idx].Text += event.Content
+		} else {
+			*blocks = append(*blocks, model.ContentBlock{Type: "text", Text: event.Content})
 		}
-		// Coalesce incremental thinking deltas into one block
-		if len(*blocks) > 0 && (*blocks)[len(*blocks)-1].Type == "thinking" {
-			(*blocks)[len(*blocks)-1].Text += event.Content
+	case "thinking":
+		// Coalesce incremental thinking deltas into the most recent thinking block.
+		if idx, found := findLastBlockOfType("thinking"); found {
+			(*blocks)[idx].Text += event.Content
 		} else {
 			*blocks = append(*blocks, model.ContentBlock{Type: "thinking", Text: event.Content})
 		}
 	case "tool_use":
 		if event.Tool != nil {
-			// Flush pending text first
-			if currentText.Len() > 0 {
-				*blocks = append(*blocks, model.ContentBlock{Type: "text", Text: currentText.String()})
-				currentText.Reset()
-			}
 			// Parse tool input JSON into map
 			var input map[string]any
 			if event.Tool.Input != "" {
@@ -984,18 +646,8 @@ func accumulateBlock(blocks *[]model.ContentBlock, currentText *strings.Builder,
 			}
 		}
 	case "warning":
-		// Flush pending text first
-		if currentText.Len() > 0 {
-			*blocks = append(*blocks, model.ContentBlock{Type: "text", Text: currentText.String()})
-			currentText.Reset()
-		}
 		*blocks = append(*blocks, model.ContentBlock{Type: "warning", Text: event.Content})
 	case "error":
-		// Flush pending text first
-		if currentText.Len() > 0 {
-			*blocks = append(*blocks, model.ContentBlock{Type: "text", Text: currentText.String()})
-			currentText.Reset()
-		}
 		*blocks = append(*blocks, model.ContentBlock{Type: "warning", Text: event.Error})
 	}
 }
@@ -1013,30 +665,4 @@ func sendEvent(ctx context.Context, ch chan<- ai.StreamEvent, event ai.StreamEve
 		// Channel full — drop the event, DB persistence ensures no data loss
 		return true
 	}
-}
-
-// getSessionID retrieves session ID from query param or cookie.
-func getSessionID(r *http.Request) string {
-	// Try query parameter first
-	if sessionID := r.URL.Query().Get("session_id"); sessionID != "" {
-		return sessionID
-	}
-	// Fall back to cookie
-	cookie, err := r.Cookie("chat_session_id")
-	if err != nil {
-		return ""
-	}
-	return cookie.Value
-}
-
-// setSessionID sets session ID in cookie.
-func setSessionID(w http.ResponseWriter, sessionID string) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     "chat_session_id",
-		Value:    sessionID,
-		Path:     "/",
-		MaxAge:   86400 * 30, // 30 days
-		HttpOnly: false,
-		SameSite: http.SameSiteLaxMode,
-	})
 }

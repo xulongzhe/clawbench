@@ -139,7 +139,7 @@ export function useChatStream(options: UseChatStreamOptions) {
           inputDisabled.value = false
           loading.value = false
           onMessage()
-          onScrollBottom()
+          onScrollBottom(true)
           onPlaySound?.()
           // Show toast notification when AI replies and chat panel is not open
           if (!isOpen.value) {
@@ -192,16 +192,6 @@ export function useChatStream(options: UseChatStreamOptions) {
       return true
     }
 
-    // Initialize currentText from existing text block (for reconnection)
-    let currentText = ''
-    const existingBlocks = messages.value[lastIndex]?.blocks || []
-    if (existingBlocks.length > 0) {
-      const lastBlock = existingBlocks[existingBlocks.length - 1]
-      if (lastBlock?.type === 'text') {
-        currentText = lastBlock.text || ''
-      }
-    }
-
     eventSource = new EventSource(`/api/ai/chat/stream?session_id=${encodeURIComponent(sessionId)}`)
 
     // Start stream timeout
@@ -210,22 +200,36 @@ export function useChatStream(options: UseChatStreamOptions) {
     // Track if we've already created a task for this stream's proposal
     let proposalCreated = false
 
+    // Helper: find the most recent block of a given type by searching backward.
+    // This handles interleaved thinking/text events correctly — when events
+    // alternate, the last block may not be the same type as the incoming event.
+    // tool_use blocks act as natural boundaries — text/thinking after a tool_use
+    // should not be merged with text/thinking before it.
+    const findLastBlockOfType = (blocks: any[], type: string): any | undefined => {
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].type === type) return blocks[i]
+        // tool_use blocks are natural boundaries — don't merge across them
+        if (blocks[i].type === 'tool_use') return undefined
+      }
+      return undefined
+    }
+
     eventSource.addEventListener('content', (e) => {
       if (!guard()) return
       resetStreamTimeout()
       const data = JSON.parse(e.data)
-      currentText += data.content
-      // Update or add text block at the end
+      // Coalesce content into the most recent text block
       const blocks = messages.value[lastIndex].blocks
-      const lastBlock = blocks[blocks.length - 1]
-      if (lastBlock && lastBlock.type === 'text') {
-        lastBlock.text = currentText
+      const existingText = findLastBlockOfType(blocks, 'text')
+      if (existingText) {
+        existingText.text += data.content
       } else {
-        blocks.push({ type: 'text', text: currentText })
+        blocks.push({ type: 'text', text: data.content })
       }
       // Detect completed <schedule-proposal> tag during streaming and create task
-      if (!proposalCreated && /<schedule-proposal(\s+confirmed)?>[\s\S]*?<\/schedule-proposal>/.test(currentText)) {
-        const match = currentText.match(/<schedule-proposal(\s+confirmed)?>([\s\S]*?)<\/schedule-proposal>/)
+      const fullText = findLastBlockOfType(blocks, 'text')?.text || ''
+      if (!proposalCreated && /<schedule-proposal(\s+confirmed)?>[\s\S]*?<\/schedule-proposal>/.test(fullText)) {
+        const match = fullText.match(/<schedule-proposal(\s+confirmed)?>([\s\S]*?)<\/schedule-proposal>/)
         if (match) {
           try {
             const proposal = JSON.parse(match[2].trim())
@@ -243,13 +247,11 @@ export function useChatStream(options: UseChatStreamOptions) {
       if (!guard()) return
       resetStreamTimeout()
       const data = JSON.parse(e.data)
-      // Flush any pending text
-      currentText = ''
       const blocks = messages.value[lastIndex].blocks
-      // Append or extend thinking block
-      const lastBlock = blocks[blocks.length - 1]
-      if (lastBlock && lastBlock.type === 'thinking') {
-        lastBlock.text += data.text
+      // Coalesce thinking into the most recent thinking block
+      const existingThinking = findLastBlockOfType(blocks, 'thinking')
+      if (existingThinking) {
+        existingThinking.text += data.text
       } else {
         blocks.push({ type: 'thinking', text: data.text })
       }
@@ -260,8 +262,6 @@ export function useChatStream(options: UseChatStreamOptions) {
       resetStreamTimeout()
       const data = JSON.parse(e.data)
       if (!guard()) return
-      // Flush any pending text
-      currentText = ''
       const blocks = messages.value[lastIndex].blocks
       if (data.done) {
         // Find existing tool block by id and update
@@ -293,7 +293,7 @@ export function useChatStream(options: UseChatStreamOptions) {
         inputDisabled.value = false
         loading.value = false
         onMessage()
-        onScrollBottom()
+        onScrollBottom(true)
         onPlaySound?.()
         if (!isOpen.value) {
           const lastMsg = messages.value[messages.value.length - 1]
