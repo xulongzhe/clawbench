@@ -249,6 +249,11 @@ async function confirm() {
   padding: 6px 10px 4px;
 }
 
+.dialog-toolbar-row :deep(.search-pill) {
+  flex: 1;
+  min-width: 0;
+}
+
 .dialog-breadcrumb {
   padding: 4px 10px 6px;
   font-size: 12px;
@@ -300,7 +305,7 @@ async function confirm() {
 .dialog-item {
   display: flex;
   align-items: center;
-  padding: 8px 16px;
+  padding: 5px 16px;
   cursor: pointer;
   gap: 8px;
   transition: background 0.1s;
