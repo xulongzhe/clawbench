@@ -8,7 +8,7 @@
       :toc-open="tocOpen"
       :search-open="searchOpen"
       @delete="emit('delete', file.path)"
-      @toggle-view="markdownViewMode = markdownViewMode === 'rendered' ? 'raw' : 'rendered'"
+      @toggle-view="emit('toggleView')"
       @show-details="emit('showDetails')"
       @open-git-history="emit('openGitHistory')"
       @toggle-toc="emit('toggleToc')"
@@ -100,13 +100,13 @@ const props = defineProps({
     file: Object,
     tocOpen: Boolean,
     searchOpen: Boolean,
+    markdownViewMode: String,
 })
-const emit = defineEmits(['delete', 'showDetails', 'openGitHistory', 'toggleToc', 'toggleSearch'])
+const emit = defineEmits(['delete', 'showDetails', 'openGitHistory', 'toggleToc', 'toggleSearch', 'toggleView'])
 
 const fileType = computed(() => props.file ? getFileType(props.file.name) : null)
 const isMarkdown = computed(() => fileType.value?.isMarkdown || false)
 const loading = ref(false)
-const markdownViewMode = ref('rendered')
 const contentRef = ref(null)
 
 // Per-file scroll position cache
@@ -190,7 +190,6 @@ watch(() => props.file, (f, oldF) => {
         loading.value = f.content == null
     }
     if (f?.path !== oldF?.path) {
-        markdownViewMode.value = 'rendered'
         const savedScroll = scrollPositions.get(f.path)
         if (savedScroll != null) {
             pendingRestore = { path: f.path, scrollTop: savedScroll }

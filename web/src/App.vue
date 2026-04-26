@@ -45,11 +45,13 @@
             :file="currentFile"
             :toc-open="tocOpen"
             :search-open="searchOpen"
+            :markdown-view-mode="markdownViewMode"
             @delete="handleDelete(currentFile?.path)"
             @show-details="detailsOpen = true"
             @open-git-history="fileHistoryOpen = true"
             @toggle-toc="openDrawer('toc')"
             @toggle-search="currentFile?.content && openDrawer('search')"
+            @toggle-view="markdownViewMode = markdownViewMode === 'rendered' ? 'raw' : 'rendered'"
           />
         </div>
       </main>
@@ -90,6 +92,7 @@
       <SearchDrawer
         :file="currentFile"
         :open="searchOpen"
+        :view-mode="currentFileIsMarkdown ? markdownViewMode : undefined"
         @close="searchOpen = false"
         @jump="scrollToLine"
       />
@@ -179,6 +182,9 @@ const detailsOpen = ref(false)
 
 const searchOpen = ref(false)
 
+// Markdown view mode (lifted from FileViewer so SearchDrawer can access it)
+const markdownViewMode = ref('rendered')
+
 // Chat
 const chatOpen = ref(false)
 const initialChatTab = ref(null)
@@ -251,6 +257,12 @@ const theme = ref(localStorage.getItem('theme') ||
 const dirEntries = computed(() => store.state.dirEntries)
 const currentDir = computed(() => store.state.currentDir)
 const currentFile = computed(() => store.state.currentFile)
+const currentFileIsMarkdown = computed(() => {
+    const f = currentFile.value
+    if (!f) return false
+    const ft = getFileType(f.name)
+    return ft?.isMarkdown || false
+})
 const projectRoot = computed(() => store.state.projectRoot)
 
 // These must be defined after currentFile since they reference it
@@ -281,6 +293,7 @@ function handleGoForward() {
 watch(() => currentFile.value, (f) => {
     tocOpen.value = false
     detailsOpen.value = false
+    markdownViewMode.value = 'rendered'
 })
 
 function toggleHidden() {

@@ -39,12 +39,12 @@
         <div v-else class="search-results">
           <div class="search-results-count">{{ results.length }} 处匹配</div>
           <div
-            v-for="r in results"
-            :key="r.line"
+            v-for="(r, idx) in results"
+            :key="viewMode === 'rendered' ? idx : r.line"
             class="search-result-item"
-            @click="jumpTo(r.line)"
+            @click="jumpTo(r)"
           >
-            <span class="search-result-lnum">{{ r.line }}</span>
+            <span class="search-result-lnum">{{ viewMode === 'rendered' ? idx + 1 : r.line }}</span>
             <span class="search-result-text" v-html="r.highlighted" />
           </div>
         </div>
@@ -60,6 +60,7 @@ import BottomSheet from './BottomSheet.vue'
 const props = defineProps({
   file: Object,
   open: Boolean,
+  viewMode: String, // 'rendered' | 'raw' | undefined
 })
 const emit = defineEmits(['close', 'jump'])
 
@@ -73,7 +74,7 @@ watch(() => props.open, async (val) => {
   }
 })
 
-// Clear query only when the file changes
+// Clear query when the file changes
 watch(() => props.file?.path, () => {
   query.value = ''
 })
@@ -97,10 +98,59 @@ function highlightText(text, q) {
   return escaped.replace(re, '<mark>$&</mark>')
 }
 
-const results = computed(() => {
+// --- Rendered mode: search DOM text ---
+
+const BLOCK_TAGS = new Set(['P', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'TD', 'TH', 'DT', 'DD', 'PRE', 'FIGCAPTION', 'DIV'])
+
+function findBlockAncestor(node) {
+  let el = node.parentElement
+  while (el) {
+    if (BLOCK_TAGS.has(el.tagName) && el.closest('.markdown-body')) {
+      return el
+    }
+    el = el.parentElement
+  }
+  return node.parentElement
+}
+
+function searchRenderedContent(q) {
+  const container = document.querySelector('.markdown-body')
+  if (!container) return []
+
+  const out = []
+  const seen = new Set()
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null)
+
+  while (walker.nextNode()) {
+    const textNode = walker.currentNode
+    const text = textNode.textContent
+    if (!text || !text.includes(q)) continue
+
+    const block = findBlockAncestor(textNode)
+    if (!block || seen.has(block)) continue
+    seen.add(block)
+
+    const fullText = block.textContent.trim()
+    const idx = fullText.indexOf(q)
+    const start = Math.max(0, idx - 30)
+    const end = Math.min(fullText.length, idx + q.length + 30)
+    const snippet = (start > 0 ? '...' : '') + fullText.slice(start, end) + (end < fullText.length ? '...' : '')
+
+    out.push({
+      line: out.length,
+      text: snippet,
+      highlighted: highlightText(snippet, q),
+      _blockEl: block,
+    })
+  }
+  return out
+}
+
+// --- Raw mode: search source lines ---
+
+function searchRawContent(q) {
   const content = props.file?.content
-  if (!content || !query.value.trim()) return []
-  const q = query.value.trim()
+  if (!content) return []
   const lines = content.split('\n')
   const out = []
   for (let i = 0; i < lines.length; i++) {
@@ -113,16 +163,38 @@ const results = computed(() => {
     }
   }
   return out
+}
+
+const results = computed(() => {
+  if (!props.file?.content || !query.value.trim()) return []
+  const q = query.value.trim()
+  if (props.viewMode === 'rendered') {
+    return searchRenderedContent(q)
+  }
+  return searchRawContent(q)
 })
 
-function jumpTo(line) {
-  emit('jump', line)
-  emit('close')
+function jumpTo(result) {
+  if (props.viewMode === 'rendered') {
+    scrollToRenderedMatch(result)
+    emit('close')
+  } else {
+    emit('jump', result.line)
+    emit('close')
+  }
+}
+
+function scrollToRenderedMatch(result) {
+  const block = result._blockEl
+  if (!block) return
+  block.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  block.classList.add('line-flash')
+  block.addEventListener('animationend', () => block.classList.remove('line-flash'), { once: true })
 }
 
 function jumpToFirst() {
   if (results.value.length > 0) {
-    jumpTo(results.value[0].line)
+    jumpTo(results.value[0])
   }
 }
 </script>
