@@ -26,7 +26,7 @@
     --scrollbar-track: #f1f1f1;
     --dock-bg: rgba(248, 249, 250, 0.75);
     --dock-border: rgba(0, 0, 0, 0.08);
-    --dock-height: calc(53px + env(safe-area-inset-bottom, 0));
+    --dock-height: calc(47px + env(safe-area-inset-bottom, 0));
 
     /* Lightbox */
     --lb-bg: rgba(0,0,0,0.92);

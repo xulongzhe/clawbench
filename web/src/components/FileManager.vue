@@ -21,12 +21,6 @@
     <!-- Dir nav -->
     <div id="dirNav" class="dir-nav">
       <div class="dir-toolbar">
-        <button class="toolbar-btn" :disabled="!currentDir" @click="$emit('navigateDir', '')" title="项目根目录">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        </button>
-        <button class="toolbar-btn" :disabled="!currentDir" @click="navigateUp" title="返回">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15,18 9,12 15,6"/></svg>
-        </button>
         <button class="toolbar-btn" :class="{ active: sortField === 'name' }" @click="$emit('toggleSort', 'name')" :title="sortField === 'name' ? '按名称排序 (' + (sortDir === 'asc' ? '升序)' : '降序)') : '按名称排序'">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h12M3 18h6"/></svg>
           <svg class="sort-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline v-if="sortField === 'name' && sortDir === 'desc'" points="6,15 12,9 18,15"/><polyline v-else points="6,9 12,15 18,9"/></svg>
@@ -44,7 +38,7 @@
         </button>
         <SearchInput v-model="searchQuery" placeholder="Filter files..." @dblclick="searchQuery = ''" />
       </div>
-      <div class="dir-breadcrumb" id="dirBreadcrumb" v-html="dirBreadcrumbHtml" />
+      <DirBreadcrumb :path="currentDir" @navigate="$emit('navigateDir', $event)" />
     </div>
 
     <!-- File list -->
@@ -153,9 +147,10 @@
 <script setup>
 import { ref, computed, reactive, inject, nextTick, Teleport, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
-import { getFileType, splitPath } from '@/utils/helpers.ts'
+import { getFileType } from '@/utils/helpers.ts'
 import { store } from '@/stores/app.ts'
 import SearchInput from './SearchInput.vue'
+import DirBreadcrumb from './DirBreadcrumb.vue'
 
 const toast = inject('toast', null)
 
@@ -358,24 +353,6 @@ const filteredEntries = computed(() => {
     return entries
 })
 
-const dirBreadcrumbHtml = computed(() => {
-    if (!props.currentDir || props.currentDir === '.') return ''
-    const parts = splitPath(props.currentDir)
-    let crumbPath = ''
-    return parts.map((part, i) => {
-        crumbPath = i === 0 ? part : parts.slice(0, i + 1).join('/')
-        const isLast = i === parts.length - 1
-        return `<span class="crumb ${isLast ? 'current' : ''}" ${!isLast ? `onclick="window.__navigateDir('${crumbPath.replace(/'/g, "\\'")}')"` : ''}>${part}</span>${!isLast ? '<span class="crumb-sep">›</span>' : ''}`
-    }).join('')
-})
-
-function navigateUp() {
-    if (!props.currentDir) return
-    const parts = splitPath(props.currentDir)
-    parts.pop()
-    emit('navigateDir', parts.join('/'))
-}
-
 function handleFileClick(e) {
     const item = e.target.closest('.file-item')
     if (!item) return
@@ -473,10 +450,6 @@ function doDelete() {
     emit('delete', ctxMenu.entry.path)
 }
 
-// Expose navigateDir globally for inline onclick handlers
-if (typeof window !== 'undefined') {
-    window.__navigateDir = (path) => emit('navigateDir', path)
-}
 </script>
 
 <style scoped>
@@ -535,6 +508,10 @@ if (typeof window !== 'undefined') {
     min-width: 0;
     max-width: 180px;
     margin-left: auto;
+}
+
+.dir-nav :deep(.dir-breadcrumb) {
+    padding: 0 6px;
 }
 
 /* ── File list area ── */
@@ -603,48 +580,6 @@ if (typeof window !== 'undefined') {
     opacity: 1;
 }
 
-.dir-breadcrumb {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    overflow-x: auto;
-    font-size: 13px;
-    color: var(--text-muted, #999);
-    scrollbar-width: none;
-}
-.dir-breadcrumb::-webkit-scrollbar {
-    display: none;
-}
-
-.dir-breadcrumb :deep(.crumb) {
-    padding: 3px 6px;
-    border-radius: 4px;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s;
-}
-
-.dir-breadcrumb :deep(.crumb:hover) {
-    background: var(--bg-tertiary, #f0f0f0);
-    color: var(--accent-color, #4a90d9);
-}
-
-.dir-breadcrumb :deep(.crumb.current) {
-    font-weight: 600;
-    color: var(--text-primary, #1a1a1a);
-    cursor: default;
-}
-
-.dir-breadcrumb :deep(.crumb.current:hover) {
-    background: none;
-    color: var(--text-primary, #1a1a1a);
-}
-
-.dir-breadcrumb :deep(.crumb-sep) {
-    color: var(--text-muted, #999);
-    font-size: 11px;
-}
 
 /* ── File Items ── */
 .file-item {

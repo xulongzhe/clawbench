@@ -3,12 +3,6 @@
     <!-- Browse nav -->
     <div class="dialog-nav">
       <div class="dialog-toolbar-row">
-        <button class="toolbar-btn" :disabled="browsePath === '/'" @click="browseNavigate('/')" title="返回根目录">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-        </button>
-        <button class="toolbar-btn" :disabled="browsePathParts.length === 0" @click="navigateUp" title="返回上级">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="15,18 9,12 15,6"/></svg>
-        </button>
         <button class="toolbar-btn" @click="doNewFolder" title="新建文件夹">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
         </button>
@@ -17,12 +11,7 @@
         </button>
         <SearchInput v-model="searchQuery" placeholder="搜索..." />
       </div>
-      <div class="dialog-breadcrumb">
-        <span @click="browseNavigate('/')">根目录</span>
-        <span v-for="(_, i) in browsePathParts" :key="i" @click="browseNavigate('/' + browsePathParts.slice(0, i + 1).join('/'))">
-          / {{ browsePathParts[i] }}
-        </span>
-      </div>
+      <DirBreadcrumb :path="browsePath === '/' ? '' : browsePath.slice(1)" @navigate="onBreadcrumbNavigate" />
     </div>
 
     <!-- Content -->
@@ -64,7 +53,8 @@
 import { ref, computed, watch, inject } from 'vue'
 import ModalDialog from './ModalDialog.vue'
 import SearchInput from './SearchInput.vue'
-import { baseName, splitPath } from '@/utils/helpers.ts'
+import DirBreadcrumb from './DirBreadcrumb.vue'
+import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({
   open: Boolean,
@@ -101,7 +91,9 @@ watch(() => props.open, (isOpen) => {
     }
 })
 
-const browsePathParts = computed(() => splitPath(browsePath.value).filter(Boolean))
+function onBreadcrumbNavigate(path) {
+  browseNavigate(path ? '/' + path : '/')
+}
 
 const displayItems = computed(() => {
     const q = searchQuery.value.trim().toLowerCase()
@@ -127,16 +119,6 @@ function browseNavigate(path) {
     browsePath.value = path
     selectedPath.value = path
     loadBrowse()
-}
-
-function navigateUp() {
-    const parts = browsePathParts.value
-    if (parts.length === 0) return
-    if (parts.length === 1) {
-        browseNavigate('/')
-    } else {
-        browseNavigate(parts.slice(0, -1).join('/'))
-    }
 }
 
 async function loadBrowse() {
@@ -254,19 +236,9 @@ async function confirm() {
   min-width: 0;
 }
 
-.dialog-breadcrumb {
-  padding: 4px 10px 6px;
-  font-size: 12px;
-  color: var(--text-secondary, #666);
-  overflow-x: auto;
-  white-space: nowrap;
-  scrollbar-width: none;
+.dialog-nav :deep(.dir-breadcrumb) {
+  padding: 0 10px 4px;
 }
-.dialog-breadcrumb::-webkit-scrollbar {
-  display: none;
-}
-.dialog-breadcrumb span { cursor: pointer; }
-.dialog-breadcrumb span:hover { color: var(--accent-color, #0066cc); }
 
 /* Toolbar buttons */
 .toolbar-btn {
