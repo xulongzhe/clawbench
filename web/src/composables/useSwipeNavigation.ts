@@ -63,25 +63,28 @@ export function useSwipeNavigation(
 
         const offset = swipeOffset.value
         isSwiping.value = false
-        settling.value = true
 
         if (Math.abs(offset) >= threshold) {
-            if (offset > 0 && onSwipeRight) {
-                // 右滑 -> 上一个文件
+            // Determine direction before resetting
+            const direction = offset > 0 ? 'right' : 'left'
+
+            // Immediately reset offset without animation
+            swipeOffset.value = 0
+            settling.value = false
+
+            if (direction === 'right' && onSwipeRight) {
                 onSwipeRight()
-            } else if (offset < 0 && onSwipeLeft) {
-                // 左滑 -> 下一个文件
+            } else if (direction === 'left' && onSwipeLeft) {
                 onSwipeLeft()
             }
+        } else {
+            // Below threshold — animate back to center
+            settling.value = true
+            swipeOffset.value = 0
+            setTimeout(() => {
+                settling.value = false
+            }, 300)
         }
-
-        // 归零偏移（CSS transition 会处理动画）
-        swipeOffset.value = 0
-
-        // 等过渡动画结束后清除 settling 状态
-        setTimeout(() => {
-            settling.value = false
-        }, 300)
     }
 
     return {
