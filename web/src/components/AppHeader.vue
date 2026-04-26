@@ -34,7 +34,7 @@
                 <rect x="14" y="14" width="7" height="7" rx="1.5"/>
               </svg>
               <span class="item-label">{{ item.name }}</span>
-              <span class="item-path">{{ item.displayPath }}</span>
+              <span class="item-path" @mousedown.prevent="onPathMouseDown" @click.stop>{{ item.displayPath }}</span>
             </div>
             <div class="dropdown-divider"></div>
             <div class="dropdown-item other-item" @click="openBrowse">
@@ -154,6 +154,30 @@ function onClickOutside(e) {
     }
 }
 
+function onPathMouseDown(e) {
+    const el = e.currentTarget
+    if (el.scrollWidth <= el.clientWidth) return
+    let startX = e.pageX
+    let scrollLeft = el.scrollLeft
+    let moved = false
+
+    function onMouseMove(ev) {
+        const dx = ev.pageX - startX
+        if (Math.abs(dx) > 2) moved = true
+        el.scrollLeft = scrollLeft - dx
+    }
+    function onMouseUp(ev) {
+        if (moved) {
+            ev.preventDefault()
+            ev.stopPropagation()
+        }
+        document.removeEventListener('mousemove', onMouseMove)
+        document.removeEventListener('mouseup', onMouseUp)
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+}
+
 onMounted(() => {
     document.addEventListener('click', onClickOutside)
 })
@@ -234,7 +258,7 @@ onUnmounted(() => {
     top: calc(100% + 4px);
     left: 0;
     min-width: 220px;
-    max-width: 320px;
+    max-width: 280px;
     background: var(--bg-primary);
     border: 1px solid var(--border-color);
     border-radius: 8px;
@@ -298,9 +322,16 @@ onUnmounted(() => {
     flex: 1;
     color: var(--text-muted);
     font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow-x: auto;
+    overflow-y: hidden;
     white-space: nowrap;
+    cursor: default;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.item-path::-webkit-scrollbar {
+    display: none;
 }
 
 .other-item .item-icon {
