@@ -25,6 +25,7 @@
       :expandedTools="render.expandedTools.value"
       :blockProposals="render.blockProposals"
       :agents="session.agents.value"
+      :currentAgent="currentAgent"
       :renderedContents="render.renderedContents.value"
       @toggle-tool="render.toggleToolDetail"
       @show-metadata="showMetadata"
@@ -83,7 +84,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onUnmounted, onMounted, inject, provide, toRef } from 'vue'
+import { ref, computed, watch, onUnmounted, onMounted, inject, provide, toRef } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import SessionDrawer from './SessionDrawer.vue'
 import TaskDrawer from './TaskDrawer.vue'
@@ -108,6 +109,11 @@ const messages = ref([])
 const inputDisabled = ref(true)
 const loading = ref(false)
 const currentSessionId = ref('')
+const currentAgent = computed(() => {
+  const agentId = session.currentAgentId.value
+  if (!agentId) return null
+  return session.agents.value.find(a => a.id === agentId) || null
+})
 const sessionDrawerRef = ref(null)
 const bottomSheetRef = ref(null)
 const inputBarRef = ref(null)
