@@ -64,8 +64,13 @@
         rows="1"
         @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
         @input="autoResizeTextarea"
-        @blur="collapseTextarea"
-        @dblclick="inputText = ''"></textarea>
+        @blur="collapseTextarea"></textarea>
+      <button v-if="inputText && !loading" class="chat-clear-btn" @click="inputText = ''; collapseTextarea()" title="清空输入">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
       <button v-if="loading" class="chat-stop-btn" @click="$emit('cancel')" title="停止生成">
         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
         <span class="stop-btn-pulse"></span>
@@ -307,6 +312,27 @@ defineExpose({
   align-items: flex-end;
   gap: 4px;
   padding: 4px 6px 6px;
+}
+
+/* Clear input button */
+.chat-clear-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.chat-clear-btn:hover {
+  color: var(--danger-color, #dc3545);
+  background: color-mix(in srgb, var(--danger-color, #dc3545) 8%, transparent);
 }
 
 .chat-textarea {
