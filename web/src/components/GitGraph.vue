@@ -73,6 +73,8 @@
             :fill="node.color"
             stroke="var(--bg-primary, #fff)"
             stroke-width="1.5"
+            class="git-graph-node"
+            @click.stop="onNodeClick(node, $event)"
           />
         </g>
       </g>
@@ -80,7 +82,7 @@
     <!-- Tooltip (refs or branch name) -->
     <Teleport to="body">
       <div
-        v-if="tooltip && !collapsed"
+        v-if="tooltip"
         ref="tooltipEl"
         class="git-graph-tooltip"
         :style="tooltipStyle"
@@ -156,14 +158,10 @@ const svgWidth = computed(() => {
 
 const onNodeClick = (node, event) => {
   event.stopPropagation()
-  const scrollEl = event.currentTarget.closest('.git-graph-scroll')
-  const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0
-  const scrollTop = scrollEl ? scrollEl.scrollTop : 0
-  const rect = scrollEl ? scrollEl.getBoundingClientRect() : { left: 0, top: 0 }
 
-  // Position tooltip to the right of the node
-  const x = node.cx - scrollLeft + rect.left + 8
-  const y = node.cy - scrollTop + rect.top - 8
+  // Use click event coordinates for reliable positioning regardless of scroll/collapsed state
+  const x = event.clientX + 8
+  const y = event.clientY - 8
 
   // Collect items: refs first, then branch names (deduplicated)
   const items = (node.refs || []).map(refLabelText)
@@ -248,7 +246,8 @@ const tooltipStyle = computed(() => {
   stroke-width: 3;
 }
 
-.git-graph-ref-node {
+.git-graph-ref-node,
+.git-graph-node {
   cursor: pointer;
 }
 
