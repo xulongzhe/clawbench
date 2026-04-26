@@ -302,7 +302,7 @@ function extractTocForCode(content: string, lang: string): TocItem[] {
 
     const seen = new Set<string>()
     const toc: TocItem[] = []
-    for (const [regex] of patterns) {
+    for (const [regex, , level] of patterns) {
         regex.lastIndex = 0
         let match
         while ((match = regex.exec(content)) !== null) {
@@ -310,12 +310,11 @@ function extractTocForCode(content: string, lang: string): TocItem[] {
             if (!text || seen.has(text)) continue
             seen.add(text)
             const line = extractLine(content, match.index)
-            toc.push({ level: 1, text, id: 'toc-l' + line, line })
+            toc.push({ level, text, id: 'toc-l' + line, line })
         }
     }
     // Sort by line number
     toc.sort((a, b) => a.line - b.line)
-    // Assign levels based on dedup/sort
     return toc
 }
 

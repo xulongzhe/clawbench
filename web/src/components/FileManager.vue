@@ -108,10 +108,7 @@
             <polyline points="14,2 14,8 20,8"/>
           </svg>
           <span class="file-name">{{ entry.name }}</span>
-          <span class="file-type-badge" :style="{ background: getFileType(entry.name).color + '22', color: getFileType(entry.name).color, border: '1px solid ' + getFileType(entry.name).color + '44' }">
-            {{ getFileType(entry.name).label }}
-          </span>
-          <span class="file-meta">{{ formatDate(entry.modified) }}</span>
+          <span class="file-meta">{{ formatSize(entry.size) }} · {{ formatDate(entry.modified) }}</span>
         </div>
       </template>
     </div>
@@ -415,6 +412,13 @@ function formatDate(modified) {
     return isToday
         ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
         : `${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+}
+
+function formatSize(size) {
+    if (size == null) return ''
+    if (size < 1024) return size + ' B'
+    if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' K'
+    return (size / (1024 * 1024)).toFixed(1) + ' M'
 }
 
 function showCtx(e, entry) {
@@ -753,18 +757,6 @@ if (typeof window !== 'undefined') {
 
 .file-item.active .file-meta {
     color: rgba(255,255,255,0.7);
-}
-
-/* File Type Badge */
-.file-type-badge {
-    font-size: 9px;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-    flex-shrink: 0;
-    font-family: monospace;
-    letter-spacing: 0.5px;
-    line-height: 1.4;
 }
 
 /* Empty State */
