@@ -25,6 +25,7 @@ type Config struct {
 
 // Global application state
 var (
+	BinDir         string // Directory of the running binary
 	WatchDir       string
 	SessionToken   string
 	SessionCookie  = "clawbench_session"

@@ -47,7 +47,7 @@ dev:
 default_agent: "assistant"
 
 # 日志配置（可选）
-# Linux/macOS 示例：~/.ClawBench/logs
-# Windows 示例：C:\Users\your-username\.ClawBench\logs
-log_dir: "~/.ClawBench/logs"  # 日志目录，默认 .ClawBench/logs/
+# Linux/macOS 示例：.clawbench/logs（二进制同级目录下）
+# Windows 示例：同上
+log_dir: ".clawbench/logs"  # 日志目录，默认二进制同级 .clawbench/logs/
 log_max_days: 7                # 日志保留天数，默认 7

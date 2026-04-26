@@ -76,8 +76,12 @@ func main() {
 		model.DevMode = true
 	}
 
+	// Determine binary directory for data storage (green portable layout)
+	absBinPath, _ := filepath.Abs(os.Args[0])
+	model.BinDir = filepath.Dir(absBinPath)
+
 	// Load configuration
-	configPath := filepath.Join(filepath.Dir(os.Args[0]), "config.yaml")
+	configPath := filepath.Join(model.BinDir, "config.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		configPath = "config.yaml"
 	}
@@ -114,7 +118,7 @@ func main() {
 		cfg.LogMaxDays = 7
 	}
 	if cfg.LogDir == "" {
-		cfg.LogDir = filepath.Join(model.WatchDir, ".ClawBench", "logs")
+		cfg.LogDir = filepath.Join(model.BinDir, ".clawbench", "logs")
 	}
 	cfg.LogDir = platform.ExpandTilde(cfg.LogDir)
 	// In dev mode, use a separate log directory
@@ -145,7 +149,7 @@ func main() {
 	)
 
 	// Load agent configurations
-	agentsDir := filepath.Join(filepath.Dir(os.Args[0]), "agents")
+	agentsDir := filepath.Join(model.BinDir, "agents")
 	if _, err := os.Stat(agentsDir); os.IsNotExist(err) {
 		agentsDir = "agents"
 	}

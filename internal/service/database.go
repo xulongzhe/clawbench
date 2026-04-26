@@ -15,7 +15,7 @@ var DB *sql.DB
 
 // InitDB initializes the SQLite database with latest schema.
 func InitDB() error {
-	dbDir := filepath.Join(model.WatchDir, ".ClawBench")
+	dbDir := filepath.Join(model.BinDir, ".clawbench")
 	if err := os.MkdirAll(dbDir, 0755); err != nil {
 		return fmt.Errorf("failed to create db directory: %w", err)
 	}
