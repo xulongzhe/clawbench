@@ -17,6 +17,7 @@ export interface UseChatStreamOptions {
   onParseAssistantContent: (content: string) => { blocks: any[]; metadata?: any; cancelled?: boolean; scheduledTask?: any }
   onToast: (msg: string, opts?: any) => void
   onNotification: (title: string, opts?: any) => void
+  onPlaySound?: () => void
 }
 
 export function useChatStream(options: UseChatStreamOptions) {
@@ -36,6 +37,7 @@ export function useChatStream(options: UseChatStreamOptions) {
     onParseAssistantContent,
     onToast,
     onNotification,
+    onPlaySound,
   } = options
 
   let eventSource: EventSource | null = null
@@ -138,6 +140,7 @@ export function useChatStream(options: UseChatStreamOptions) {
           loading.value = false
           onMessage()
           onScrollBottom()
+          onPlaySound?.()
           // Show toast notification when AI replies and chat panel is not open
           if (!isOpen.value) {
             const lastMsg = messages.value[messages.value.length - 1]
@@ -291,6 +294,7 @@ export function useChatStream(options: UseChatStreamOptions) {
         loading.value = false
         onMessage()
         onScrollBottom()
+        onPlaySound?.()
         if (!isOpen.value) {
           const lastMsg = messages.value[messages.value.length - 1]
           if (lastMsg?.role === 'assistant') {

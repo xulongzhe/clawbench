@@ -98,6 +98,7 @@ import { useToast } from '@/composables/useToast.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useNotification } from '@/composables/useNotification.ts'
 import { useFileUpload } from '@/composables/useFileUpload.ts'
+import { playNotificationSound } from '@/composables/useNotificationSound.ts'
 
 const props = defineProps({
     open: Boolean,
@@ -157,6 +158,7 @@ const session = useChatSession({
   onMessage: () => emit('message'),
   onOpen: () => emit('open'),
   isOpen: toRef(props, 'open'),
+  onPlaySound: playNotificationSound,
 })
 
 
@@ -176,6 +178,7 @@ const stream = useChatStream({
   onParseAssistantContent: (content) => render.parseAssistantContent(content),
   onToast: (msg, opts) => toast.show(msg, opts),
   onNotification: (title, opts) => notification.show(title, opts),
+  onPlaySound: playNotificationSound,
 })
 
 provide('chatRender', {
