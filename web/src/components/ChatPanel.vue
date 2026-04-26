@@ -2302,14 +2302,14 @@ watch(() => props.open, async (val) => {
     background: var(--user-msg-color);
     color: white;
     align-self: flex-end;
-    border-bottom-right-radius: 4px;
+    border-radius: 16px 16px 0 16px;
 }
 
 .chat-message.assistant {
     background: var(--bg-tertiary);
     color: var(--text-primary);
     align-self: stretch;
-    border-bottom-left-radius: 4px;
+    border-radius: 16px 16px 16px 0;
     position: relative;
 }
 
