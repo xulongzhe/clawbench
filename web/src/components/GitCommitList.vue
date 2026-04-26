@@ -1,6 +1,6 @@
 <template>
   <div class="drilldown-page">
-    <div v-if="!(commits.length === 0 && untracked)" class="drilldown-header">
+    <div v-if="!(commits.length === 0 && untracked) && isGit" class="drilldown-header">
       <div class="drilldown-title">
         <span v-if="commits.length > 0" class="drilldown-count">
           {{ searchLoading ? '加载中…' : filteredCommits.length + (hasMore && !commitSearch ? '+' : '') + ' 条' + countLabel }}
