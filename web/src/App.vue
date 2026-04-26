@@ -43,9 +43,13 @@
           <FileViewer
             v-if="currentFile"
             :file="currentFile"
+            :toc-open="tocOpen"
+            :search-open="searchOpen"
             @delete="handleDelete(currentFile?.path)"
             @show-details="detailsOpen = true"
             @open-git-history="fileHistoryOpen = true"
+            @toggle-toc="openDrawer('toc')"
+            @toggle-search="currentFile?.content && openDrawer('search')"
           />
         </div>
       </main>
@@ -121,26 +125,10 @@
             <line x1="3" y1="18" x2="21" y2="18"/>
           </svg>
         </button>
-        <button class="dock-btn" :class="{ disabled: !tocFabVisible, active: tocOpen }" @click.stop="tocFabVisible && openDrawer('toc')" :title="tocOpen ? '关闭目录' : '目录'">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="8" y1="6" x2="21" y2="6"/>
-            <line x1="8" y1="12" x2="21" y2="12"/>
-            <line x1="8" y1="18" x2="21" y2="18"/>
-            <line x1="3" y1="6" x2="5" y2="6"/>
-            <line x1="3" y1="12" x2="5" y2="12"/>
-            <line x1="3" y1="18" x2="5" y2="18"/>
-          </svg>
-        </button>
         <button class="dock-btn" :class="{ active: projectHistoryOpen }" @click.stop="openDrawer('projectHistory')" title="历史">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"/>
             <polyline points="12 6 12 12 16 14"/>
-          </svg>
-        </button>
-        <button class="dock-btn" :class="{ disabled: !currentFile?.content, active: searchOpen }" @click.stop="currentFile?.content && openDrawer('search')" title="搜索文件">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"/>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
         </button>
         <button class="dock-btn" @click.stop="handleRefresh" title="刷新">

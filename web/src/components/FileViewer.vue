@@ -5,10 +5,14 @@
       v-if="file && !loading && !file.error"
       :file="file"
       :view-mode="markdownViewMode"
+      :toc-open="tocOpen"
+      :search-open="searchOpen"
       @delete="emit('delete', file.path)"
       @toggle-view="markdownViewMode = markdownViewMode === 'rendered' ? 'raw' : 'rendered'"
       @show-details="emit('showDetails')"
       @open-git-history="emit('openGitHistory')"
+      @toggle-toc="emit('toggleToc')"
+      @toggle-search="emit('toggleSearch')"
     />
 
     <div class="file-viewer-content" ref="contentRef">
@@ -94,8 +98,10 @@ import { getFileType, formatFileSize } from '@/utils/helpers.ts'
 
 const props = defineProps({
     file: Object,
+    tocOpen: Boolean,
+    searchOpen: Boolean,
 })
-const emit = defineEmits(['delete', 'showDetails', 'openGitHistory'])
+const emit = defineEmits(['delete', 'showDetails', 'openGitHistory', 'toggleToc', 'toggleSearch'])
 
 const fileType = computed(() => props.file ? getFileType(props.file.name) : null)
 const isMarkdown = computed(() => fileType.value?.isMarkdown || false)

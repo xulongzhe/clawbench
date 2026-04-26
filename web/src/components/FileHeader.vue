@@ -5,23 +5,19 @@
       <span class="file-path-hint" style="cursor:pointer" @click="$emit('showDetails')" :title="file.name">{{ file.name }}</span>
     </div>
     <div class="header-actions">
-      <a :href="'/api/local-file/' + encodeURIComponent(file.path)" :download="file.name" class="image-download-btn" title="下载">
+      <!-- TOC button (standalone, not in dropdown) -->
+      <button class="file-header-btn" :class="{ active: tocOpen }" @click.stop="$emit('toggleToc')" title="目录">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7,10 12,15 17,10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </a>
-      <button class="file-header-btn" @click="confirmDelete" title="删除">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-          <polyline points="3,6 5,6 21,6"/>
-          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-          <path d="M10 11v6M14 11v6"/>
-          <path d="M9 6V4h6v2"/>
+          <line x1="8" y1="6" x2="21" y2="6"/>
+          <line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="5" y2="6"/>
+          <line x1="3" y1="12" x2="5" y2="12"/>
+          <line x1="3" y1="18" x2="5" y2="18"/>
         </svg>
       </button>
 
-      <!-- Markdown toggle button (code icon) -->
+      <!-- Markdown toggle button -->
       <button v-if="isMarkdown" class="file-header-btn" @click="$emit('toggleView')" title="切换视图">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
           <polyline points="16 18 22 12 16 6"/>
@@ -29,30 +25,68 @@
         </svg>
       </button>
 
-      <!-- Git history button -->
-      <button
-        class="file-header-btn"
-        @click="$emit('openGitHistory')"
-        title="代码历史"
-      >
+      <!-- Search button (standalone, not in dropdown) -->
+      <button class="file-header-btn" :class="{ active: searchOpen }" :disabled="!file.content" @click.stop="$emit('toggleSearch')" title="搜索">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-            <circle cx="12" cy="12" r="10"/>
-            <polyline points="12 6 12 12 16 14"/>
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
       </button>
+
+      <!-- More actions dropdown -->
+      <div class="dropdown-wrapper" ref="dropdownRef">
+        <button class="file-header-btn" @click.stop="menuOpen = !menuOpen" title="更多">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+            <circle cx="12" cy="5" r="1"/>
+            <circle cx="12" cy="12" r="1"/>
+            <circle cx="12" cy="19" r="1"/>
+          </svg>
+        </button>
+        <div v-if="menuOpen" class="dropdown-menu">
+          <a class="dropdown-item" :href="'/api/local-file/' + encodeURIComponent(file.path)" :download="file.name" @click="menuOpen = false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7,10 12,15 17,10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            下载
+          </a>
+          <button class="dropdown-item" @click="handleDelete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="3,6 5,6 21,6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6M14 11v6"/>
+              <path d="M9 6V4h6v2"/>
+            </svg>
+            删除
+          </button>
+          <button class="dropdown-item" @click="handleGitHistory">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            代码历史
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { getFileType } from '@/utils/helpers.ts'
 
 const props = defineProps({
     file: Object,
     viewMode: String,
+    tocOpen: Boolean,
+    searchOpen: Boolean,
 })
-const emit = defineEmits(['delete', 'toggleView', 'showDetails', 'openGitHistory'])
+const emit = defineEmits(['delete', 'toggleView', 'showDetails', 'openGitHistory', 'toggleToc', 'toggleSearch'])
+
+const menuOpen = ref(false)
+const dropdownRef = ref(null)
 
 const fileType = computed(() => props.file ? getFileType(props.file.name) : null)
 const isMarkdown = computed(() => fileType.value?.isMarkdown || false)
@@ -73,10 +107,31 @@ const badgeStyle = computed(() => ({
     border: `1px solid ${badgeColor.value}44`,
 }))
 
-function confirmDelete() {
+function handleDelete() {
+    menuOpen.value = false
     if (!confirm(`确定要删除"${props.file?.name}"吗？`)) return
     emit('delete', props.file?.path)
 }
+
+function handleGitHistory() {
+    menuOpen.value = false
+    emit('openGitHistory')
+}
+
+// Close dropdown on outside click
+function handleClickOutside(e) {
+    if (dropdownRef.value && !dropdownRef.value.contains(e.target)) {
+        menuOpen.value = false
+    }
+}
+
+onMounted(() => {
+    document.addEventListener('click', handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+    document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <style scoped>
@@ -179,27 +234,51 @@ function confirmDelete() {
     color: var(--text-primary);
     border-color: var(--border-color);
 }
-
-.image-download-btn {
-    padding: 4px 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-tertiary);
-    border-radius: var(--radius-sm);
-    color: var(--text-primary);
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-}
-.image-download-btn:hover {
+.file-header-btn.active {
     background: var(--accent-color);
     color: #fff;
     border-color: var(--accent-color);
 }
-.image-download-btn svg {
-    width: 13px;
-    height: 13px;
+
+/* Dropdown */
+.dropdown-wrapper {
+    position: relative;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    min-width: 140px;
+    padding: 4px 0;
+    overflow: hidden;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    width: 100%;
+    border: none;
+    background: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.dropdown-item:hover {
+    background: var(--accent-color);
+    color: #fff;
+}
+.dropdown-item svg {
+    flex-shrink: 0;
 }
 </style>
