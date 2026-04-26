@@ -1,5 +1,5 @@
 <template>
-  <BottomSheet :open="open" @close="handleClose">
+  <BottomSheet :open="open" compact @close="handleClose">
     <template #header>
       <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
         <circle cx="11" cy="11" r="8"/>
@@ -185,6 +185,7 @@ function jumpToFirst() {
   text-align: center;
   color: var(--text-muted, #999);
   font-size: 13px;
+  flex-shrink: 0;
 }
 
 .search-results {
