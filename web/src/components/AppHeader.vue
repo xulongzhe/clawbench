@@ -209,7 +209,7 @@ onUnmounted(() => {
     background: var(--bg-secondary);
     cursor: pointer;
     color: var(--text-primary);
-    border-radius: 8px;
+    border-radius: 999px;
     font-size: 13px;
     font-weight: 500;
     max-width: 220px;
