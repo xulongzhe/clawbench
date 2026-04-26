@@ -1,8 +1,10 @@
 /**
  * useNotificationSound
  *
- * Plays a short notification chime when the AI finishes replying.
+ * Plays a short notification chime and triggers haptic vibration
+ * when the AI finishes replying.
  * Uses Web Audio API to synthesize the sound — no external audio file needed.
+ * Uses Vibration API for haptic feedback (Android only; iOS Safari ignores it).
  * The AudioContext is lazily created on first playback to comply with
  * browser autoplay policies (requires user gesture before first use).
  */
@@ -17,7 +19,23 @@ function getAudioContext(): AudioContext {
 }
 
 /**
- * Play a short two-tone descending chime (C5 → G4).
+ * Trigger a short haptic vibration pattern.
+ * Pattern: 100ms vibrate — 50ms pause — 80ms vibrate
+ * Silently ignored on browsers that don't support the Vibration API (e.g. iOS Safari).
+ */
+function vibrateNotification() {
+  try {
+    if (navigator.vibrate) {
+      navigator.vibrate([100, 50, 80])
+    }
+  } catch {
+    // Silently fail — vibration is non-critical
+  }
+}
+
+/**
+ * Play a short two-tone descending chime (C5 → G4)
+ * and trigger haptic vibration.
  * Resumes the AudioContext if it was suspended (browser autoplay policy).
  */
 export function playNotificationSound() {
@@ -52,6 +70,9 @@ export function playNotificationSound() {
     gain2.connect(ctx.destination)
     osc2.start(now + 0.12)
     osc2.stop(now + 0.35)
+
+    // Trigger haptic vibration alongside the sound
+    vibrateNotification()
   } catch (err) {
     // Silently fail — sound is non-critical
     console.warn('Failed to play notification sound:', err)
