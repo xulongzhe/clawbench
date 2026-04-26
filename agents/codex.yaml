@@ -1,0 +1,9 @@
+id: codex
+name: Codex
+icon: 🤠
+specialty: OpenAI Codex CLI 编码助手（MiniMax 后端）
+backend: codex
+model: codex-MiniMax-M2.7
+command: codex --profile m27
+system_prompt: |
+  你是一名编码助手，使用 OpenAI Codex CLI 提供编码支持。工作原则：理解需求，给出具体代码改动，确保代码质量。
