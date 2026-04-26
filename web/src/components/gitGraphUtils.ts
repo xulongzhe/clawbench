@@ -21,7 +21,15 @@ function laneCx(lane) {
 
 /**
  * Compute full graph data for a list of commits.
- * Returns per-row node info, connection lines, and overall dimensions.
+ *
+ * Two-phase algorithm:
+ * 1. Lane assignment — walk first-parent chains first (main line = same lane),
+ *    then assign remaining commits and merge-parent lanes.
+ * 2. Connection generation — for each commit→parent edge:
+ *    - Same-lane parent → vertical line from child to parent
+ *    - Cross-lane "fork" (merge commit's non-first parent) → bezier curve
+ *    - Cross-lane "merge-in" (branch commit whose parent is on another lane) →
+ *      vertical line on branch lane + short bezier at merge point
  */
 export function computeGraphData(commits, rowHeight) {
   if (!commits || !commits.length) {
@@ -30,44 +38,35 @@ export function computeGraphData(commits, rowHeight) {
 
   const laneColor = (lane) => LANE_COLORS[lane % LANE_COLORS.length]
 
-  const shaToLane = new Map()
-  // Build a reverse index: sha → list of row indices that reference it as a parent
-  // This avoids O(n²) scanning for lane cleanup
-  const parentRefRows = new Map()
+  // ── Pre-build SHA-to-row index (O(1) lookup) ──
+  const shaToRow = new Map()
   for (let row = 0; row < commits.length; row++) {
-    const c = commits[row]
-    if (c.isWT) continue
-    for (const p of (c.parents || [])) {
-      if (!parentRefRows.has(p)) parentRefRows.set(p, [])
-      parentRefRows.get(p).push(row)
+    if (!commits[row].isWT) {
+      shaToRow.set(commits[row].sha, row)
     }
   }
 
-  const freeLanes = []
+  // ── Phase 1: Lane assignment ──
+  //
+  // Key insight: the first-parent chain represents the "main line" and should
+  // stay on the same lane. We walk first-parent chains FIRST to ensure fork
+  // points are assigned to the main-line lane, not pulled to a branch lane.
+  //
+  // Step A: For each commit, walk its first-parent chain and assign the same
+  //         lane to all ancestors until hitting an already-assigned SHA.
+  // Step B: Assign lanes to any remaining unassigned commits (branch tips).
+  // Step C: Assign lanes to merge parents (non-first-parent) that aren't assigned.
+
+  const shaToLane = new Map()
+  const laneOfRow = new Array(commits.length)
   let nextLane = 0
-  function allocLane() {
-    if (freeLanes.length > 0) return freeLanes.shift()
-    return nextLane++
-  }
-
   let maxLane = 0
-  const nodes = []
-  const lines = []
 
+  // Step A: Walk first-parent chains
   for (let row = 0; row < commits.length; row++) {
     const c = commits[row]
-    const cy = row * rowHeight + rowHeight / 2
-
     if (c.isWT) {
-      nodes.push({
-        cx: laneCx(0),
-        cy,
-        color: '#f59e0b',
-        isWT: true,
-        refs: [],
-        lane: 0,
-        row,
-      })
+      laneOfRow[row] = 0
       continue
     }
 
@@ -76,77 +75,144 @@ export function computeGraphData(commits, rowHeight) {
     if (shaToLane.has(sha)) {
       lane = shaToLane.get(sha)
     } else {
-      lane = allocLane()
+      lane = nextLane++
       shaToLane.set(sha, lane)
     }
+
+    laneOfRow[row] = lane
     if (lane > maxLane) maxLane = lane
 
-    const cx = laneCx(lane)
-    const color = laneColor(lane)
+    // Walk first-parent chain, assigning same lane to ancestors
+    let cur = sha
+    while (true) {
+      const curRow = shaToRow.get(cur)
+      if (curRow === undefined) break
+      const parents = commits[curRow].parents || []
+      if (parents.length === 0) break
+      const firstParent = parents[0]
+      if (shaToLane.has(firstParent)) break
+      if (!shaToRow.has(firstParent)) break
+      shaToLane.set(firstParent, lane)
+      cur = firstParent
+    }
+  }
 
-    nodes.push({
-      cx,
-      cy,
-      color,
-      isWT: false,
-      refs: c.refs || [],
-      lane,
-      row,
-    })
+  // Step B: Assign remaining unassigned commits (branch tips not on first-parent chain)
+  for (let row = 0; row < commits.length; row++) {
+    const c = commits[row]
+    if (c.isWT) continue
+    if (shaToLane.has(c.sha)) {
+      laneOfRow[row] = shaToLane.get(c.sha)
+      continue
+    }
+    const lane = nextLane++
+    shaToLane.set(c.sha, lane)
+    laneOfRow[row] = lane
+    if (lane > maxLane) maxLane = lane
+  }
 
+  // Step C: Assign lanes for merge parents (non-first-parent) that aren't assigned
+  for (let row = 0; row < commits.length; row++) {
+    const c = commits[row]
+    if (c.isWT) continue
     const parents = c.parents || []
-    for (let pi = 0; pi < parents.length; pi++) {
-      const parentSha = parents[pi]
-
-      let parentLane
-      if (shaToLane.has(parentSha)) {
-        parentLane = shaToLane.get(parentSha)
-      } else {
-        // First parent inherits current lane, others get new lanes
-        parentLane = pi === 0 ? lane : allocLane()
-        if (parentLane > maxLane) maxLane = parentLane
-        shaToLane.set(parentSha, parentLane)
-      }
-
-      if (parentLane !== lane) {
-        // Curve from current commit to parent lane
-        const parentCx = laneCx(parentLane)
-        const midY = cy + rowHeight * 0.5
-        lines.push({
-          path: `M${cx},${cy + 4} C${cx},${midY} ${parentCx},${midY} ${parentCx},${cy + rowHeight}`,
-          color: laneColor(parentLane),
-          startRow: row,
-        })
-      } else if (pi === 0) {
-        // Same lane vertical continuation
-        lines.push({
-          path: `M${cx},${cy + 4} L${cx},${cy + rowHeight}`,
-          color,
-          startRow: row,
-        })
-      }
-
-      // Free parent lane if no future commits reference it
-      // Use the pre-built reverse index for O(1) check
-      if (parentLane !== lane) {
-        const refRows = parentRefRows.get(parentSha) || []
-        const hasFutureRefs = refRows.some(r => r > row)
-        if (!hasFutureRefs) {
-          shaToLane.delete(parentSha)
-          freeLanes.push(parentLane)
-          freeLanes.sort((a, b) => a - b)
-        }
+    for (let pi = 1; pi < parents.length; pi++) {
+      const pSha = parents[pi]
+      if (!shaToRow.has(pSha)) continue
+      if (!shaToLane.has(pSha)) {
+        const lane = nextLane++
+        shaToLane.set(pSha, lane)
+        if (lane > maxLane) maxLane = lane
       }
     }
+  }
 
-    // Root commit: free its lane if no future commit references it
-    if (parents.length === 0) {
-      const refRows = parentRefRows.get(sha) || []
-      const hasFutureRefs = refRows.some(r => r > row)
-      if (!hasFutureRefs) {
-        shaToLane.delete(sha)
-        freeLanes.push(lane)
-        freeLanes.sort((a, b) => a - b)
+  // ── Phase 2: Generate nodes and connection lines ──
+  const nodes = []
+  const lines = []
+
+  // Nodes
+  for (let row = 0; row < commits.length; row++) {
+    const c = commits[row]
+    const cy = row * rowHeight + rowHeight / 2
+    const lane = laneOfRow[row]
+    const cx = laneCx(lane)
+    if (c.isWT) {
+      nodes.push({ cx, cy, color: '#f59e0b', isWT: true, refs: [], lane, row })
+    } else {
+      nodes.push({ cx, cy, color: laneColor(lane), isWT: false, refs: c.refs || [], lane, row })
+    }
+  }
+
+  // Connection lines: for each commit→parent edge
+  for (let row = 0; row < commits.length; row++) {
+    const c = commits[row]
+    if (c.isWT) continue
+
+    const childLane = laneOfRow[row]
+    const childCy = row * rowHeight + rowHeight / 2
+    const parents = c.parents || []
+
+    for (let pi = 0; pi < parents.length; pi++) {
+      const pSha = parents[pi]
+      if (!shaToRow.has(pSha) || !shaToLane.has(pSha)) continue
+
+      const parentRow = shaToRow.get(pSha)
+      const parentLane = shaToLane.get(pSha)
+      const parentCy = parentRow * rowHeight + rowHeight / 2
+
+      if (childLane === parentLane) {
+        // Same-lane connection: vertical line from child bottom to parent top
+        const x = laneCx(childLane)
+        const y1 = childCy + 5
+        const y2 = parentCy - 5
+        lines.push({
+          path: `M${x},${y1} L${x},${y2}`,
+          color: laneColor(childLane),
+        })
+      } else if (pi > 0) {
+        // Cross-lane fork: merge commit's non-first parent (the branch tip).
+        // Draw a bezier from the merge commit down to the branch.
+        const fromX = laneCx(childLane)
+        const fromY = childCy + 5
+        const toX = laneCx(parentLane)
+        const toY = parentCy - 5
+        const dy = toY - fromY
+        const cp1Y = fromY + dy * 0.4
+        const cp2Y = fromY + dy * 0.6
+        lines.push({
+          path: `M${fromX},${fromY} C${fromX},${cp1Y} ${toX},${cp2Y} ${toX},${toY}`,
+          color: laneColor(parentLane),
+        })
+      } else {
+        // Cross-lane merge-in: child's first parent is on a different lane.
+        // This means the child is a branch commit that merges back into the
+        // main line. Render as: vertical line on branch lane from child down
+        // to just above the parent row, then a short bezier curving into the
+        // parent node. This creates the '|/' pattern from git log --graph.
+        const branchX = laneCx(childLane)
+        const parentX = laneCx(parentLane)
+        const childBottom = childCy + 5
+        // End vertical line at the top of the parent row
+        const parentRowTop = parentRow * rowHeight
+
+        // Vertical line on branch lane from child to parent row
+        lines.push({
+          path: `M${branchX},${childBottom} L${branchX},${parentRowTop}`,
+          color: laneColor(childLane),
+        })
+
+        // Short bezier from branch lane at parent row top, curving into
+        // the parent node. Control points create a smooth merge-in arc.
+        const fromY = parentRowTop
+        const toY = parentCy
+        const dy = toY - fromY
+        const cp1Y = fromY + dy * 0.25
+        const cp2Y = toY - dy * 0.25
+        lines.push({
+          path: `M${branchX},${fromY} C${branchX},${cp1Y} ${parentX},${cp2Y} ${parentX},${toY}`,
+          color: laneColor(childLane),
+        })
       }
     }
   }
