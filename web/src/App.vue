@@ -34,7 +34,11 @@
       />
 
       <main class="main-content">
-        <div class="content-area" id="contentArea">
+        <div
+          class="content-area"
+          id="contentArea"
+          :style="contentSwipeStyle"
+        >
           <WelcomeView v-if="!currentFile" />
           <FileViewer
             v-if="currentFile"
@@ -102,6 +106,7 @@
         v-if="isAuthenticated"
         class="bottom-dock"
         @touchstart="swipeHandlers.handleTouchStart"
+        @touchmove="swipeHandlers.handleTouchMove"
         @touchend="swipeHandlers.handleTouchEnd"
       >
         <button class="dock-btn" :class="{ active: chatOpen }" @click.stop="openDrawer('chat')" title="AI 对话">
@@ -364,10 +369,20 @@ provide('applyTheme', applyTheme)
 
 // Swipe navigation for bottom dock
 const swipeHandlers = useSwipeNavigation(
-  () => store.navigateToNextFile(),
   () => store.navigateToPrevFile(),
+  () => store.navigateToNextFile(),
   50
 )
+
+const contentSwipeStyle = computed(() => {
+  const offset = swipeHandlers.swipeOffset.value
+  if (offset === 0 && !swipeHandlers.settling.value) return {}
+  const transition = swipeHandlers.settling.value ? 'transform 0.25s ease-out' : 'none'
+  return {
+    transform: `translateX(${offset}px)`,
+    transition,
+  }
+})
 
 function handleOpenSidebar() {
     openDrawer('sidebar')
