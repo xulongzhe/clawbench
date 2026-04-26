@@ -76,8 +76,8 @@ const FILE_TYPES: FileType[] = [
     { exts: ['.graphql', '.gql'], lang: 'graphql', label: 'GraphQL', color: '#e10098', isMarkdown: false },
     { exts: ['.html', '.htm', '.xhtml'], lang: 'xml', label: 'HTML', color: '#e44d26', isMarkdown: false },
     { exts: ['.css', '.scss', '.sass', '.less', '.styl'], lang: 'css', label: 'CSS', color: '#563d7c', isMarkdown: false },
-    { exts: ['.vue', '.svelte'], lang: 'xml', label: 'Vue', color: '#41b883', isMarkdown: false },
-    { exts: ['.dockerfile', '.dockerignore'], lang: 'dockerfile', label: 'Docker', color: '#384d54', isMarkdown: false },
+    { exts: ['.vue', '.svelte'], lang: 'vue', label: 'Vue', color: '#41b883', isMarkdown: false },
+    { exts: ['.dockerfile', '.dockerignore', 'dockerfile'], lang: 'dockerfile', label: 'Docker', color: '#384d54', isMarkdown: false },
     { exts: ['.makefile', '.mak'], lang: 'makefile', label: 'Make', color: '#6d8086', isMarkdown: false },
     { exts: ['.nginx'], lang: 'nginx', label: 'Nginx', color: '#009639', isMarkdown: false },
     { exts: ['.gitignore', '.gitattributes', '.gitconfig', '.editorconfig', '.ignore'], lang: 'plaintext', label: 'Config', color: '#6d8086', isMarkdown: false },
@@ -199,78 +199,78 @@ type CodePattern = [RegExp, number, number]
 
 const CODE_TOC_PATTERNS: Record<string, CodePattern[]> = {
     go: [
-        [/^func\s+(?:\(\S+\)\s+)?(\S+)/gm, 1, 1],
         [/^type\s+(\S+)\s+struct\b/gm, 1, 1],
         [/^type\s+(\S+)\s+interface\b/gm, 1, 1],
         [/^type\s+(\S+)\s+(?:=\s+|$)/gm, 1, 1],
         [/^var\s+(\S+)/gm, 1, 1],
         [/^const\s+(\S+)/gm, 1, 1],
+        [/^func\s+(?:\(\S+\)\s+)?(\S+)/gm, 1, 2],
     ],
     python: [
-        [/^(?:async\s+)?def\s+(\S+)\s*\(/gm, 1, 1],
         [/^class\s+(\S+)\s*[:\(]/gm, 1, 1],
+        [/^(?:async\s+)?def\s+(\S+)\s*\(/gm, 1, 2],
     ],
     javascript: [
-        [/^(?:export\s+)?(?:async\s+)?function\s+(\S+)\s*\(/gm, 1, 1],
-        [/^(?:export\s+)?(?:default\s+)?const\s+(\S+)\s*=/gm, 1, 1],
-        [/^(?:export\s+)?class\s+(\S+)/gm, 1, 1],
+        [/^(?:export\s+)?(?:default\s+)?class\s+(\S+)/gm, 1, 1],
+        [/^(?:export\s+)?(?:async\s+)?function\s+(\S+)\s*\(/gm, 1, 2],
+        [/^(?:export\s+)?(?:default\s+)?const\s+(\S+)\s*=/gm, 1, 2],
     ],
     typescript: [
-        [/^(?:export\s+)?(?:async\s+)?function\s+(\S+)\s*\(/gm, 1, 1],
-        [/^(?:export\s+)?(?:default\s+)?const\s+(\S+)\s*[:=]/gm, 1, 1],
+        [/^(?:export\s+)?(?:default\s+)?class\s+(\S+)/gm, 1, 1],
         [/^(?:export\s+)?interface\s+(\S+)/gm, 1, 1],
         [/^(?:export\s+)?type\s+(\S+)\s*=/gm, 1, 1],
-        [/^(?:export\s+)?class\s+(\S+)/gm, 1, 1],
         [/^(?:export\s+)?enum\s+(\S+)/gm, 1, 1],
+        [/^(?:export\s+)?(?:async\s+)?function\s+(\S+)\s*\(/gm, 1, 2],
+        [/^(?:export\s+)?(?:default\s+)?const\s+(\S+)\s*[:=]/gm, 1, 2],
     ],
     rust: [
-        [/^(?:pub\s+)?(?:async\s+)?fn\s+(\S+)\s*\(/gm, 1, 1],
         [/^(?:pub\s+)?struct\s+(\S+)/gm, 1, 1],
         [/^(?:pub\s+)?enum\s+(\S+)/gm, 1, 1],
         [/^(?:pub\s+)?trait\s+(\S+)/gm, 1, 1],
         [/^(?:pub\s+)?mod\s+(\S+)/gm, 1, 1],
         [/^(?:pub\s+)?type\s+(\S+)/gm, 1, 1],
         [/^(?:pub\s+)?impl\s*(?:<[^>]*>)?\s+(\S+)/gm, 1, 1],
+        [/^(?:pub\s+)?(?:async\s+)?fn\s+(\S+)\s*\(/gm, 1, 2],
     ],
     java: [
         [/^(?:public|private|protected)?\s*(?:static\s+)?(?:synchronized\s+)?(?:class|interface|enum)\s+(\S+)/gm, 1, 1],
-        [/^(?:public|private|protected)\s+.*?(?:static\s+)?(?:\S+\s+)?(\S+)\s*\(/gm, 1, 1],
+        [/^(?:public|private|protected)\s+.*?(?:static\s+)?(?:\S+\s+)?(\S+)\s*\(/gm, 1, 2],
     ],
     csharp: [
-        [/^(?:public|private|protected|internal)?\s*(?:static|abstract|virtual|override|sealed|partial)*\s*(class|struct|interface|enum)\s+(\S+)/gm, 2, 2],
-        [/^(?:public|private|protected|internal)?\s*(?:static|abstract|virtual|override|async)*\s+\S+\s+(\S+)\s*\(/gm, 1, 1],
+        [/^(?:public|private|protected|internal)?\s*(?:static|abstract|virtual|override|sealed|partial)*\s*(class|struct|interface|enum)\s+(\S+)/gm, 2, 1],
+        [/^(?:public|private|protected|internal)?\s*(?:static|abstract|virtual|override|async)*\s+\S+\s+(\S+)\s*\(/gm, 1, 2],
     ],
     ruby: [
         [/^(?:private|protected|public)?\s*(?:class|module)\s+(\S+)/gm, 1, 1],
-        [/^def\s+(?:self\.)?(\S+)/gm, 1, 1],
+        [/^def\s+(?:self\.)?(\S+)/gm, 1, 2],
     ],
     php: [
         [/^(?:abstract\s+)?(?:class|interface|trait)\s+(\S+)/gm, 1, 1],
-        [/^(?:public|private|protected)\s+static\s+function\s+(\S+)\s*\(/gm, 1, 1],
-        [/^function\s+(\S+)\s*\(/gm, 1, 1],
+        [/^(?:public|private|protected)\s+static\s+function\s+(\S+)\s*\(/gm, 1, 2],
+        [/^function\s+(\S+)\s*\(/gm, 1, 2],
     ],
     kotlin: [
-        [/^(?:fun|val|var)\s+(\S+)/gm, 1, 1],
-        [/^(?:class|object|interface|enum|data class)\s+(\S+)/gm, 1, 1],
+        [/^(?:class|object|interface|enum|data\s+class)\s+(\S+)/gm, 1, 1],
+        [/^(?:fun|val|var)\s+(\S+)/gm, 1, 2],
     ],
     scala: [
-        [/^(?:def|val|var|lazy val)\s+(\S+)/gm, 1, 1],
-        [/^(?:class|object|trait|case class|enum)\s+(\S+)/gm, 1, 1],
+        [/^(?:class|object|trait|case\s+class|enum)\s+(\S+)/gm, 1, 1],
+        [/^(?:def|val|var|lazy\s+val)\s+(\S+)/gm, 1, 2],
     ],
     c: [
-        [/^(?:static\s+)?(?:inline\s+)?(?:\S+\s+)+(\S+)\s*\(/gm, 1, 1],
         [/^(?:typedef\s+)?struct\s+(\S+)\s*\{/gm, 1, 1],
         [/^(?:typedef\s+)?enum\s+(\S+)\s*\{/gm, 1, 1],
+        [/^(?:static\s+)?(?:inline\s+)?(?:\S+\s+)+(\S+)\s*\(/gm, 1, 2],
     ],
     cpp: [
-        [/^(?:static|inline|virtual|explicit)\s+(?:\S+\s+)+(\S+)\s*\(/gm, 1, 1],
         [/^(?:class|struct)\s+(\S+)/gm, 1, 1],
         [/^(?:enum|namespace)\s+(\S+)/gm, 1, 1],
         [/^template\s*<[^>]+>\s*(?:class|struct)\s+(\S+)/gm, 1, 1],
+        [/^(?:static|inline|virtual|explicit)\s+(?:\S+\s+)+(\S+)\s*\(/gm, 1, 2],
     ],
     lua: [
-        [/^function\s+(?:[\w.]+[\.:])(\S+)\s*\(/gm, 1, 1],
         [/^local\s+function\s+(\S+)\s*\(/gm, 1, 1],
+        [/^function\s+(?:[\w.]+[\.:])(\S+)\s*\(/gm, 1, 2],
     ],
     bash: [
         [/^(?:function\s+)?(\S+)\s*\(\)/gm, 1, 1],
@@ -278,17 +278,48 @@ const CODE_TOC_PATTERNS: Record<string, CodePattern[]> = {
     sql: [
         [/^(?:CREATE|ALTER|DROP)\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|INDEX|FUNCTION|PROCEDURE|TRIGGER)\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?[`"]?(\S+)[`"]?/gim, 1, 1],
     ],
-    css: [
-        [/^@(\S+)/gm, 1, 1],
-    ],
     makefile: [
         [/^(\S+):\s*$/gm, 1, 1],
     ],
     nginx: [
-        [/^\s*(?:server|location|upstream)\s+(\S+)/gm, 1, 1],
+        [/^\s*(server)\b/gm, 1, 1],
+        [/^\s*(?:location|upstream)\s+(\S+)/gm, 1, 2],
     ],
     ini: [
         [/^\[([^\]]+)\]/gm, 1, 1],
+    ],
+    css: [
+        [/^(@\S+)/gm, 1, 1],
+        [/^([.#\[:][^{]+)\s*\{/gm, 1, 2],
+    ],
+    dockerfile: [
+        [/^(FROM)\s+(\S+)/gm, 2, 1],
+        [/^(RUN|CMD|ENTRYPOINT|COPY|ADD|EXPOSE|ENV|ARG|WORKDIR|VOLUME|LABEL|HEALTHCHECK)\b/gm, 1, 2],
+    ],
+    vue: [
+        [/^<(template|script|style)/gm, 1, 1],
+    ],
+    swift: [
+        [/^(?:public|private|internal|open)?\s*(?:final\s+)?(?:class|struct|enum|protocol|extension)\s+(\S+)/gm, 1, 1],
+        [/^(?:public|private|internal|open)?\s*(?:static\s+)?(?:func\s+|var\s+|let\s+)(\S+)/gm, 1, 2],
+    ],
+    graphql: [
+        [/^(?:type|interface|enum|input|union|scalar|directive)\s+(\S+)/gm, 1, 1],
+        [/^\s+(\S+)\s*[(:]/gm, 1, 2],
+    ],
+    yaml: [
+        [/^(\S+)\s*:/gm, 1, 1],
+        [/^\s{2}(\S+)\s*:/gm, 1, 2],
+        [/^\s{4}(\S+)\s*:/gm, 1, 3],
+    ],
+    toml: [
+        [/^\[\[([^\]]+)\]\]/gm, 1, 1],
+        [/^\[([^\]]+)\]/gm, 1, 1],
+    ],
+    json: [
+        [/^\s{0}"([^"]+)"\s*:/gm, 1, 1],
+        [/^\s{2,4}"([^"]+)"\s*:/gm, 1, 2],
+        [/^\s{6,8}"([^"]+)"\s*:/gm, 1, 3],
     ],
 }
 
@@ -319,9 +350,10 @@ function extractTocForCode(content: string, lang: string): TocItem[] {
 }
 
 function extractTocGeneric(content: string): TocItem[] {
-    // For JSON/YAML/TOML/XML: extract top-level keys/sections by indentation
+    // For JSON/YAML/TOML/XML: extract keys/sections by indentation (up to 3 levels)
     const lines = content.split('\n')
     const toc: TocItem[] = []
+    const MAX_INDENT = 6 // indent <= 6 means up to 3 levels (0,2,4,6)
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i]
@@ -329,20 +361,19 @@ function extractTocGeneric(content: string): TocItem[] {
         if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('#') || trimmed.startsWith('<!--')) continue
 
         const indent = line.search(/\S/)
-        // JSON: only top-level keys (indent 2 or 4)
         if (trimmed.endsWith(':') || trimmed.endsWith(',') || trimmed.endsWith('{') || trimmed.endsWith('[') || trimmed.endsWith('(')) {
             // Extract key name
             const keyMatch = trimmed.match(/^["']?([^"':{\[\s,]+)["']?\s*[:{[\(,]/)
             if (keyMatch) {
                 const key = keyMatch[1].trim()
                 if (key.length < 2 || key === '{' || key === '[') continue
-                if (indent <= 2) {
+                if (indent <= MAX_INDENT) {
                     toc.push({ level: Math.floor(indent / 2) + 1, text: key, id: 'toc-l' + (i + 1), line: i + 1 })
                 }
             }
         }
     }
-    return toc.slice(0, 100)
+    return toc.slice(0, 150)
 }
 
 // Initialize Mermaid
