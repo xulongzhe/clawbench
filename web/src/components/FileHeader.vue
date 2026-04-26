@@ -1,12 +1,11 @@
 <template>
   <div class="file-header-bar">
-    <span class="lang-badge" :style="badgeStyle">{{ badgeLabel }}</span>
     <div class="file-name-wrap">
       <span class="file-path-hint" style="cursor:pointer" @click="$emit('showDetails')" :title="file.name">{{ file.name }}</span>
     </div>
     <div class="header-actions">
-      <!-- TOC button (standalone, not in dropdown) -->
-      <button class="file-header-btn" :class="{ active: tocOpen }" @click.stop="$emit('toggleToc')" title="目录">
+      <!-- TOC button (only for file types that support TOC) -->
+      <button v-if="hasToc" class="file-header-btn" :class="{ active: tocOpen }" @click.stop="$emit('toggleToc')" title="目录">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
           <line x1="8" y1="6" x2="21" y2="6"/>
           <line x1="8" y1="12" x2="21" y2="12"/>
@@ -18,8 +17,8 @@
       </button>
 
 
-      <!-- Search button (standalone, not in dropdown) -->
-      <button class="file-header-btn" :class="{ active: searchOpen }" :disabled="!file.content" @click.stop="$emit('toggleSearch')" title="搜索">
+      <!-- Search button (only for file types that support search) -->
+      <button v-if="hasToc" class="file-header-btn" :class="{ active: searchOpen }" :disabled="!file.content" @click.stop="$emit('toggleSearch')" title="搜索">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
           <circle cx="11" cy="11" r="8"/>
           <line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -67,7 +66,7 @@
               <circle cx="6" cy="18" r="3"/>
               <path d="M15 6a9 9 0 0 0-9 9V3"/>
             </svg>
-            代码历史
+            文件历史
           </button>
         </div>
       </div>
@@ -92,6 +91,14 @@ const dropdownRef = ref(null)
 
 const fileType = computed(() => props.file ? getFileType(props.file.name) : null)
 const isMarkdown = computed(() => fileType.value?.isMarkdown || false)
+const hasToc = computed(() => {
+    if (!props.file || !props.file.content) return false
+    const ft = fileType.value
+    if (!ft) return false
+    if (ft.isImage || ft.isAudio || ft.isVideo) return false
+    if (props.file.isImage || props.file.isPdf || props.file.isAudio) return false
+    return true
+})
 
 const badgeLabel = computed(() => {
     if (!props.file) return ''
