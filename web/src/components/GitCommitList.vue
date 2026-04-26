@@ -39,11 +39,18 @@
         </div>
       </div>
       <div v-else-if="commits.length === 0 && untracked" class="git-history-empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="40" height="40" style="color:#ccc;margin-bottom:12px;">
-          <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
-        </svg>
-        <div style="font-size:14px;color:var(--text-muted,#999);margin-bottom:4px;">此文件未被 Git 跟踪</div>
-        <div style="font-size:12px;color:var(--text-muted,#aaa);">使用 <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">git add &lt;文件名&gt;</code> 将其添加到跟踪</div>
+        <div class="empty-state-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36" style="color:var(--text-muted);">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="9" y1="15" x2="15" y2="15"/>
+          </svg>
+          <div class="empty-state-title">此文件未被 Git 跟踪</div>
+          <div class="empty-state-desc">文件尚未纳入版本控制，无历史记录</div>
+          <div class="empty-state-hint">
+            <code>git add {{ '&lt;文件名&gt;' }}</code> 可将其添加到跟踪
+          </div>
+        </div>
       </div>
       <div v-else-if="commits.length === 0" class="git-history-empty">暂无提交记录</div>
       <div v-else class="commit-list-container">
@@ -330,12 +337,50 @@ defineExpose({ observeList, unobserveList, commitSearch })
 
 .git-history-error,
 .git-history-empty {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted, #999);
-  font-size: 14px;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted, #999);
+    font-size: 14px;
+}
+
+.empty-state-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 32px 24px;
+    margin: 12px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    gap: 8px;
+}
+
+.empty-state-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.empty-state-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.empty-state-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+.empty-state-hint code {
+    background: var(--bg-tertiary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 11px;
 }
 
 .init-git-prompt {

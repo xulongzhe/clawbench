@@ -54,12 +54,12 @@
           <div class="unsupported-title">{{ file.name }}</div>
           <div class="unsupported-desc">文件过大，无法在浏览器中预览 {{ file.size ? '(' + formatSize(file.size) + ')' : '' }}</div>
           <a :href="'/api/local-file/' + encodeURIComponent(file.path)" class="download-btn" download>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="14" height="14">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
               <polyline points="7,10 12,15 17,10"/>
               <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            下载文件
+            下载
           </a>
         </div>
       </div>
@@ -242,11 +242,11 @@ function formatSize(bytes) {
     height: 100%;
 }
 
-.unsupported-file svg {
-    width: 64px;
-    height: 64px;
+.unsupported-file > svg {
+    width: 48px;
+    height: 48px;
     color: var(--text-muted);
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 .unsupported-title {
@@ -267,29 +267,24 @@ function formatSize(bytes) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 10px 20px;
+    padding: 5px 12px;
     background: var(--accent-color);
     color: #fff;
-    border-radius: var(--radius-sm);
+    border-radius: 14px;
     text-decoration: none;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 500;
-    transition: background 0.15s;
-    gap: 6px;
+    transition: filter 0.15s;
+    gap: 4px;
     line-height: 1;
 }
 
 .download-btn svg {
-    width: 16px;
-    height: 16px;
-    stroke: #fff;
     flex-shrink: 0;
-    display: block;
 }
 
 .download-btn:hover {
-    background: var(--accent-color);
-    filter: brightness(1.1);
+    filter: brightness(1.15);
 }
 
 .loading {
