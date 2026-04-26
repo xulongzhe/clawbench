@@ -328,7 +328,12 @@ func ServeGitHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isGitRepo(projectPath) {
-		model.WriteErrorf(w, http.StatusBadRequest, "not a git repository")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"isGit":     false,
+			"commits":   []interface{}{},
+			"untracked": false,
+		})
 		return
 	}
 
@@ -359,7 +364,7 @@ func ServeGitHistory(w http.ResponseWriter, r *http.Request) {
 	commits := parseGitLog(string(output))
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"commits": commits, "untracked": untracked})
+	json.NewEncoder(w).Encode(map[string]interface{}{"isGit": true, "commits": commits, "untracked": untracked})
 }
 
 // ServeGitDiff returns the diff for a specific commit or the working tree diff.

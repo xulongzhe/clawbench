@@ -222,7 +222,15 @@ func TestServeGitHistory_NotGitRepo(t *testing.T) {
 	withProjectCookie(req, env.ProjectDir)
 
 	w := callHandler(ServeGitHistory, req)
-	assertStatus(t, w, http.StatusBadRequest)
+	assertStatus(t, w, http.StatusOK)
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body["isGit"] != false {
+		t.Errorf("expected isGit=false, got %v", body["isGit"])
+	}
 }
 
 func TestServeGitHistory_MissingPath(t *testing.T) {
