@@ -132,14 +132,17 @@ function formatSize(bytes) {
 <style scoped>
 .file-viewer {
     display: flex;
+    flex: 1;
     flex-direction: column;
-    height: 100%;
+    min-height: 0;
     overflow: hidden;
     position: relative;
 }
 
 .file-viewer-content {
+    display: flex;
     flex: 1;
+    flex-direction: column;
     overflow-y: auto;
     min-height: 0;
 }

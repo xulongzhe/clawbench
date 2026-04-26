@@ -275,6 +275,8 @@ pre :deep(code) {
 /* Raw content pre - code display area */
 .raw-content-pre {
     margin: 0;
+    flex: 1;
+    min-height: 0;
     overflow: auto;
     background: var(--code-bg);
     border: none;

@@ -136,5 +136,10 @@ watch(() => props.viewMode, async (mode) => {
 </script>
 
 <style scoped>
-/* scoped only to keep sticky reference local */
+.markdown-preview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
 </style>

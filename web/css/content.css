@@ -11,6 +11,7 @@
     border-radius: 0;
     background: transparent;
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     box-sizing: border-box;

@@ -38,14 +38,16 @@
 /* Content area fills the main-content */
 .content-area {
     flex: 1;
-    overflow-y: auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: hidden;
     padding: 0;
     border-radius: 0;
     background: transparent;
     display: flex;
     flex-direction: column;
     /* Leave space for the bottom dock */
-    padding-bottom: 52px;
+    padding-bottom: var(--dock-height);
 }
 
 
