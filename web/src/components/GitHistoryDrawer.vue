@@ -284,20 +284,6 @@ async function loadFileHistory(filePath) {
   untracked.value = false
 
   try {
-    // Check working tree changes for this file
-    const wtResp = await fetch(`/api/git/working-tree?path=${encodeURIComponent(filePath)}`)
-    if (wtResp.ok) {
-      const wt = await wtResp.json()
-      if (!wt.isGit) {
-        isGit.value = false
-        loading.value = false
-        return
-      }
-      if (wt.hasUncommitted) {
-        commits.value.push({ sha: 'HEAD', msg: '工作区变更', date: '', author: '', isWT: true })
-      }
-    }
-
     const resp = await fetch(`/api/git/history?path=${encodeURIComponent(filePath)}`)
     if (!resp.ok) {
       const data = await resp.json()
@@ -305,8 +291,14 @@ async function loadFileHistory(filePath) {
       return
     }
     const hist = await resp.json()
+    if (!hist.isGit) {
+      isGit.value = false
+      loading.value = false
+      return
+    }
+    isGit.value = true
     untracked.value = !!hist.untracked
-    commits.value.push(...(hist.commits || []))
+    commits.value = hist.commits || []
   } catch {
     error.value = '加载历史记录失败'
   } finally {
