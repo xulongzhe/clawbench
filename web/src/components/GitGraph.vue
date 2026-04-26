@@ -1,5 +1,5 @@
 <template>
-  <div class="git-graph-scroll">
+  <div class="git-graph-scroll" @click="onBackgroundClick">
     <svg
       :width="svgWidth"
       :height="svgHeight"
@@ -15,6 +15,8 @@
           stroke-width="2"
           fill="none"
           stroke-linecap="round"
+          class="git-graph-line"
+          @click.stop="onLineClick(line, $event)"
         />
       </g>
       <!-- Commit nodes -->
@@ -72,11 +74,18 @@
         </g>
       </g>
     </svg>
+    <!-- Branch name tooltip -->
+    <div
+      v-if="tooltip"
+      class="git-graph-tooltip"
+      :style="{ left: tooltip.x + 'px', top: tooltip.y + 'px' }"
+      @click.stop
+    >{{ tooltip.text }}</div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { computeGraphData, refLabelWidth, refLabelText, refLabelBg } from './gitGraphUtils'
 
 const props = defineProps({
@@ -84,10 +93,27 @@ const props = defineProps({
   rowHeight: { type: Number, default: 46 },
 })
 
-// Compute graph data
-const graphData = computed(() => computeGraphData(props.commits, props.rowHeight))
+// Persist lane assignments across lazy-load recomputations to prevent visual
+// line splitting. When new commits are appended, previously-assigned SHAs
+// keep their lanes. Cleared when the drawer closes (commits reset to []).
+const persistedShaToLane = ref(new Map())
+
+// When commits array is replaced (drawer reset), clear persisted lanes
+watch(() => props.commits, (val) => {
+  if (!val || val.length === 0) {
+    persistedShaToLane.value = new Map()
+  }
+})
+
+// Compute graph data, passing previous lane assignments for stability
+const graphData = computed(() => {
+  const result = computeGraphData(props.commits, props.rowHeight, persistedShaToLane.value)
+  persistedShaToLane.value = result.shaToLane
+  return result
+})
 const nodes = computed(() => graphData.value.nodes)
 const lines = computed(() => graphData.value.lines)
+const laneBranchName = computed(() => graphData.value.laneBranchName)
 const svgHeight = computed(() => props.commits.length * props.rowHeight + 4)
 
 // SVG width: wide enough for lanes + ref labels
@@ -119,6 +145,29 @@ const refRectX = (node, ri) => {
   }
   return x
 }
+
+// ── Branch name tooltip on line click ──
+const tooltip = ref(null)
+
+const onLineClick = (line, event) => {
+  const branchName = laneBranchName.value.get(line.lane)
+  if (!branchName) return
+
+  const scrollEl = event.currentTarget.closest('.git-graph-scroll')
+  const scrollLeft = scrollEl ? scrollEl.scrollLeft : 0
+  const scrollTop = scrollEl ? scrollEl.scrollTop : 0
+  const rect = scrollEl ? scrollEl.getBoundingClientRect() : { left: 0, top: 0 }
+
+  tooltip.value = {
+    text: branchName,
+    x: event.clientX - rect.left + scrollLeft,
+    y: event.clientY - rect.top + scrollTop,
+  }
+}
+
+const onBackgroundClick = () => {
+  tooltip.value = null
+}
 </script>
 
 <style scoped>
@@ -129,15 +178,39 @@ const refRectX = (node, ri) => {
   min-width: 40px;
   max-width: 300px;
   scrollbar-width: thin;
+  position: relative;
 }
 
 .git-graph-svg {
   display: block;
 }
 
+.git-graph-line {
+  cursor: pointer;
+}
+
+.git-graph-line:hover {
+  stroke-width: 3;
+}
+
 .git-graph-refs text {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   user-select: none;
   pointer-events: none;
+}
+
+.git-graph-tooltip {
+  position: absolute;
+  background: #1a1a2e;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -130%);
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 </style>

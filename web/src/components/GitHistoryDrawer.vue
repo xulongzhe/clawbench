@@ -318,7 +318,10 @@ async function loadMoreCommits() {
   if (loadingMore.value || !hasMore.value || !isGit.value) return
   loadingMore.value = true
   try {
-    const resp = await fetch(`/api/git/project-history?skip=${commits.value.length}`)
+    // Count only git commits (exclude WT node) for the skip parameter,
+    // since WT is a frontend-only entry not present in git log output.
+    const gitCount = commits.value.filter(c => !c.isWT).length
+    const resp = await fetch(`/api/git/project-history?skip=${gitCount}`)
     if (!resp.ok) return
     const data = await resp.json()
     commits.value.push(...(data.commits || []))
@@ -336,7 +339,8 @@ async function onSearch(q) {
   searchLoading.value = true
   try {
     while (hasMore.value) {
-      const resp = await fetch(`/api/git/project-history?skip=${commits.value.length}`)
+      const gitCount = commits.value.filter(c => !c.isWT).length
+      const resp = await fetch(`/api/git/project-history?skip=${gitCount}`)
       if (!resp.ok) break
       const data = await resp.json()
       commits.value.push(...(data.commits || []))
