@@ -28,18 +28,18 @@ jobs:
         run: npm ci && npm run build
 
       - name: Build Linux binary
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o clawbench ./cmd/server
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o clawbench-linux ./cmd/server
 
       - name: Build Windows binary
         run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o clawbench.exe ./cmd/server
 
       - name: Build macOS binary
-        run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o clawbench ./cmd/server
+        run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o clawbench-darwin ./cmd/server
 
       - name: Package Linux
         run: |
           mkdir -p pkg-linux/clawbench
-          cp clawbench pkg-linux/clawbench/
+          cp clawbench-linux pkg-linux/clawbench/clawbench
           cp -r public pkg-linux/clawbench/public
           cp config.example.yaml pkg-linux/clawbench/
           cp -r agents pkg-linux/clawbench/agents
@@ -60,7 +60,7 @@ jobs:
       - name: Package macOS
         run: |
           mkdir -p pkg-mac/clawbench
-          cp clawbench pkg-mac/clawbench/
+          cp clawbench-darwin pkg-mac/clawbench/clawbench
           cp -r public pkg-mac/clawbench/public
           cp config.example.yaml pkg-mac/clawbench/
           cp -r agents pkg-mac/clawbench/agents
