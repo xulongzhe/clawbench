@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"clawbench/internal/model"
@@ -9,11 +8,10 @@ import (
 
 // ServeAgents returns the list of configured AI agents.
 func ServeAgents(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	json.NewEncoder(w).Encode(map[string]any{
+	writeJSON(w, http.StatusOK, map[string]any{
 		"agents": model.AgentList,
 	})
 }

@@ -158,7 +158,7 @@ func TestServeRecentProjects(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var result []string
-		decodeJSON(t, w.Body, &result)
+		decodeRespJSON(t, w.Body, &result)
 		assert.Empty(t, result)
 	})
 
@@ -178,7 +178,7 @@ func TestServeRecentProjects(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		var result []string
-		decodeJSON(t, w.Body, &result)
+		decodeRespJSON(t, w.Body, &result)
 		assert.Contains(t, result, projectPath)
 	})
 

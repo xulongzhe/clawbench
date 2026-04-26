@@ -208,8 +208,8 @@ func hashPassword(password string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// decodeJSON decodes the response body into target.
-func decodeJSON(t *testing.T, body io.Reader, target interface{}) {
+// decodeRespJSON decodes the response body into target.
+func decodeRespJSON(t *testing.T, body io.Reader, target interface{}) {
 	t.Helper()
 	if err := json.NewDecoder(body).Decode(target); err != nil {
 		t.Fatalf("failed to decode JSON: %v", err)

@@ -56,6 +56,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import BottomSheet from './BottomSheet.vue'
+import { escapeHtml } from '@/utils/helpers.ts'
 
 const props = defineProps({
   file: Object,
@@ -81,14 +82,6 @@ watch(() => props.file?.path, () => {
 
 function handleClose() {
   emit('close')
-}
-
-function escapeHtml(text) {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
 
 function highlightText(text, q) {

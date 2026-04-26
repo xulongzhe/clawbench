@@ -44,7 +44,7 @@
                 </span>
               </div>
               <div class="session-item-meta">
-                <span class="session-item-time">{{ formatTime(session.updatedAt) }}</span>
+                <span class="session-item-time">{{ formatRelativeTime(session.updatedAt) }}</span>
                 <span class="session-item-agent">{{ getAgentIcon(session.agentId) }} {{ getAgentName(session.agentId) }}</span>
                 <span class="session-item-backend">{{ session.backend }}</span>
                 <span v-if="session.model" class="session-item-model">{{ session.model }}</span>
@@ -72,15 +72,15 @@
               <div class="task-item-header">
                 <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
                 <span class="task-item-name">{{ task.name }}</span>
-                <span class="task-item-status" :class="task.status">{{ taskStatusLabel(task.status) }}</span>
+                <span class="task-item-status" :class="task.status">{{ statusLabel(task.status) }}</span>
               </div>
               <div class="task-item-meta">
                 <span class="task-item-cron">{{ humanizeCron(task.cronExpr) }}</span>
-                <span class="task-item-repeat">{{ taskRepeatLabel(task.repeatMode, task.maxRuns) }}</span>
+                <span class="task-item-repeat">{{ repeatLabel(task.repeatMode, task.maxRuns) }}</span>
                 <span v-if="task.repeatMode !== 'unlimited'" class="task-item-progress">{{ task.runCount }}/{{ task.maxRuns || 1 }}</span>
               </div>
               <div v-if="task.nextRunAt" class="task-item-next">
-                下次执行: {{ formatTaskTime(task.nextRunAt) }}
+                下次执行: {{ formatDateTime(task.nextRunAt) }}
               </div>
             </div>
             <div class="task-item-actions">
@@ -151,6 +151,8 @@
 import { ref, watch, computed } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import TaskDetailDialog from './TaskDetailDialog.vue'
+import { useAgents } from '@/composables/useAgents.ts'
+import { formatRelativeTime, humanizeCron, repeatLabel, statusLabel, formatDateTime } from '@/utils/helpers.ts'
 
 const props = defineProps({
   open: Boolean,
@@ -169,7 +171,7 @@ const activeTab = ref('sessions')
 // Sessions
 const sessions = ref([])
 const loading = ref(false)
-const agents = ref([])
+const { agents, loadAgents, getAgentIcon, getAgentName } = useAgents()
 const selectedAgentId = ref('')
 const showAgentSelector = ref(false)
 
@@ -233,42 +235,6 @@ async function deleteSession(sessionId) {
   emit('delete', sessionId, session?.backend)
 }
 
-function getAgentIcon(agentId) {
-  const agent = agents.value.find(a => a.id === agentId)
-  return agent ? agent.icon : '🤖'
-}
-
-function getAgentName(agentId) {
-  const agent = agents.value.find(a => a.id === agentId)
-  return agent ? agent.name : (agentId || '全能助手')
-}
-
-async function loadAgents() {
-  try {
-    const resp = await fetch('/api/agents')
-    const data = await resp.json()
-    agents.value = data.agents || []
-  } catch (err) {
-    console.error('Failed to load agents:', err)
-  }
-}
-
-function formatTime(date) {
-  if (!date) return ''
-  const d = new Date(date)
-  const now = new Date()
-  const diff = now - d
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  if (hours < 24) return `${hours}小时前`
-  if (days < 7) return `${days}天前`
-  return d.toLocaleDateString('zh-CN')
-}
-
 // Task management functions
 async function loadTasks() {
   taskLoading.value = true
@@ -281,36 +247,6 @@ async function loadTasks() {
   } finally {
     taskLoading.value = false
   }
-}
-
-function humanizeCron(expr) {
-  const parts = expr.split(' ')
-  if (parts.length !== 5) return expr
-  const [min, hour, day, month, weekday] = parts
-  if (min.startsWith('*/') && hour === '*') return `每 ${min.slice(2)} 分钟`
-  if (hour.startsWith('*/') && min === '0') return `每 ${hour.slice(2)} 小时`
-  if (min === '0' && !hour.includes('/') && day === '*' && month === '*' && weekday === '*') return `每天 ${hour}:00`
-  if (min === '0' && weekday === '1-5') return `工作日 ${hour}:00`
-  return expr
-}
-
-function taskRepeatLabel(mode, maxRuns) {
-  if (mode === 'once') return '单次'
-  if (mode === 'limited') return `${maxRuns}次`
-  return '不限'
-}
-
-function taskStatusLabel(status) {
-  if (status === 'active') return '运行中'
-  if (status === 'paused') return '已暂停'
-  if (status === 'completed') return '已完成'
-  return status
-}
-
-function formatTaskTime(date) {
-  if (!date) return ''
-  const d = new Date(date)
-  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function openTaskDetailDialog(task) {

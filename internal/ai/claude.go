@@ -1,9 +1,20 @@
 package ai
 
-// ClaudeBackend implements AIBackend for Claude CLI
-type ClaudeBackend struct{}
+import (
+	"os/exec"
+	"strings"
+)
 
-// Name returns the backend identifier
-func (c *ClaudeBackend) Name() string {
-	return "claude"
+// claudeBackend is the CLIBackend instance for Claude CLI.
+var claudeBackend = &CLIBackend{
+	name:           "claude",
+	defaultCommand: "claude",
+	buildArgs:      buildClaudeStreamArgs,
+	newParser:      func() LineParser { return &StreamParser{} },
+	filterLine:     nil, // skip empty lines only (default)
+	preStart: func(cmd *exec.Cmd, req ChatRequest) {
+		if req.Resume {
+			cmd.Stdin = strings.NewReader(req.Prompt)
+		}
+	},
 }

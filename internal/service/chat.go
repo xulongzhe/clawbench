@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -150,28 +149,7 @@ func AddRecentProject(projectPath string) error {
 
 // generateSessionID generates a standard UUID v4 format session ID.
 func generateSessionID() string {
-	for i := 0; i < 10; i++ {
-		b := make([]byte, 16)
-		rand.Read(b)
-		// Set version (4) and variant (2) bits according to UUID v4 spec
-		b[6] = (b[6] & 0x0f) | 0x40 // Version 4
-		b[8] = (b[8] & 0x3f) | 0x80 // Variant 2
-		// Standard UUID format: 8-4-4-4-12 (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-		sessionID := fmt.Sprintf("%x-%x-%x-%x-%x",
-			b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
-		
-		// Check for conflicts
-		var exists bool
-		err := DB.QueryRow("SELECT EXISTS(SELECT 1 FROM chat_sessions WHERE id = ?)", sessionID).Scan(&exists)
-		if err != nil {
-			slog.Warn("generateSessionID: DB check failed", slog.String("err", err.Error()))
-			continue  // Continue to next attempt instead of returning
-		}
-		if !exists {
-			return sessionID
-		}
-	}
-	return ""  // Explicitly return empty after 10 attempts
+	return generateUUID("", "chat_sessions", "id")
 }
 
 // GetSessions retrieves chat sessions for a given project path.

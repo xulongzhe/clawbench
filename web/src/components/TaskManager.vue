@@ -17,7 +17,7 @@
               <span v-if="task.repeatMode !== 'unlimited'" class="task-item-progress">{{ task.runCount }}/{{ task.maxRuns || 1 }}</span>
             </div>
             <div v-if="task.nextRunAt" class="task-item-next">
-              下次执行: {{ formatTime(task.nextRunAt) }}
+              下次执行: {{ formatDateTime(task.nextRunAt) }}
             </div>
           </div>
           <div class="task-item-actions">
@@ -47,6 +47,8 @@
 import { ref, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import TaskDetailDialog from './TaskDetailDialog.vue'
+import { useAgents } from '@/composables/useAgents.ts'
+import { humanizeCron, repeatLabel, statusLabel, formatDateTime } from '@/utils/helpers.ts'
 
 const props = defineProps({
   open: Boolean,
@@ -58,7 +60,7 @@ const tasks = ref([])
 const loading = ref(false)
 const detailDialogOpen = ref(false)
 const selectedTask = ref(null)
-const agents = ref([])
+const { agents, loadAgents, getAgentIcon } = useAgents()
 
 async function loadTasks() {
   loading.value = true
@@ -71,51 +73,6 @@ async function loadTasks() {
   } finally {
     loading.value = false
   }
-}
-
-async function loadAgents() {
-  try {
-    const resp = await fetch('/api/agents')
-    const data = await resp.json()
-    agents.value = data.agents || []
-  } catch (err) {
-    console.error('Failed to load agents:', err)
-  }
-}
-
-function getAgentIcon(agentId) {
-  const agent = agents.value.find(a => a.id === agentId)
-  return agent ? agent.icon : '🤖'
-}
-
-function humanizeCron(expr) {
-  const parts = expr.split(' ')
-  if (parts.length !== 5) return expr
-  const [min, hour, day, month, weekday] = parts
-  if (min.startsWith('*/') && hour === '*') return `每 ${min.slice(2)} 分钟`
-  if (hour.startsWith('*/') && min === '0') return `每 ${hour.slice(2)} 小时`
-  if (min === '0' && !hour.includes('/') && day === '*' && month === '*' && weekday === '*') return `每天 ${hour}:00`
-  if (min === '0' && weekday === '1-5') return `工作日 ${hour}:00`
-  return expr
-}
-
-function repeatLabel(mode, maxRuns) {
-  if (mode === 'once') return '单次'
-  if (mode === 'limited') return `${maxRuns}次`
-  return '不限'
-}
-
-function statusLabel(status) {
-  if (status === 'active') return '运行中'
-  if (status === 'paused') return '已暂停'
-  if (status === 'completed') return '已完成'
-  return status
-}
-
-function formatTime(date) {
-  if (!date) return ''
-  const d = new Date(date)
-  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function openDetailDialog(task) {

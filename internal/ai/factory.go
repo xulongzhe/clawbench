@@ -8,13 +8,13 @@ import (
 func NewBackend(backendType string) (AIBackend, error) {
 	switch backendType {
 	case "claude":
-		return &ClaudeBackend{}, nil
+		return claudeBackend, nil
 	case "codebuddy":
-		return &CodebuddyBackend{}, nil
+		return codebuddyBackend, nil
 	case "opencode":
-		return &OpenCodeBackend{}, nil
+		return opencodeBackend, nil
 	case "gemini":
-		return &GeminiBackend{}, nil
+		return geminiBackend, nil
 	case "codex":
 		return &CodexBackend{}, nil
 	default:

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -15,8 +14,7 @@ import (
 
 // ServeFileRename handles file and directory rename operations.
 func ServeFileRename(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
@@ -25,8 +23,7 @@ func ServeFileRename(w http.ResponseWriter, r *http.Request) {
 		Name     string `json:"name"`
 		BasePath string `json:"basePath,omitempty"` // Optional: overrides project cookie path
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.Path == "" || req.Name == "" {
@@ -50,9 +47,8 @@ func ServeFileRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	absOld, ok := model.ValidatePath(baseAbs, req.Path)
+	absOld, ok := validateAndResolvePath(w, baseAbs, req.Path)
 	if !ok {
-		model.WriteError(w, model.Forbidden(nil, "Access denied"))
 		return
 	}
 	newPath := filepath.Join(filepath.Dir(absOld), req.Name)
@@ -69,14 +65,12 @@ func ServeFileRename(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // ServeFileEditLine handles single-line editing operations.
 func ServeFileEditLine(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -91,14 +85,16 @@ func ServeFileEditLine(w http.ResponseWriter, r *http.Request) {
 		InsertAbove bool   `json:"insertAbove,omitempty"`
 		InsertBelow bool   `json:"insertBelow,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" || req.LineNum < 1 {
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Path == "" || req.LineNum < 1 {
 		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request")
 		return
 	}
 	basePath, _ := filepath.Abs(projectPath)
-	absPath, ok := model.ValidatePath(basePath, req.Path)
+	absPath, ok := validateAndResolvePath(w, basePath, req.Path)
 	if !ok {
-		model.WriteError(w, model.Forbidden(nil, "Access denied"))
 		return
 	}
 	data, err := os.ReadFile(absPath)
@@ -124,14 +120,12 @@ func ServeFileEditLine(w http.ResponseWriter, r *http.Request) {
 		model.WriteError(w, model.Internal(fmt.Errorf("cannot write file")))
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // ServeFileDelete handles file and directory deletion.
 func ServeFileDelete(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
@@ -139,8 +133,7 @@ func ServeFileDelete(w http.ResponseWriter, r *http.Request) {
 		Path     string `json:"path"`
 		BasePath string `json:"basePath,omitempty"` // Optional: overrides project cookie path
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.Path == "" {
@@ -164,9 +157,8 @@ func ServeFileDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	absPath, ok := model.ValidatePath(baseAbs, req.Path)
+	absPath, ok := validateAndResolvePath(w, baseAbs, req.Path)
 	if !ok {
-		model.WriteError(w, model.Forbidden(nil, "Access denied"))
 		return
 	}
 
@@ -182,8 +174,7 @@ func ServeFileDelete(w http.ResponseWriter, r *http.Request) {
 		os.Remove(absPath)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // validateCreatePath validates the path for file/directory creation operations.
@@ -210,8 +201,7 @@ func validateCreatePath(w http.ResponseWriter, projectPath, reqPath, reqName str
 
 // ServeFileCreate handles file creation.
 func ServeFileCreate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -223,8 +213,7 @@ func ServeFileCreate(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.Name == "" {
@@ -247,14 +236,12 @@ func ServeFileCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // ServeDirCreate handles directory creation.
 func ServeDirCreate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -266,8 +253,7 @@ func ServeDirCreate(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.Name == "" {
@@ -285,22 +271,19 @@ func ServeDirCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // validateSrcDestPath validates source and destination paths for move/copy operations.
 // Returns (srcAbsPath, destAbsPath) or empty strings on error (response already written).
 func validateSrcDestPath(w http.ResponseWriter, projectPath, srcRel, destRel string) (string, string) {
 	basePath, _ := filepath.Abs(projectPath)
-	srcAbsPath, ok := model.ValidatePath(basePath, srcRel)
+	srcAbsPath, ok := validateAndResolvePath(w, basePath, srcRel)
 	if !ok {
-		model.WriteError(w, model.Forbidden(nil, "Access denied"))
 		return "", ""
 	}
-	destAbsPath, ok := model.ValidatePath(basePath, destRel)
+	destAbsPath, ok := validateAndResolvePath(w, basePath, destRel)
 	if !ok {
-		model.WriteError(w, model.Forbidden(nil, "Access denied"))
 		return "", ""
 	}
 	return srcAbsPath, destAbsPath
@@ -308,8 +291,7 @@ func validateSrcDestPath(w http.ResponseWriter, projectPath, srcRel, destRel str
 
 // ServeFileMove handles file and directory move operations.
 func ServeFileMove(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -321,8 +303,7 @@ func ServeFileMove(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Dest string `json:"dest"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.Path == "" || req.Dest == "" {
@@ -340,14 +321,12 @@ func ServeFileMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // ServeFileCopy handles file and directory copy operations.
 func ServeFileCopy(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -359,8 +338,7 @@ func ServeFileCopy(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Dest string `json:"dest"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.Path == "" || req.Dest == "" {
@@ -393,8 +371,7 @@ func ServeFileCopy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // copyFile copies a single file from src to dst.
@@ -462,8 +439,7 @@ func serveProjectsCreate(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 		Name string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.Name == "" {
@@ -491,6 +467,5 @@ func serveProjectsCreate(w http.ResponseWriter, r *http.Request) {
 		model.WriteError(w, model.Internal(fmt.Errorf("create directory failed: %w", err)))
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "path": newDir})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "path": newDir})
 }

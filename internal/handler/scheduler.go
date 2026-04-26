@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,8 +26,7 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 		if tasks == nil {
 			tasks = []model.ScheduledTask{}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"tasks": tasks})
+		writeJSON(w, http.StatusOK, map[string]any{"tasks": tasks})
 
 	case http.MethodPost:
 	var req struct {
@@ -40,8 +38,7 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 		MaxRuns    int    `json:"max_runs"`
 		SessionID  string `json:"session_id"`
 	}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+	if !decodeJSON(w, r, &req) {
 			return
 		}
 		if req.Name == "" || req.CronExpr == "" || req.AgentID == "" || req.Prompt == "" {
@@ -72,8 +69,7 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "task": task})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "task": task})
 
 	default:
 		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -113,8 +109,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 			model.WriteError(w, model.NotFound(nil, "Task not found"))
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(task)
+		writeJSON(w, http.StatusOK, task)
 
 	case http.MethodPut:
 		var req struct {
@@ -127,16 +122,14 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 			RepeatMode  string `json:"repeat_mode"`
 			MaxRuns     int    `json:"max_runs"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+		if !decodeJSON(w, r, &req) {
 			return
 		}
 
 		// Handle actions
 		if req.Action == "pause" {
 			service.GlobalScheduler.PauseTask(taskID)
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}
 		if req.Action == "resume" {
@@ -144,8 +137,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 				model.WriteError(w, model.Internal(err))
 				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{"ok": true})
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}
 
@@ -189,13 +181,11 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "task": task})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "task": task})
 
 	case http.MethodDelete:
 		service.GlobalScheduler.RemoveTask(taskID)
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 
 	default:
 		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -244,6 +234,5 @@ func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID string) 
 	if executions == nil {
 		executions = []Execution{}
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"executions": executions})
+	writeJSON(w, http.StatusOK, map[string]any{"executions": executions})
 }

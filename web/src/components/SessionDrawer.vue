@@ -28,7 +28,7 @@
               </span>
             </div>
             <div class="session-item-meta">
-              <span class="session-item-time">{{ formatTime(session.updatedAt) }}</span>
+              <span class="session-item-time">{{ formatRelativeTime(session.updatedAt) }}</span>
               <span class="session-item-agent">{{ getAgentIcon(session.agentId) }} {{ getAgentName(session.agentId) }}</span>
               <span class="session-item-backend">{{ session.backend }}</span>
               <span v-if="session.model" class="session-item-model">{{ session.model }}</span>
@@ -88,6 +88,8 @@
 import { ref, watch, computed } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import ModalDialog from './ModalDialog.vue'
+import { useAgents } from '@/composables/useAgents.ts'
+import { formatRelativeTime } from '@/utils/helpers.ts'
 
 const props = defineProps({
   open: Boolean,
@@ -100,7 +102,7 @@ const emit = defineEmits(['close', 'select', 'create', 'delete'])
 const bottomSheetRef = ref(null)
 const sessions = ref([])
 const loading = ref(false)
-const agents = ref([])
+const { agents, loadAgents, getAgentIcon, getAgentName } = useAgents()
 const selectedAgentId = ref('')
 const showAgentSelector = ref(false)
 
@@ -149,42 +151,6 @@ async function deleteSession(sessionId) {
   if (!confirm('确定删除此会话及其所有聊天记录?')) return
   const session = sessions.value.find(s => s.id === sessionId)
   emit('delete', sessionId, session?.backend)
-}
-
-function getAgentIcon(agentId) {
-  const agent = agents.value.find(a => a.id === agentId)
-  return agent ? agent.icon : '🤖'
-}
-
-function getAgentName(agentId) {
-  const agent = agents.value.find(a => a.id === agentId)
-  return agent ? agent.name : (agentId || '全能助手')
-}
-
-async function loadAgents() {
-  try {
-    const resp = await fetch('/api/agents')
-    const data = await resp.json()
-    agents.value = data.agents || []
-  } catch (err) {
-    console.error('Failed to load agents:', err)
-  }
-}
-
-function formatTime(date) {
-  if (!date) return ''
-  const d = new Date(date)
-  const now = new Date()
-  const diff = now - d
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  if (hours < 24) return `${hours}小时前`
-  if (days < 7) return `${days}天前`
-  return d.toLocaleDateString('zh-CN')
 }
 
 watch(() => props.open, async (val) => {

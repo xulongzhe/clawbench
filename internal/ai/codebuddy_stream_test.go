@@ -169,7 +169,7 @@ func TestCodebuddyStream_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	backend := &CodebuddyBackend{}
+	backend := codebuddyBackend
 	_, err := backend.ExecuteStream(ctx, ChatRequest{
 		Prompt:    "test",
 		SessionID: "test-session",
@@ -286,7 +286,7 @@ func TestCodebuddyStream_ExecuteStreamReturnsChannel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	backend := &CodebuddyBackend{}
+	backend := codebuddyBackend
 	ch, err := backend.ExecuteStream(ctx, ChatRequest{
 		Prompt:    "test",
 		SessionID: "test-session",

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -61,9 +60,8 @@ func ListDir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	absPath, ok := model.ValidatePath(basePath, relPath)
+	absPath, ok := validateAndResolvePath(w, basePath, relPath)
 	if !ok {
-		model.WriteError(w, model.Forbidden(nil, "Access denied"))
 		return
 	}
 
@@ -87,8 +85,7 @@ func ListDir(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"path":   relFromBase,
 		"parent": parent,
 		"items":  items,
@@ -130,8 +127,7 @@ func ListFiles(w http.ResponseWriter, r *http.Request) {
 })
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Cannot access directory"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Cannot access directory"})
 		return
 	}
 
@@ -139,8 +135,7 @@ func ListFiles(w http.ResponseWriter, r *http.Request) {
 		return files[i].Name < files[j].Name
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(files)
+	writeJSON(w, http.StatusOK, files)
 }
 
 // GetFile returns the content of a single file.
@@ -164,9 +159,8 @@ func GetFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	basePath, _ := filepath.Abs(projectPath)
-	absPath, ok := model.ValidatePath(basePath, filepathStr)
+	absPath, ok := validateAndResolvePath(w, basePath, filepathStr)
 	if !ok {
-		model.WriteError(w, model.Forbidden(nil, "Access denied"))
 		return
 	}
 
@@ -196,8 +190,7 @@ func GetFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	relPath, _ := filepath.Rel(projectPath, absPath)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(FileContent{
+	writeJSON(w, http.StatusOK, FileContent{
 		Content:   string(content),
 		Name:      info.Name(),
 		Path:      filepath.ToSlash(relPath),
@@ -227,9 +220,8 @@ func ServeLocalFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	basePath, _ := filepath.Abs(projectPath)
-	absPath, ok := model.ValidatePath(basePath, filepathStr)
+	absPath, ok := validateAndResolvePath(w, basePath, filepathStr)
 	if !ok {
-		model.WriteError(w, model.Forbidden(nil, "Access denied"))
 		return
 	}
 
@@ -321,8 +313,7 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 		*parent = filepath.Dir(absPath)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"path":   absPath,
 		"parent": parent,
 		"items":  items,

@@ -40,19 +40,15 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 					model.WriteError(w, model.Internal(fmt.Errorf("failed to load sessions")))
 					return
 				}
-				if len(sessions) == 0 {
-					// Create default session with default agent
-					defaultAgentID := model.GetDefaultAgentID()
-					if defaultAgentID == "" {
-						model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
-						return
-					}
-					var backend, defaultModel string
-					if agent, ok := model.Agents[defaultAgentID]; ok {
-						backend = agent.Backend
-						defaultModel = agent.Model
-					}
-					sessionID, err = service.CreateSession(projectPath, backend, "新会话", defaultAgentID, defaultModel)
+		if len(sessions) == 0 {
+				// Create default session with default agent
+				agentID := model.GetDefaultAgentID()
+				backend, defaultModel, _, _, ok := resolveAgentConfig(agentID)
+				if !ok {
+					model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
+					return
+				}
+				sessionID, err = service.CreateSession(projectPath, backend, "新会话", agentID, defaultModel)
 					if err != nil {
 						model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 						return
@@ -74,8 +70,7 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to load history")))
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"messages": messages, "sessionId": sessionID})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"messages": messages, "sessionId": sessionID})
 
 	case http.MethodPost:
 		var req struct {
@@ -86,8 +81,7 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 			SessionID string   `json:"session_id"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxChatBodySize)
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+		if !decodeJSON(w, r, &req) {
 			return
 		}
 		if req.Role != "user" && req.Role != "assistant" {
@@ -107,8 +101,7 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to save message")))
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "savedAt": time.Now().UTC()})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "savedAt": time.Now().UTC()})
 
 	default:
 		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -122,8 +115,7 @@ func ServeAISession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method != http.MethodDelete {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodDelete) {
 		return
 	}
 
@@ -134,8 +126,7 @@ func ServeAISession(w http.ResponseWriter, r *http.Request) {
 	entries, err := os.ReadDir(sessionDir)
 	if err != nil {
 		// Session dir doesn't exist — nothing to delete, treat as success
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "deleted": 0})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": 0})
 		return
 	}
 
@@ -148,38 +139,33 @@ func ServeAISession(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "deleted": deleted})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "deleted": deleted})
 }
 
 // ServeChatCount returns the message count for a session (lightweight polling endpoint).
 func ServeChatCount(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
-	sessionID := r.URL.Query().Get("session_id")
-	if sessionID == "" {
-		model.WriteErrorf(w, http.StatusBadRequest, "session_id required")
+	sessionID, ok := requireSessionID(w, r)
+	if !ok {
 		return
 	}
+	_ = sessionID
 	count := service.GetChatMessageCount(sessionID)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"count": count})
+	writeJSON(w, http.StatusOK, map[string]any{"count": count})
 }
 
 // ServeChatMessageUpdate handles PUT to update a specific message's content.
 func ServeChatMessageUpdate(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPut) {
 		return
 	}
 	var req struct {
 		MessageID int64  `json:"messageId"`
 		Content   string `json:"content"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+	if !decodeJSON(w, r, &req) {
 		return
 	}
 	if req.MessageID == 0 {
@@ -190,8 +176,7 @@ func ServeChatMessageUpdate(w http.ResponseWriter, r *http.Request) {
 		model.WriteError(w, model.Internal(fmt.Errorf("failed to update message")))
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // AIChat handles GET (status/history) and POST (send message) for AI chat.
@@ -227,17 +212,13 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 			if len(allSessions) == 0 {
 				// No sessions exist, create a new one with default agent
-				defaultAgentID := model.GetDefaultAgentID()
-				if defaultAgentID == "" {
+				agentID := model.GetDefaultAgentID()
+				sessionBackend2, defaultModel, _, _, ok := resolveAgentConfig(agentID)
+				if !ok {
 					model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
 					return
 				}
-				var sessionBackend, defaultModel string
-				if agent, ok := model.Agents[defaultAgentID]; ok {
-					sessionBackend = agent.Backend
-					defaultModel = agent.Model
-				}
-				sessionID, err = service.CreateSession(projectPath, sessionBackend, "新会话", defaultAgentID, defaultModel)
+				sessionID, err = service.CreateSession(projectPath, sessionBackend2, "新会话", agentID, defaultModel)
 				if err != nil {
 					model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 					return
@@ -256,14 +237,13 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		messages, err := service.GetChatHistory(projectPath, sessionBackend, sessionID)
 		// Get session title and agent info
 		sessionTitle, _ := service.GetSessionTitle(sessionID)
-		sessionAgentID := service.GetSessionAgentID(sessionID)
-		w.Header().Set("Content-Type", "application/json")
-		running := service.IsSessionRunning(sessionID)
-		if err != nil {
-			json.NewEncoder(w).Encode(map[string]any{"messages": []any{}, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID})
-			return
-		}
-		json.NewEncoder(w).Encode(map[string]any{"messages": messages, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID})
+	sessionAgentID := service.GetSessionAgentID(sessionID)
+	running := service.IsSessionRunning(sessionID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"messages": []any{}, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"messages": messages, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID})
 		return
 	}
 
@@ -276,18 +256,14 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	sessionID := getSessionID(r)
 	if sessionID == "" {
 	// No session yet — auto-create one (same logic as GET)
-	defaultAgentID := model.GetDefaultAgentID()
-	if defaultAgentID == "" {
+	agentID2 := model.GetDefaultAgentID()
+	sessionBackend2, defaultModel2, _, _, ok := resolveAgentConfig(agentID2)
+	if !ok {
 		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
 		return
 	}
-	var sessionBackend, defaultModel string
-	if agent, ok := model.Agents[defaultAgentID]; ok {
-		sessionBackend = agent.Backend
-		defaultModel = agent.Model
-	}
 	var err error
-	sessionID, err = service.CreateSession(projectPath, sessionBackend, "新会话", defaultAgentID, defaultModel)
+	sessionID, err = service.CreateSession(projectPath, sessionBackend2, "新会话", agentID2, defaultModel2)
 		if err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 			return
@@ -302,8 +278,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 	// Prevent concurrent sessions for the same session ID
 	if !service.TrySetSessionRunning(sessionID) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"running": true})
+		writeJSON(w, http.StatusOK, map[string]any{"running": true})
 		return
 	}
 
@@ -342,10 +317,9 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	basePath, _ := filepath.Abs(projectPath)
 	var fileDir string
 	if len(allFilePaths) > 0 {
-		firstAbsPath, ok := model.ValidatePath(basePath, allFilePaths[0])
+		firstAbsPath, ok := validateAndResolvePath(w, basePath, allFilePaths[0])
 		if !ok {
 			service.SetSessionRunning(sessionID, false)
-			model.WriteError(w, model.Forbidden(nil, "Access denied"))
 			return
 		}
 		if _, err := os.Stat(firstAbsPath); err != nil {
@@ -361,10 +335,9 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	// Validate all attached file paths are within project
 	validatedFilePaths := make([]string, 0, len(allFilePaths))
 	for _, fp := range allFilePaths {
-		fAbsPath, ok := model.ValidatePath(basePath, fp)
+		fAbsPath, ok := validateAndResolvePath(w, basePath, fp)
 		if !ok {
 			service.SetSessionRunning(sessionID, false)
-			model.WriteError(w, model.Forbidden(nil, "Access denied"))
 			return
 		}
 		if _, err := os.Stat(fAbsPath); err != nil {
@@ -378,10 +351,9 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	// Validate file paths are within project and collect absolute paths
 	fileAbsPaths := make([]string, 0, len(req.Files))
 	for _, fPath := range req.Files {
-		fAbsPath, ok := model.ValidatePath(basePath, fPath)
+		fAbsPath, ok := validateAndResolvePath(w, basePath, fPath)
 		if !ok {
 			service.SetSessionRunning(sessionID, false)
-			model.WriteError(w, model.Forbidden(nil, "Access denied"))
 			return
 		}
 		if _, err := os.Stat(fAbsPath); err != nil {
@@ -416,8 +388,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"started": true, "sessionId": sessionID})
+	writeJSON(w, http.StatusOK, map[string]any{"started": true, "sessionId": sessionID})
 
 	// Register stream channel BEFORE starting goroutine to avoid race with SSE connection
 	streamCh := service.RegisterSessionStream(sessionID)
@@ -695,8 +666,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 // CancelChat handles POST to cancel an ongoing AI stream for a session.
 func CancelChat(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
@@ -714,14 +684,12 @@ func CancelChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // AIChatStream handles SSE streaming for AI chat responses
 func AIChatStream(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 
@@ -877,8 +845,7 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		for i := range sessions {
 			sessions[i].Running = service.IsSessionRunning(sessions[i].ID)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"sessions": sessions})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"sessions": sessions})
 
 	case http.MethodPost:
 		var req struct {
@@ -887,29 +854,22 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 			AgentID string `json:"agentId"`
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxChatBodySize)
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+		if !decodeJSON(w, r, &req) {
 			return
 		}
 		// Resolve backend and model from agent config if agent_id is provided
 		backend := req.Backend
 		agentModel := ""
 	agentID := req.AgentID
-	if agentID == "" {
-		agentID = model.GetDefaultAgentID()
-	}
-	if agentID == "" {
+	backend2, model2, _, _, ok := resolveAgentConfig(agentID)
+	if !ok {
 		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
 		return
 	}
-	if agent, ok := model.Agents[agentID]; ok {
-		if agent.Backend != "" {
-			backend = agent.Backend
-		}
-		if agent.Model != "" {
-			agentModel = agent.Model
-		}
+	if backend2 != "" {
+		backend = backend2
 	}
+	agentModel = model2
 	if backend == "" {
 		backend = "codebuddy"
 	}
@@ -930,8 +890,7 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		// Set the new session ID in cookie
 		setSessionID(w, sessionID)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"ok": true, "sessionId": sessionID, "backend": backend, "agentId": agentID})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "sessionId": sessionID, "backend": backend, "agentId": agentID})
 
 	default:
 		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
@@ -945,14 +904,12 @@ func DeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method != http.MethodDelete {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodDelete) {
 		return
 	}
 
-	sessionID := r.URL.Query().Get("session_id")
-	if sessionID == "" {
-		model.WriteErrorf(w, http.StatusBadRequest, "session_id required")
+	sessionID, ok := requireSessionID(w, r)
+	if !ok {
 		return
 	}
 
@@ -967,8 +924,7 @@ func DeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // accumulateBlock processes a single StreamEvent and updates the blocks slice.

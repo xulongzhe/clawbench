@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -108,8 +107,7 @@ func isGitRepo(projectPath string) bool {
 // ServeGitProjectHistory returns commit history for the entire project.
 // Supports pagination via ?skip=N (skips N commits).
 func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -118,8 +116,7 @@ func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !isGitRepo(projectPath) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"isGit":   false,
 			"commits": []interface{}{},
 			"hasMore": false,
@@ -146,8 +143,7 @@ func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
 
 	commits := parseGitLog(string(output))
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"isGit":   true,
 		"commits": commits,
 		"hasMore": len(commits) == 30,
@@ -156,8 +152,7 @@ func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
 
 // ServeGitInit initializes a new git repository in the project directory.
 func ServeGitInit(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -179,8 +174,7 @@ func ServeGitInit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
 // gitDiff returns the diff for a file at a specific commit (or HEAD for working tree).
@@ -223,12 +217,10 @@ func gitDiff(projectPath, relPath, commit string) ([]byte, error) {
 // writeDiffResponse writes the diff response as JSON.
 func writeDiffResponse(w http.ResponseWriter, output []byte, cmdErr error) {
 	if cmdErr != nil && len(output) == 0 {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"diff": "", "empty": true})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"diff": "", "empty": true})
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"diff":  string(output),
 		"empty": len(strings.TrimSpace(string(output))) == 0,
 	})
@@ -237,8 +229,7 @@ func writeDiffResponse(w http.ResponseWriter, output []byte, cmdErr error) {
 // ServeGitFileDiff returns the diff for a specific file in a specific commit
 // (comparing the commit vs its parent), or working tree diff if sha is "HEAD".
 func ServeGitFileDiff(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -257,8 +248,7 @@ func ServeGitFileDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := model.ValidatePath(projectPath, filePath); !ok {
-		model.WriteError(w, model.Forbidden(nil, "access denied"))
+	if _, ok := validateAndResolvePath(w, projectPath, filePath); !ok {
 		return
 	}
 
@@ -268,8 +258,7 @@ func ServeGitFileDiff(w http.ResponseWriter, r *http.Request) {
 
 // ServeGitCommitFiles returns the list of files modified in a specific commit.
 func ServeGitCommitFiles(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -313,14 +302,12 @@ func ServeGitCommitFiles(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(files)
+	writeJSON(w, http.StatusOK, files)
 }
 
 // ServeGitHistory returns commit history for a specific file.
 func ServeGitHistory(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -328,8 +315,7 @@ func ServeGitHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isGitRepo(projectPath) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"isGit":     false,
 			"commits":   []interface{}{},
 			"untracked": false,
@@ -343,8 +329,7 @@ func ServeGitHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := model.ValidatePath(projectPath, relPath); !ok {
-		model.WriteError(w, model.Forbidden(nil, "access denied"))
+	if _, ok := validateAndResolvePath(w, projectPath, relPath); !ok {
 		return
 	}
 
@@ -363,14 +348,12 @@ func ServeGitHistory(w http.ResponseWriter, r *http.Request) {
 
 	commits := parseGitLog(string(output))
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"isGit": true, "commits": commits, "untracked": untracked})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"isGit": true, "commits": commits, "untracked": untracked})
 }
 
 // ServeGitDiff returns the diff for a specific commit or the working tree diff.
 func ServeGitDiff(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -388,8 +371,7 @@ func ServeGitDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := model.ValidatePath(projectPath, relPath); !ok {
-		model.WriteError(w, model.Forbidden(nil, "access denied"))
+	if _, ok := validateAndResolvePath(w, projectPath, relPath); !ok {
 		return
 	}
 
@@ -400,8 +382,7 @@ func ServeGitDiff(w http.ResponseWriter, r *http.Request) {
 
 // ServeGitStatus returns whether there are uncommitted changes for the file.
 func ServeGitStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -409,8 +390,7 @@ func ServeGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isGitRepo(projectPath) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"isGit": false, "hasUncommitted": false})
+	writeJSON(w, http.StatusOK, map[string]bool{"isGit": false, "hasUncommitted": false})
 		return
 	}
 
@@ -420,8 +400,7 @@ func ServeGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := model.ValidatePath(projectPath, relPath); !ok {
-		model.WriteError(w, model.Forbidden(nil, "access denied"))
+	if _, ok := validateAndResolvePath(w, projectPath, relPath); !ok {
 		return
 	}
 
@@ -429,9 +408,8 @@ func ServeGitStatus(w http.ResponseWriter, r *http.Request) {
 	cmd.Dir = projectPath
 	output, err := cmd.CombinedOutput()
 
-	w.Header().Set("Content-Type", "application/json")
 	hasUncommitted := err == nil && len(strings.TrimSpace(string(output))) > 0
-	json.NewEncoder(w).Encode(map[string]interface{}{"isGit": true, "hasUncommitted": hasUncommitted})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"isGit": true, "hasUncommitted": hasUncommitted})
 }
 
 // wtFileInfo extends commitInfo with a staged flag for working tree files.
@@ -486,8 +464,7 @@ func parseGitStatusPorcelain(output string) []wtFileInfo {
 
 // ServeGitWorkingTreeFiles returns uncommitted file changes for the project or a specific file.
 func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
+	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 	projectPath, ok := requireProject(w, r)
@@ -495,8 +472,7 @@ func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isGitRepo(projectPath) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"isGit": false, "hasUncommitted": false, "files": []interface{}{}})
+	writeJSON(w, http.StatusOK, map[string]interface{}{"isGit": false, "hasUncommitted": false, "files": []interface{}{}})
 		return
 	}
 
@@ -504,8 +480,7 @@ func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 
 	// For specific file: check if it has uncommitted changes
 	if relPath != "" {
-		if _, ok := model.ValidatePath(projectPath, relPath); !ok {
-			model.WriteError(w, model.Forbidden(nil, "access denied"))
+		if _, ok := validateAndResolvePath(w, projectPath, relPath); !ok {
 			return
 		}
 		cmd := exec.Command("git", "diff", "--name-status", "HEAD", "--", relPath)
@@ -519,8 +494,7 @@ func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 			_, lsErr := lsCmd.CombinedOutput()
 			hasUncommitted = lsErr != nil // not tracked = untracked file
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"isGit": true, "hasUncommitted": hasUncommitted, "files": []interface{}{}})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"isGit": true, "hasUncommitted": hasUncommitted, "files": []interface{}{}})
 		return
 	}
 
@@ -530,8 +504,7 @@ func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 	output, _ := cmd.CombinedOutput()
 	allFiles := parseGitStatusPorcelain(string(output))
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"isGit":          true,
 		"hasUncommitted": len(allFiles) > 0,
 		"files":          allFiles,

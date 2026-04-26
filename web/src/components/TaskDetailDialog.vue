@@ -88,6 +88,7 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
 import ModalDialog from './ModalDialog.vue'
+import { useAgents } from '@/composables/useAgents.ts'
 
 const props = defineProps({
   open: Boolean,
@@ -98,7 +99,7 @@ const emit = defineEmits(['close', 'saved'])
 
 const tab = ref('details')
 const saving = ref(false)
-const agents = ref([])
+const { agents, loadAgents } = useAgents()
 const executions = ref([])
 const executionsLoading = ref(false)
 
@@ -113,16 +114,6 @@ const form = ref({
   repeatMode: 'unlimited',
   maxRuns: 0,
 })
-
-async function loadAgents() {
-  try {
-    const resp = await fetch('/api/agents')
-    const data = await resp.json()
-    agents.value = data.agents || []
-  } catch (err) {
-    console.error('Failed to load agents:', err)
-  }
-}
 
 async function loadExecutions() {
   if (!props.task?.id) return

@@ -16,15 +16,15 @@
             <div class="task-item-header">
               <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
               <span class="task-item-name">{{ task.name }}</span>
-              <span class="task-item-status" :class="task.status">{{ taskStatusLabel(task.status) }}</span>
+              <span class="task-item-status" :class="task.status">{{ statusLabel(task.status) }}</span>
             </div>
             <div class="task-item-meta">
               <span class="task-item-cron">{{ humanizeCron(task.cronExpr) }}</span>
-              <span class="task-item-repeat">{{ taskRepeatLabel(task.repeatMode, task.maxRuns) }}</span>
+              <span class="task-item-repeat">{{ repeatLabel(task.repeatMode, task.maxRuns) }}</span>
               <span v-if="task.repeatMode !== 'unlimited'" class="task-item-progress">{{ task.runCount }}/{{ task.maxRuns || 1 }}</span>
             </div>
             <div v-if="task.nextRunAt" class="task-item-next">
-              下次执行: {{ formatTaskTime(task.nextRunAt) }}
+              下次执行: {{ formatDateTime(task.nextRunAt) }}
             </div>
           </div>
           <div class="task-item-actions">
@@ -55,6 +55,8 @@
 import { ref, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import TaskDetailDialog from './TaskDetailDialog.vue'
+import { useAgents } from '@/composables/useAgents.ts'
+import { humanizeCron, repeatLabel, statusLabel, formatDateTime } from '@/utils/helpers.ts'
 
 const props = defineProps({
   open: Boolean,
@@ -67,7 +69,7 @@ const tasks = ref([])
 const loading = ref(false)
 const taskDetailOpen = ref(false)
 const selectedTask = ref(null)
-const agents = ref([])
+const { agents, loadAgents, getAgentIcon } = useAgents()
 
 defineExpose({ loadTasks })
 
@@ -82,51 +84,6 @@ async function loadTasks() {
   } finally {
     loading.value = false
   }
-}
-
-async function loadAgents() {
-  try {
-    const resp = await fetch('/api/agents')
-    const data = await resp.json()
-    agents.value = data.agents || []
-  } catch (err) {
-    console.error('Failed to load agents:', err)
-  }
-}
-
-function getAgentIcon(agentId) {
-  const agent = agents.value.find(a => a.id === agentId)
-  return agent ? agent.icon : '🤖'
-}
-
-function humanizeCron(expr) {
-  const parts = expr.split(' ')
-  if (parts.length !== 5) return expr
-  const [min, hour, day, month, weekday] = parts
-  if (min.startsWith('*/') && hour === '*') return `每 ${min.slice(2)} 分钟`
-  if (hour.startsWith('*/') && min === '0') return `每 ${hour.slice(2)} 小时`
-  if (min === '0' && !hour.includes('/') && day === '*' && month === '*' && weekday === '*') return `每天 ${hour}:00`
-  if (min === '0' && weekday === '1-5') return `工作日 ${hour}:00`
-  return expr
-}
-
-function taskRepeatLabel(mode, maxRuns) {
-  if (mode === 'once') return '单次'
-  if (mode === 'limited') return `${maxRuns}次`
-  return '不限'
-}
-
-function taskStatusLabel(status) {
-  if (status === 'active') return '运行中'
-  if (status === 'paused') return '已暂停'
-  if (status === 'completed') return '已完成'
-  return status
-}
-
-function formatTaskTime(date) {
-  if (!date) return ''
-  const d = new Date(date)
-  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
 
 function openTaskDetailDialog(task) {

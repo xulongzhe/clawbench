@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -179,33 +178,9 @@ func (s *Scheduler) UpdateTask(task *model.ScheduledTask) error {
 
 // registerTask adds a task's cron job to the scheduler.
 func (s *Scheduler) registerTask(task *model.ScheduledTask) error {
-	schedule, err := cron.ParseStandard(task.CronExpr)
-	if err != nil {
-		return fmt.Errorf("invalid cron expression: %w", err)
-	}
-
-	// Capture task by value for the closure
-	taskID := task.ID
-	projectPath := task.ProjectPath
-
-	entryID := s.cron.Schedule(schedule, cron.FuncJob(func() {
-		// Reload task from DB to get latest state
-		current, err := GetTaskByID(taskID)
-		if err != nil || current.Status != "active" {
-			return
-		}
-		s.executeTask(current, projectPath)
-	}))
-
 	s.mu.Lock()
-	s.entries[taskID] = entryID
-	s.mu.Unlock()
-
-	slog.Info("registered cron task",
-		slog.String("task_id", taskID),
-		slog.String("cron", task.CronExpr),
-	)
-	return nil
+	defer s.mu.Unlock()
+	return s.registerTaskLocked(task)
 }
 
 // registerTaskLocked adds a task's cron job to the scheduler.
@@ -497,21 +472,5 @@ func AddTaskExecution(taskID string, messageID int64) error {
 
 // generateTaskID creates a unique ID for a scheduled task.
 func generateTaskID() string {
-	for i := 0; i < 10; i++ {
-		b := make([]byte, 16)
-		rand.Read(b)
-		taskID := fmt.Sprintf("task-%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
-
-		// Check for conflicts in database
-		var exists bool
-		err := DB.QueryRow("SELECT EXISTS(SELECT 1 FROM scheduled_tasks WHERE id = ?)", taskID).Scan(&exists)
-		if err != nil {
-			slog.Warn("generateTaskID: DB check failed", slog.String("err", err.Error()))
-			continue
-		}
-		if !exists {
-			return taskID
-		}
-	}
-	return ""  // Explicitly return empty after 10 attempts
+	return generateUUID("task-", "scheduled_tasks", "id")
 }

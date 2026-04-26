@@ -1,9 +1,11 @@
 package ai
 
-// GeminiBackend implements AIBackend for Gemini CLI
-type GeminiBackend struct{}
-
-// Name returns the backend identifier
-func (g *GeminiBackend) Name() string {
-	return "gemini"
+// geminiBackend is the CLIBackend instance for Gemini CLI.
+var geminiBackend = &CLIBackend{
+	name:           "gemini",
+	defaultCommand: "gemini",
+	buildArgs:      buildGeminiStreamArgs,
+	newParser:      func() LineParser { return &GeminiStreamParser{} },
+	filterLine:     filterSkipNonJSON(),
+	preStart:       nil,
 }

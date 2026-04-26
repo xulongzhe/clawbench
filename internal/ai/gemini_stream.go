@@ -1,14 +1,8 @@
 package ai
 
 import (
-	"bufio"
-	"bytes"
-	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
-	"os/exec"
-	"strings"
 )
 
 // GeminiStreamMessage represents a single JSON line from `gemini --output-format stream-json`
@@ -185,111 +179,3 @@ func buildGeminiStreamArgs(req ChatRequest) []string {
 	return args
 }
 
-// ExecuteStream runs the Gemini CLI in streaming mode and returns a channel of events
-func (g *GeminiBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
-	args := buildGeminiStreamArgs(req)
-
-	cmdName := req.Command
-	if cmdName == "" {
-		cmdName = "gemini"
-	}
-	cmd := exec.CommandContext(ctx, cmdName, args...)
-	cmd.Dir = req.WorkDir
-	var stderrBuf bytes.Buffer
-	cmd.Stderr = &stderrBuf
-
-	slog.Info("executing ai stream command",
-		slog.String("backend", "gemini"),
-		slog.String("work_dir", req.WorkDir),
-		slog.String("session_id", req.SessionID),
-		slog.String("prompt", req.Prompt),
-		slog.Any("args", args),
-	)
-
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("gemini stream: failed to create stdout pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("gemini stream: failed to start command: %w", err)
-	}
-
-	ch := make(chan StreamEvent, streamChanSize)
-
-	go func() {
-		defer close(ch)
-
-		scanner := bufio.NewScanner(stdoutPipe)
-		buf := make([]byte, scannerInitial)
-		scanner.Buffer(buf, scannerMax)
-
-		parser := &GeminiStreamParser{}
-		for scanner.Scan() {
-			line := scanner.Text()
-
-			// Skip empty lines and non-JSON prefix lines (e.g., "Warning: ...")
-			if line == "" || !strings.HasPrefix(line, "{") {
-				slog.Debug("gemini stream: skipping non-JSON line", "line", line)
-				continue
-			}
-
-			slog.Debug("gemini stream: raw line", "session_id", req.SessionID, "line", line)
-			parser.ParseLine(line, ch)
-
-			// Check context after parsing
-			select {
-			case <-ctx.Done():
-				slog.Warn("gemini stream: context cancelled",
-					slog.String("session_id", req.SessionID),
-				)
-				return
-			default:
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			select {
-			case ch <- StreamEvent{Type: "warning", Content: fmt.Sprintf("AI 输出解析错误: %v", err)}:
-			case <-ctx.Done():
-			}
-		}
-
-		if err := cmd.Wait(); err != nil {
-			if ctx.Err() != nil {
-				slog.Warn("gemini stream: command cancelled",
-					slog.String("session_id", req.SessionID),
-					slog.String("ctx_err", ctx.Err().Error()),
-					slog.String("stderr", stderrBuf.String()),
-				)
-				return
-			}
-			stderr := stderrBuf.String()
-			slog.Error("gemini stream: command exited abnormally",
-				slog.String("session_id", req.SessionID),
-				slog.String("exit_error", err.Error()),
-				slog.String("stderr", stderr),
-			)
-			warnMsg := "AI 后端异常退出"
-			if stderr != "" {
-				warnMsg = fmt.Sprintf("AI 后端异常退出\n%s", stderr)
-			}
-			select {
-			case ch <- StreamEvent{Type: "warning", Content: warnMsg}:
-			case <-ctx.Done():
-			}
-		} else if stderrBuf.Len() > 0 {
-			stderr := stderrBuf.String()
-			slog.Warn("gemini stream: command succeeded with stderr output",
-				slog.String("session_id", req.SessionID),
-				slog.String("stderr", stderr),
-			)
-			select {
-			case ch <- StreamEvent{Type: "warning", Content: stderr}:
-			case <-ctx.Done():
-			}
-		}
-	}()
-
-	return ch, nil
-}
