@@ -861,6 +861,7 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		backend := req.Backend
 		agentModel := ""
 	agentID := req.AgentID
+	resolvedAgentID := agentID
 	backend2, model2, _, _, ok := resolveAgentConfig(agentID)
 	if !ok {
 		model.WriteErrorf(w, http.StatusServiceUnavailable, "no agents available")
@@ -870,6 +871,9 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		backend = backend2
 	}
 	agentModel = model2
+	if resolvedAgentID == "" {
+		resolvedAgentID = model.GetDefaultAgentID()
+	}
 	if backend == "" {
 		backend = "codebuddy"
 	}
@@ -883,14 +887,14 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 				title = "新会话"
 			}
 		}
-		sessionID, err := service.CreateSession(projectPath, backend, title, agentID, agentModel)
+		sessionID, err := service.CreateSession(projectPath, backend, title, resolvedAgentID, agentModel)
 		if err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 			return
 		}
 		// Set the new session ID in cookie
 		setSessionID(w, sessionID)
-		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "sessionId": sessionID, "backend": backend, "agentId": agentID})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "sessionId": sessionID, "backend": backend, "agentId": resolvedAgentID})
 
 	default:
 		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")

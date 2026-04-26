@@ -151,6 +151,8 @@ async function deleteSession(sessionId) {
   if (!confirm('确定删除此会话及其所有聊天记录?')) return
   const session = sessions.value.find(s => s.id === sessionId)
   emit('delete', sessionId, session?.backend)
+  // Reload list after a short delay to let the delete API complete
+  setTimeout(() => loadSessions(), 300)
 }
 
 watch(() => props.open, async (val) => {

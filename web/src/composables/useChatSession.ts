@@ -185,6 +185,8 @@ export function useChatSession(options: UseChatSessionOptions) {
 
   async function createSession(agentId) {
     try {
+      // Load agents first so UI can resolve agent names
+      if (agents.value.length === 0) await loadAgents()
       const body = agentId ? { agentId } : {}
       const resp = await fetch('/api/ai/sessions', {
         method: 'POST',
