@@ -88,12 +88,15 @@ function toRelative(absPath) {
     return rel || '/'
 }
 
-// Reload data when dialog opens
+// Reload data when dialog opens (only first time)
+let initialized = false
 watch(() => props.open, (isOpen) => {
     if (isOpen) {
-        selectedPath.value = ''
         searchQuery.value = ''
-        loadBrowse()
+        if (!initialized) {
+            initialized = true
+            loadBrowse()
+        }
     }
 })
 
