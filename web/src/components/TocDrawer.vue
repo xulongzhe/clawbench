@@ -24,15 +24,7 @@
     </template>
 
     <div class="toc-body">
-      <div class="toc-search">
-        <input
-          type="text"
-          v-model="searchQuery"
-          placeholder="搜索目录..."
-          @input="handleSearch"
-          @dblclick="clearSearch"
-        />
-      </div>
+      <SearchInput v-model="searchQuery" placeholder="搜索目录..." @dblclick="clearSearch" />
       <div v-if="filteredToc.length === 0" class="toc-empty">{{ searchQuery ? '无匹配结果' : '无标题' }}</div>
       <a
         v-for="item in filteredToc"
@@ -50,6 +42,7 @@
 <script setup>
 import { ref, watch, nextTick } from 'vue'
 import BottomSheet from './BottomSheet.vue'
+import SearchInput from './SearchInput.vue'
 import { extractToc, getFileType } from '@/utils/helpers.ts'
 
 const props = defineProps({
@@ -78,6 +71,8 @@ watch(() => props.file, (file) => {
     searchQuery.value = ''
     filteredToc.value = toc.value
 }, { immediate: true })
+
+watch(searchQuery, () => handleSearch())
 
 function handleSearch() {
     const query = searchQuery.value.toLowerCase().trim()
@@ -166,33 +161,6 @@ watch(() => props.open, (val) => {
     padding: 8px 6px;
     display: flex;
     flex-direction: column;
-}
-
-.toc-search {
-    position: relative;
-    margin-bottom: 8px;
-    padding: 0 2px;
-}
-
-.toc-search input {
-    width: 100%;
-    padding: 8px 32px 8px 10px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    font-size: 13px;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    outline: none;
-    box-sizing: border-box;
-    transition: border-color 0.2s;
-}
-
-.toc-search input:focus {
-    border-color: var(--accent-color);
-}
-
-.toc-search input::placeholder {
-    color: var(--text-muted);
 }
 
 .toc-empty {

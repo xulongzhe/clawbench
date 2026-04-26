@@ -21,15 +21,7 @@
 
     <div class="search-body">
       <div class="search-input-row">
-        <input
-          ref="inputRef"
-          v-model="query"
-          class="search-input"
-          placeholder="输入关键字搜索…"
-          type="text"
-          @keydown.enter="jumpToFirst"
-          @dblclick="query = ''"
-        />
+        <SearchInput ref="inputRef" v-model="query" placeholder="输入关键字搜索…" @enter="jumpToFirst" @dblclick="query = ''" />
       </div>
 
       <div class="search-content">
@@ -56,6 +48,7 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import BottomSheet from './BottomSheet.vue'
+import SearchInput from './SearchInput.vue'
 import { escapeHtml, getFileType } from '@/utils/helpers.ts'
 import { hljs } from '@/utils/globals.ts'
 
@@ -242,25 +235,6 @@ function jumpToFirst() {
   border-bottom: 1px solid var(--border-color, #e5e5e5);
   background: var(--bg-secondary, #f8f9fa);
   flex-shrink: 0;
-}
-
-.search-input {
-  flex: 1;
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: 6px;
-  outline: none;
-  padding: 6px 10px;
-  font-size: 13px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #212529);
-}
-
-.search-input:focus {
-  border-color: var(--accent-color, #4a90d9);
-}
-
-.search-input::placeholder {
-  color: var(--text-muted, #999);
 }
 
 .search-content {

@@ -8,13 +8,7 @@
         <span v-else-if="!isGit" class="drilldown-count">未初始化</span>
         <span v-else-if="!untracked" class="drilldown-count">加载中…</span>
       </div>
-      <input
-        v-if="commits.length > 0"
-        v-model="commitSearch"
-        class="drilldown-search"
-        :placeholder="searchPlaceholder"
-        type="text"
-      />
+      <SearchInput v-if="commits.length > 0" v-model="commitSearch" :placeholder="searchPlaceholder" />
     </div>
     <div class="drilldown-body" ref="bodyRef">
       <div v-if="loading" class="git-history-loading">
@@ -93,6 +87,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import GitGraph from './GitGraph.vue'
+import SearchInput from './SearchInput.vue'
 
 const props = defineProps({
   commits: { type: Array, default: () => [] },
@@ -236,26 +231,6 @@ defineExpose({ observeList, unobserveList, commitSearch })
   padding: 1px 6px;
   border-radius: 10px;
   flex-shrink: 0;
-}
-
-.drilldown-search {
-  padding: 4px 8px;
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: 6px;
-  background: var(--bg-primary, #ffffff);
-  color: var(--text-primary, #212529);
-  font-size: 12px;
-  outline: none;
-  width: 140px;
-  flex-shrink: 0;
-}
-
-.drilldown-search:focus {
-  border-color: var(--accent-color, #4a90d9);
-}
-
-.drilldown-search::placeholder {
-  color: var(--text-muted, #999);
 }
 
 .drilldown-body {

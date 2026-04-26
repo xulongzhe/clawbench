@@ -20,12 +20,7 @@
 
     <!-- Search -->
     <div class="fm-search-area">
-      <div class="search-box" id="searchBox">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
-        </svg>
-        <input type="text" class="search-input" id="searchInput" v-model="searchQuery" placeholder="Filter files..." @dblclick="searchQuery = ''" />
-      </div>
+      <SearchInput v-model="searchQuery" placeholder="Filter files..." @dblclick="searchQuery = ''" />
     </div>
 
     <!-- Dir nav -->
@@ -164,6 +159,7 @@ import { ref, computed, reactive, inject, nextTick, Teleport, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import { getFileType, splitPath } from '@/utils/helpers.ts'
 import { store } from '@/stores/app.ts'
+import SearchInput from './SearchInput.vue'
 
 const toast = inject('toast', null)
 
@@ -526,38 +522,6 @@ if (typeof window !== 'undefined') {
     border-bottom: 1px solid var(--border-color, #e5e5e5);
     background: var(--bg-tertiary, #f5f5f5);
     flex-shrink: 0;
-}
-
-/* ── Search Box ── */
-.search-box {
-    position: relative;
-}
-
-.search-input {
-    width: 100%;
-    padding: 7px 10px 7px 32px;
-    border: 1px solid var(--border-color, #e5e5e5);
-    border-radius: var(--radius-sm, 6px);
-    background: var(--bg-primary, #fff);
-    color: var(--text-primary, #1a1a1a);
-    font-size: 13px;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.search-input:focus {
-    border-color: var(--accent-color, #4a90d9);
-    box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
-}
-
-.search-icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 16px;
-    height: 16px;
-    color: var(--text-muted, #999);
 }
 
 /* ── File list area ── */

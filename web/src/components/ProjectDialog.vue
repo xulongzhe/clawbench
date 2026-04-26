@@ -15,7 +15,7 @@
         <button class="toolbar-btn" :class="{ active: !showHidden }" @click="showHidden = !showHidden" title="隐藏隐藏文件">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="1"/><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
         </button>
-        <input type="text" class="toolbar-search" v-model="searchQuery" placeholder="搜索..." />
+        <SearchInput v-model="searchQuery" placeholder="搜索..." />
       </div>
       <div class="dialog-breadcrumb">
         <span @click="browseNavigate('/')">根目录</span>
@@ -63,6 +63,7 @@
 <script setup>
 import { ref, computed, watch, inject } from 'vue'
 import ModalDialog from './ModalDialog.vue'
+import SearchInput from './SearchInput.vue'
 import { baseName, splitPath } from '@/utils/helpers.ts'
 
 const props = defineProps({
@@ -348,23 +349,6 @@ async function confirm() {
   padding: 40px 20px;
   color: var(--text-muted, #999);
   font-size: 14px;
-}
-
-.toolbar-search {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: var(--radius-sm, 6px);
-  outline: none;
-  padding: 4px 8px;
-  font-size: 12px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #212529);
-  height: 32px;
-}
-
-.toolbar-search:focus {
-  border-color: var(--accent-color, #4a90d9);
 }
 
 .cancel-btn {
