@@ -96,7 +96,7 @@ func IsAudioFile(name string) bool {
 func IsVideoFile(name string) bool {
 	lower := strings.ToLower(name)
 	videoExts := []string{
-		".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".m4v", ".3gp", ".ts", ".m3u8",
+		".mp4", ".mkv", ".avi", ".mov", ".webm", ".flv", ".wmv", ".m4v", ".3gp", ".m3u8",
 	}
 	for _, ext := range videoExts {
 		if strings.HasSuffix(lower, ext) {

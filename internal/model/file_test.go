@@ -401,7 +401,6 @@ func TestIsVideoFile(t *testing.T) {
 		{"wmv", "movie.wmv", true},
 		{"m4v", "movie.m4v", true},
 		{"3gp", "movie.3gp", true},
-		{"ts", "stream.ts", true},
 		{"m3u8", "playlist.m3u8", true},
 
 		// Case insensitivity
@@ -420,7 +419,8 @@ func TestIsVideoFile(t *testing.T) {
 		{"just extension .mp4", ".mp4", true},
 		{"just extension .mkv", ".mkv", true},
 
-		// Negative cases - .ts is tricky (could be TypeScript), but video .ts matches by suffix
+		// Negative cases - .ts is TypeScript, not video
+		{"ts is text not video", "app.ts", false},
 		{"mp3 not video", "song.mp3", false},
 		{"png not video", "image.png", false},
 		{"go file", "main.go", false},

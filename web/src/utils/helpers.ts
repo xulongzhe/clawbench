@@ -115,7 +115,6 @@ const FILE_TYPES: FileType[] = [
     { exts: ['.wmv'], lang: 'video', label: 'WMV', color: '#ef4444', isMarkdown: false, isVideo: true },
     { exts: ['.m4v'], lang: 'video', label: 'M4V', color: '#ef4444', isMarkdown: false, isVideo: true },
     { exts: ['.3gp'], lang: 'video', label: '3GP', color: '#ef4444', isMarkdown: false, isVideo: true },
-    { exts: ['.ts'], lang: 'video', label: 'TS', color: '#ef4444', isMarkdown: false, isVideo: true },
     { exts: ['.m3u8'], lang: 'video', label: 'M3U8', color: '#ef4444', isMarkdown: false, isVideo: true },
 ]
 

@@ -153,7 +153,7 @@ async function selectFile(path: string, isImageFile = false, isAudioFile = false
     // Detect image files by extension (avoids dynamic import)
     const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.tif', '.avif', '.pdf']
     const audioExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma', '.opus']
-    const videoExts = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v', '.3gp', '.ts', '.m3u8']
+    const videoExts = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v', '.3gp', '.m3u8']
     const lower = path.toLowerCase()
     const isImage = isImageFile || imageExts.some(ext => lower.endsWith(ext))
     const isAudio = isAudioFile || audioExts.some(ext => lower.endsWith(ext))

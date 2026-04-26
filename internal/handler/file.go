@@ -41,7 +41,6 @@ var mimeTypes = map[string]string{
 	".wmv":  "video/x-ms-wmv",
 	".m4v":  "video/mp4",
 	".3gp":  "video/3gpp",
-	".ts":   "video/mp2t",
 	".m3u8": "application/vnd.apple.mpegurl",
 }
 
