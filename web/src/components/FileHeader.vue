@@ -17,13 +17,6 @@
         </svg>
       </button>
 
-      <!-- Markdown toggle button -->
-      <button v-if="isMarkdown" class="file-header-btn" @click="$emit('toggleView')" title="切换视图">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
-          <polyline points="16 18 22 12 16 6"/>
-          <polyline points="8 6 2 12 8 18"/>
-        </svg>
-      </button>
 
       <!-- Search button (standalone, not in dropdown) -->
       <button class="file-header-btn" :class="{ active: searchOpen }" :disabled="!file.content" @click.stop="$emit('toggleSearch')" title="搜索">
@@ -43,6 +36,13 @@
           </svg>
         </button>
         <div v-if="menuOpen" class="dropdown-menu">
+          <button v-if="isMarkdown" class="dropdown-item" @click="handleToggleView">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="16 18 22 12 16 6"/>
+              <polyline points="8 6 2 12 8 18"/>
+            </svg>
+            {{ viewMode === 'rendered' ? '源码' : '渲染' }}
+          </button>
           <a class="dropdown-item" :href="'/api/local-file/' + encodeURIComponent(file.path)" :download="file.name" @click="menuOpen = false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -106,6 +106,11 @@ const badgeStyle = computed(() => ({
     color: badgeColor.value,
     border: `1px solid ${badgeColor.value}44`,
 }))
+
+function handleToggleView() {
+    menuOpen.value = false
+    emit('toggleView')
+}
 
 function handleDelete() {
     menuOpen.value = false
