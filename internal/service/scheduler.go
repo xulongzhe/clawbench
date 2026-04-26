@@ -246,8 +246,8 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string) {
 		Resume:       false,
 	}
 
-	// Execute AI backend
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	// Execute AI backend (no timeout - let AI run indefinitely)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	backend, err := ai.NewBackend(backendName)

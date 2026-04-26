@@ -468,12 +468,10 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			Resume:       resume,
 		}
 
-		// Use independent context with cancel + timeout to prevent goroutine leaks
-		// and support user-initiated cancellation
+		// Use independent context with cancel to prevent goroutine leaks
+		// and support user-initiated cancellation (no timeout - let AI run indefinitely)
 		ctx, cancel := context.WithCancel(context.Background())
-		ctx, timeoutCancel := context.WithTimeout(ctx, 30*time.Minute)
 		defer cancel()
-		defer timeoutCancel()
 
 		service.RegisterSessionCancel(sessionID, cancel)
 		defer service.UnregisterSessionCancel(sessionID)
