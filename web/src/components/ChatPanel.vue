@@ -2160,7 +2160,7 @@ watch(() => props.open, async (val) => {
   transform: rotate(180deg);
 }
 
-.thinking-text {
+.chat-thinking .thinking-text {
   margin: 0;
   padding: 6px 8px;
   font-size: 11px;
