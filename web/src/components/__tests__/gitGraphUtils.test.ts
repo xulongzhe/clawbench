@@ -689,3 +689,52 @@ describe('lazy-load lane stability (previousShaToLane)', () => {
     expect(nodes3[0].lane).toBe(laneM1)
   })
 })
+
+describe('lane compression for non-overlapping branches', () => {
+  // Two branches that don't overlap in time: branch-a is fully merged
+  // before branch-b starts. They should share the same lane.
+  //
+  // Graph: init → m1 → m2 ──→ mrgA ──→ m3 → m4 ──→ mrgB ──→ fin
+  //                    ↘       ↗                  ↘       ↗
+  //                    a1 → a2                    b1 → b2
+  const SEQUENTIAL_BRANCHES = [
+    { sha: 'fin', parents: ['mrgB'], msg: 'main: final', refs: ['main'] },
+    { sha: 'mrgB', parents: ['m4', 'b2'], msg: 'merge: branch-b' },
+    { sha: 'b2', parents: ['b1'], msg: 'branch-b: work 2' },
+    { sha: 'b1', parents: ['m3'], msg: 'branch-b: work 1' },
+    { sha: 'm4', parents: ['m3'], msg: 'main: fourth' },
+    { sha: 'm3', parents: ['mrgA'], msg: 'main: third' },
+    { sha: 'mrgA', parents: ['m2', 'a2'], msg: 'merge: branch-a' },
+    { sha: 'a2', parents: ['a1'], msg: 'branch-a: work 2' },
+    { sha: 'a1', parents: ['m1'], msg: 'branch-a: work 1' },
+    { sha: 'm2', parents: ['m1'], msg: 'main: second' },
+    { sha: 'm1', parents: ['init'], msg: 'main: first' },
+    { sha: 'init', parents: [], msg: 'main: init' },
+  ]
+
+  it('uses 2 lanes (main + 1 shared branch lane)', () => {
+    const { laneCount } = getConnections(SEQUENTIAL_BRANCHES)
+    expect(laneCount).toBe(2)
+  })
+
+  it('both branch commits share lane 1', () => {
+    const { nodes } = getConnections(SEQUENTIAL_BRANCHES)
+    // Rows 2,3 = branch-b, rows 7,8 = branch-a — both should be on lane 1
+    expect(nodes[2].lane).toBe(1)
+    expect(nodes[3].lane).toBe(1)
+    expect(nodes[7].lane).toBe(1)
+    expect(nodes[8].lane).toBe(1)
+  })
+
+  it('main line commits are on lane 0', () => {
+    const { nodes } = getConnections(SEQUENTIAL_BRANCHES)
+    expect(nodes[0].lane).toBe(0)
+    expect(nodes[1].lane).toBe(0)
+    expect(nodes[4].lane).toBe(0)
+    expect(nodes[5].lane).toBe(0)
+    expect(nodes[6].lane).toBe(0)
+    expect(nodes[9].lane).toBe(0)
+    expect(nodes[10].lane).toBe(0)
+    expect(nodes[11].lane).toBe(0)
+  })
+})

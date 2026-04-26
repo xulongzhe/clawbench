@@ -24,7 +24,9 @@ function laneCx(lane) {
  *
  * Two-phase algorithm:
  * 1. Lane assignment — walk first-parent chains first (main line = same lane),
- *    then assign remaining commits and merge-parent lanes.
+ *    then assign remaining commits and merge-parent lanes. Lanes are recycled
+ *    when branches merge back into the main line, so non-overlapping branches
+ *    share the same lane instead of each taking a separate one.
  * 2. Connection generation — for each commit→parent edge:
  *    - Same-lane parent → vertical line from child to parent
  *    - Cross-lane "fork" (merge commit's non-first parent) → bezier curve
@@ -57,6 +59,8 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
   //         If a SHA was previously assigned, reuse that lane.
   // Step B: Assign lanes to any remaining unassigned commits (branch tips).
   // Step C: Assign lanes to merge parents (non-first-parent) that aren't assigned.
+  // Step D: Compress lanes — merge non-overlapping lanes so that branches
+  //         that don't coexist in time share the same visual track.
 
   const shaToLane = new Map()
   const laneOfRow = new Array(commits.length)
@@ -137,6 +141,104 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
         if (lane > maxLane) maxLane = lane
       }
     }
+  }
+
+  // Step D: Compress lanes by merging non-overlapping ones.
+  // Compute the visual row range for each lane — including not just node rows
+  // but also the rows where connection lines (forks and merge-ins) start/end.
+  // Lane 0 (main) is never merged. For other lanes, if two lanes have
+  // non-overlapping visual ranges, they can share the same compressed lane.
+  if (maxLane > 0) {
+    // Compute visual row range per lane
+    const laneFirstRow = new Map()
+    const laneLastRow = new Map()
+
+    for (let row = 0; row < commits.length; row++) {
+      const lane = laneOfRow[row]
+      if (lane === undefined) continue
+      if (!laneFirstRow.has(lane) || row < laneFirstRow.get(lane)) {
+        laneFirstRow.set(lane, row)
+      }
+      if (!laneLastRow.has(lane) || row > laneLastRow.get(lane)) {
+        laneLastRow.set(lane, row)
+      }
+
+      // Extend visual range to include cross-lane connection endpoints.
+      // This ensures lanes with overlapping connections don't get compressed.
+      const c = commits[row]
+      if (c.isWT) continue
+      const rowLane = lane
+      const parents = c.parents || []
+      for (let pi = 0; pi < parents.length; pi++) {
+        const pSha = parents[pi]
+        if (!shaToRow.has(pSha) || !shaToLane.has(pSha)) continue
+        const parentRow = shaToRow.get(pSha)
+        const parentLane = shaToLane.get(pSha)
+        if (rowLane !== parentLane) {
+          // Extend child lane to include parent row
+          if (!laneFirstRow.has(rowLane) || parentRow < laneFirstRow.get(rowLane)) {
+            laneFirstRow.set(rowLane, parentRow)
+          }
+          if (!laneLastRow.has(rowLane) || parentRow > laneLastRow.get(rowLane)) {
+            laneLastRow.set(rowLane, parentRow)
+          }
+          // Extend parent lane to include child row
+          if (!laneFirstRow.has(parentLane) || row < laneFirstRow.get(parentLane)) {
+            laneFirstRow.set(parentLane, row)
+          }
+          if (!laneLastRow.has(parentLane) || row > laneLastRow.get(parentLane)) {
+            laneLastRow.set(parentLane, row)
+          }
+        }
+      }
+    }
+
+    // Greedy interval coloring: sort non-main lanes by firstRow, assign each
+    // to the lowest compressed lane that doesn't overlap.
+    const nonMainLanes = []
+    for (const lane of laneFirstRow.keys()) {
+      if (lane !== 0) {
+        nonMainLanes.push(lane)
+      }
+    }
+    nonMainLanes.sort((a, b) => laneFirstRow.get(a) - laneFirstRow.get(b))
+
+    // For each compressed lane > 0, track the lastRow of the last assigned lane.
+    // A new lane can be assigned to compressed lane C if its firstRow > lastRowOf[C].
+    const compressedLastRow = new Map()  // compressedLane -> lastRow
+    let nextCompressed = 1
+    const oldToCompressed = new Map()
+    oldToCompressed.set(0, 0)  // lane 0 stays lane 0
+
+    for (const oldLane of nonMainLanes) {
+      const firstRow = laneFirstRow.get(oldLane)
+      const lastRow = laneLastRow.get(oldLane)
+      let assigned = -1
+      // Try existing compressed lanes (1, 2, ...) in order
+      for (const [compLane, compLastRow] of compressedLastRow) {
+        if (firstRow > compLastRow) {
+          assigned = compLane
+          compressedLastRow.set(compLane, lastRow)
+          break
+        }
+      }
+      if (assigned === -1) {
+        assigned = nextCompressed++
+        compressedLastRow.set(assigned, lastRow)
+      }
+      oldToCompressed.set(oldLane, assigned)
+    }
+
+    // Apply compressed lane mapping
+    for (let row = 0; row < commits.length; row++) {
+      if (laneOfRow[row] !== undefined) {
+        laneOfRow[row] = oldToCompressed.get(laneOfRow[row]) ?? laneOfRow[row]
+      }
+    }
+    for (const [sha, oldLane] of shaToLane) {
+      shaToLane.set(sha, oldToCompressed.get(oldLane) ?? oldLane)
+    }
+    maxLane = nextCompressed - 1
   }
 
   // ── Phase 2: Generate nodes and connection lines ──
@@ -303,21 +405,48 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
         }
       } else {
         // Cross-lane merge-in: child's first parent is on a different lane.
-        // Render as: vertical line on branch lane from child down to just
+        // Render as: vertical line(s) on branch lane from child down to just
         // above the parent row, then a short bezier curving into the parent
         // node. This creates the '|/' pattern from git log --graph.
+        // When the branch lane is shared (compressed), the vertical line must
+        // break around any nodes on the same lane to avoid visual overlap.
         const branchX = laneCx(childLane)
         const parentX = laneCx(parentLane)
         const childBottom = childCy + 5
         // End vertical line at the top of the parent row
         const parentRowTop = parentRow * rowHeight
 
-        // Vertical line on branch lane from child to parent row
-        lines.push({
-          path: `M${branchX},${childBottom} L${branchX},${parentRowTop}`,
-          color: laneColor(childLane),
-          lane: childLane,
-        })
+        // Find rows on the same lane between child and parent that have nodes
+        // (these belong to other branches sharing this compressed lane).
+        const nodeGaps = []
+        for (let r = row + 1; r < parentRow; r++) {
+          if (laneOfRow[r] === childLane) {
+            const gapCy = r * rowHeight + rowHeight / 2
+            nodeGaps.push(gapCy)
+          }
+        }
+
+        // Draw vertical line(s), breaking around any same-lane nodes
+        let vertStart = childBottom
+        for (const gapCy of nodeGaps) {
+          const gapTop = gapCy - rowHeight * 0.4
+          const gapBottom = gapCy + rowHeight * 0.4
+          if (gapTop > vertStart) {
+            lines.push({
+              path: `M${branchX},${vertStart} L${branchX},${gapTop}`,
+              color: laneColor(childLane),
+              lane: childLane,
+            })
+          }
+          vertStart = gapBottom
+        }
+        if (vertStart < parentRowTop) {
+          lines.push({
+            path: `M${branchX},${vertStart} L${branchX},${parentRowTop}`,
+            color: laneColor(childLane),
+            lane: childLane,
+          })
+        }
 
         // Short bezier from branch lane at parent row top, curving into
         // the parent node. Offset Y endpoint if multiple merge-ins arrive
