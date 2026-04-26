@@ -619,11 +619,11 @@ watch(() => props.open, async (val) => {
   letter-spacing: 0.02em;
 }
 
-.badge-A { background: #dcfce7; color: #16a34a; }
-.badge-M { background: #fef9c3; color: #a16207; }
-.badge-D { background: #fee2e2; color: #dc2626; }
-.badge-R { background: #ede9fe; color: #7c3aed; }
-.badge-U { background: #f0f0f0; color: #666; }
+.badge-A { background: color-mix(in srgb, var(--color-green, #16a34a) 15%, transparent); color: var(--color-green, #16a34a); }
+.badge-M { background: color-mix(in srgb, var(--color-yellow, #a16207) 15%, transparent); color: var(--color-yellow, #a16207); }
+.badge-D { background: color-mix(in srgb, var(--color-red, #dc2626) 15%, transparent); color: var(--color-red, #dc2626); }
+.badge-R { background: color-mix(in srgb, var(--color-purple, #7c3aed) 15%, transparent); color: var(--color-purple, #7c3aed); }
+.badge-U { background: var(--bg-tertiary, #f0f0f0); color: var(--text-muted, #999); }
 .badge-staged { border: 1px solid var(--accent-color, #4a90d9); }
 
 .git-file-path {

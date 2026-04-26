@@ -36,6 +36,12 @@
     --bg-key: #f0f0f0;
     --text-color: #212529;
     --bg-key-active: #e0e0e0;
+
+    /* Git status badge colors */
+    --color-green: #16a34a;
+    --color-yellow: #a16207;
+    --color-red: #dc2626;
+    --color-purple: #7c3aed;
 }
 
 [data-theme="dark"] {
@@ -67,4 +73,10 @@
     --bg-key: #2d2d2d;
     --text-color: #e0e0e0;
     --bg-key-active: #3d3d3d;
+
+    /* Git status badge colors */
+    --color-green: #3fb950;
+    --color-yellow: #e3b341;
+    --color-red: #f85149;
+    --color-purple: #a371f7;
 }
