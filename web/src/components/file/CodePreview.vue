@@ -47,7 +47,7 @@ import { ref, watch, nextTick, inject, computed } from 'vue'
 import { hljs } from '@/utils/globals.ts'
 import { escapeHtml } from '@/utils/helpers.ts'
 import { useLongPressLineMenu } from '@/composables/useLongPressLineMenu.ts'
-import BottomSheet from './BottomSheet.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
 
 const props = defineProps({
     /** Raw file content */

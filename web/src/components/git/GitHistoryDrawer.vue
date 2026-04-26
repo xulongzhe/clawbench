@@ -129,7 +129,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import BottomSheet from './BottomSheet.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
 import GitCommitList from './GitCommitList.vue'
 import GitCommitMeta from './GitCommitMeta.vue'
 import GitDiffView from './GitDiffView.vue'

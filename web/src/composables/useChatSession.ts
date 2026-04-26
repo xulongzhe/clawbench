@@ -1,6 +1,7 @@
 import { ref, computed, type Ref } from 'vue'
 import { useToast } from '@/composables/useToast.ts'
 import { useNotification } from '@/composables/useNotification.ts'
+import { store } from '@/stores/app.ts'
 
 export interface UseChatSessionOptions {
   currentSessionId: Ref<string>
@@ -59,6 +60,11 @@ export function useChatSession(options: UseChatSessionOptions) {
   let msgCountInterval: ReturnType<typeof setInterval> | null = null
   let globalPollingInterval: ReturnType<typeof setInterval> | null = null
 
+  // Pagination state
+  const totalMessages = ref(0)
+  const loadingMore = ref(false)
+  const hasMore = computed(() => messages.value.length < totalMessages.value)
+
   const agentHeaderTitle = computed(() => {
     const agent = agents.value.find(a => a.id === currentAgentId.value)
     if (agent) return `${agent.icon} ${agent.name}`
@@ -85,31 +91,38 @@ export function useChatSession(options: UseChatSessionOptions) {
     return agent ? agent.name : (agentId || '助手')
   }
 
+  function parseMessages(rawMsgs) {
+    return rawMsgs.map(msg => {
+      if (msg.role === 'assistant') {
+        const { blocks, metadata, cancelled, scheduledTask } = onParseAssistantContent(msg.content)
+        msg.blocks = blocks
+        if (metadata) msg.metadata = metadata
+        if (cancelled) msg.cancelled = cancelled
+        if (scheduledTask) msg.scheduledTask = scheduledTask
+        if (msg.streaming) { msg.streaming = true; msg.fromDB = true }
+      }
+      return msg
+    })
+  }
+
   async function loadHistory() {
     expandedTools.value = {}
     try {
       // Load agents first so we can resolve agent names
       if (agents.value.length === 0) await loadAgents()
+      // Use max of initialMessages and current loaded count to avoid truncating lazy-loaded messages
+      const limit = Math.max(store.state.chatInitialMessages, messages.value.length)
       const url = currentSessionId.value
-        ? `/api/ai/chat?session_id=${encodeURIComponent(currentSessionId.value)}`
-        : '/api/ai/chat'
+        ? `/api/ai/chat?session_id=${encodeURIComponent(currentSessionId.value)}&limit=${limit}`
+        : `/api/ai/chat?limit=${limit}`
       const resp = await fetch(url)
       if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}))
         throw new Error(errData.error || `请求失败 (${resp.status})`)
       }
       const data = await resp.json()
-      messages.value = (data.messages || []).map(msg => {
-        if (msg.role === 'assistant') {
-          const { blocks, metadata, cancelled, scheduledTask } = onParseAssistantContent(msg.content)
-          msg.blocks = blocks
-          if (metadata) msg.metadata = metadata
-          if (cancelled) msg.cancelled = cancelled
-          if (scheduledTask) msg.scheduledTask = scheduledTask
-          if (msg.streaming) { msg.streaming = true; msg.fromDB = true }
-        }
-        return msg
-      })
+      messages.value = parseMessages(data.messages || [])
+      totalMessages.value = data.total || messages.value.length
       currentSessionId.value = data.sessionId || ''
       currentSessionTitle.value = data.sessionTitle || ''
       currentBackend.value = data.backend || ''
@@ -121,16 +134,42 @@ export function useChatSession(options: UseChatSessionOptions) {
         inputDisabled.value = true
         loading.value = true
         stopMsgCountPolling()
-        onScrollBottom()
+        onScrollBottom(true)
         onConnectStream(currentSessionId.value)
       } else {
         inputDisabled.value = false
         loading.value = false
         startMsgCountPolling()
+        onScrollBottom(true)
       }
     } catch (err) {
       console.error('Failed to load chat history:', err)
       toast.show(err.message || '加载聊天记录失败', { icon: '⚠️' })
+    }
+  }
+
+  async function loadMoreMessages() {
+    if (loadingMore.value || !hasMore.value || !currentSessionId.value) return
+    loadingMore.value = true
+    try {
+      const pageSize = store.state.chatPageSize
+      // Use cursor-based pagination: pass the created_at of the oldest loaded message
+      const oldestMsg = messages.value[0]
+      const before = oldestMsg?.createdAt || ''
+      const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(currentSessionId.value)}&limit=${pageSize}&before=${encodeURIComponent(before)}`)
+      if (!resp.ok) return
+      const data = await resp.json()
+      const olderMsgs = parseMessages(data.messages || [])
+      if (olderMsgs.length > 0) {
+        messages.value = [...olderMsgs, ...messages.value]
+        totalMessages.value = data.total || totalMessages.value
+        onExtractScheduleProposals(olderMsgs)
+        onRenderUpdate(true)
+      }
+    } catch (err) {
+      console.error('Failed to load more messages:', err)
+    } finally {
+      loadingMore.value = false
     }
   }
 
@@ -142,41 +181,32 @@ export function useChatSession(options: UseChatSessionOptions) {
     try {
       // Load agents first so we can resolve agent names
       if (agents.value.length === 0) await loadAgents()
-      const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(sessionId)}`)
+      const limit = store.state.chatInitialMessages
+      const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`)
       if (!resp.ok) {
         toast.show('切换会话失败', { icon: '⚠️' })
         return
       }
       const data = await resp.json()
-      messages.value = (data.messages || []).map(msg => {
-        if (msg.role === 'assistant') {
-          const { blocks, metadata, cancelled, scheduledTask } = onParseAssistantContent(msg.content)
-          msg.blocks = blocks
-          if (metadata) msg.metadata = metadata
-          if (cancelled) msg.cancelled = cancelled
-          if (scheduledTask) msg.scheduledTask = scheduledTask
-          if (msg.streaming) { msg.streaming = true; msg.fromDB = true }
-        }
-        return msg
-      })
+      messages.value = parseMessages(data.messages || [])
+      totalMessages.value = data.total || messages.value.length
       currentSessionId.value = data.sessionId || sessionId
       currentSessionTitle.value = data.sessionTitle || ''
       currentBackend.value = data.backend || ''
       currentAgentId.value = data.agentId || ''
       onExtractScheduleProposals(messages.value)
       onRenderUpdate(true)
+      onScrollBottom(true)
       if (data.running) {
         inputDisabled.value = true
         loading.value = true
         stopMsgCountPolling()
-        onScrollBottom()
         onConnectStream(sessionId)
       } else {
         inputDisabled.value = false
         loading.value = false
         startMsgCountPolling()
       }
-      onScrollBottom()
     } catch (err) {
       console.error('Failed to switch session:', err)
       toast.show('切换会话失败', { icon: '⚠️' })
@@ -203,6 +233,7 @@ export function useChatSession(options: UseChatSessionOptions) {
       currentAgentId.value = data.agentId || agentId || ''
       messages.value = []
       renderedContents.value = []
+      totalMessages.value = 0
       Object.keys(blockProposals).forEach(k => delete blockProposals[k])
       inputDisabled.value = false
       loading.value = false
@@ -350,7 +381,11 @@ export function useChatSession(options: UseChatSessionOptions) {
     agents,
     runningSessions,
     agentHeaderTitle,
+    totalMessages,
+    hasMore,
+    loadingMore,
     loadHistory,
+    loadMoreMessages,
     switchSession,
     createSession,
     deleteSession,

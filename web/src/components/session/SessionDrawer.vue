@@ -86,8 +86,8 @@
 
 <script setup>
 import { ref, watch, computed } from 'vue'
-import BottomSheet from './BottomSheet.vue'
-import ModalDialog from './ModalDialog.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
+import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useAgents } from '@/composables/useAgents.ts'
 import { formatRelativeTime } from '@/utils/helpers.ts'
 

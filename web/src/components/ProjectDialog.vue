@@ -50,9 +50,9 @@
 
 <script setup>
 import { ref, computed, watch, inject } from 'vue'
-import ModalDialog from './ModalDialog.vue'
-import SearchInput from './SearchInput.vue'
-import DirBreadcrumb from './DirBreadcrumb.vue'
+import ModalDialog from './common/ModalDialog.vue'
+import SearchInput from './common/SearchInput.vue'
+import DirBreadcrumb from './file/DirBreadcrumb.vue'
 import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({

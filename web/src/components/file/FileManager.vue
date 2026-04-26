@@ -146,10 +146,10 @@
 
 <script setup>
 import { ref, computed, reactive, inject, nextTick, Teleport, watch } from 'vue'
-import BottomSheet from './BottomSheet.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
 import { getFileType } from '@/utils/helpers.ts'
 import { store } from '@/stores/app.ts'
-import SearchInput from './SearchInput.vue'
+import SearchInput from '@/components/common/SearchInput.vue'
 import DirBreadcrumb from './DirBreadcrumb.vue'
 
 const toast = inject('toast', null)

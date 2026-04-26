@@ -1,5 +1,6 @@
 import { ref, reactive, nextTick, watch } from 'vue'
-import { escapeHtml, baseName, splitPath } from '@/utils/helpers.ts'
+import { escapeHtml } from '@/utils/html.ts'
+import { baseName, splitPath } from '@/utils/path.ts'
 import { marked, DOMPurify, hljs, mermaid } from '@/utils/globals.ts'
 import { renderKatexInString, renderMermaidInElement } from '@/composables/useMarkdownRenderer.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'

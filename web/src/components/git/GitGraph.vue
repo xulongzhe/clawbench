@@ -99,7 +99,7 @@
 
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
-import { computeGraphData, refLabelText } from './gitGraphUtils'
+import { computeGraphData, refLabelText } from '@/utils/gitGraph'
 
 const props = defineProps({
   commits: { type: Array, default: () => [] },

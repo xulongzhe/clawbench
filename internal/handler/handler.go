@@ -2,12 +2,9 @@ package handler
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
-	"time"
 
 	"clawbench/internal/middleware"
 	"clawbench/internal/model"
@@ -157,68 +154,4 @@ func RegisterRoutes(mux *http.ServeMux) {
 		mux.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir(filepath.Join("web", "js")))))
 		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("assets"))))
 	}
-}
-
-// DirEntry represents a directory entry in API responses
-type DirEntry struct {
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Modified  string `json:"modified,omitempty"`
-	Size      int64  `json:"size,omitempty"`
-	Supported bool   `json:"supported"`
-}
-
-// FileInfo represents file information in API responses
-type FileInfo struct {
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Modified  string `json:"modified"`
-	Size      int64  `json:"size"`
-	Type      string `json:"type"`
-	Supported bool   `json:"supported"`
-}
-
-// FileContent represents file content in API responses
-type FileContent struct {
-	Content   string `json:"content"`
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Supported bool   `json:"supported"`
-	Size      int64  `json:"size"`
-}
-
-// buildDirEntries builds a sorted list of directory entries
-func buildDirEntries(entries []os.DirEntry) []DirEntry {
-	var items []DirEntry
-	for _, entry := range entries {
-		info, infoErr := entry.Info()
-		if infoErr != nil {
-			slog.Warn("failed to get file info", slog.String("name", entry.Name()), slog.String("err", infoErr.Error()))
-			continue
-		}
-		if entry.IsDir() {
-			modified := info.ModTime().Format(time.RFC3339)
-			items = append(items, DirEntry{Name: entry.Name(), Type: "dir", Modified: modified})
-		} else {
-			name := entry.Name()
-			entryType := "file"
-			if model.IsImageFile(name) {
-				entryType = "image"
-			}
-			items = append(items, DirEntry{
-				Name:      name,
-				Type:      entryType,
-				Modified:  info.ModTime().Format(time.RFC3339),
-				Size:      info.Size(),
-				Supported: model.IsSupportedFile(name),
-			})
-		}
-	}
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Type != items[j].Type {
-			return items[i].Type == "dir"
-		}
-		return items[i].Name < items[j].Name
-	})
-	return items
 }

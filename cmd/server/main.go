@@ -114,6 +114,20 @@ func main() {
 	model.UploadMaxSizeMB = cfg.Upload.MaxSizeMB
 	model.UploadMaxFiles = cfg.Upload.MaxFiles
 
+	// Set chat UI config with defaults
+	if cfg.Chat.InitialMessages <= 0 {
+		cfg.Chat.InitialMessages = 20
+	}
+	if cfg.Chat.PageSize <= 0 {
+		cfg.Chat.PageSize = 20
+	}
+	if cfg.Chat.CollapsedHeight <= 0 {
+		cfg.Chat.CollapsedHeight = 150
+	}
+	model.ChatInitialMessages = cfg.Chat.InitialMessages
+	model.ChatPageSize = cfg.Chat.PageSize
+	model.ChatCollapsedHeight = cfg.Chat.CollapsedHeight
+
 	if cfg.LogMaxDays <= 0 {
 		cfg.LogMaxDays = 7
 	}
@@ -226,7 +240,11 @@ func main() {
 			port = 20000
 		}
 	}
-	addr := fmt.Sprintf(":%d", port)
+	host := ""
+	if devMode && cfg.Dev.Host != "" {
+		host = cfg.Dev.Host
+	}
+	addr := fmt.Sprintf("%s:%d", host, port)
 	slog.Info("server ready",
 		slog.String("addr", addr),
 		slog.String("watch_dir", model.WatchDir),

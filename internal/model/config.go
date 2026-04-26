@@ -13,14 +13,20 @@ type Config struct {
 		CertFile string `yaml:"cert_file"`
 		KeyFile  string `yaml:"key_file"`
 	} `yaml:"tls"`
-	Dev struct {
-		Port     int `yaml:"port"`
-		Frontend int `yaml:"frontend_port"`
+  Dev struct {
+		Port     int    `yaml:"port"`
+		Frontend int    `yaml:"frontend_port"`
+		Host     string `yaml:"host"` // Bind address (empty = 0.0.0.0, "localhost" = 127.0.0.1 only)
 	} `yaml:"dev"`
 	Upload struct {
 		MaxSizeMB int `yaml:"max_size_mb"` // Maximum file upload size in MB (default: 10)
 		MaxFiles  int `yaml:"max_files"`  // Maximum number of files per upload (default: 20)
 	} `yaml:"upload"`
+	Chat struct {
+		InitialMessages int `yaml:"initial_messages"` // Number of messages to load initially (default: 20)
+		PageSize        int `yaml:"page_size"`        // Number of messages per lazy-load batch (default: 20)
+		CollapsedHeight int `yaml:"collapsed_height"` // Collapsed message height in pixels (default: 150)
+	} `yaml:"chat"`
 }
 
 // Global application state
@@ -35,4 +41,9 @@ var (
 	// Upload limits (set from config, with defaults)
 	UploadMaxSizeMB int // Default: 10
 	UploadMaxFiles  int // Default: 20
+
+	// Chat UI config (set from config, with defaults)
+	ChatInitialMessages int // Default: 20
+	ChatPageSize        int // Default: 20
+	ChatCollapsedHeight int // Default: 150
 )

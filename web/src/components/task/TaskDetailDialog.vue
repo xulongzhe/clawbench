@@ -87,7 +87,7 @@
 
 <script setup>
 import { ref, watch, onMounted } from 'vue'
-import ModalDialog from './ModalDialog.vue'
+import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useAgents } from '@/composables/useAgents.ts'
 
 const props = defineProps({

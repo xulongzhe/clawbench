@@ -1,114 +1,128 @@
 <template>
   <div class="chat-message" :class="[msg.role, { 'has-metadata': msg.role === 'assistant' && msg.metadata }]">
 
-    <div v-if="msg.role === 'user' && msg.files && msg.files.length > 0 && !hasImagesInContent(msg.content)" class="chat-files">
-      <template v-for="(f, idx) in msg.files" :key="idx">
-        <span v-if="isUploadPath(normalizeFileEntry(f).path)" class="chat-file-attachment attachment-upload" @click="$emit('file-tag-click', normalizeFileEntry(f).path)" title="打开文件">
-          <svg v-if="isImageFile(normalizeFileEntry(f).path)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <circle cx="10" cy="13" r="2"/>
-            <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
-        </span>
-        <span v-else class="chat-file-attachment attachment-ref" @click="$emit('file-tag-click', normalizeFileEntry(f).path)" title="打开文件">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-          </svg>
-          <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
-        </span>
-      </template>
-    </div>
-
-    <!-- Scheduled task trigger banner -->
-    <div v-if="msg.role === 'assistant' && msg.scheduledTask" class="chat-scheduled-banner">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-      </svg>
-      <span class="scheduled-label">定时触发</span>
-      <span class="scheduled-task-name">{{ msg.scheduledTask.taskName }}</span>
-      <span class="scheduled-sep">·</span>
-      <span class="scheduled-agent">{{ getAgentIcon(msg.scheduledTask.agentId) }} {{ getAgentName(msg.scheduledTask.agentId) }}</span>
-      <span class="scheduled-sep">·</span>
-      <span class="scheduled-cron">{{ msg.scheduledTask.cronExpr }}</span>
-    </div>
-
-    <!-- Message content -->
-    <template v-if="msg.role === 'assistant' && msg.blocks">
-      <template v-for="(block, bi) in msg.blocks" :key="bi">
-        <!-- Thinking block -->
-        <div v-if="block.type === 'thinking'" class="chat-thinking" :class="{ expanded: thinkingExpanded[`${index}-${bi}`] }" @click.stop="toggleThinking(`${index}-${bi}`)">
-          <div class="thinking-header">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+    <!-- Collapsible content wrapper -->
+    <div ref="wrapperRef" class="msg-content-wrapper" :class="{ collapsed }" :style="collapsed ? { maxHeight: store.state.chatCollapsedHeight + 'px' } : {}">
+      <div v-if="msg.role === 'user' && msg.files && msg.files.length > 0 && !hasImagesInContent(msg.content)" class="chat-files">
+        <template v-for="(f, idx) in msg.files" :key="idx">
+          <span v-if="isUploadPath(normalizeFileEntry(f).path)" class="chat-file-attachment attachment-upload" @click="$emit('file-tag-click', normalizeFileEntry(f).path)" title="打开文件">
+            <svg v-if="isImageFile(normalizeFileEntry(f).path)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <circle cx="10" cy="13" r="2"/>
+              <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
             </svg>
-            <span class="thinking-label">Thinking</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="thinking-chevron">
-              <polyline points="6 9 12 15 18 9"/>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
             </svg>
-          </div>
-          <pre v-if="thinkingExpanded[`${index}-${bi}`]" class="thinking-text">{{ block.text }}</pre>
-        </div>
-        <!-- Tool use block -->
-        <template v-else-if="block.type === 'tool_use'">
-          <div class="chat-tool-call" :class="{ done: block.done }" @click.stop="$emit('toggle-tool', `${index}-${bi}`)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-icon">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
+          </span>
+          <span v-else class="chat-file-attachment attachment-ref" @click="$emit('file-tag-click', normalizeFileEntry(f).path)" title="打开文件">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
             </svg>
-            <span class="tool-name">{{ block.name }}</span>
-            <span v-if="toolCallSummary(block)" class="tool-summary">{{ toolCallSummary(block) }}</span>
-            <span v-if="!block.done" class="tool-spinner"></span>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-check">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-          </div>
-          <pre v-if="block.input && Object.keys(block.input).length && expandedTools[`${index}-${bi}`]" class="tool-detail" @click.stop v-html="formatToolInput(block.input)"></pre>
+            <span class="chat-file-name">{{ getFileName(normalizeFileEntry(f).path) }}</span>
+          </span>
         </template>
-        <!-- Error block -->
-        <div v-else-if="block.type === 'error'" class="chat-error-card">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="error-icon">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            <line x1="12" y1="9" x2="12" y2="13"/>
-            <line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          <span class="error-text">{{ block.text }}</span>
-        </div>
-        <!-- Warning block (e.g. CLI stderr on success) -->
-        <div v-else-if="block.type === 'warning'" class="chat-warning-card">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="warning-icon">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <span class="warning-text">{{ block.text }}</span>
-        </div>
-        <!-- Text block -->
-        <div v-else-if="block.type === 'text'" v-html="renderTextBlock(block.text, msg.id, bi)"></div>
-        <!-- Schedule proposal card (inline in message) -->
-        <div v-if="block.type === 'text' && blockProposals[`${msg.id}-${bi}`]" class="schedule-proposal-card confirmed">
-          <div class="proposal-header confirmed">📋 定时任务已创建</div>
-          <div class="proposal-body">
-            <div class="proposal-row"><strong>任务：</strong>{{ blockProposals[`${msg.id}-${bi}`].proposal.name }}</div>
-            <div class="proposal-row"><strong>频率：</strong>{{ humanizeCron(blockProposals[`${msg.id}-${bi}`].proposal.cron_expr) }}</div>
-            <div class="proposal-row"><strong>执行者：</strong>{{ getAgentIcon(blockProposals[`${msg.id}-${bi}`].proposal.agent_id) }} {{ getAgentName(blockProposals[`${msg.id}-${bi}`].proposal.agent_id) }}</div>
-            <div class="proposal-row"><strong>重复：</strong>{{ repeatLabel(blockProposals[`${msg.id}-${bi}`].proposal.repeat_mode, blockProposals[`${msg.id}-${bi}`].proposal.max_runs) }}</div>
-            <div class="proposal-row"><strong>提示词：</strong>{{ truncate(blockProposals[`${msg.id}-${bi}`].proposal.prompt, 80) }}</div>
+      </div>
+
+      <!-- Scheduled task trigger banner -->
+      <div v-if="msg.role === 'assistant' && msg.scheduledTask" class="chat-scheduled-banner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        <span class="scheduled-label">定时触发</span>
+        <span class="scheduled-task-name">{{ msg.scheduledTask.taskName }}</span>
+        <span class="scheduled-sep">·</span>
+        <span class="scheduled-agent">{{ getAgentIcon(msg.scheduledTask.agentId) }} {{ getAgentName(msg.scheduledTask.agentId) }}</span>
+        <span class="scheduled-sep">·</span>
+        <span class="scheduled-cron">{{ msg.scheduledTask.cronExpr }}</span>
+      </div>
+
+      <!-- Message content -->
+      <template v-if="msg.role === 'assistant' && msg.blocks">
+        <template v-for="(block, bi) in msg.blocks" :key="bi">
+          <!-- Thinking block -->
+          <div v-if="block.type === 'thinking'" class="chat-thinking" :class="{ expanded: thinkingExpanded[`${index}-${bi}`] }" @click.stop="toggleThinking(`${index}-${bi}`)">
+            <div class="thinking-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              </svg>
+              <span class="thinking-label">Thinking</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="thinking-chevron">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+            <pre v-if="thinkingExpanded[`${index}-${bi}`]" class="thinking-text">{{ block.text }}</pre>
           </div>
-        </div>
+          <!-- Tool use block -->
+          <template v-else-if="block.type === 'tool_use'">
+            <div class="chat-tool-call" :class="{ done: block.done }" @click.stop="$emit('toggle-tool', `${index}-${bi}`)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-icon">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+              </svg>
+              <span class="tool-name">{{ block.name }}</span>
+              <span v-if="toolCallSummary(block)" class="tool-summary">{{ toolCallSummary(block) }}</span>
+              <span v-if="!block.done" class="tool-spinner"></span>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-check">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </div>
+            <pre v-if="block.input && Object.keys(block.input).length && expandedTools[`${index}-${bi}`]" class="tool-detail" @click.stop v-html="formatToolInput(block.input)"></pre>
+          </template>
+          <!-- Error block -->
+          <div v-else-if="block.type === 'error'" class="chat-error-card">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="error-icon">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span class="error-text">{{ block.text }}</span>
+          </div>
+          <!-- Warning block (e.g. CLI stderr on success) -->
+          <div v-else-if="block.type === 'warning'" class="chat-warning-card">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" class="warning-icon">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span class="warning-text">{{ block.text }}</span>
+          </div>
+          <!-- Text block: streaming uses throttled render to avoid UI freeze -->
+          <div v-else-if="block.type === 'text'" v-html="getBlockHtml(bi, block)"></div>
+          <!-- Schedule proposal card (inline in message) -->
+          <div v-if="block.type === 'text' && blockProposals[`${msg.id}-${bi}`]" class="schedule-proposal-card confirmed">
+            <div class="proposal-header confirmed">📋 定时任务已创建</div>
+            <div class="proposal-body">
+              <div class="proposal-row"><strong>任务：</strong>{{ blockProposals[`${msg.id}-${bi}`].proposal.name }}</div>
+              <div class="proposal-row"><strong>频率：</strong>{{ humanizeCron(blockProposals[`${msg.id}-${bi}`].proposal.cron_expr) }}</div>
+              <div class="proposal-row"><strong>执行者：</strong>{{ getAgentIcon(blockProposals[`${msg.id}-${bi}`].proposal.agent_id) }} {{ getAgentName(blockProposals[`${msg.id}-${bi}`].proposal.agent_id) }}</div>
+              <div class="proposal-row"><strong>重复：</strong>{{ repeatLabel(blockProposals[`${msg.id}-${bi}`].proposal.repeat_mode, blockProposals[`${msg.id}-${bi}`].proposal.max_runs) }}</div>
+              <div class="proposal-row"><strong>提示词：</strong>{{ truncate(blockProposals[`${msg.id}-${bi}`].proposal.prompt, 80) }}</div>
+            </div>
+          </div>
+        </template>
+        <!-- Loading dots while AI is still streaming -->
+        <div v-if="msg.streaming || msg.blocks.length === 0" class="placeholder-dots"><span></span><span></span><span></span></div>
+        <!-- Cancelled marker -->
+        <div v-if="msg.cancelled" class="chat-cancelled-mark">已中断</div>
       </template>
-      <!-- Loading dots while AI is still streaming -->
-      <div v-if="msg.streaming || msg.blocks.length === 0" class="placeholder-dots"><span></span><span></span><span></span></div>
-      <!-- Cancelled marker -->
-      <div v-if="msg.cancelled" class="chat-cancelled-mark">已中断</div>
-    </template>
-    <!-- User message or legacy plain text -->
-    <div v-else-if="msg.role === 'user' || msg.content" v-html="renderedContent"></div>
+      <!-- User message or legacy plain text -->
+      <div v-else-if="msg.role === 'user' || msg.content" v-html="renderedContent"></div>
+    </div>
+
+    <!-- Collapse overlay + expand button -->
+    <div v-if="collapsed" class="msg-collapse-overlay" @click="manuallyExpanded = true; $emit('expand', index)">
+      <div class="msg-collapse-gradient"></div>
+      <button class="msg-expand-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+        展开全文
+      </button>
+    </div>
 
     <!-- Bottom bar for assistant messages with metadata -->
     <div v-if="msg.role === 'assistant' && msg.metadata" class="chat-meta-bar">
@@ -129,8 +143,9 @@
 </template>
 
 <script setup>
-import { ref, inject } from 'vue'
+import { ref, inject, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { baseName } from '@/utils/helpers.ts'
+import { store } from '@/stores/app.ts'
 
 const props = defineProps({
   msg: Object,
@@ -139,21 +154,100 @@ const props = defineProps({
   blockProposals: Object,
   agents: Array,
   renderedContent: String,
+  shouldCollapse: Boolean,
 })
 
-const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click'])
+const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'expand'])
 
 const thinkingExpanded = ref({})
+const wrapperRef = ref(null)
+const overflows = ref(false)
+const manuallyExpanded = ref(false)
 
-function toggleThinking(key) {
-  thinkingExpanded.value = { ...thinkingExpanded.value, [key]: !thinkingExpanded.value[key] }
+function checkOverflow() {
+  if (!wrapperRef.value) return
+  overflows.value = wrapperRef.value.scrollHeight > store.state.chatCollapsedHeight
 }
+
+// Check overflow after mount and when content changes
+onMounted(() => nextTick(checkOverflow))
+watch(() => props.renderedContent, () => nextTick(checkOverflow))
+watch(() => props.msg?.blocks?.length, () => nextTick(checkOverflow))
+watch(() => props.msg?.streaming, () => nextTick(checkOverflow))
+
+const collapsed = computed(() => {
+  if (!props.shouldCollapse) return false
+  if (props.msg?.streaming) return false
+  if (manuallyExpanded.value) return false
+  return overflows.value
+})
 
 const chatRender = inject('chatRender', {})
 const chatSession = inject('chatSession', {})
 
 const { renderTextBlock, formatMessageTime, toolCallSummary, formatToolInput, humanizeCron, repeatLabel, truncate, hasImagesInContent } = chatRender
 const { getAgentIcon, getAgentName } = chatSession
+
+// ── Throttled streaming render ──
+// During streaming, block.text changes on every SSE event (~50ms).
+// Running full markdown→KaTeX→DOMPurify on each change freezes the UI.
+// Instead, cache rendered HTML in a ref and throttle updates to ~300ms.
+const blockHtmlCache = ref({})          // { [blockIdx]: html }
+let _throttleTimer = null
+let _throttlePending = false
+const THROTTLE_MS = 300
+
+function flushBlockHtml() {
+  _throttleTimer = null
+  if (!_throttlePending) return
+  _throttlePending = false
+  const newCache = {}
+  for (let i = 0; i < (props.msg?.blocks?.length || 0); i++) {
+    const block = props.msg.blocks[i]
+    if (block.type === 'text') {
+      newCache[i] = renderTextBlock(block.text, props.msg.id, i)
+    }
+  }
+  blockHtmlCache.value = newCache
+}
+
+function getBlockHtml(bi, block) {
+  // Non-streaming: render immediately (result is stable, Vue skips DOM update if same)
+  if (!props.msg?.streaming) {
+    return renderTextBlock(block.text, props.msg.id, bi)
+  }
+  // Streaming: serve cached HTML; schedule a throttled refresh
+  if (blockHtmlCache.value[bi] !== undefined) {
+    // Kick off throttled update if not already pending
+    if (!_throttleTimer) {
+      // First change or throttle window elapsed — update immediately
+      const newCache = { ...blockHtmlCache.value }
+      newCache[bi] = renderTextBlock(block.text, props.msg.id, bi)
+      blockHtmlCache.value = newCache
+      _throttleTimer = setTimeout(flushBlockHtml, THROTTLE_MS)
+    } else {
+      _throttlePending = true
+    }
+    return blockHtmlCache.value[bi]
+  }
+  // Cache miss (first render of this block) — render now
+  const html = renderTextBlock(block.text, props.msg.id, bi)
+  blockHtmlCache.value = { ...blockHtmlCache.value, [bi]: html }
+  return html
+}
+
+// When streaming ends, clear throttle and force full re-render
+watch(() => props.msg?.streaming, (streaming, wasStreaming) => {
+  if (wasStreaming && !streaming) {
+    if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null }
+    _throttlePending = false
+    blockHtmlCache.value = {}  // clear cache so next getBlockHtml renders fresh
+  }
+})
+
+function toggleThinking(key) {
+  thinkingExpanded.value = { ...thinkingExpanded.value, [key]: !thinkingExpanded.value[key] }
+}
 
 function normalizeFileEntry(f) {
   if (typeof f === 'string') return { path: f }
@@ -174,6 +268,10 @@ function isImageFile(path) {
 function getFileName(path) {
   return baseName(path)
 }
+
+onUnmounted(() => {
+  if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null }
+})
 </script>
 
 <style scoped>
@@ -622,6 +720,58 @@ function getFileName(path) {
     white-space: nowrap;
 }
 
+/* ── Collapse styles ── */
+.msg-content-wrapper {
+  position: relative;
+  transition: max-height 0.3s ease;
+}
+
+.msg-content-wrapper.collapsed {
+  overflow: hidden;
+}
+
+.msg-collapse-overlay {
+  position: relative;
+  margin-top: -40px;
+  padding-top: 40px;
+  cursor: pointer;
+}
+
+.msg-collapse-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 0%, var(--bg-tertiary) 80%);
+  pointer-events: none;
+}
+
+.chat-message.user .msg-collapse-gradient {
+  background: linear-gradient(to bottom, transparent 0%, var(--user-msg-color) 80%);
+}
+
+.msg-expand-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.msg-expand-btn:hover {
+  color: var(--accent-color, #0066cc);
+}
+
+.msg-expand-btn svg {
+  flex-shrink: 0;
+}
+
 /* Chat Meta Bar — contains model/duration info + detail button */
 .chat-meta-bar {
     display: flex;
@@ -704,12 +854,25 @@ function getFileName(path) {
     align-self: stretch;
     border-radius: 16px 16px 16px 0;
     position: relative;
+    min-width: 0;
+    overflow-wrap: break-word;
 }
 
 .chat-message.assistant pre {
     padding: 10px;
     margin: 6px 0;
     border-radius: var(--radius-sm);
+    overflow-x: auto;
+    max-width: 100%;
+    box-sizing: border-box;
+    word-break: normal;
+    word-wrap: normal;
+    white-space: pre;
+}
+
+.chat-message.assistant pre code {
+    white-space: pre;
+    word-break: normal;
 }
 
 .chat-message.assistant code {
@@ -740,6 +903,11 @@ function getFileName(path) {
 .chat-message.assistant blockquote {
     margin: 6px 0;
     padding: 5px 10px;
+}
+
+.chat-message.assistant a {
+    word-break: break-all;
+    overflow-wrap: break-word;
 }
 
 .chat-message.assistant img {

@@ -1,10 +1,17 @@
 <template>
-  <BottomSheet :open="open" title="定时任务" compact @close="$emit('close')">
+  <BottomSheet ref="bottomSheetRef" :open="open" compact title="定时任务" @close="$emit('close')">
+    <template #header>
+      <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+      </svg>
+      <span class="bs-header-title">定时任务</span>
+    </template>
+
     <div class="task-list">
       <div v-if="loading" class="task-loading">加载中...</div>
       <div v-else-if="tasks.length === 0" class="task-empty">暂无定时任务</div>
       <div v-for="task in tasks" :key="task.id" class="task-item" :class="task.status">
-        <div class="task-item-main" @click="openDetailDialog(task)">
+        <div class="task-item-main" @click="openTaskDetailDialog(task)">
           <div class="task-item-info">
             <div class="task-item-header">
               <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
@@ -34,19 +41,20 @@
         </div>
       </div>
     </div>
+
     <TaskDetailDialog
-      :open="detailDialogOpen"
+      :open="taskDetailOpen"
       :task="selectedTask"
-      @close="detailDialogOpen = false"
-      @saved="() => { loadTasks(); detailDialogOpen = false }"
+      @close="taskDetailOpen = false"
+      @saved="() => { loadTasks(); taskDetailOpen = false }"
     />
   </BottomSheet>
 </template>
 
 <script setup>
 import { ref, watch } from 'vue'
-import BottomSheet from './BottomSheet.vue'
-import TaskDetailDialog from './TaskDetailDialog.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
+import TaskDetailDialog from '@/components/task/TaskDetailDialog.vue'
 import { useAgents } from '@/composables/useAgents.ts'
 import { humanizeCron, repeatLabel, statusLabel, formatDateTime } from '@/utils/helpers.ts'
 
@@ -54,13 +62,16 @@ const props = defineProps({
   open: Boolean,
 })
 
-const emit = defineEmits(['close', 'viewSession'])
+const emit = defineEmits(['close'])
 
+const bottomSheetRef = ref(null)
 const tasks = ref([])
 const loading = ref(false)
-const detailDialogOpen = ref(false)
+const taskDetailOpen = ref(false)
 const selectedTask = ref(null)
 const { agents, loadAgents, getAgentIcon } = useAgents()
+
+defineExpose({ loadTasks })
 
 async function loadTasks() {
   loading.value = true
@@ -75,9 +86,9 @@ async function loadTasks() {
   }
 }
 
-function openDetailDialog(task) {
+function openTaskDetailDialog(task) {
   selectedTask.value = task
-  detailDialogOpen.value = true
+  taskDetailOpen.value = true
 }
 
 async function pauseTask(id) {
@@ -110,12 +121,9 @@ async function deleteTask(id) {
 
 watch(() => props.open, async (val) => {
   if (val) {
-    await loadTasks()
-    await loadAgents()
+    await Promise.all([loadTasks(), loadAgents()])
   }
 })
-
-defineExpose({ loadTasks })
 </script>
 
 <style scoped>
@@ -124,8 +132,9 @@ defineExpose({ loadTasks })
   flex-direction: column;
   gap: 2px;
   padding: 6px;
-  overflow-y: auto;
   min-height: 0;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .task-loading,

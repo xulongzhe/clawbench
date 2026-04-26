@@ -41,6 +41,13 @@ tls:
 dev:
   port: 20002        # 开发版后端端口
   frontend_port: 20001 # Vite 前端端口（HMR 热更新）
+  host: "0.0.0.0"    # 绑定地址："0.0.0.0" 允许公网访问，"localhost" 仅限本地
+
+# Chat UI settings
+chat:
+  initial_messages: 20    # 初始加载的消息条数
+  page_size: 20           # 每次懒加载追加的消息条数
+  collapsed_height: 150   # 历史消息折叠高度（像素）
 
 # 默认智能体（可选，留空则使用 agents/ 目录下的第一个智能体）
 # 可用智能体：assistant（全能助手）、coder（编码专家）、handyman（勤杂工）、codebuddy2（Gemini）、gpt54（GPT）

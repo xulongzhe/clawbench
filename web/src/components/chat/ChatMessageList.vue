@@ -1,5 +1,11 @@
 <template>
-  <div class="chat-messages" id="aiChatMessages" ref="messagesRef" @click="handleChatClick">
+  <div class="chat-messages" id="aiChatMessages" ref="messagesRef" @click="handleChatClick" @scroll="handleScroll">
+    <!-- Loading indicator for lazy load -->
+    <div v-if="loadingMore" class="chat-load-more">
+      <span class="chat-load-spinner"></span>
+      <span>加载中...</span>
+    </div>
+
     <div v-if="messages.length === 0" class="chat-empty">
       <template v-if="currentAgent">
         <div class="agent-welcome">
@@ -27,15 +33,17 @@
       :blockProposals="blockProposals"
       :agents="agents"
       :renderedContent="renderedContents[i]"
+      :shouldCollapse="isCollapsed(i, msg)"
       @toggle-tool="$emit('toggle-tool', $event)"
       @show-metadata="$emit('show-metadata', $event)"
       @file-tag-click="$emit('file-tag-click', $event)"
+      @expand="handleExpand"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick, inject } from 'vue'
+import { ref, nextTick, inject, computed, watch } from 'vue'
 import ChatMessageItem from './ChatMessageItem.vue'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
@@ -47,13 +55,73 @@ const props = defineProps({
   agents: Array,
   currentAgent: Object,
   renderedContents: Array,
+  hasMore: Boolean,
+  loadingMore: Boolean,
 })
 
-const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'file-open'])
+const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'file-open', 'load-more'])
 
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()
 const { openFilePath } = useFilePathAnnotation()
+
+// Track manually expanded message indices
+const expandedSet = ref(new Set())
+
+// Reset expanded state when messages change identity (session switch / reload)
+watch(() => props.messages, () => {
+  expandedSet.value = new Set()
+})
+
+// Compute the last round: last assistant message + its preceding user message
+const lastRoundIndices = computed(() => {
+  const msgs = props.messages
+  if (!msgs || msgs.length === 0) return new Set()
+
+  // Find last assistant message index
+  let lastAssistantIdx = -1
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    if (msgs[i].role === 'assistant') {
+      lastAssistantIdx = i
+      break
+    }
+  }
+
+  const indices = new Set()
+  if (lastAssistantIdx >= 0) {
+    indices.add(lastAssistantIdx)
+    // Find the preceding user message
+    for (let i = lastAssistantIdx - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') {
+        indices.add(i)
+        break
+      }
+    }
+  } else {
+    // No assistant message — expand last user message
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') {
+        indices.add(i)
+        break
+      }
+    }
+  }
+
+  return indices
+})
+
+function isCollapsed(index, msg) {
+  // Last round is always fully expanded (no collapse suggestion)
+  if (lastRoundIndices.value.has(index)) return false
+  // Manually expanded — don't suggest collapse
+  if (expandedSet.value.has(index)) return false
+  // Everything else: suggest collapse (ChatMessageItem decides whether content actually overflows)
+  return true
+}
+
+function handleExpand(index) {
+  expandedSet.value = new Set([...expandedSet.value, index])
+}
 
 // Inject bottomSheetRef from parent for closing
 const chatUI = inject('chatUI', {})
@@ -76,18 +144,40 @@ function handleChatClick(event) {
   })
 }
 
+let loadMorePending = false
+
+function handleScroll() {
+  if (!messagesRef.value || loadMorePending) return
+  if (!props.hasMore || props.loadingMore) return
+  if (messagesRef.value.scrollTop < 50) {
+    loadMorePending = true
+    emit('load-more')
+    nextTick(() => { loadMorePending = false })
+  }
+}
+
 function scrollToBottom(force = false) {
   nextTick(() => {
     if (!messagesRef.value) return
     const el = messagesRef.value
     if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
       el.scrollTop = el.scrollHeight
+      // After forced scroll, re-check after a short delay to handle
+      // async content rendering (Mermaid, KaTeX) that changes height
+      if (force) {
+        setTimeout(() => {
+          if (messagesRef.value) {
+            messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+          }
+        }, 300)
+      }
     }
   })
 }
 
 defineExpose({
   scrollToBottom,
+  messagesRef,
 })
 </script>
 
@@ -194,5 +284,29 @@ defineExpose({
   font-size: 12px;
   color: var(--text-muted);
   opacity: 0.7;
+}
+
+/* Lazy load indicator */
+.chat-load-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.chat-load-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: tool-spin 0.6s linear infinite;
+}
+
+@keyframes tool-spin {
+  to { transform: rotate(360deg); }
 }
 </style>

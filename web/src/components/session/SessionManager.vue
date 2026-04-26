@@ -149,8 +149,8 @@
 
 <script setup>
 import { ref, watch, computed } from 'vue'
-import BottomSheet from './BottomSheet.vue'
-import TaskDetailDialog from './TaskDetailDialog.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
+import TaskDetailDialog from '@/components/task/TaskDetailDialog.vue'
 import { useAgents } from '@/composables/useAgents.ts'
 import { formatRelativeTime, humanizeCron, repeatLabel, statusLabel, formatDateTime } from '@/utils/helpers.ts'
 

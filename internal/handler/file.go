@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"clawbench/internal/model"
 )
@@ -317,4 +318,114 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 		"parent": parent,
 		"items":  items,
 	})
+}
+
+// ── File-related DTOs ──────────────────────────────────────────────────────────
+
+// DirEntry represents a directory entry in API responses
+type DirEntry struct {
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Modified  string `json:"modified,omitempty"`
+	Size      int64  `json:"size,omitempty"`
+	Supported bool   `json:"supported"`
+}
+
+// FileInfo represents file information in API responses
+type FileInfo struct {
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Modified  string `json:"modified"`
+	Size      int64  `json:"size"`
+	Type      string `json:"type"`
+	Supported bool   `json:"supported"`
+}
+
+// FileContent represents file content in API responses
+type FileContent struct {
+	Content   string `json:"content"`
+	Name      string `json:"name"`
+	Path      string `json:"path"`
+	Supported bool   `json:"supported"`
+	Size      int64  `json:"size"`
+}
+
+// buildDirEntries builds a sorted list of directory entries
+func buildDirEntries(entries []os.DirEntry) []DirEntry {
+	var items []DirEntry
+	for _, entry := range entries {
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			slog.Warn("failed to get file info", slog.String("name", entry.Name()), slog.String("err", infoErr.Error()))
+			continue
+		}
+		if entry.IsDir() {
+			modified := info.ModTime().Format(time.RFC3339)
+			items = append(items, DirEntry{Name: entry.Name(), Type: "dir", Modified: modified})
+		} else {
+			name := entry.Name()
+			entryType := "file"
+			if model.IsImageFile(name) {
+				entryType = "image"
+			}
+			items = append(items, DirEntry{
+				Name:      name,
+				Type:      entryType,
+				Modified:  info.ModTime().Format(time.RFC3339),
+				Size:      info.Size(),
+				Supported: model.IsSupportedFile(name),
+			})
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Type != items[j].Type {
+			return items[i].Type == "dir"
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items
+}
+
+// serveProjectsCreate handles POST /api/projects (create directory under watchDir).
+func serveProjectsCreate(w http.ResponseWriter, r *http.Request) {
+	basePath, err := filepath.Abs(model.WatchDir)
+	if err != nil {
+		slog.Error("failed to resolve base path", slog.String("path", model.WatchDir), slog.String("err", err.Error()))
+		model.WriteError(w, model.Internal(err))
+		return
+	}
+
+	var req struct {
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Name == "" {
+		model.WriteErrorf(w, http.StatusBadRequest, "Directory name required")
+		return
+	}
+	var absPath string
+	if req.Path == "" || req.Path == "/" {
+		absPath = basePath
+	} else if filepath.IsAbs(req.Path) {
+		absPath = req.Path
+	} else {
+		rel := strings.TrimPrefix(req.Path, "/")
+		absPath, err = filepath.Abs(filepath.Join(basePath, rel))
+		if err != nil {
+			slog.Warn("failed to resolve path", slog.String("path", req.Path), slog.String("err", err.Error()))
+		}
+	}
+	if !strings.HasPrefix(absPath, basePath+string(filepath.Separator)) && absPath != basePath {
+		model.WriteError(w, model.Forbidden(nil, "Access denied"))
+		return
+	}
+	newDir := filepath.Join(absPath, req.Name)
+	if err := os.Mkdir(newDir, 0755); err != nil {
+		model.WriteError(w, model.Internal(fmt.Errorf("create directory failed: %w", err)))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "path": newDir})
 }

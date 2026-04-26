@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"encoding/json"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,19 +49,4 @@ func ServeIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.NotFound(w, r)
-}
-
-// ServeWatchDir returns the configured watchDir and upload limits as JSON.
-func ServeWatchDir(w http.ResponseWriter, r *http.Request) {
-	absWatchDir, err := filepath.Abs(model.WatchDir)
-	if err != nil {
-		slog.Warn("failed to resolve watch dir", slog.String("path", model.WatchDir), slog.String("err", err.Error()))
-		absWatchDir = model.WatchDir
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"watchDir":       absWatchDir,
-		"uploadMaxSizeMB": model.UploadMaxSizeMB,
-		"uploadMaxFiles":  model.UploadMaxFiles,
-	})
 }

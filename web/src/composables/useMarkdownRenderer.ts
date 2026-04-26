@@ -1,6 +1,6 @@
 import { nextTick } from 'vue'
 import { marked, katex, mermaid, DOMPurify } from '@/utils/globals.ts'
-import { escapeHtml } from '@/utils/helpers.ts'
+import { escapeHtml } from '@/utils/html.ts'
 
 /**
  * Markdown渲染选项

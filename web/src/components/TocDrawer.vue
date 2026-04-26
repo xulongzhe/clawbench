@@ -41,8 +41,8 @@
 
 <script setup>
 import { ref, watch, nextTick } from 'vue'
-import BottomSheet from './BottomSheet.vue'
-import SearchInput from './SearchInput.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
+import SearchInput from '@/components/common/SearchInput.vue'
 import { extractToc, getFileType } from '@/utils/helpers.ts'
 
 const props = defineProps({

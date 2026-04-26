@@ -19,9 +19,16 @@ DEV_PID_FILE="/tmp/${NAME}-vite.pid"
 # Dev 模式端口（与正式版分离）
 DEV_BACKEND_PORT=20002
 DEV_FRONTEND_PORT=20001
+DEV_HOST="0.0.0.0"
 
 get_watch_dir() {
     grep "^watch_dir:" "config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo ""
+}
+
+get_dev_host() {
+    # Try to read dev.host from config.yaml; fallback to 0.0.0.0
+    local host=$(sed -n '/^dev:/,/^[a-z]/{/^  host:/p}' "config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo "")
+    echo "${host:-0.0.0.0}"
 }
 
 check_binary() {
@@ -65,11 +72,12 @@ start_dev() {
 
     check_binary
 
+    DEV_HOST=$(get_dev_host)
     local WATCH_DIR=$(get_watch_dir)
     echo "=== Starting $NAME (dev mode) ==="
     echo "  Binary:   $BIN"
-    echo "  Backend:  http://localhost:$DEV_BACKEND_PORT"
-    echo "  Frontend: http://localhost:$DEV_FRONTEND_PORT"
+    echo "  Backend:  http://$DEV_HOST:$DEV_BACKEND_PORT"
+    echo "  Frontend: http://$DEV_HOST:$DEV_FRONTEND_PORT"
     echo "  DB:       ClawBench-dev.db (separate from release)"
     echo "  Watch:    ${WATCH_DIR:-default}"
     echo ""
@@ -92,7 +100,7 @@ start_dev() {
     echo $! > "$DEV_PID_FILE"
     echo "Vite dev server started (PID $(cat "$DEV_PID_FILE")) on port $DEV_FRONTEND_PORT"
     echo ""
-    echo "Open http://localhost:$DEV_FRONTEND_PORT in your browser"
+    echo "Open http://$DEV_HOST:$DEV_FRONTEND_PORT in your browser"
     echo "Logs: /tmp/vite-dev.log  /tmp/clawbench-dev-backend.log"
 }
 

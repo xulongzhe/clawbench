@@ -27,9 +27,12 @@
       :agents="session.agents.value"
       :currentAgent="currentAgent"
       :renderedContents="render.renderedContents.value"
+      :hasMore="session.hasMore.value"
+      :loadingMore="session.loadingMore.value"
       @toggle-tool="render.toggleToolDetail"
       @show-metadata="showMetadata"
       @file-tag-click="handleFileTagClick"
+      @load-more="handleLoadMore"
     />
 
     <!-- Unified input container -->
@@ -84,10 +87,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted, onMounted, inject, provide, toRef } from 'vue'
-import BottomSheet from './BottomSheet.vue'
-import SessionDrawer from './SessionDrawer.vue'
-import TaskDrawer from './TaskDrawer.vue'
+import { ref, computed, watch, onUnmounted, onMounted, inject, provide, toRef, nextTick } from 'vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
+import SessionDrawer from '@/components/session/SessionDrawer.vue'
+import TaskDrawer from '@/components/task/TaskDrawer.vue'
 import ChatMetadataModal from './ChatMetadataModal.vue'
 import ChatInputBar from './ChatInputBar.vue'
 import ChatMessageList from './ChatMessageList.vue'
@@ -276,6 +279,18 @@ async function sendMessage(text) {
 
 function scrollBottom(force = false) {
     messageListRef.value?.scrollToBottom(force)
+}
+
+async function handleLoadMore() {
+    const el = messageListRef.value?.messagesRef
+    if (!el) return
+    const oldScrollHeight = el.scrollHeight
+    await session.loadMoreMessages()
+    // Wait for DOM update + one frame for async rendering (Mermaid, KaTeX)
+    await nextTick()
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    const newScrollHeight = el.scrollHeight
+    el.scrollTop = newScrollHeight - oldScrollHeight
 }
 
 function showMetadata(msg) {

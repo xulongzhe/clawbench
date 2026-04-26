@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -140,4 +141,22 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 	default:
 		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}
+}
+
+// ServeWatchDir returns the configured watchDir and upload limits as JSON.
+func ServeWatchDir(w http.ResponseWriter, r *http.Request) {
+	absWatchDir, err := filepath.Abs(model.WatchDir)
+	if err != nil {
+		slog.Warn("failed to resolve watch dir", slog.String("path", model.WatchDir), slog.String("err", err.Error()))
+		absWatchDir = model.WatchDir
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"watchDir":              absWatchDir,
+		"uploadMaxSizeMB":       model.UploadMaxSizeMB,
+		"uploadMaxFiles":        model.UploadMaxFiles,
+		"chatInitialMessages":   model.ChatInitialMessages,
+		"chatPageSize":          model.ChatPageSize,
+		"chatCollapsedHeight":   model.ChatCollapsedHeight,
+	})
 }

@@ -2,10 +2,10 @@ import '../../../css/layout.css'
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import FileViewer from '../FileViewer.vue'
-import MarkdownPreview from '../MarkdownPreview.vue'
+import FileViewer from '../file/FileViewer.vue'
+import MarkdownPreview from '../file/MarkdownPreview.vue'
 import WelcomeView from '../WelcomeView.vue'
-import CodePreview from '../CodePreview.vue'
+import CodePreview from '../file/CodePreview.vue'
 
 vi.mock('@/composables/useMarkdownRenderer.ts', () => ({
   useMarkdownRenderer: () => ({
@@ -53,7 +53,7 @@ describe('preview layout contract', () => {
           ImagePreview: true,
           AudioPreview: true,
           VideoPreview: true,
-          RawFileView: true,
+          CodePreview: true,
           MarkdownPreview: { template: '<div class="markdown-preview-stub" />' },
         },
       },

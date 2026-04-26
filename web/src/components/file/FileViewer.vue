@@ -75,24 +75,26 @@
       />
 
       <!-- Code / plain text -->
-      <RawFileView
-        v-else
-        :file="file"
-        @delete="emit('delete', file.path)"
-        @show-details="emit('showDetails')"
-        @open-git-history="emit('openGitHistory')"
-      />
+      <div v-else class="raw-content-viewer">
+        <CodePreview
+          :content="file.content"
+          :language="rawFileLanguage"
+          :file-path="file.path"
+          :editable="true"
+          @content-change="file.content = $event"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import ImagePreview from './ImagePreview.vue'
-import AudioPreview from './AudioPreview.vue'
-import VideoPreview from './VideoPreview.vue'
+import ImagePreview from '@/components/media/ImagePreview.vue'
+import AudioPreview from '@/components/media/AudioPreview.vue'
+import VideoPreview from '@/components/media/VideoPreview.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
-import RawFileView from './RawFileView.vue'
+import CodePreview from './CodePreview.vue'
 import FileHeader from './FileHeader.vue'
 import { getFileType, formatFileSize } from '@/utils/helpers.ts'
 
@@ -105,6 +107,7 @@ const props = defineProps({
 const emit = defineEmits(['delete', 'showDetails', 'openGitHistory', 'toggleToc', 'toggleSearch', 'toggleView'])
 
 const fileType = computed(() => props.file ? getFileType(props.file.name) : null)
+const rawFileLanguage = computed(() => getFileType(props.file?.name)?.lang || 'plaintext')
 const isMarkdown = computed(() => fileType.value?.isMarkdown || false)
 const loading = ref(false)
 const contentRef = ref(null)

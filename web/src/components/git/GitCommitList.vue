@@ -87,7 +87,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import GitGraph from './GitGraph.vue'
-import SearchInput from './SearchInput.vue'
+import SearchInput from '@/components/common/SearchInput.vue'
 
 const props = defineProps({
   commits: { type: Array, default: () => [] },

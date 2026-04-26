@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeGraphData, LANE_WIDTH, LANE_COLORS, refLabelWidth, refLabelText, refLabelBg } from '../gitGraphUtils'
+import { computeGraphData, LANE_WIDTH, LANE_COLORS, refLabelWidth, refLabelText, refLabelBg } from '@/utils/gitGraph'
 
 const ROW_HEIGHT = 46
 

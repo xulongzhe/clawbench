@@ -37,7 +37,7 @@
 
 <script setup>
 import { computed, inject } from 'vue'
-import BottomSheet from './BottomSheet.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
 import { store } from '@/stores/app.ts'
 import { getFileType, formatFileSize } from '@/utils/helpers.ts'
 

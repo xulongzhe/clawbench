@@ -1,5 +1,6 @@
 import { nextTick } from 'vue'
-import { escapeHtml, splitPath } from '@/utils/helpers.ts'
+import { escapeHtml } from '@/utils/html.ts'
+import { splitPath } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
 
 /**
