@@ -63,7 +63,7 @@
         :current-file="currentFile"
         @close="chatOpen = false"
         @open="chatOpen = true"
-        @message="handleRefresh()"
+        @message="handleChatMessage()"
         :initial-tab="initialChatTab"
       />
 
@@ -120,6 +120,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
+          <span v-if="chatUnread" class="dock-badge"></span>
         </button>
         <button class="dock-btn" :class="{ active: sidebarOpen }" @click.stop="openDrawer('sidebar')" title="文件管理器">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -188,6 +189,7 @@ const markdownViewMode = ref('rendered')
 // Chat
 const chatOpen = ref(false)
 const initialChatTab = ref(null)
+const chatUnread = ref(false)
 
 // Global toast
 const toast = useToast()
@@ -219,6 +221,8 @@ function openDrawer(name, tab = null) {
     drawerStates[name].value = false
     return
   }
+  // 清除聊天未读角标
+  if (name === 'chat') chatUnread.value = false
   // 关闭其他抽屉
   Object.entries(drawerStates).forEach(([key, ref]) => {
     if (key !== name && ref.value) {
@@ -327,6 +331,11 @@ async function handleDelete(path) {
     await store.deleteFile(path)
 }
 
+function handleChatMessage() {
+    handleRefresh()
+    if (!chatOpen.value) chatUnread.value = true
+}
+
 async function handleRefresh() {
     sortField.value = null
     sortDir.value = 'asc'
@@ -409,6 +418,16 @@ onMounted(async () => {
         return
     }
     initMermaid()
+    // Check unread chat messages on startup
+    try {
+        const sr = await fetch('/api/ai/sessions')
+        if (sr.ok) {
+            const sd = await sr.json()
+            if (sd.sessions?.some(s => s.unreadCount > 0)) {
+                chatUnread.value = true
+            }
+        }
+    } catch (_) {}
     try {
         await store.loadProject()
     } catch (_) {
@@ -453,6 +472,7 @@ onUnmounted(() => {
 }
 
 .dock-btn {
+    position: relative;
     width: 40px;
     height: 40px;
     border: none;
@@ -494,5 +514,22 @@ onUnmounted(() => {
     opacity: 0.3;
     cursor: default;
     pointer-events: none;
+}
+
+.dock-badge {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    background: var(--danger-color, #dc3545);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes badge-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }
 </style>

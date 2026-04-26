@@ -21,14 +21,21 @@
         @touchmove="handleTouchMove"
         @touchend="handleTouchEnd"
         @touchcancel="handleTouchEnd"
+        @animationend="slideDirection = ''"
       >
         <img
           v-if="currentUrl && !currentSvg"
+          v-show="!imageLoading"
           :src="currentUrl"
           :style="imgStyle"
           draggable="false"
           @mousedown.prevent
+          @load="imageLoading = false"
+          @error="imageLoading = false"
         />
+        <div v-if="imageLoading" class="lb-loading-spinner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </div>
         <div v-if="currentSvg" :style="imgStyle" v-html="currentSvg" />
       </div>
       <div class="lightbox-bottom-bar">
@@ -69,6 +76,7 @@ const contentRef = ref(null)
 const siblingFiles = ref([])
 const currentIndex = ref(-1)
 const slideDirection = ref('') // '', 'left', 'right'
+const imageLoading = ref(false)
 
 // Markdown image navigation state
 const mdImages = ref([]) // [{src, name}]
@@ -175,9 +183,9 @@ function navigateToIndex(newIdx, direction) {
     const currentDir = store.state.currentDir || ''
     const entryPath = currentDir ? currentDir + '/' + entry.name : entry.name
 
-    // Animate slide direction
+    // Show loading immediately, hide old image
+    imageLoading.value = true
     slideDirection.value = direction
-    setTimeout(() => { slideDirection.value = '' }, 200)
 
     // Reset transform for new image
     scale.value = 1
@@ -202,9 +210,9 @@ function navigateMdImage(newIdx, direction) {
     const img = mdImages.value[newIdx]
     if (!img) return
 
-    // Animate slide direction
+    // Show loading immediately
+    imageLoading.value = true
     slideDirection.value = direction
-    setTimeout(() => { slideDirection.value = '' }, 200)
 
     // Reset transform for new image
     scale.value = 1
@@ -628,21 +636,40 @@ onUnmounted(() => {
 }
 
 .lightbox-content.slide-left {
-    animation: slideLeft 0.2s ease-out;
+    animation: slideLeft 0.25s ease-out;
 }
 
 .lightbox-content.slide-right {
-    animation: slideRight 0.2s ease-out;
+    animation: slideRight 0.25s ease-out;
 }
 
 @keyframes slideLeft {
-    from { opacity: 0; transform: translateX(30px); }
+    from { opacity: 0; transform: translateX(40px); }
     to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes slideRight {
-    from { opacity: 0; transform: translateX(-30px); }
+    from { opacity: 0; transform: translateX(-40px); }
     to { opacity: 1; transform: translateX(0); }
+}
+
+.lb-loading-spinner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 6;
+    color: rgba(255,255,255,0.5);
+}
+
+.lb-loading-spinner svg {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 .lightbox-content img {
