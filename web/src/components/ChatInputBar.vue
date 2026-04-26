@@ -67,6 +67,7 @@
         @dblclick="inputText = ''"></textarea>
       <button v-if="loading" class="chat-stop-btn" @click="$emit('cancel')" title="停止生成">
         <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        <span class="stop-btn-pulse"></span>
       </button>
       <button v-else class="chat-send-btn" @click="$emit('send', inputText.trim())" :class="{ disabled: inputDisabled && pendingFiles.length === 0 && attachedFiles.length === 0 }" title="发送">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
@@ -342,6 +343,7 @@ defineExpose({
 
 /* Stop button */
 .chat-stop-btn {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -355,6 +357,28 @@ defineExpose({
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
   flex-shrink: 0;
+  animation: heartbeat 1.4s ease-in-out infinite;
 }
 .chat-stop-btn:hover { opacity: 0.85; }
+
+.stop-btn-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  animation: pulse-ring 1.4s ease-out infinite;
+}
+
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  14% { transform: scale(1.12); }
+  28% { transform: scale(1); }
+  42% { transform: scale(1.08); }
+  56% { transform: scale(1); }
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.45); }
+  70% { box-shadow: 0 0 0 8px rgba(220, 53, 69, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
 </style>
