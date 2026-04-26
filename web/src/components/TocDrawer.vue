@@ -56,7 +56,7 @@ const props = defineProps({
     file: Object,
     open: Boolean,
 })
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'jump'])
 
 const toc = ref([])
 const activeId = ref('')
@@ -99,16 +99,14 @@ function scrollTo(item) {
     const elById = document.getElementById(item.id)
     if (elById) {
         elById.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        elById.classList.add('line-flash')
+        elById.addEventListener('animationend', () => elById.classList.remove('line-flash'), { once: true })
         activeId.value = item.id
         emit('close')
         return
     }
     if (item.line) {
-        const el = document.querySelector(`[data-line="${item.line}"]`)
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-            activeId.value = item.id
-        }
+        emit('jump', item.line)
     }
     emit('close')
 }

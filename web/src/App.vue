@@ -76,6 +76,7 @@
         :file="tocFile"
         :open="tocOpen"
         @close="tocOpen = false"
+        @jump="scrollToLine"
       />
 
       <SearchDrawer

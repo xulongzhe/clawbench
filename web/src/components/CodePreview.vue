@@ -370,7 +370,7 @@ pre :deep(code) {
     60%, 80%  { background: transparent; }
     90%       { background: rgba(255, 230, 0, 0.2); }
 }
-.code-line.line-flash {
+.line-flash {
     animation: line-flash 1.2s ease-out forwards;
 }
 
