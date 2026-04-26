@@ -2,8 +2,10 @@
   <BottomSheet :open="open" @close="handleClose">
     <template #header>
       <svg class="bs-header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-        <circle cx="12" cy="12" r="10"/>
-        <polyline points="12 6 12 12 16 14"/>
+        <line x1="6" y1="3" x2="6" y2="15"/>
+        <circle cx="18" cy="6" r="3"/>
+        <circle cx="6" cy="18" r="3"/>
+        <path d="M15 6a9 9 0 0 0-9 9V3"/>
       </svg>
       <span class="bs-header-title">{{ mode === 'file' ? '文件历史' : '项目历史' }}</span>
       <div v-if="mode === 'project' && store.state.projectRoot" class="bs-header-description">
