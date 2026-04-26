@@ -96,7 +96,7 @@
         @close="detailsOpen = false"
       />
 
-      <!-- Bottom dock - inside flex container -->
+      <!-- Bottom dock -->
       <div
         v-if="isAuthenticated"
         class="bottom-dock"
@@ -433,7 +433,6 @@ onUnmounted(() => {
     padding-bottom: calc(6px + env(safe-area-inset-bottom, 0));
     background: var(--bg-primary);
     border-top: 1px solid var(--border-color);
-    z-index: 2001;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
 }

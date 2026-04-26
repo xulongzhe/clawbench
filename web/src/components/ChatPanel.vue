@@ -470,6 +470,14 @@ const currentBackend = ref('')
 const currentAgentId = ref('')
 const sessionDrawerOpen = ref(false)
 const taskDrawerOpen = ref(false)
+
+// 子抽屉跟随聊天框关闭
+watch(() => props.open, (val) => {
+  if (!val) {
+    sessionDrawerOpen.value = false
+    taskDrawerOpen.value = false
+  }
+})
 const agents = ref([])
 
 const agentHeaderTitle = computed(() => {
