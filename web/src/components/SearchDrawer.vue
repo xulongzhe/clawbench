@@ -56,7 +56,8 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import BottomSheet from './BottomSheet.vue'
-import { escapeHtml } from '@/utils/helpers.ts'
+import { escapeHtml, getFileType } from '@/utils/helpers.ts'
+import { hljs } from '@/utils/globals.ts'
 
 const props = defineProps({
   file: Object,
@@ -89,6 +90,28 @@ function highlightText(text, q) {
   const escaped = escapeHtml(text)
   const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
   return escaped.replace(re, '<mark>$&</mark>')
+}
+
+function highlightLineSyntax(line, lang) {
+  try {
+    let h = hljs.highlight(line, { language: lang, ignoreIllegals: true }).value
+    h = h.replace(/^<span class="line">/, '').replace(/<\/span>\s*$/, '')
+    return h
+  } catch {
+    return escapeHtml(line)
+  }
+}
+
+function markInHighlighted(highlightedHtml, q) {
+  if (!q) return highlightedHtml
+  // Split into HTML tags and text segments, only mark inside text
+  const segments = highlightedHtml.split(/(<[^>]+>)/)
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(escaped, 'g')
+  return segments.map(seg => {
+    if (seg.startsWith('<')) return seg // HTML tag, leave as-is
+    return seg.replace(re, '<mark>$&</mark>')
+  }).join('')
 }
 
 // --- Rendered mode: search DOM text ---
@@ -144,14 +167,16 @@ function searchRenderedContent(q) {
 function searchRawContent(q) {
   const content = props.file?.content
   if (!content) return []
+  const lang = getFileType(props.file?.name || '')?.lang || 'plaintext'
   const lines = content.split('\n')
   const out = []
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].includes(q)) {
+      const highlighted = markInHighlighted(highlightLineSyntax(lines[i], lang), q)
       out.push({
         line: i + 1,
         text: lines[i],
-        highlighted: highlightText(lines[i], q),
+        highlighted,
       })
     }
   }
@@ -295,13 +320,76 @@ function jumpToFirst() {
 .search-result-text {
   white-space: pre-wrap;
   word-break: break-all;
-  color: var(--text-primary, #212529);
 }
 
+.search-result-text :deep(em) {
+  font-style: normal;
+}
+
+.search-result-text :deep(.hljs-keyword),
+.search-result-text :deep(.hljs-selector-tag),
+.search-result-text :deep(.hljs-built_in) { color: #a626a4; }
+.search-result-text :deep(.hljs-type),
+.search-result-text :deep(.hljs-class) { color: #c18401; }
+.search-result-text :deep(.hljs-string),
+.search-result-text :deep(.hljs-addition) { color: #50a14f; }
+.search-result-text :deep(.hljs-number),
+.search-result-text :deep(.hljs-literal) { color: #986801; }
+.search-result-text :deep(.hljs-comment),
+.search-result-text :deep(.hljs-quote) { color: #a0a1a7; }
+.search-result-text :deep(.hljs-function),
+.search-result-text :deep(.hljs-title) { color: #4078f2; }
+.search-result-text :deep(.hljs-variable),
+.search-result-text :deep(.hljs-attr) { color: #e45649; }
+.search-result-text :deep(.hljs-symbol),
+.search-result-text :deep(.hljs-bullet) { color: #0184bc; }
+.search-result-text :deep(.hljs-meta) { color: #383a42; }
+.search-result-text :deep(.hljs-regexp) { color: #50a14f; }
+.search-result-text :deep(.hljs-property) { color: #e45649; }
+.search-result-text :deep(.hljs-params) { color: #383a42; }
+.search-result-text :deep(.hljs-tag) { color: #e45649; }
+.search-result-text :deep(.hljs-name) { color: #a626a4; }
+.search-result-text :deep(.hljs-attribute) { color: #50a14f; }
+.search-result-text :deep(.hljs-selector-class) { color: #c18401; }
+.search-result-text :deep(.hljs-selector-id) { color: #4078f2; }
 .search-result-text :deep(mark) {
   background: rgba(255, 230, 0, 0.5);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
+}
+</style>
+
+<style>
+/* Dark theme for search result syntax - must be non-scoped for [data-theme] selector */
+[data-theme="dark"] .search-result-text .hljs-keyword,
+[data-theme="dark"] .search-result-text .hljs-selector-tag,
+[data-theme="dark"] .search-result-text .hljs-built_in { color: #c678dd; }
+[data-theme="dark"] .search-result-text .hljs-type,
+[data-theme="dark"] .search-result-text .hljs-class { color: #e5c07b; }
+[data-theme="dark"] .search-result-text .hljs-string,
+[data-theme="dark"] .search-result-text .hljs-addition { color: #98c379; }
+[data-theme="dark"] .search-result-text .hljs-number,
+[data-theme="dark"] .search-result-text .hljs-literal { color: #d19a66; }
+[data-theme="dark"] .search-result-text .hljs-comment,
+[data-theme="dark"] .search-result-text .hljs-quote { color: #5c6370; }
+[data-theme="dark"] .search-result-text .hljs-function,
+[data-theme="dark"] .search-result-text .hljs-title { color: #61afef; }
+[data-theme="dark"] .search-result-text .hljs-variable,
+[data-theme="dark"] .search-result-text .hljs-attr { color: #e06c75; }
+[data-theme="dark"] .search-result-text .hljs-symbol,
+[data-theme="dark"] .search-result-text .hljs-bullet { color: #56b6c2; }
+[data-theme="dark"] .search-result-text .hljs-meta { color: #abb2bf; }
+[data-theme="dark"] .search-result-text .hljs-regexp { color: #98c379; }
+[data-theme="dark"] .search-result-text .hljs-property { color: #e06c75; }
+[data-theme="dark"] .search-result-text .hljs-params { color: #abb2bf; }
+[data-theme="dark"] .search-result-text .hljs-tag { color: #e06c75; }
+[data-theme="dark"] .search-result-text .hljs-name { color: #c678dd; }
+[data-theme="dark"] .search-result-text .hljs-attribute { color: #98c379; }
+[data-theme="dark"] .search-result-text .hljs-selector-class { color: #e5c07b; }
+[data-theme="dark"] .search-result-text .hljs-selector-id { color: #61afef; }
+[data-theme="dark"] .search-result-text mark {
+  background: rgba(255, 230, 0, 0.35);
+  color: inherit;
 }
 </style>
