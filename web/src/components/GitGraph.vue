@@ -186,9 +186,18 @@ const onNodeClick = (node, event) => {
   const x = node.cx - scrollLeft + rect.left + 8
   const y = node.cy - scrollTop + rect.top - 8
 
+  // Collect items: refs first, then branch names (deduplicated)
+  const items = (node.refs || []).map(refLabelText)
+  const refSet = new Set(items)
+  for (const name of (node.branchNames || [])) {
+    if (!refSet.has(name)) {
+      items.push(name)
+    }
+  }
+
   tooltip.value = {
     x, y,
-    items: (node.refs || []).map(refLabelText),
+    items: items.length > 0 ? items : [node.isWT ? '工作区' : props.commits[node.row]?.sha?.slice(0, 7)],
     color: node.color,
   }
 }

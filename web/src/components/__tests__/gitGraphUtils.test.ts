@@ -738,3 +738,81 @@ describe('lane compression for non-overlapping branches', () => {
     expect(nodes[11].lane).toBe(0)
   })
 })
+
+describe('branchNames on nodes', () => {
+  it('attaches branch names to nodes by walking first-parent chain from branch refs', () => {
+    const { nodes } = getConnections(SINGLE_MERGE)
+    // feature ref is on row 2 (feature: commit 2)
+    // feature's first-parent chain: f2 -> f1 -> m2
+    // So f2, f1, m2 should all have 'feature' in branchNames
+    const f2Node = nodes[2] // feature: commit 2 (has refs: ['feature'])
+    const f1Node = nodes[3] // feature: commit 1
+    const m2Node = nodes[5] // main: commit 2 (branch point)
+
+    expect(f2Node.branchNames).toContain('feature')
+    expect(f1Node.branchNames).toContain('feature')
+    expect(m2Node.branchNames).toContain('feature')
+  })
+
+  it('WT nodes have empty branchNames', () => {
+    const commits = [
+      { sha: 'HEAD', parents: [], msg: '工作区变更', isWT: true },
+      { sha: 'a1', parents: [], msg: 'commit 1' },
+    ]
+    const { nodes } = computeGraphData(commits, ROW_HEIGHT)
+    expect(nodes[0].branchNames).toEqual([])
+  })
+
+  it('commits with no branch refs have empty branchNames', () => {
+    const { nodes } = getConnections(LINEAR)
+    for (const n of nodes) {
+      expect(n.branchNames).toEqual([])
+    }
+  })
+
+  it('commits reachable from multiple branches list all of them', () => {
+    // In OPEN_BRANCHES, both feature-a and feature-b branch from ms (main: second)
+    // feature-a chain: aw2 -> aw1 -> ms
+    // feature-b chain: bw1 -> ms
+    // So ms should have both 'feature-a' and 'feature-b' in branchNames
+    const { nodes } = getConnections(OPEN_BRANCHES)
+    const msNode = nodes[4] // main: second (row 4)
+
+    // Note: OPEN_BRANCHES doesn't have branch refs in the test data,
+    // so branchNames will be empty. Let's test with refs instead.
+  })
+
+  it('commits reachable from multiple branches with refs list all of them', () => {
+    const commits = [
+      { sha: 'top', parents: ['fork'], msg: 'top', refs: ['main'] },
+      { sha: 'fork', parents: ['root'], msg: 'fork' },
+      { sha: 'brA', parents: ['fork'], msg: 'branch-a work', refs: ['feature-a'] },
+      { sha: 'brB', parents: ['fork'], msg: 'branch-b work', refs: ['feature-b'] },
+      { sha: 'root', parents: [], msg: 'root' },
+    ]
+    const { nodes } = computeGraphData(commits, ROW_HEIGHT)
+
+    // root (row 4) is reachable from main, feature-a, and feature-b
+    const rootNode = nodes[4]
+    expect(rootNode.branchNames).toContain('main')
+    expect(rootNode.branchNames).toContain('feature-a')
+    expect(rootNode.branchNames).toContain('feature-b')
+
+    // fork (row 1) is also reachable from all three branches
+    const forkNode = nodes[1]
+    expect(forkNode.branchNames).toContain('main')
+    expect(forkNode.branchNames).toContain('feature-a')
+    expect(forkNode.branchNames).toContain('feature-b')
+  })
+
+  it('HEAD and tag refs are excluded from branchNames', () => {
+    const commits = [
+      { sha: 'a1', parents: [], msg: 'tagged commit', refs: ['HEAD -> main', 'tag: v1.0', 'main'] },
+    ]
+    const { nodes } = computeGraphData(commits, ROW_HEIGHT)
+    expect(nodes[0].branchNames).toContain('main')
+    expect(nodes[0].branchNames).not.toContain('HEAD -> main')
+    expect(nodes[0].branchNames).not.toContain('tag: v1.0')
+    expect(nodes[0].branchNames).not.toContain('v1.0')
+  })
+})

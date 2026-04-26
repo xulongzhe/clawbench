@@ -467,6 +467,48 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
     }
   }
 
+  // ── Build SHA-to-branch-names mapping ──
+  // For each branch ref, walk the first-parent chain backwards and mark all
+  // ancestors as belonging to that branch. This lets us show which branch
+  // a commit belongs to when clicking on it.
+  const shaToBranchNames = new Map() // sha -> Set of branch names
+  for (const node of nodes) {
+    if (node.isWT) continue
+    const c = commits[node.row]
+    const branchRefs = (c.refs || []).filter(r => !r.startsWith('HEAD') && !r.startsWith('tag: '))
+    if (branchRefs.length === 0) continue
+
+    for (const ref of branchRefs) {
+      // Walk first-parent chain from this ref tip backwards
+      const visited = new Set()
+      let curSha = c.sha
+      while (curSha && !visited.has(curSha)) {
+        visited.add(curSha)
+        if (!shaToBranchNames.has(curSha)) {
+          shaToBranchNames.set(curSha, new Set())
+        }
+        shaToBranchNames.get(curSha).add(ref)
+
+        const curRow = shaToRow.get(curSha)
+        if (curRow === undefined) break
+        const parents = commits[curRow].parents || []
+        if (parents.length === 0) break
+        curSha = parents[0]
+        if (!shaToRow.has(curSha)) break
+      }
+    }
+  }
+
+  // Attach branch names to nodes
+  for (const node of nodes) {
+    if (node.isWT) {
+      node.branchNames = []
+      continue
+    }
+    const names = shaToBranchNames.get(commits[node.row].sha)
+    node.branchNames = names ? [...names] : []
+  }
+
   // ── Build lane-to-branch-name mapping ──
   // Scan nodes for branch refs (excluding HEAD and tags) to determine
   // which branch each lane visually represents.
