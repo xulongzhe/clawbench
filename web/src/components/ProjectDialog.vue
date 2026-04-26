@@ -24,8 +24,7 @@
         :key="item.path"
         class="dialog-item"
         :class="{ selected: selectedPath === item.path }"
-        @click="selectItem(item)"
-        @dblclick="enterDir(item)"
+        @click="enterDir(item)"
       >
         <svg class="item-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -106,13 +105,8 @@ const displayItems = computed(() => {
     })
 })
 
-function selectItem(item) {
-    selectedPath.value = item.path
-}
-
 function enterDir(item) {
     browseNavigate(item.path)
-    selectedPath.value = item.path
 }
 
 function browseNavigate(path) {
