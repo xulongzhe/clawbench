@@ -85,7 +85,7 @@ defineExpose({
   top: 0;
   left: 0;
   right: 0;
-  bottom: var(--dock-height, 52px);
+  bottom: 0;
   background: rgba(0, 0, 0, 0.5);
   z-index: 1000;
   display: flex;
@@ -99,7 +99,7 @@ defineExpose({
 
 .bs-panel {
   position: fixed;
-  bottom: var(--dock-height, 52px);
+  bottom: 0;
   left: 0;
   right: 0;
   top: 0;

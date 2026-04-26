@@ -96,59 +96,58 @@
         @close="detailsOpen = false"
       />
 
+      <!-- Bottom dock - inside flex container -->
+      <div
+        v-if="isAuthenticated"
+        class="bottom-dock"
+        @touchstart="swipeHandlers.handleTouchStart"
+        @touchend="swipeHandlers.handleTouchEnd"
+      >
+        <button class="dock-btn" :class="{ active: chatOpen }" @click.stop="openDrawer('chat')" title="AI 对话">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </button>
+        <button class="dock-btn" :class="{ active: sidebarOpen }" @click.stop="openDrawer('sidebar')" title="文件管理器">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <button class="dock-btn" :class="{ disabled: !tocFabVisible, active: tocOpen }" @click.stop="tocFabVisible && openDrawer('toc')" :title="tocOpen ? '关闭目录' : '目录'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="8" y1="6" x2="21" y2="6"/>
+            <line x1="8" y1="12" x2="21" y2="12"/>
+            <line x1="8" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="6" x2="5" y2="6"/>
+            <line x1="3" y1="12" x2="5" y2="12"/>
+            <line x1="3" y1="18" x2="5" y2="18"/>
+          </svg>
+        </button>
+        <button class="dock-btn" :class="{ active: projectHistoryOpen }" @click.stop="openDrawer('projectHistory')" title="历史">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+        </button>
+        <button class="dock-btn" :class="{ disabled: !currentFile?.content, active: searchOpen }" @click.stop="currentFile?.content && openDrawer('search')" title="搜索文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </button>
+        <button class="dock-btn" @click.stop="handleRefresh" title="刷新">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23,4 23,10 17,10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+        </button>
+      </div>
     </div>
 
     <!-- Toast - always rendered regardless of auth state -->
     <ToastNotification :toast="toast" />
-
-    <!-- Bottom dock - visible only when authenticated -->
-    <div
-      v-if="isAuthenticated"
-      class="bottom-dock"
-      @touchstart="swipeHandlers.handleTouchStart"
-      @touchend="swipeHandlers.handleTouchEnd"
-    >
-      <button class="dock-btn" :class="{ active: chatOpen }" @click.stop="openDrawer('chat')" title="AI 对话">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        </svg>
-      </button>
-      <button class="dock-btn" :class="{ active: sidebarOpen }" @click.stop="openDrawer('sidebar')" title="文件管理器">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="3" y1="6" x2="21" y2="6"/>
-          <line x1="3" y1="12" x2="21" y2="12"/>
-          <line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-      </button>
-      <button class="dock-btn" :class="{ disabled: !tocFabVisible, active: tocOpen }" @click.stop="tocFabVisible && openDrawer('toc')" :title="tocOpen ? '关闭目录' : '目录'">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="8" y1="6" x2="21" y2="6"/>
-          <line x1="8" y1="12" x2="21" y2="12"/>
-          <line x1="8" y1="18" x2="21" y2="18"/>
-          <line x1="3" y1="6" x2="5" y2="6"/>
-          <line x1="3" y1="12" x2="5" y2="12"/>
-          <line x1="3" y1="18" x2="5" y2="18"/>
-        </svg>
-      </button>
-      <button class="dock-btn" :class="{ active: projectHistoryOpen }" @click.stop="openDrawer('projectHistory')" title="历史">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"/>
-          <polyline points="12 6 12 12 16 14"/>
-        </svg>
-      </button>
-      <button class="dock-btn" :class="{ disabled: !currentFile?.content, active: searchOpen }" @click.stop="currentFile?.content && openDrawer('search')" title="搜索文件">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="11" cy="11" r="8"/>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
-      </button>
-      <button class="dock-btn" @click.stop="handleRefresh" title="刷新">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <polyline points="23,4 23,10 17,10"/>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-        </svg>
-      </button>
-    </div>
   </div>
 </template>
 
@@ -425,10 +424,7 @@ onUnmounted(() => {
 
 <style scoped>
 .bottom-dock {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
