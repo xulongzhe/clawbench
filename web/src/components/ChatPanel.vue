@@ -23,12 +23,10 @@
       ref="messageListRef"
       :messages="messages"
       :expandedTools="render.expandedTools.value"
-      :expandedThinking="render.expandedThinking.value"
       :blockProposals="render.blockProposals"
       :agents="session.agents.value"
       :renderedContents="render.renderedContents.value"
       @toggle-tool="render.toggleToolDetail"
-      @toggle-thinking="render.toggleThinking"
       @show-metadata="showMetadata"
       @file-tag-click="handleFileTagClick"
     />
@@ -143,7 +141,6 @@ const session = useChatSession({
   renderedContents: render.renderedContents,
   blockProposals: render.blockProposals,
   expandedTools: render.expandedTools,
-  expandedThinking: render.expandedThinking,
   onParseAssistantContent: (content) => render.parseAssistantContent(content),
   onExtractScheduleProposals: (msgs) => render.extractScheduleProposals(msgs),
   onRenderUpdate: (forceFull) => render.updateRenderedContents(forceFull),

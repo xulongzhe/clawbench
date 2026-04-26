@@ -42,7 +42,7 @@
     <template v-if="msg.role === 'assistant' && msg.blocks">
       <template v-for="(block, bi) in msg.blocks" :key="bi">
         <!-- Thinking block -->
-        <div v-if="block.type === 'thinking'" class="chat-thinking" :class="{ expanded: expandedThinking[`${index}-${bi}`] }" @click="$emit('toggle-thinking', `${index}-${bi}`)">
+        <div v-if="block.type === 'thinking'" class="chat-thinking" :class="{ expanded: thinkingExpanded[`${index}-${bi}`] }" @click.stop="toggleThinking(`${index}-${bi}`)">
           <div class="thinking-header">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
               <circle cx="12" cy="12" r="10"/>
@@ -53,11 +53,11 @@
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </div>
-          <pre v-if="expandedThinking[`${index}-${bi}`]" class="thinking-text" @click.stop>{{ block.text }}</pre>
+          <pre v-if="thinkingExpanded[`${index}-${bi}`]" class="thinking-text">{{ block.text }}</pre>
         </div>
         <!-- Tool use block -->
         <template v-else-if="block.type === 'tool_use'">
-          <div class="chat-tool-call" :class="{ done: block.done }" @click="$emit('toggle-tool', `${index}-${bi}`)">
+          <div class="chat-tool-call" :class="{ done: block.done }" @click.stop="$emit('toggle-tool', `${index}-${bi}`)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-icon">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
             </svg>
@@ -129,20 +129,25 @@
 </template>
 
 <script setup>
-import { inject } from 'vue'
+import { ref, inject } from 'vue'
 import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({
   msg: Object,
   index: Number,
   expandedTools: Object,
-  expandedThinking: Object,
   blockProposals: Object,
   agents: Array,
   renderedContent: String,
 })
 
-const emit = defineEmits(['toggle-tool', 'toggle-thinking', 'show-metadata', 'file-tag-click'])
+const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click'])
+
+const thinkingExpanded = ref({})
+
+function toggleThinking(key) {
+  thinkingExpanded.value = { ...thinkingExpanded.value, [key]: !thinkingExpanded.value[key] }
+}
 
 const chatRender = inject('chatRender', {})
 const chatSession = inject('chatSession', {})

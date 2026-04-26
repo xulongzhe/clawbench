@@ -10,12 +10,10 @@
       :msg="msg"
       :index="i"
       :expandedTools="expandedTools"
-      :expandedThinking="expandedThinking"
       :blockProposals="blockProposals"
       :agents="agents"
       :renderedContent="renderedContents[i]"
       @toggle-tool="$emit('toggle-tool', $event)"
-      @toggle-thinking="$emit('toggle-thinking', $event)"
       @show-metadata="$emit('show-metadata', $event)"
       @file-tag-click="$emit('file-tag-click', $event)"
     />
@@ -31,13 +29,12 @@ import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 const props = defineProps({
   messages: Array,
   expandedTools: Object,
-  expandedThinking: Object,
   blockProposals: Object,
   agents: Array,
   renderedContents: Array,
 })
 
-const emit = defineEmits(['toggle-tool', 'toggle-thinking', 'show-metadata', 'file-tag-click', 'file-open'])
+const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'file-open'])
 
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()

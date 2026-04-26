@@ -192,6 +192,41 @@ defineExpose({
   padding: 4px 8px;
 }
 
+/* Base attachment tag styles */
+.chat-file-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.chat-file-attachment svg {
+  flex-shrink: 0;
+}
+
+.chat-file-name {
+  font-family: monospace;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.chat-file-name::-webkit-scrollbar {
+  display: none;
+}
+
 /* Input area attachment tags */
 .chat-attachment-tags .chat-file-attachment {
   max-width: 120px;

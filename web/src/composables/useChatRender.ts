@@ -16,7 +16,6 @@ export function useChatRender(options) {
   const RENDER_CACHE_MAX = 200
   const blockProposals = reactive({})
   const expandedTools = ref({})
-  const expandedThinking = ref({})
 
   function trimRenderCache() {
     if (renderCache.size > RENDER_CACHE_MAX) {
@@ -206,10 +205,6 @@ export function useChatRender(options) {
     expandedTools.value[key] = !expandedTools.value[key]
   }
 
-  function toggleThinking(key) {
-    expandedThinking.value[key] = !expandedThinking.value[key]
-  }
-
   function formatToolInput(input) {
     if (!input) return ''
     try {
@@ -296,7 +291,6 @@ export function useChatRender(options) {
     renderedContents,
     blockProposals,
     expandedTools,
-    expandedThinking,
     renderMarkdown,
     renderTextBlock,
     parseAssistantContent,
@@ -304,7 +298,6 @@ export function useChatRender(options) {
     updateRenderedContents,
     createScheduledTask,
     toggleToolDetail,
-    toggleThinking,
     formatToolInput,
     toolCallSummary,
     hasImagesInContent,

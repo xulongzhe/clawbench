@@ -10,7 +10,6 @@ export interface UseChatSessionOptions {
   renderedContents: Ref<string[]>
   blockProposals: Record<string, any>
   expandedTools: Ref<Record<string, boolean>>
-  expandedThinking: Ref<Record<string, boolean>>
   onParseAssistantContent: (content: string) => any
   onExtractScheduleProposals: (msgs: any[]) => void
   onRenderUpdate: (forceFull: boolean) => void
@@ -32,7 +31,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     renderedContents,
     blockProposals,
     expandedTools,
-    expandedThinking,
     onParseAssistantContent,
     onExtractScheduleProposals,
     onRenderUpdate,
@@ -87,7 +85,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
   async function loadHistory() {
     expandedTools.value = {}
-    expandedThinking.value = {}
     try {
       // Load agents first so we can resolve agent names
       if (agents.value.length === 0) await loadAgents()
@@ -140,7 +137,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     onStopPolling()
     stopMsgCountPolling()
     expandedTools.value = {}
-    expandedThinking.value = {}
     try {
       // Load agents first so we can resolve agent names
       if (agents.value.length === 0) await loadAgents()
