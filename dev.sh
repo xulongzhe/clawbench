@@ -28,7 +28,7 @@ check_binary() {
     if [[ ! -f "$BIN" ]]; then
         echo "Binary not found, building..."
         if command -v go >/dev/null 2>&1; then
-            go build -o "$BIN" .
+            go build -o "$BIN" ./cmd/server
         else
             echo "Error: Go not found and binary missing." >&2
             exit 1

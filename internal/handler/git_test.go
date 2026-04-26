@@ -628,3 +628,85 @@ func TestValidateFilePath_SimpleFile(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, filepath.Join(dir, "README.md"), absPath)
 }
+
+// --- parseGitLog & parseDecorateRefs ---
+
+func TestParseGitLog_WithParents(t *testing.T) {
+	output := "abc123|parent1 parent2|merge commit|2026-01-01|Test\nsha456||initial commit|2026-01-02|Test"
+	commits := parseGitLog(output)
+	assert.Len(t, commits, 2)
+	assert.Equal(t, []string{"parent1", "parent2"}, commits[0].Parents)
+	assert.Equal(t, "merge commit", commits[0].Msg)
+	assert.Empty(t, commits[1].Parents)
+	assert.Equal(t, "initial commit", commits[1].Msg)
+}
+
+func TestParseGitLog_WithRefs(t *testing.T) {
+	output := "abc123||initial commit|2026-01-01|Test (HEAD -> main, tag: v1.0)"
+	commits := parseGitLog(output)
+	assert.Len(t, commits, 1)
+	assert.Equal(t, "Test", commits[0].Author)
+	assert.Contains(t, commits[0].Refs, "HEAD")
+	assert.Contains(t, commits[0].Refs, "main")
+	assert.Contains(t, commits[0].Refs, "tag: v1.0")
+}
+
+func TestParseGitLog_NoRefs(t *testing.T) {
+	output := "abc123||some commit|2026-01-01|Test"
+	commits := parseGitLog(output)
+	assert.Len(t, commits, 1)
+	assert.Equal(t, "Test", commits[0].Author)
+	assert.Empty(t, commits[0].Refs)
+}
+
+func TestParseDecorateRefs_RemoteExcluded(t *testing.T) {
+	// In production, --decorate-refs-exclude=refs/remotes already strips remote refs,
+	// so they won't appear in the decoration string. Local branches with "/" are kept.
+	refs := parseDecorateRefs(" (HEAD -> main, feature-x)")
+	assert.Contains(t, refs, "HEAD")
+	assert.Contains(t, refs, "main")
+	assert.Contains(t, refs, "feature-x")
+}
+
+func TestParseDecorateRefs_LocalBranchWithSlash(t *testing.T) {
+	// Local branches with slashes (e.g., feature/login) should be preserved
+	refs := parseDecorateRefs(" (HEAD -> main, feature/login)")
+	assert.Contains(t, refs, "HEAD")
+	assert.Contains(t, refs, "main")
+	assert.Contains(t, refs, "feature/login")
+}
+
+func TestParseDecorateRefs_Tag(t *testing.T) {
+	refs := parseDecorateRefs(" (tag: v1.0)")
+	assert.Len(t, refs, 1)
+	assert.Equal(t, "tag: v1.0", refs[0])
+}
+
+func TestServeGitProjectHistory_IncludesParents(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Make a second commit to have a parent
+	createTestFile(t, env.ProjectDir, "README.md", "# Updated")
+	gitCommitAll(t, env.ProjectDir, "update readme")
+
+	req := newRequest(t, http.MethodGet, "/api/git/project-history", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitProjectHistory, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	commits, ok := resp["commits"].([]interface{})
+	assert.True(t, ok)
+	assert.GreaterOrEqual(t, len(commits), 2)
+
+	// First commit (most recent) should have parents
+	first := commits[0].(map[string]interface{})
+	parents, ok := first["parents"].([]interface{})
+	assert.True(t, ok)
+	assert.GreaterOrEqual(t, len(parents), 1)
+}

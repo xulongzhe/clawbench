@@ -16,7 +16,7 @@
         type="text"
       />
     </div>
-    <div class="drilldown-body">
+    <div class="drilldown-body" ref="bodyRef">
       <div v-if="loading" class="git-history-loading">
         <div class="spinner" style="width:24px;height:24px;border-width:2px;" />
       </div>
@@ -46,28 +46,34 @@
         <div style="font-size:12px;color:var(--text-muted,#aaa);">使用 <code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;">git add &lt;文件名&gt;</code> 将其添加到跟踪</div>
       </div>
       <div v-else-if="commits.length === 0" class="git-history-empty">暂无提交记录</div>
-      <div v-else class="drilldown-list">
-        <div
-          v-for="c in filteredCommits"
-          :key="c.sha"
-          class="drilldown-item"
-          @click="$emit('select', c)"
-        >
-          <div :class="c.isWT ? 'git-commit-dot-wt' : 'git-commit-dot'" />
-          <div class="git-commit-info">
-            <div class="git-commit-msg">{{ c.msg }}</div>
-            <div class="git-commit-meta">
-              <span>{{ formatDate(c.date) }}</span>
-              <span v-if="c.author"> · {{ c.author }}</span>
+      <div v-else class="commit-list-container">
+        <!-- Graph SVG - hidden during search because filtering breaks lane continuity -->
+        <GitGraph
+          v-if="!isSearching"
+          class="commit-list-graph"
+          :commits="filteredCommits"
+          :row-height="46"
+        />
+        <!-- Commit rows -->
+        <div class="commit-list-content">
+          <div
+            v-for="c in filteredCommits"
+            :key="c.sha"
+            class="drilldown-item"
+            @click="$emit('select', c)"
+          >
+            <div class="git-commit-info">
+              <div class="git-commit-msg">{{ c.msg }}</div>
+              <div class="git-commit-meta">
+                <span>{{ formatDate(c.date) }}</span>
+                <span v-if="c.author"> · {{ c.author }}</span>
+              </div>
             </div>
           </div>
-          <svg class="drilldown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
-        </div>
-        <div ref="listRef">
-          <div v-if="hasMore && loadingMore" class="git-load-more">
-            <div class="spinner" style="width:20px;height:20px;border-width:2px;" />
+          <div ref="listRef">
+            <div v-if="hasMore && loadingMore" class="git-load-more">
+              <div class="spinner" style="width:20px;height:20px;border-width:2px;" />
+            </div>
           </div>
         </div>
       </div>
@@ -77,6 +83,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import GitGraph from './GitGraph.vue'
 
 const props = defineProps({
   commits: { type: Array, default: () => [] },
@@ -97,6 +104,8 @@ const emit = defineEmits(['select', 'search', 'load-more', 'init-git'])
 const commitSearch = ref('')
 const listRef = ref(null)
 const observer = ref(null)
+
+const isSearching = computed(() => commitSearch.value.trim().length > 0)
 
 const filteredCommits = computed(() => {
   const q = commitSearch.value.trim().toLowerCase()
@@ -216,18 +225,34 @@ defineExpose({ observeList, unobserveList, commitSearch })
   overflow-y: auto;
 }
 
-.drilldown-list {
-  padding: 6px 0;
+/* ─── Commit list: Graph + Info ─────────────────────────────────────────── */
+
+.commit-list-container {
+  position: relative;
+  display: flex;
+}
+
+.commit-list-graph {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.commit-list-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .drilldown-item {
   display: flex;
   align-items: center;
-  gap: 8px;
   padding: 11px 14px;
   cursor: pointer;
   transition: background 0.15s;
   border-bottom: 1px solid var(--border-color, #dee2e6);
+  height: 46px;
+  box-sizing: border-box;
 }
 
 .drilldown-item:hover {
@@ -236,31 +261,6 @@ defineExpose({ observeList, unobserveList, commitSearch })
 
 .drilldown-item:active {
   background: var(--bg-tertiary, #e9ecef);
-}
-
-.drilldown-arrow {
-  margin-left: auto;
-  flex-shrink: 0;
-  color: var(--text-muted, #999);
-}
-
-.git-commit-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent-color, #4a90d9);
-  flex-shrink: 0;
-  margin-top: 5px;
-}
-
-.git-commit-dot-wt {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #f59e0b;
-  flex-shrink: 0;
-  margin-top: 5px;
-  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3);
 }
 
 .git-commit-info {

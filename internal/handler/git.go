@@ -12,30 +12,89 @@ import (
 
 // commitInfo represents a git commit in API responses.
 type commitInfo struct {
-	SHA    string `json:"sha"`
-	Msg    string `json:"msg"`
-	Date   string `json:"date"`
-	Author string `json:"author"`
+	SHA     string   `json:"sha"`
+	Parents []string `json:"parents"` // parent commit SHAs (empty for initial commit, 2+ for merge)
+	Msg     string   `json:"msg"`
+	Date    string   `json:"date"`
+	Author  string   `json:"author"`
+	Refs    []string `json:"refs"` // branch/tag names decorating this commit
 }
 
-// parseGitLog parses git log output (format: %H|%s|%ad|%an) into commitInfo slice.
+// parseGitLog parses git log output (format: %H|%P|%s|%ad|%an%d) into commitInfo slice.
+// %P gives space-separated parent SHAs, %d gives decoration refs like " (HEAD -> main)".
 func parseGitLog(output string) []commitInfo {
 	var commits []commitInfo
 	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "|", 4)
-		if len(parts) >= 3 {
-			commits = append(commits, commitInfo{
-				SHA:    parts[0],
-				Msg:    parts[1],
-				Date:   parts[2],
-				Author: parts[3],
-			})
+		// Split into 5 parts: SHA, parents, subject, date, author+refs
+		parts := strings.SplitN(line, "|", 5)
+		if len(parts) < 5 {
+			// Need all 5 parts: SHA, parents, subject, date, author+refs
+			continue
 		}
+
+		// Parse parents (space-separated, may be empty for root commit)
+		var parents []string
+		if p := strings.TrimSpace(parts[1]); p != "" {
+			parents = strings.Fields(p)
+		}
+
+		// The last part contains "author<optional refs>"
+		// refs from %d appear as " (HEAD -> main, tag: v1.0)" appended after author
+		authorAndRefs := parts[4]
+		var author string
+		var refs []string
+		if idx := strings.LastIndex(authorAndRefs, " ("); idx >= 0 {
+			author = strings.TrimSpace(authorAndRefs[:idx])
+			refs = parseDecorateRefs(authorAndRefs[idx:])
+		} else {
+			author = strings.TrimSpace(authorAndRefs)
+		}
+
+		commits = append(commits, commitInfo{
+			SHA:     parts[0],
+			Parents: parents,
+			Msg:     parts[2],
+			Date:    parts[3],
+			Author:  author,
+			Refs:    refs,
+		})
 	}
 	return commits
+}
+
+// parseDecorateRefs parses git decoration string like " (HEAD -> main, origin/main, tag: v1.0)"
+// into a clean list of ref names.
+func parseDecorateRefs(s string) []string {
+	s = strings.TrimSpace(s)
+	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
+		return nil
+	}
+	s = s[1 : len(s)-1] // strip parens
+
+	var refs []string
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Skip "HEAD -> " prefix, keep the branch name it points to
+		if strings.HasPrefix(part, "HEAD -> ") {
+			refs = append(refs, "HEAD")
+			part = strings.TrimPrefix(part, "HEAD -> ")
+		}
+		// Remote-tracking refs are already excluded by --decorate-refs-exclude,
+		// so no need to filter by "/" here. This preserves local branches
+		// with slashes like "feature/login".
+		if strings.HasPrefix(part, "tag: ") {
+			refs = append(refs, part) // keep "tag: v1.0" format
+		} else if part != "" {
+			refs = append(refs, part)
+		}
+	}
+	return refs
 }
 
 // isGitRepo checks if the given path is inside a git repository.
@@ -74,10 +133,14 @@ func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// git log for entire project, with optional skip
-	cmd := exec.Command("git", "log", "--format=%H|%s|%ad|%an", "--date=iso", "-30")
+	// Format: SHA|parents|subject|date|author+refs
+	// --topo-order ensures branches display contiguously
+	// --decorate-refs-exclude hides remote-tracking refs
+	logArgs := []string{"log", "--format=%H|%P|%s|%ad|%an%d", "--date=iso", "--topo-order", "--decorate-refs-exclude=refs/remotes", "-30"}
 	if skip > 0 {
-		cmd = exec.Command("git", "log", "--format=%H|%s|%ad|%an", "--date=iso", "--skip", fmt.Sprintf("%d", skip), "-30")
+		logArgs = append(logArgs, "--skip", fmt.Sprintf("%d", skip))
 	}
+	cmd := exec.Command("git", logArgs...)
 	cmd.Dir = projectPath
 	output, _ := cmd.CombinedOutput()
 
@@ -288,9 +351,8 @@ func ServeGitHistory(w http.ResponseWriter, r *http.Request) {
 	lsOut, lsErr := lsCmd.CombinedOutput()
 	untracked := lsErr != nil || len(lsOut) == 0
 
-	// git log --format="%H|%s|%ad|%an" --date=iso -- <path>
-	cmd := exec.Command("git", "log", "--format=%H|%s|%ad|%an",
-		"--date=iso", "--", relPath)
+	// git log --format="%H|%P|%s|%ad|%an%d" --date=iso --topo-order -- <path>
+	cmd := exec.Command("git", "log", "--format=%H|%P|%s|%ad|%an%d", "--date=iso", "--topo-order", "--decorate-refs-exclude=refs/remotes", "--", relPath)
 	cmd.Dir = projectPath
 	output, _ := cmd.CombinedOutput()
 

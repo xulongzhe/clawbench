@@ -94,9 +94,6 @@
             </span>
             <span class="git-file-type-badge" :class="badgeClass(f)">{{ fileTypeLabel(f.type, f.staged) }}</span>
             <span class="git-file-path">{{ f.path }}</span>
-            <svg class="drilldown-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
           </div>
         </div>
       </div>
@@ -584,12 +581,6 @@ watch(() => props.open, async (val) => {
 
 .drilldown-item:active {
   background: var(--bg-tertiary, #e9ecef);
-}
-
-.drilldown-arrow {
-  margin-left: auto;
-  flex-shrink: 0;
-  color: var(--text-muted, #999);
 }
 
 .git-history-empty {
