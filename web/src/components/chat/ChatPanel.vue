@@ -46,6 +46,7 @@
       @send="sendMessage"
       @cancel="stream.cancelStream"
       @file-select="handleFileSelect"
+      @file-drop="handleFileDrop"
       @remove-file="removeFile"
       @add-attached="addAttachedFile"
       @remove-attached="removeAttachedFile"
@@ -207,7 +208,7 @@ watch(() => props.open, (val) => {
   }
 })
 
-const { pendingFiles, attachedFiles, handleFileSelect, removeFile, addAttachedFile, removeAttachedFile, cleanupPreviewUrls, clearPendingFiles } = useFileUpload({ inputDisabled })
+const { pendingFiles, attachedFiles, handleFileSelect, handleFileDrop, removeFile, addAttachedFile, removeAttachedFile, cleanupPreviewUrls, clearPendingFiles } = useFileUpload({ inputDisabled })
 
 async function sendMessage(text) {
     const inputText = text !== undefined ? text : (inputBarRef.value?.inputText?.trim() || '')

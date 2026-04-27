@@ -106,7 +106,7 @@ func main() {
 
 	// Set upload limits with defaults
 	if cfg.Upload.MaxSizeMB <= 0 {
-		cfg.Upload.MaxSizeMB = 10
+		cfg.Upload.MaxSizeMB = 100
 	}
 	if cfg.Upload.MaxFiles <= 0 {
 		cfg.Upload.MaxFiles = 20

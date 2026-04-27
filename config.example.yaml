@@ -23,7 +23,7 @@ password: "your-password-here"
 
 # Upload limits
 upload:
-  max_size_mb: 10    # Maximum single file upload size in MB
+  max_size_mb: 100   # Maximum single file upload size in MB
   max_files: 20      # Maximum number of files per upload
 
 # TLS (HTTPS) configuration

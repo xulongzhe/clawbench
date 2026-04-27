@@ -1,6 +1,25 @@
 <template>
-  <div class="chat-input-container">
+  <div class="chat-input-container" :class="{ 'drag-over': isDragOver }"
+    @dragenter="onDragEnter"
+    @dragover="onDragOver"
+    @dragleave="onDragLeave"
+    @drop="onDrop">
     <input type="file" ref="fileInputRef" @change="onFileSelect" style="display:none" multiple />
+    <!-- Drop overlay -->
+    <div v-if="isDragOver" class="drop-overlay">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="17 8 12 3 7 8"/>
+        <line x1="12" y1="3" x2="12" y2="15"/>
+      </svg>
+      <span>松开上传文件</span>
+    </div>
+    <!-- Upload progress bars -->
+    <div v-if="uploadingFiles.length > 0" class="chat-upload-progress">
+      <div v-for="(f, idx) in uploadingFiles" :key="'prog-' + idx" class="upload-progress-item">
+        <div class="upload-progress-bar" :style="{ width: f.progress + '%' }"></div>
+      </div>
+    </div>
     <!-- Toolbar -->
     <div class="chat-toolbar">
       <button class="chat-toolbar-btn" @click="$refs.fileInputRef.click()" :disabled="inputDisabled" title="上传文件">
@@ -39,7 +58,7 @@
         <span class="chat-file-name">{{ getFileName(filePath) }}</span>
         <button class="attachment-tag-remove" @click.stop="$emit('remove-attached', idx)" title="移除">×</button>
       </span>
-      <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="chat-file-attachment attachment-upload">
+      <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="chat-file-attachment attachment-upload" :class="{ 'is-uploading': f.uploading }">
         <svg v-if="f.isImage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
@@ -50,7 +69,8 @@
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
         </svg>
-        <span class="chat-file-name">{{ getFileName(f.path) }}</span>
+        <span class="chat-file-name">{{ getFileName(f.path) || '上传中...' }}</span>
+        <span v-if="f.uploading" class="attachment-progress-pct">{{ f.progress }}%</span>
         <button class="attachment-tag-remove" @click.stop="$emit('remove-file', idx)" title="移除">×</button>
       </span>
     </div>
@@ -86,7 +106,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({
@@ -101,6 +121,7 @@ const emit = defineEmits([
   'send',
   'cancel',
   'file-select',
+  'file-drop',
   'remove-file',
   'add-attached',
   'remove-attached',
@@ -111,6 +132,10 @@ const emit = defineEmits([
 const inputText = ref('')
 const textareaRef = ref(null)
 const fileInputRef = ref(null)
+const isDragOver = ref(false)
+const dragCounter = ref(0)
+
+const uploadingFiles = computed(() => props.pendingFiles.filter(f => f.uploading))
 
 function getFileName(path) {
   return baseName(path)
@@ -135,6 +160,35 @@ function onFileSelect(e) {
   emit('file-select', e)
 }
 
+function onDragEnter(e) {
+  e.preventDefault()
+  dragCounter.value++
+  isDragOver.value = true
+}
+
+function onDragOver(e) {
+  e.preventDefault()
+}
+
+function onDragLeave(e) {
+  e.preventDefault()
+  dragCounter.value--
+  if (dragCounter.value <= 0) {
+    dragCounter.value = 0
+    isDragOver.value = false
+  }
+}
+
+function onDrop(e) {
+  e.preventDefault()
+  dragCounter.value = 0
+  isDragOver.value = false
+  const files = Array.from(e.dataTransfer?.files || [])
+  if (files.length > 0) {
+    emit('file-drop', files)
+  }
+}
+
 function clearInput() {
   inputText.value = ''
   nextTick(() => collapseTextarea())
@@ -157,6 +211,63 @@ defineExpose({
   border: 1px solid var(--border-color, #e5e5e5);
   border-radius: 12px;
   overflow: hidden;
+  position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chat-input-container.drag-over {
+  border-color: var(--accent-color, #0066cc);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color, #0066cc) 20%, transparent);
+}
+
+/* Drop overlay */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 8%, var(--bg-primary, #fff));
+  color: var(--accent-color, #0066cc);
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+/* Upload progress bars at top of input */
+.chat-upload-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px 0;
+}
+
+.upload-progress-item {
+  height: 3px;
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 15%, transparent);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.upload-progress-bar {
+  height: 100%;
+  background: var(--accent-color, #0066cc);
+  border-radius: 2px;
+  transition: width 0.15s ease;
+}
+
+/* Uploading state for attachment tag */
+.attachment-upload.is-uploading {
+  opacity: 0.7;
+}
+
+.attachment-progress-pct {
+  font-size: 10px;
+  color: var(--accent-color, #0066cc);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Toolbar row */

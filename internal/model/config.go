@@ -19,7 +19,7 @@ type Config struct {
 		Host     string `yaml:"host"` // Bind address (empty = 0.0.0.0, "localhost" = 127.0.0.1 only)
 	} `yaml:"dev"`
 	Upload struct {
-		MaxSizeMB int `yaml:"max_size_mb"` // Maximum file upload size in MB (default: 10)
+		MaxSizeMB int `yaml:"max_size_mb"` // Maximum file upload size in MB (default: 100)
 		MaxFiles  int `yaml:"max_files"`  // Maximum number of files per upload (default: 20)
 	} `yaml:"upload"`
 	Chat struct {
@@ -39,7 +39,7 @@ var (
 	DefaultAgentID string // Default agent for new sessions, set from config or first agent
 
 	// Upload limits (set from config, with defaults)
-	UploadMaxSizeMB int // Default: 10
+	UploadMaxSizeMB int // Default: 100
 	UploadMaxFiles  int // Default: 20
 
 	// Chat UI config (set from config, with defaults)

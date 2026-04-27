@@ -63,7 +63,7 @@ const state = reactive<AppState>({
     watchDir: '',
 
     // Upload config
-    uploadMaxSizeMB: 10,
+    uploadMaxSizeMB: 100,
     uploadMaxFiles: 20,
 
     // Chat UI config
