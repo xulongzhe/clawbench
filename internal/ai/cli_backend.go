@@ -63,6 +63,9 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 
 	ch := make(chan StreamEvent, streamChanSize)
 
+	// Collect raw stdout lines for debugging/analysis
+	var rawLines strings.Builder
+
 	go func() {
 		defer close(ch)
 
@@ -88,6 +91,21 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 				}
 			}
 
+			// Collect raw line for debugging
+			if rawLines.Len() > 0 {
+				rawLines.WriteByte('\n')
+			}
+			rawLines.WriteString(line)
+
+			// Check if this is the final "result" line — send raw_output
+			// before parsing so the handler receives it before the "done" event.
+			if strings.HasPrefix(line, `{"type":"result"`) {
+				select {
+				case ch <- StreamEvent{Type: "raw_output", RawOutput: rawLines.String()}:
+				default:
+				}
+			}
+
 			slog.Debug(b.name+" stream: raw line", "session_id", req.SessionID, "line", line)
 			parser.ParseLine(line, ch)
 
@@ -97,6 +115,13 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 				slog.Warn(b.name+" stream: context cancelled",
 					slog.String("session_id", req.SessionID),
 				)
+				// Send raw output before returning so it's available for debugging
+				if rawLines.Len() > 0 {
+					select {
+					case ch <- StreamEvent{Type: "raw_output", RawOutput: rawLines.String()}:
+					default:
+					}
+				}
 				return
 			default:
 			}
@@ -116,6 +141,13 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 					slog.String("ctx_err", ctx.Err().Error()),
 					slog.String("stderr", stderrBuf.String()),
 				)
+				// Send raw output before returning
+				if rawLines.Len() > 0 {
+					select {
+					case ch <- StreamEvent{Type: "raw_output", RawOutput: rawLines.String()}:
+					default:
+					}
+				}
 				return
 			}
 			stderr := stderrBuf.String()
@@ -141,6 +173,14 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 			select {
 			case ch <- StreamEvent{Type: "warning", Content: stderr}:
 			case <-ctx.Done():
+			}
+		}
+
+		// Send raw output event after all other events
+		if rawLines.Len() > 0 {
+			select {
+			case ch <- StreamEvent{Type: "raw_output", RawOutput: rawLines.String()}:
+			default:
 			}
 		}
 	}()

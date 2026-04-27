@@ -403,6 +403,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 		var blocks []model.ContentBlock
 		var responseMetadata *ai.Metadata
+		var rawOutput string // collected from raw_output event for debugging
 
 		// Incremental persistence: flush every 1s or every 5 events
 		flushTicker := time.NewTicker(1 * time.Second)
@@ -431,6 +432,11 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 					// Record that stream completed normally (not cancelled/errored)
 					// The actual "done" SSE event is sent after FinalizeStreamingMessage.
 					goto finalize
+				}
+				// Capture raw output for debugging (not forwarded to SSE)
+				if event.Type == "raw_output" {
+					rawOutput = event.RawOutput
+					continue
 				}
 				// Forward to SSE channel
 				if !sendEvent(ctx, streamCh, event) {
@@ -526,6 +532,35 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				slog.String("session", sessionID),
 				slog.String("err", err.Error()),
 			)
+		}
+
+		// Drain any remaining events from channel (raw_output should already
+		// be captured in the main loop before "done", but drain as safety net)
+		for {
+			select {
+			case event, ok := <-eventCh:
+				if !ok {
+					goto saveRaw
+				}
+				if event.Type == "raw_output" && rawOutput == "" {
+					rawOutput = event.RawOutput
+				}
+			default:
+				goto saveRaw
+			}
+		}
+
+	saveRaw:
+		// Save raw AI backend output for debugging/analysis
+		if rawOutput != "" {
+			if msgID := service.GetStreamingMessageID(sessionID); msgID > 0 {
+				if err := service.SaveRawResponse(sessionID, backendName, msgID, rawOutput); err != nil {
+					slog.Error("failed to save raw response",
+						slog.String("session", sessionID),
+						slog.String("err", err.Error()),
+					)
+				}
+			}
 		}
 
 		// Send terminal SSE event AFTER DB finalize, so frontend can safely

@@ -319,9 +319,33 @@ func FinalizeStreamingMessage(projectPath, backend, sessionID, content string) e
 	return err
 }
 
+// GetStreamingMessageID returns the ID of the finalized assistant message for a session.
+// Returns 0 if not found.
+func GetStreamingMessageID(sessionID string) int64 {
+	var id int64
+	err := DB.QueryRow(
+		"SELECT id FROM chat_history WHERE session_id = ? AND role = 'assistant' AND streaming = 0 ORDER BY id DESC LIMIT 1",
+		sessionID,
+	).Scan(&id)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
 // UpdateMessageContent updates the content of a specific message by its ID.
 func UpdateMessageContent(messageID int, content string) error {
 	_, err := DB.Exec("UPDATE chat_history SET content = ? WHERE id = ?", content, messageID)
+	return err
+}
+
+// SaveRawResponse saves the raw AI backend output for debugging/analysis.
+// Called only after the AI response is fully complete.
+func SaveRawResponse(sessionID, backend string, messageID int64, rawOutput string) error {
+	_, err := DB.Exec(
+		"INSERT INTO ai_raw_responses (session_id, message_id, backend, raw_output) VALUES (?, ?, ?, ?)",
+		sessionID, messageID, backend, rawOutput,
+	)
 	return err
 }
 

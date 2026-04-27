@@ -31,11 +31,12 @@ type Metadata struct {
 
 // StreamEvent represents a single event in the streaming output
 type StreamEvent struct {
-	Type    string    // "content", "thinking", "metadata", "done", "error", "tool_use"
-	Content string    // Incremental text (Type=content, Type=thinking)
-	Meta    *Metadata // Metadata (Type=metadata)
-	Error   string    // Error message (Type=error)
-	Tool    *ToolCall // Tool call info (Type=tool_use)
+	Type      string    // "content", "thinking", "metadata", "done", "error", "tool_use", "raw_output"
+	Content   string    // Incremental text (Type=content, Type=thinking)
+	Meta      *Metadata // Metadata (Type=metadata)
+	Error     string    // Error message (Type=error)
+	Tool      *ToolCall // Tool call info (Type=tool_use)
+	RawOutput string    // Raw stdout lines from AI backend (Type=raw_output)
 }
 
 // ToolCall represents a tool invocation by the AI
