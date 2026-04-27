@@ -110,7 +110,7 @@ export function useChatRender(options) {
       if (parsed.blocks && Array.isArray(parsed.blocks)) {
         return {
           blocks: parsed.blocks.map(b => {
-            if (b.type === 'tool_use') b.done = true
+            if (b.type === 'tool_use' && b.done === undefined) b.done = true
             return b
           }),
           metadata: parsed.metadata || null,

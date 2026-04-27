@@ -46,9 +46,12 @@ export function useChatStream(options: UseChatStreamOptions) {
   let renderTimer: ReturnType<typeof setTimeout> | null = null
   let lastScrollTime = 0
   let pollingInterval: ReturnType<typeof setInterval> | null = null
+  // Track tool_use timeout timers so we can clean them up
+  const toolUseTimeouts: Map<string, ReturnType<typeof setTimeout>> = new Map()
 
   const MAX_RECONNECT_ATTEMPTS = 3
   const STREAM_TIMEOUT_MS = 60000 // 60 seconds without any SSE event = try reconnect
+  const TOOL_USE_TIMEOUT_MS = 30000 // 30 seconds without 'done' event = mark as done
 
   function debouncedRender() {
     if (renderTimer) clearTimeout(renderTimer)
@@ -89,10 +92,18 @@ export function useChatStream(options: UseChatStreamOptions) {
 
   function disconnectStream() {
     if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null }
+    clearToolUseTimeouts()
     if (eventSource) {
       eventSource.close()
       eventSource = null
     }
+  }
+
+  function clearToolUseTimeouts() {
+    for (const timer of toolUseTimeouts.values()) {
+      clearTimeout(timer)
+    }
+    toolUseTimeouts.clear()
   }
 
   function stopPolling() {
@@ -270,9 +281,22 @@ export function useChatStream(options: UseChatStreamOptions) {
           existing.input = data.input || existing.input
           existing.done = true
         }
+        // Clear timeout if set
+        const timer = toolUseTimeouts.get(data.id)
+        if (timer) { clearTimeout(timer); toolUseTimeouts.delete(data.id) }
       } else {
-        // New tool call
-        blocks.push({ type: 'tool_use', name: data.name, id: data.id, input: data.input || {}, done: false })
+        // New tool call — start timeout as safety net
+        const newBlock = { type: 'tool_use', name: data.name, id: data.id, input: data.input || {}, done: false }
+        blocks.push(newBlock)
+        const timer = setTimeout(() => {
+          if (!newBlock.done) {
+            console.warn(`tool_use block ${data.id} timed out without 'done', marking as done`)
+            newBlock.done = true
+            onRenderNeeded()
+          }
+          toolUseTimeouts.delete(data.id)
+        }, TOOL_USE_TIMEOUT_MS)
+        toolUseTimeouts.set(data.id, timer)
       }
       onScrollBottom()
     })
@@ -286,6 +310,7 @@ export function useChatStream(options: UseChatStreamOptions) {
 
     eventSource.addEventListener('done', () => {
       if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null }
+      clearToolUseTimeouts()
       disconnectStream()
       // Reload from DB to ensure complete content — SSE events may have been
       // dropped during transmission, so the local state may be incomplete.
@@ -310,6 +335,7 @@ export function useChatStream(options: UseChatStreamOptions) {
 
     eventSource.addEventListener('cancelled', () => {
       if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null }
+      clearToolUseTimeouts()
       disconnectStream()
       if (!guard()) return
       const msg = messages.value[lastIndex]
@@ -394,6 +420,7 @@ export function useChatStream(options: UseChatStreamOptions) {
   onUnmounted(() => {
     disconnectStream()
     stopPolling()
+    clearToolUseTimeouts()
   })
 
   return {

@@ -37,4 +37,5 @@ type ContentBlock struct {
 	Name  string         `json:"name,omitempty"`  // tool name (tool_use)
 	ID    string         `json:"id,omitempty"`    // tool call ID (tool_use)
 	Input map[string]any `json:"input,omitempty"` // tool input (tool_use)
+	Done  bool           `json:"done,omitempty"`  // tool_use input complete (tool_use)
 }
