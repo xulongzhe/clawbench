@@ -8,9 +8,9 @@ import (
 func NewBackend(backendType string) (AIBackend, error) {
 	switch backendType {
 	case "claude":
-		return claudeBackend, nil
+		return &AutoResumeBackend{inner: claudeBackend}, nil
 	case "codebuddy":
-		return codebuddyBackend, nil
+		return &AutoResumeBackend{inner: codebuddyBackend}, nil
 	case "opencode":
 		return opencodeBackend, nil
 	case "gemini":

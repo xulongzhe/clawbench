@@ -109,9 +109,18 @@ func TestNewBackend_CodexIsNotCLIBackend(t *testing.T) {
 	assert.False(t, ok, "codex should NOT be a CLIBackend")
 }
 
-func TestNewBackend_ClaudeIsCLIBackend(t *testing.T) {
+func TestNewBackend_ClaudeIsAutoResumeBackend(t *testing.T) {
 	backend, err := NewBackend("claude")
 	assert.NoError(t, err)
-	_, ok := backend.(*CLIBackend)
-	assert.True(t, ok, "claude should be a CLIBackend")
+	wrapper, ok := backend.(*AutoResumeBackend)
+	assert.True(t, ok, "claude should be an AutoResumeBackend")
+	assert.Equal(t, "claude", wrapper.Name())
+}
+
+func TestNewBackend_CodebuddyIsAutoResumeBackend(t *testing.T) {
+	backend, err := NewBackend("codebuddy")
+	assert.NoError(t, err)
+	wrapper, ok := backend.(*AutoResumeBackend)
+	assert.True(t, ok, "codebuddy should be an AutoResumeBackend")
+	assert.Equal(t, "codebuddy", wrapper.Name())
 }

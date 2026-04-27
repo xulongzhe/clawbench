@@ -405,10 +405,6 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		var responseMetadata *ai.Metadata
 		var rawOutput string // collected from raw_output event for debugging
 
-		// Track if ExitPlanMode was detected — CLI will hang waiting for
-		// permission approval in --print mode, so we must cancel and resume.
-		exitPlanModeDetected := false
-
 		// Incremental persistence: flush every 1s or every 5 events
 		flushTicker := time.NewTicker(1 * time.Second)
 		defer flushTicker.Stop()
@@ -449,19 +445,49 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 				accumulateBlock(&blocks, event)
 
-				// Detect ExitPlanMode: CodeBuddy CLI hangs in --print mode because
-				// ExitPlanMode requires user approval, but there is no interactive UI.
-				// Cancel the CLI, finalize current message, then auto-resume with "继续".
-				if !exitPlanModeDetected && event.Type == "tool_use" && event.Tool != nil &&
-					event.Tool.Name == "ExitPlanMode" && event.Tool.Done {
-					exitPlanModeDetected = true
-					slog.Info("ExitPlanMode detected, cancelling CLI to auto-resume",
-						slog.String("session", sessionID))
-					cancel() // Kill the CLI process
-					goto finalize
+				// Handle resume_split: the AI adapter layer detected ExitPlanMode and
+			// will auto-resume. Finalize current DB message and start a new one.
+			if event.Type == "resume_split" {
+				slog.Info("resume_split received, finalizing current message and starting new one",
+					slog.String("session", sessionID))
+
+				// Finalize current streaming message
+				if err := service.FinalizeStreamingMessage(projectPath, backendName, sessionID, serializeBlocks()); err != nil {
+					slog.Error("failed to finalize pre-resume message",
+						slog.String("session", sessionID),
+						slog.String("err", err.Error()))
 				}
 
-				if event.Type == "metadata" && event.Meta != nil {
+				// Save raw output if captured so far
+				if rawOutput != "" {
+					if msgID := service.GetStreamingMessageID(sessionID); msgID > 0 {
+						if err := service.SaveRawResponse(sessionID, backendName, msgID, rawOutput); err != nil {
+							slog.Error("failed to save raw response",
+								slog.String("session", sessionID),
+								slog.String("err", err.Error()))
+						}
+					}
+					rawOutput = ""
+				}
+
+				// Reset blocks and metadata for the resumed stream
+				blocks = nil
+				responseMetadata = nil
+				eventCount = 0
+
+				// Create new streaming assistant placeholder
+				emptyContent, _ = json.Marshal(map[string]any{"blocks": []any{}})
+				if _, err := service.AddChatMessage(projectPath, backendName, sessionID, "assistant", string(emptyContent), "", nil, true); err != nil {
+					slog.Error("failed to create resume streaming message",
+						slog.String("session", sessionID),
+						slog.String("err", err.Error()))
+					sendFinalEvent(streamCh, ai.StreamEvent{Type: "done"})
+					return
+				}
+				continue
+			}
+
+			if event.Type == "metadata" && event.Meta != nil {
 					responseMetadata = event.Meta
 					// Capture external session ID on first response (OpenCode/Codex)
 					if (backendName == "opencode" || backendName == "codex") && event.Meta.SessionID != "" {
@@ -512,7 +538,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				errMsg = "用户已中断"
 			case cancelReason == "disconnect":
 				errMsg = "连接已断开，AI 响应中断"
-			case !exitPlanModeDetected && ctx.Err() == context.Canceled:
+			case ctx.Err() == context.Canceled:
 				errMsg = "AI 响应被中断"
 			case ctx.Err() == context.DeadlineExceeded:
 				errMsg = "AI 响应超时（30分钟）"
@@ -521,7 +547,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			}
 			blocks = append(blocks, model.ContentBlock{Type: "warning", Text: errMsg})
 			contentMap := map[string]any{"blocks": blocks}
-			if cancelReason == "user" || cancelReason == "disconnect" || (!exitPlanModeDetected && ctx.Err() == context.Canceled) {
+			if cancelReason == "user" || cancelReason == "disconnect" || ctx.Err() == context.Canceled {
 				contentMap["cancelled"] = true
 			}
 			blocksJSON, _ := json.Marshal(contentMap)
@@ -537,7 +563,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				contentMap["cancelled"] = true
 			} else if cancelReason == "user" {
 				contentMap["cancelled"] = true
-			} else if !exitPlanModeDetected && ctx.Err() == context.Canceled {
+			} else if ctx.Err() == context.Canceled {
 				contentMap["cancelled"] = true
 			} else if ctx.Err() == context.DeadlineExceeded {
 				blocks = append(blocks, model.ContentBlock{Type: "warning", Text: "AI 响应超时（30分钟）"})
@@ -582,123 +608,6 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Handle ExitPlanMode auto-resume: instead of sending done/cancelled,
-		// silently resume the session with "继续" so the frontend is unaware.
-		if exitPlanModeDetected {
-			slog.Info("auto-resuming session after ExitPlanMode",
-				slog.String("session", sessionID))
-
-			// Create new streaming assistant placeholder (no "继续" user message
-			emptyContent, _ := json.Marshal(map[string]any{"blocks": []any{}})
-			if _, err := service.AddChatMessage(projectPath, backendName, sessionID, "assistant", string(emptyContent), "", nil, true); err != nil {
-				slog.Error("failed to create resume streaming message",
-					slog.String("session", sessionID),
-					slog.String("err", err.Error()))
-				sendFinalEvent(streamCh, ai.StreamEvent{Type: "done"})
-				return
-			}
-
-			// New context for the resumed CLI run
-			ctx2, cancel2 := context.WithCancel(context.Background())
-			service.RegisterSessionCancel(sessionID, cancel2)
-
-			// Build resume request — same session, prompt is "继续"
-			resumeChatReq := ai.ChatRequest{
-				Prompt:       "继续",
-				SessionID:    effectiveSessionID,
-				WorkDir:      fileDir,
-				SystemPrompt: systemPrompt,
-				Model:        agentModel,
-				Command:      agentCommand,
-				AgentID:      agentID,
-				Resume:       true,
-			}
-
-			eventCh2, err := backend.ExecuteStream(ctx2, resumeChatReq)
-			if err != nil {
-				slog.Error("failed to start resume stream after ExitPlanMode",
-					slog.String("session", sessionID),
-					slog.String("err", err.Error()))
-				cancel2()
-				service.UnregisterSessionCancel(sessionID)
-				sendFinalEvent(streamCh, ai.StreamEvent{Type: "done"})
-				return
-			}
-
-			// Run the resumed stream — same loop structure but simpler
-			// (no nested ExitPlanMode detection needed)
-			var blocks2 []model.ContentBlock
-			var meta2 *ai.Metadata
-			flushTicker2 := time.NewTicker(1 * time.Second)
-			defer flushTicker2.Stop()
-			eventCount2 := 0
-
-			serializeBlocks2 := func() string {
-				m := map[string]any{"blocks": blocks2}
-				if meta2 != nil {
-					m["metadata"] = meta2
-				}
-				b, _ := json.Marshal(m)
-				return string(b)
-			}
-
-			for {
-				select {
-				case event2, ok := <-eventCh2:
-					if !ok || event2.Type == "done" {
-						goto finalize2
-					}
-					if event2.Type == "raw_output" {
-						continue
-					}
-					if !sendEvent(ctx2, streamCh, event2) {
-						goto finalize2
-					}
-					accumulateBlock(&blocks2, event2)
-					if event2.Type == "metadata" && event2.Meta != nil {
-						meta2 = event2.Meta
-					}
-					eventCount2++
-					if eventCount2%5 == 0 {
-						_ = service.UpdateStreamingMessage(projectPath, backendName, sessionID, serializeBlocks2())
-					}
-				case <-flushTicker2.C:
-					if len(blocks2) > 0 {
-						_ = service.UpdateStreamingMessage(projectPath, backendName, sessionID, serializeBlocks2())
-					}
-				}
-			}
-
-		finalize2:
-			cancel2()
-			service.UnregisterSessionCancel(sessionID)
-
-			// Serialize and finalize the resumed message
-			m2 := map[string]any{"blocks": blocks2}
-			if meta2 != nil {
-				m2["metadata"] = meta2
-			}
-			if cancelReason2 := service.GetAndClearCancelReason(sessionID); cancelReason2 == "user" || cancelReason2 == "disconnect" {
-				m2["cancelled"] = true
-			} else if ctx2.Err() == context.Canceled {
-				m2["cancelled"] = true
-			}
-			content2, _ := json.Marshal(m2)
-			if err := service.FinalizeStreamingMessage(projectPath, backendName, sessionID, string(content2)); err != nil {
-				slog.Error("failed to finalize resume streaming message",
-					slog.String("session", sessionID),
-					slog.String("err", err.Error()))
-			}
-
-			sendFinalEvent(streamCh, ai.StreamEvent{Type: "done"})
-
-			slog.Info("auto-resume after ExitPlanMode done",
-				slog.String("session", sessionID),
-				slog.Int("blocks", len(blocks2)))
-			return
-		}
-
-		// Normal (non-ExitPlanMode) finalize path
 		// Send terminal SSE event AFTER DB finalize, so frontend can safely
 		// load complete content from DB when it receives "done"/"cancelled".
 		// Use sendFinalEvent (no ctx check) to ensure the terminal event is
