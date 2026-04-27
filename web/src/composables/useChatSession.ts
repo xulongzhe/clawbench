@@ -105,7 +105,9 @@ export function useChatSession(options: UseChatSessionOptions) {
     })
   }
 
-  async function loadHistory() {
+  // forceScrollBottom: true = always scroll to bottom (switch session, first load)
+  //                   false = only scroll if already near bottom (re-open panel, polling)
+  async function loadHistory(forceScrollBottom = true) {
     expandedTools.value = {}
     try {
       // Load agents first so we can resolve agent names
@@ -140,7 +142,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         inputDisabled.value = false
         loading.value = false
         startMsgCountPolling()
-        onScrollBottom(true)
+        onScrollBottom(forceScrollBottom)
       }
     } catch (err) {
       console.error('Failed to load chat history:', err)
@@ -290,8 +292,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         const data = await resp.json()
         if (data.count > lastMsgCount.value) {
           lastMsgCount.value = data.count
-          // Reload history to pick up new messages
-          await loadHistory()
+          // Reload history to pick up new messages (don't force scroll)
+          await loadHistory(false)
         }
       } catch (err) {
         // Silently ignore polling errors

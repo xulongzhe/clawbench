@@ -325,7 +325,8 @@ onUnmounted(() => {
 
 watch(() => props.open, async (val) => {
     if (val) {
-        await session.loadHistory()
+        // Re-open: don't force scroll to bottom, keep user's reading position
+        await session.loadHistory(false)
     }
 })
 </script>
