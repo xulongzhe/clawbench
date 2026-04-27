@@ -59,15 +59,16 @@
           </div>
           <!-- Tool use block -->
           <template v-else-if="block.type === 'tool_use'">
-            <div class="chat-tool-call" :class="{ done: block.done }" @click.stop="$emit('toggle-tool', `${index}-${bi}`)">
+            <div class="chat-tool-call" :class="{ done: block.done }" :data-category="getToolDisplay(block).category" @click.stop="$emit('toggle-tool', `${index}-${bi}`)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-icon">
-                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+                <path :d="getToolDisplay(block).icon"/>
               </svg>
               <span class="tool-name">{{ block.name }}</span>
               <span v-if="toolCallSummary(block)" class="tool-summary">{{ toolCallSummary(block) }}</span>
-              <span v-if="!block.done" class="tool-spinner"></span>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-check">
-                <polyline points="20 6 9 17 4 12"/>
+              <span v-if="!(block.done && block.input && Object.keys(block.input).length)" class="tool-spinner"></span>
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" width="14" height="14" class="tool-check">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="8 12 11 15 16 9"/>
               </svg>
             </div>
             <pre v-if="block.input && Object.keys(block.input).length && expandedTools[`${index}-${bi}`]" class="tool-detail" @click.stop v-html="formatToolInput(block.input)"></pre>
@@ -159,6 +160,32 @@
 import { ref, inject, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { baseName } from '@/utils/helpers.ts'
 import { store } from '@/stores/app.ts'
+
+// Tool display configuration: icon SVG paths + category for color
+const TOOL_DISPLAY = {
+  'Read':          { icon: 'M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z', category: 'file' },
+  'Write':         { icon: 'M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z', category: 'file' },
+  'Edit':          { icon: 'M12 3v18M3 12h18', category: 'file' },
+  'Bash':          { icon: 'M4 17l6-6-6-6M12 19h8', category: 'bash' },
+  'WebSearch':     { icon: 'M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM21 21l-4.35-4.35', category: 'search' },
+  'WebFetch':      { icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z', category: 'search' },
+  'TaskCreate':    { icon: 'M12 5v14M5 12h14', category: 'task' },
+  'TaskUpdate':    { icon: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7 M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z', category: 'task' },
+  'TaskList':      { icon: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', category: 'task' },
+  'TaskGet':       { icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6a6 6 0 1 0 0 12 6 6 0 0 0 0-12zM12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4z', category: 'task' },
+  'EnterPlanMode': { icon: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z', category: 'plan' },
+  'ExitPlanMode':  { icon: 'M22 11.08V12a10 10 0 1 1-5.93-9.14M22 4L12 14.01l-3-3', category: 'plan' },
+  'Agent':         { icon: 'M12 8V4H8 M12 8V4h4 M8 4a4 4 0 0 0-4 4v2 M16 4a4 4 0 0 1 4 4v2 M9 16h6 M10 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4z', category: 'agent' },
+  'SendMessage':   { icon: 'M22 2l-7 20-4-9-9-4 20-7z', category: 'agent' },
+  'Skill':         { icon: 'M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z', category: 'skill' },
+}
+const FALLBACK_TOOL_DISPLAY = { icon: 'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z', category: 'fallback' }
+
+function getToolDisplay(block) {
+  const name = (block.name || '').toLowerCase()
+  const entry = Object.entries(TOOL_DISPLAY).find(([k]) => k.toLowerCase() === name)
+  return entry ? entry[1] : FALLBACK_TOOL_DISPLAY
+}
 
 const props = defineProps({
   msg: Object,
@@ -564,6 +591,7 @@ onUnmounted(() => {
 
 /* Tool calls display */
 .chat-tool-call {
+  --tool-accent: var(--text-muted);
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
@@ -579,17 +607,30 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+/* Category accent colors */
+.chat-tool-call[data-category="file"]     { --tool-accent: var(--accent-color); }
+.chat-tool-call[data-category="bash"]     { --tool-accent: #10b981; }
+.chat-tool-call[data-category="search"]   { --tool-accent: #8b5cf6; }
+.chat-tool-call[data-category="task"]     { --tool-accent: #f59e0b; }
+.chat-tool-call[data-category="plan"]     { --tool-accent: var(--accent-color); }
+.chat-tool-call[data-category="agent"]    { --tool-accent: #ec4899; }
+.chat-tool-call[data-category="skill"]    { --tool-accent: #06b6d4; }
+.chat-tool-call[data-category="fallback"] { --tool-accent: var(--text-muted); }
+
 .chat-tool-call:hover {
   background: color-mix(in srgb, var(--bg-secondary) 80%, var(--text-secondary));
 }
 
 .chat-tool-call .tool-icon {
-  opacity: 0.6;
+  color: var(--tool-accent);
+  opacity: 0.8;
   flex-shrink: 0;
 }
 
 .chat-tool-call .tool-name {
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--tool-accent);
+  font-size: 11px;
 }
 
 .chat-tool-call .tool-summary {
@@ -602,8 +643,8 @@ onUnmounted(() => {
 }
 
 .chat-tool-call .tool-check {
-  color: #22c55e;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .tool-detail {
@@ -624,10 +665,11 @@ onUnmounted(() => {
   width: 10px;
   height: 10px;
   border: 1.5px solid var(--border-color);
-  border-top-color: var(--text-secondary);
+  border-top-color: var(--tool-accent);
   border-radius: 50%;
   animation: tool-spin 0.6s linear infinite;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 @keyframes tool-spin {
@@ -998,4 +1040,11 @@ onUnmounted(() => {
   max-height: 184px;
   height: auto;
 }
+
+/* Dark mode tool accent adjustments */
+:root[data-theme="dark"] .chat-tool-call[data-category="bash"]   { --tool-accent: #34d399; }
+:root[data-theme="dark"] .chat-tool-call[data-category="search"] { --tool-accent: #a78bfa; }
+:root[data-theme="dark"] .chat-tool-call[data-category="task"]   { --tool-accent: #fbbf24; }
+:root[data-theme="dark"] .chat-tool-call[data-category="agent"]  { --tool-accent: #f472b6; }
+:root[data-theme="dark"] .chat-tool-call[data-category="skill"]  { --tool-accent: #22d3ee; }
 </style>

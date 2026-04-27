@@ -218,6 +218,8 @@ export function useChatRender(options) {
 
   function toolCallSummary(block) {
     if (!block.input) return ''
+    // Prefer description (human-readable intent) over raw input values
+    if (block.input.description) return block.input.description
     const obj = block.input
     if (obj.file_path) return baseName(obj.file_path)
     if (obj.command) return obj.command.length > 60 ? obj.command.slice(0, 57) + '...' : obj.command
