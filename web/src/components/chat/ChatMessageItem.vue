@@ -139,6 +139,19 @@
         </svg>
       </button>
     </div>
+    <!-- Bottom bar for user messages -->
+    <div v-if="msg.role === 'user'" class="chat-meta-bar chat-meta-bar-user">
+      <span class="chat-meta-info">
+        <span v-if="msg.createdAt">{{ formatMessageTime(msg.createdAt) }}</span>
+      </span>
+      <button class="chat-info-btn chat-info-btn-user" @click="$emit('show-metadata', msg)" title="查看详情">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -823,6 +836,29 @@ onUnmounted(() => {
 .chat-info-btn svg {
     width: 14px;
     height: 14px;
+}
+
+/* User message meta bar */
+.chat-meta-bar-user {
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.chat-meta-bar-user:hover {
+    opacity: 1;
+}
+
+.chat-info-btn-user {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-info-btn-user:hover {
+    color: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.chat-meta-bar-user .chat-meta-info {
+    color: rgba(255, 255, 255, 0.7);
 }
 </style>
 
