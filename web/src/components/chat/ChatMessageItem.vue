@@ -598,7 +598,8 @@ onUnmounted(() => {
   gap: 5px;
   font-size: 12px;
   color: var(--text-secondary);
-  background: var(--bg-secondary);
+  background: color-mix(in srgb, var(--tool-accent) 6%, var(--bg-secondary));
+  border: 1px solid color-mix(in srgb, var(--tool-accent) 15%, var(--border-color));
   padding: 3px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -618,7 +619,7 @@ onUnmounted(() => {
 .chat-tool-call[data-category="fallback"] { --tool-accent: var(--text-muted); }
 
 .chat-tool-call:hover {
-  background: color-mix(in srgb, var(--bg-secondary) 80%, var(--text-secondary));
+  background: color-mix(in srgb, var(--tool-accent) 12%, var(--bg-secondary));
 }
 
 .chat-tool-call .tool-icon {
