@@ -22,21 +22,13 @@
     </div>
     <!-- Toolbar -->
     <div class="chat-toolbar">
-      <button class="chat-toolbar-btn" @click="$refs.fileInputRef.click()" :disabled="inputDisabled" title="上传文件">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-      </button>
-      <button class="chat-toolbar-btn"
-        @click="$emit('add-attached', currentFile?.path)"
-        :disabled="inputDisabled || !currentFile?.path || attachedFiles.includes(currentFile?.path)"
-        :title="!currentFile?.path ? '无当前文件' : attachedFiles.includes(currentFile?.path) ? '已附带此文件' : '附带当前文件'">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-        </svg>
-      </button>
+      <div class="attach-menu-wrapper" ref="attachMenuRef">
+        <button class="chat-toolbar-btn" @click.stop="toggleAttachMenu" :disabled="inputDisabled" title="附件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+      </div>
       <span class="chat-toolbar-divider"></span>
       <button class="chat-toolbar-btn" @click="$emit('open-session-tab', 'sessions')" title="会话管理">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
@@ -102,11 +94,49 @@
         </svg>
       </button>
     </div>
+    <!-- Teleported attach menu (avoids overflow:hidden clipping) -->
+    <Teleport to="body">
+      <div v-if="showAttachMenu" class="attach-menu" :style="menuStyle" @click.stop>
+        <!-- Current file group -->
+        <template v-if="currentFile?.path && !attachedFiles.includes(currentFile.path)">
+          <div class="attach-menu-group-title">当前文件</div>
+          <button class="attach-menu-item" @click="handleAttachFile(currentFile.path)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span class="attach-menu-item-name">{{ getFileName(currentFile.path) }}</span>
+          </button>
+        </template>
+        <!-- Recently referenced group -->
+        <template v-if="recentReferencedFiles.length > 0">
+          <div class="attach-menu-group-title">最近引用</div>
+          <button v-for="item in recentReferencedFiles" :key="item.path" class="attach-menu-item" @click="handleAttachFile(item.path)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <span class="attach-menu-item-name">{{ getFileName(item.path) }}</span>
+            <span class="attach-menu-item-count">×{{ item.count }}</span>
+          </button>
+        </template>
+        <!-- Separator + Upload -->
+        <div v-if="hasFileGroups" class="attach-menu-separator"></div>
+        <button class="attach-menu-item" @click="handleUploadClick">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>上传文件</span>
+        </button>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({
@@ -115,6 +145,7 @@ const props = defineProps({
   currentFile: Object,
   pendingFiles: Array,
   attachedFiles: Array,
+  messages: Array,
 })
 
 const emit = defineEmits([
@@ -134,8 +165,39 @@ const textareaRef = ref(null)
 const fileInputRef = ref(null)
 const isDragOver = ref(false)
 const dragCounter = ref(0)
+const showAttachMenu = ref(false)
+const attachMenuRef = ref(null)
+const menuStyle = ref({})
 
 const uploadingFiles = computed(() => props.pendingFiles.filter(f => f.uploading))
+
+// Extract recently referenced files from message history
+const recentReferencedFiles = computed(() => {
+  if (!props.messages || props.messages.length === 0) return []
+  const countMap = new Map()
+  for (const msg of props.messages) {
+    if (msg.role !== 'user' || !msg.files) continue
+    for (const f of msg.files) {
+      // Backend returns string[], local push uses [{path: "..."}]
+      const p = typeof f === 'string' ? f : f?.path
+      if (!p) continue
+      countMap.set(p, (countMap.get(p) || 0) + 1)
+    }
+  }
+  // Exclude current file and already attached files
+  const exclude = new Set([...props.attachedFiles])
+  if (props.currentFile?.path) exclude.add(props.currentFile.path)
+  return [...countMap.entries()]
+    .filter(([path]) => !exclude.has(path))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([path, count]) => ({ path, count }))
+})
+
+const hasFileGroups = computed(() => {
+  const hasCurrent = props.currentFile?.path && !props.attachedFiles.includes(props.currentFile.path)
+  return hasCurrent || recentReferencedFiles.value.length > 0
+})
 
 function getFileName(path) {
   return baseName(path)
@@ -193,6 +255,51 @@ function clearInput() {
   inputText.value = ''
   nextTick(() => collapseTextarea())
 }
+
+function handleAttachFile(filePath) {
+  showAttachMenu.value = false
+  emit('add-attached', filePath)
+}
+
+function handleUploadClick() {
+  showAttachMenu.value = false
+  fileInputRef.value?.click()
+}
+
+function toggleAttachMenu() {
+  if (showAttachMenu.value) {
+    showAttachMenu.value = false
+    return
+  }
+  // Calculate menu position from the button's bounding rect
+  const btn = attachMenuRef.value?.querySelector('.chat-toolbar-btn')
+  if (btn) {
+    const rect = btn.getBoundingClientRect()
+    menuStyle.value = {
+      position: 'fixed',
+      bottom: `${window.innerHeight - rect.top + 4}px`,
+      left: `${rect.left}px`,
+    }
+  }
+  showAttachMenu.value = true
+}
+
+// Close menu on outside click
+function handleClickOutside(e) {
+  // The teleported menu is outside attachMenuRef, so check both
+  const menuEl = document.querySelector('.attach-menu')
+  if (menuEl && menuEl.contains(e.target)) return
+  if (attachMenuRef.value && attachMenuRef.value.contains(e.target)) return
+  showAttachMenu.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 
 defineExpose({
   clearInput,
@@ -310,6 +417,90 @@ defineExpose({
   margin: 0 4px;
   flex-shrink: 0;
   align-self: center;
+}
+
+/* Attach menu (teleported to body, uses fixed positioning) */
+.attach-menu-wrapper {
+  position: relative;
+}
+
+.attach-menu {
+  position: fixed;
+  background: var(--bg-secondary, #fff);
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 8px;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 9999;
+  min-width: 140px;
+  max-width: 200px;
+  padding: 3px 0;
+}
+
+.attach-menu-group-title {
+  padding: 4px 10px 1px;
+  font-size: 10px;
+  color: var(--text-muted, #999);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+}
+
+.attach-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.attach-menu-item:hover {
+  background: var(--accent-color, #0066cc);
+  color: #fff;
+}
+
+.attach-menu-item svg {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.attach-menu-item-name {
+  font-family: monospace;
+  font-size: 11px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.attach-menu-item-name::-webkit-scrollbar {
+  display: none;
+}
+
+.attach-menu-item-count {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-muted, #999);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.attach-menu-item:hover .attach-menu-item-count {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.attach-menu-separator {
+  height: 1px;
+  background: var(--border-color, #e5e5e5);
+  margin: 3px 6px;
 }
 
 /* Attachment tags row */

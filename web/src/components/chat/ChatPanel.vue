@@ -43,6 +43,7 @@
       :currentFile="currentFile"
       :pendingFiles="pendingFiles"
       :attachedFiles="attachedFiles"
+      :messages="messages"
       @send="sendMessage"
       @cancel="stream.cancelStream"
       @file-select="handleFileSelect"
