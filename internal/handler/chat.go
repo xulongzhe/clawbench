@@ -667,6 +667,7 @@ func accumulateBlock(blocks *[]model.ContentBlock, event ai.StreamEvent) {
 					if len(input) > 0 {
 						(*blocks)[i].Input = input
 					}
+					(*blocks)[i].Done = event.Tool.Done
 					found = true
 					break
 				}
@@ -677,6 +678,7 @@ func accumulateBlock(blocks *[]model.ContentBlock, event ai.StreamEvent) {
 					Name:  event.Tool.Name,
 					ID:    event.Tool.ID,
 					Input: input,
+					Done:  event.Tool.Done,
 				})
 			}
 		}
@@ -698,6 +700,14 @@ func sendEvent(ctx context.Context, ch chan<- ai.StreamEvent, event ai.StreamEve
 		return false
 	default:
 		// Channel full — drop the event, DB persistence ensures no data loss
+		toolID := ""
+		if event.Tool != nil {
+			toolID = event.Tool.ID
+		}
+		slog.Warn("SSE event dropped — channel full",
+			slog.String("type", event.Type),
+			slog.String("tool_id", toolID),
+		)
 		return true
 	}
 }
