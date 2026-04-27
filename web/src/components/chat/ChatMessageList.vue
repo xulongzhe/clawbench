@@ -145,11 +145,22 @@ function handleChatClick(event) {
 }
 
 let loadMorePending = false
+// Track whether the user is at the bottom of the chat.
+// When the user scrolls back to the bottom during streaming, auto-scroll resumes.
+let isAtBottom = true
+
+const NEAR_BOTTOM_THRESHOLD = 60
 
 function handleScroll() {
-  if (!messagesRef.value || loadMorePending) return
+  if (!messagesRef.value) return
+  const el = messagesRef.value
+
+  // Update isAtBottom state based on current scroll position
+  isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_THRESHOLD
+
+  if (loadMorePending) return
   if (!props.hasMore || props.loadingMore) return
-  if (messagesRef.value.scrollTop < 50) {
+  if (el.scrollTop < 50) {
     loadMorePending = true
     emit('load-more')
     nextTick(() => { loadMorePending = false })
@@ -160,14 +171,16 @@ function scrollToBottom(force = false) {
   nextTick(() => {
     if (!messagesRef.value) return
     const el = messagesRef.value
-    if (force || el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
+    if (force || isAtBottom) {
       el.scrollTop = el.scrollHeight
+      isAtBottom = true
       // After forced scroll, re-check after a short delay to handle
       // async content rendering (Mermaid, KaTeX) that changes height
       if (force) {
         setTimeout(() => {
           if (messagesRef.value) {
             messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+            isAtBottom = true
           }
         }, 300)
       }
