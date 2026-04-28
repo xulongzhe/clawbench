@@ -27,6 +27,14 @@ type Config struct {
 		PageSize        int `yaml:"page_size"`        // Number of messages per lazy-load batch (default: 20)
 		CollapsedHeight int `yaml:"collapsed_height"` // Collapsed message height in pixels (default: 150)
 	} `yaml:"chat"`
+	TTS struct {
+		SummarizeModel string  `yaml:"summarize_model"` // LLM model for summarization (default: "MiniMax-Text-02-HS")
+		TTSModel       string  `yaml:"tts_model"`       // TTS model for speech synthesis (default: "Speech-2.8-Turbo")
+		Voice          string  `yaml:"voice"`           // Voice ID for TTS (default: "female-chengshu")
+		Language       string  `yaml:"language"`        // Language boost code (default: "zh")
+		Speed          float64 `yaml:"speed"`           // Speech speed multiplier (default: 1.0)
+		Format         string  `yaml:"format"`          // Audio output format (default: "mp3")
+	} `yaml:"tts"`
 }
 
 // Global application state

@@ -17,6 +17,7 @@ import (
 	"clawbench/internal/model"
 	"clawbench/internal/platform"
 	"clawbench/internal/service"
+	"clawbench/internal/speech"
 )
 
 // multiHandler sends log records to multiple handlers
@@ -127,6 +128,34 @@ func main() {
 	model.ChatInitialMessages = cfg.Chat.InitialMessages
 	model.ChatPageSize = cfg.Chat.PageSize
 	model.ChatCollapsedHeight = cfg.Chat.CollapsedHeight
+
+	// Initialize TTS provider from config with defaults
+	ttsProvider := speech.NewMiniMaxProvider()
+	if cfg.TTS.SummarizeModel != "" {
+		ttsProvider.SummarizeModel = cfg.TTS.SummarizeModel
+	}
+	if cfg.TTS.TTSModel != "" {
+		ttsProvider.TTSModel = cfg.TTS.TTSModel
+	}
+	if cfg.TTS.Voice != "" {
+		ttsProvider.TTSVoice = cfg.TTS.Voice
+	}
+	if cfg.TTS.Language != "" {
+		ttsProvider.TTSLanguage = cfg.TTS.Language
+	}
+	if cfg.TTS.Speed > 0 {
+		ttsProvider.TTSSpeed = cfg.TTS.Speed
+	}
+	if cfg.TTS.Format != "" {
+		ttsProvider.TTSFormat = cfg.TTS.Format
+	}
+	handler.SetSpeechProvider(ttsProvider)
+	slog.Info("tts provider configured",
+		slog.String("summarize_model", ttsProvider.SummarizeModel),
+		slog.String("tts_model", ttsProvider.TTSModel),
+		slog.String("voice", ttsProvider.TTSVoice),
+		slog.Float64("speed", ttsProvider.TTSSpeed),
+	)
 
 	if cfg.LogMaxDays <= 0 {
 		cfg.LogMaxDays = 7

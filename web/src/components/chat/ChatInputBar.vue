@@ -14,6 +14,14 @@
         </svg>
         <span class="chat-action-label">定时</span>
       </button>
+      <button class="chat-action-btn" :class="{ active: autoSpeechEnabled }" @click="$emit('toggle-auto-speech')" title="自动朗读">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+        </svg>
+        <span class="chat-action-label">朗读</span>
+      </button>
     </div>
     <!-- Input container -->
     <div class="chat-input-container" :class="{ 'drag-over': isDragOver }"
@@ -151,6 +159,7 @@ const props = defineProps({
   pendingFiles: Array,
   attachedFiles: Array,
   messages: Array,
+  autoSpeechEnabled: Boolean,
 })
 
 const emit = defineEmits([
@@ -163,6 +172,7 @@ const emit = defineEmits([
   'remove-attached',
   'open-session-tab',
   'file-tag-click',
+  'toggle-auto-speech',
 ])
 
 const inputText = ref('')
@@ -347,6 +357,11 @@ defineExpose({
 .chat-action-btn:hover {
   color: var(--accent-color, #0066cc);
   background: var(--bg-tertiary, #f0f0f0);
+}
+
+.chat-action-btn.active {
+  color: var(--accent-color, #0066cc);
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
 }
 
 .chat-action-btn svg {

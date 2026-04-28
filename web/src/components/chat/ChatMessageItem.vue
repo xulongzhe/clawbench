@@ -132,13 +132,55 @@
         <span v-if="msg.metadata.model" class="chat-meta-sep">{{ msg.metadata.model }}</span>
         <span v-if="msg.createdAt" class="chat-meta-sep">{{ formatMessageTime(msg.createdAt) }}</span>
       </span>
-      <button class="chat-info-btn" @click="$emit('show-metadata', msg)" title="查看详情">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="16" x2="12" y2="12"/>
-          <line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
-      </button>
+      <div class="chat-meta-actions">
+        <button class="chat-info-btn chat-speak-btn" :class="{ active: autoSpeech.isActive(msgText), loading: autoSpeech.isGeneratingText(msgText) }" @click.stop="handleSpeak" :title="autoSpeech.isGeneratingText(msgText) ? '解析中...' : autoSpeech.isPlayingAudio(msgText) ? '停止朗读' : '朗读'">
+          <!-- Loading state: spinning speaker -->
+          <svg v-if="autoSpeech.isGeneratingText(msgText)" class="speak-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2"/>
+          </svg>
+          <!-- Playing state: pause icon -->
+          <svg v-else-if="autoSpeech.isPlayingAudio(msgText)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+          </svg>
+          <!-- Default state: speaker icon -->
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+        </button>
+        <button class="chat-info-btn" @click="$emit('show-metadata', msg)" title="查看详情">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <!-- Bottom bar for assistant messages without metadata (still show speak button) -->
+    <div v-else-if="msg.role === 'assistant' && !msg.metadata && msgText" class="chat-meta-bar">
+      <span class="chat-meta-info">
+        <span v-if="msg.createdAt">{{ formatMessageTime(msg.createdAt) }}</span>
+      </span>
+      <div class="chat-meta-actions">
+        <button class="chat-info-btn chat-speak-btn" :class="{ active: autoSpeech.isActive(msgText), loading: autoSpeech.isGeneratingText(msgText) }" @click.stop="handleSpeak" :title="autoSpeech.isGeneratingText(msgText) ? '解析中...' : autoSpeech.isPlayingAudio(msgText) ? '停止朗读' : '朗读'">
+          <!-- Loading state: spinning speaker -->
+          <svg v-if="autoSpeech.isGeneratingText(msgText)" class="speak-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2"/>
+          </svg>
+          <!-- Playing state: pause icon -->
+          <svg v-else-if="autoSpeech.isPlayingAudio(msgText)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+          </svg>
+          <!-- Default state: speaker icon -->
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          </svg>
+        </button>
+      </div>
     </div>
     <!-- Bottom bar for user messages -->
     <div v-if="msg.role === 'user'" class="chat-meta-bar chat-meta-bar-user">
@@ -160,6 +202,7 @@
 import { ref, inject, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { baseName } from '@/utils/helpers.ts'
 import { store } from '@/stores/app.ts'
+import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
 
 // Tool display configuration: icon SVG paths + category for color
 const TOOL_DISPLAY = {
@@ -199,10 +242,27 @@ const props = defineProps({
 
 const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'expand'])
 
+const autoSpeech = useAutoSpeech()
 const thinkingExpanded = ref({})
 const wrapperRef = ref(null)
 const overflows = ref(false)
 const manuallyExpanded = ref(false)
+
+// Extract text content from message blocks for TTS
+const msgText = computed(() => {
+  if (props.msg?.role !== 'assistant') return ''
+  const blocks = props.msg?.blocks || []
+  return blocks.filter(b => b.type === 'text').map(b => b.text || '').join('\n').trim()
+})
+
+// Handle speak button click: play or stop
+function handleSpeak() {
+  if (autoSpeech.isActive(msgText.value)) {
+    autoSpeech.stopAudio()
+  } else if (msgText.value) {
+    autoSpeech.speakText(msgText.value)
+  }
+}
 
 function checkOverflow() {
   if (!wrapperRef.value) return
@@ -879,6 +939,32 @@ onUnmounted(() => {
 .chat-info-btn svg {
     width: 14px;
     height: 14px;
+}
+
+/* Meta bar action buttons container */
+.chat-meta-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+/* Speak button active state */
+.chat-speak-btn.active {
+    opacity: 1;
+    color: var(--accent-color, #0066cc);
+}
+
+.chat-speak-btn.active:hover {
+    background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
+}
+
+/* Speak button loading spinner animation */
+.chat-speak-btn.loading .speak-spinner {
+    animation: speak-spin 1s linear infinite;
+}
+
+@keyframes speak-spin {
+    to { transform: rotate(360deg); }
 }
 
 /* User message meta bar */

@@ -49,6 +49,15 @@ chat:
   page_size: 20           # 每次懒加载追加的消息条数
   collapsed_height: 150   # 历史消息折叠高度（像素）
 
+# TTS (语音合成) 配置
+tts:
+  summarize_model: "MiniMax-Text-02-HS"   # 总结模型（用于将AI回复压缩为适合朗读的文本）
+  tts_model: "speech-2.8-hd"               # TTS合成模型
+  voice: "female-chengshu"                 # 音色ID（常见: female-shaonv, female-yujie, female-chengshu, female-tianmei）
+  language: "zh"                           # 语言增强代码
+  speed: 1.5                               # 语速倍率（1.0为正常速度）
+  format: "mp3"                            # 音频输出格式
+
 # 默认智能体（可选，留空则使用 agents/ 目录下的第一个智能体）
 # 可用智能体：assistant（全能助手）、coder（编码专家）、handyman（勤杂工）、codebuddy2（Gemini）、gpt54（GPT）
 default_agent: "assistant"

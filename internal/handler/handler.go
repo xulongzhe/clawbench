@@ -146,6 +146,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/agents", middleware.Auth(ServeAgents))
 	register("/api/tasks", middleware.Auth(ServeTasks))
 	register("/api/tasks/", middleware.Auth(ServeTaskByID))
+	register("/api/tts/generate", middleware.Auth(TTSGenerate))
 
 	if _, err := os.Stat("public"); err == nil {
 		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("public"))))

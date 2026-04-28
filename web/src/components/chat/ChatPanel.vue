@@ -44,6 +44,7 @@
       :pendingFiles="pendingFiles"
       :attachedFiles="attachedFiles"
       :messages="messages"
+      :autoSpeechEnabled="autoSpeech.enabled.value"
       @send="sendMessage"
       @cancel="stream.cancelStream"
       @file-select="handleFileSelect"
@@ -53,6 +54,7 @@
       @remove-attached="removeAttachedFile"
       @open-session-tab="session.openSessionTab"
       @file-tag-click="handleFileTagClick"
+      @toggle-auto-speech="autoSpeech.toggle"
     />
 
   </BottomSheet>
@@ -105,6 +107,7 @@ import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useNotification } from '@/composables/useNotification.ts'
 import { useFileUpload } from '@/composables/useFileUpload.ts'
 import { playNotificationSound } from '@/composables/useNotificationSound.ts'
+import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
 
 const props = defineProps({
     open: Boolean,
@@ -135,6 +138,7 @@ const metadataModal = ref({
 })
 const toast = useToast()
 const notification = useNotification()
+const autoSpeech = useAutoSpeech()
 const theme = inject('theme', ref('light'))
 const { openFilePath } = useFilePathAnnotation()
 
@@ -168,6 +172,20 @@ const session = useChatSession({
   onPlaySound: playNotificationSound,
 })
 
+// onStreamDone: only fires for current session stream completion (auto-speech trigger)
+function onStreamDone() {
+  playNotificationSound()
+  if (autoSpeech.enabled.value) {
+    const lastMsg = messages.value[messages.value.length - 1]
+    if (lastMsg?.role === 'assistant') {
+      const textBlocks = (lastMsg.blocks || []).filter(b => b.type === 'text')
+      const fullText = textBlocks.map(b => b.text || '').join('\n')
+      if (fullText.trim()) {
+        autoSpeech.speakMessage(fullText.trim())
+      }
+    }
+  }
+}
 
 const stream = useChatStream({
   messages,
@@ -185,7 +203,7 @@ const stream = useChatStream({
   onParseAssistantContent: (content) => render.parseAssistantContent(content),
   onToast: (msg, opts) => toast.show(msg, opts),
   onNotification: (title, opts) => notification.show(title, opts),
-  onPlaySound: playNotificationSound,
+  onPlaySound: onStreamDone,
 })
 
 provide('chatRender', {
