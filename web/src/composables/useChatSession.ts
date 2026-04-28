@@ -149,7 +149,7 @@ export function useChatSession(options: UseChatSessionOptions) {
       }
     } catch (err) {
       console.error('Failed to load chat history:', err)
-      toast.show(err.message || '加载聊天记录失败', { icon: '⚠️' })
+      toast.show(err.message || '加载聊天记录失败', { icon: '⚠️', type: 'error' })
     }
   }
 
@@ -198,7 +198,7 @@ export function useChatSession(options: UseChatSessionOptions) {
       const limit = store.state.chatInitialMessages
       const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`)
       if (!resp.ok) {
-        toast.show('切换会话失败', { icon: '⚠️' })
+        toast.show('切换会话失败', { icon: '⚠️', type: 'error' })
         inputDisabled.value = false
         return
       }
@@ -259,10 +259,10 @@ export function useChatSession(options: UseChatSessionOptions) {
       Object.keys(blockProposals).forEach(k => delete blockProposals[k])
       inputDisabled.value = false
       loading.value = false
-      toast.show('已创建新会话', { icon: '✨', duration: 1500 })
+      toast.show('已创建新会话', { icon: '✨', type: 'success', duration: 1500 })
     } catch (err) {
       console.error('Failed to create session:', err)
-      toast.show(err.message || '创建会话失败', { icon: '⚠️' })
+      toast.show(err.message || '创建会话失败', { icon: '⚠️', type: 'error' })
     }
   }
 
@@ -284,11 +284,11 @@ export function useChatSession(options: UseChatSessionOptions) {
             await createSession()
           }
         }
-        toast.show('会话已删除', { icon: '🗑️', duration: 2000 })
+        toast.show('会话已删除', { icon: '🗑️', type: 'success', duration: 2000 })
       }
     } catch (err) {
       console.error('Failed to delete session:', err)
-      toast.show('删除会话失败', { icon: '⚠️' })
+      toast.show('删除会话失败', { icon: '⚠️', type: 'error' })
     }
   }
 
@@ -354,6 +354,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 onPlaySound?.()
                 toast.show('会话已完成', {
                   icon: '✅',
+                  type: 'success',
                   duration: 5000,
                   onClick: () => {
                     switchSession(sessionId, session.backend)

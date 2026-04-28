@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="toast">
-      <div v-if="toast.visible.value" class="toast" @click="toast.onClick.value ? (toast.onClick.value(), toast.dismiss()) : toast.dismiss()">
+      <div v-if="toast.visible.value" :class="['toast', `toast-${toast.type.value}`]" @click="toast.onClick.value ? (toast.onClick.value(), toast.dismiss()) : toast.dismiss()">
         <span v-if="toast.icon.value" class="toast-icon">{{ toast.icon.value }}</span>
         <span class="toast-text">{{ toast.message.value }}</span>
       </div>
@@ -44,6 +44,32 @@ defineProps({
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     transition: opacity 0.1s, transform 0.1s;
+}
+
+.toast-error {
+    background: #e74c3c;
+    border: 2px solid #c0392b;
+}
+
+[data-theme="dark"] .toast-error {
+    background: #c0392b;
+    border-color: #e74c3c;
+}
+
+.toast-success {
+    background: #27ae60;
+}
+
+[data-theme="dark"] .toast-success {
+    background: #1e8449;
+}
+
+.toast-info {
+    background: #3498db;
+}
+
+[data-theme="dark"] .toast-info {
+    background: #2c3e50;
 }
 
 [data-theme="dark"] .toast {

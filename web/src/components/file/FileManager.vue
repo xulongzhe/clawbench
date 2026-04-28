@@ -185,7 +185,7 @@ function copyProjectPath() {
     ta.select()
     document.execCommand('copy')
     document.body.removeChild(ta)
-    if (toast) toast.show('已复制', { icon: '📋', duration: 1500 })
+    if (toast) toast.show('已复制', { icon: '📋', type: 'success', duration: 1500 })
 }
 
 const searchQuery = ref('')
@@ -242,7 +242,7 @@ async function doCopy() {
     clipboard.entry = ctxMenu.entry
     clipboard.isCut = false
     ctxMenu.visible = false
-    if (toast) toast.show('已复制', { icon: '📋', duration: 1500 })
+    if (toast) toast.show('已复制', { icon: '📋', type: 'success', duration: 1500 })
 }
 
 async function doCut() {
@@ -250,7 +250,7 @@ async function doCut() {
     clipboard.entry = ctxMenu.entry
     clipboard.isCut = true
     ctxMenu.visible = false
-    if (toast) toast.show('已剪切', { icon: '✂️', duration: 1500 })
+    if (toast) toast.show('已剪切', { icon: '✂️', type: 'success', duration: 1500 })
 }
 
 async function doPaste() {
@@ -271,13 +271,13 @@ async function doPaste() {
                 clipboard.entry = null
             }
             emit('refresh')
-            if (toast) toast.show(clipboard.isCut ? '已移动' : '已复制', { icon: '✅', duration: 1500 })
+            if (toast) toast.show(clipboard.isCut ? '已移动' : '已复制', { icon: '✅', type: 'success', duration: 1500 })
         } else {
             const err = await resp.json()
-            if (toast) toast.show('操作失败: ' + (err.error || ''), { icon: '❌', duration: 2000 })
+            if (toast) toast.show('操作失败: ' + (err.error || ''), { icon: '❌', type: 'error', duration: 2000 })
         }
     } catch (err) {
-        if (toast) toast.show('操作失败', { icon: '❌', duration: 2000 })
+        if (toast) toast.show('操作失败', { icon: '❌', type: 'error', duration: 2000 })
     }
 }
 
@@ -294,13 +294,13 @@ async function doNewFile() {
         })
         if (resp.ok) {
             emit('refresh')
-            if (toast) toast.show('文件已创建', { icon: '📄', duration: 1500 })
+            if (toast) toast.show('文件已创建', { icon: '📄', type: 'success', duration: 1500 })
         } else {
             const err = await resp.json()
-            if (toast) toast.show('创建失败: ' + (err.error || ''), { icon: '❌', duration: 2000 })
+            if (toast) toast.show('创建失败: ' + (err.error || ''), { icon: '❌', type: 'error', duration: 2000 })
         }
     } catch (err) {
-        if (toast) toast.show('创建失败', { icon: '❌', duration: 2000 })
+        if (toast) toast.show('创建失败', { icon: '❌', type: 'error', duration: 2000 })
     }
 }
 
@@ -317,13 +317,13 @@ async function doNewFolder() {
         })
         if (resp.ok) {
             emit('refresh')
-            if (toast) toast.show('文件夹已创建', { icon: '📁', duration: 1500 })
+            if (toast) toast.show('文件夹已创建', { icon: '📁', type: 'success', duration: 1500 })
         } else {
             const err = await resp.json()
-            if (toast) toast.show('创建失败: ' + (err.error || ''), { icon: '❌', duration: 2000 })
+            if (toast) toast.show('创建失败: ' + (err.error || ''), { icon: '❌', type: 'error', duration: 2000 })
         }
     } catch (err) {
-        if (toast) toast.show('创建失败', { icon: '❌', duration: 2000 })
+        if (toast) toast.show('创建失败', { icon: '❌', type: 'error', duration: 2000 })
     }
 }
 
@@ -428,11 +428,11 @@ function doOpenAsProject() {
             resp.text().then(text => {
                 let msg = text
                 try { msg = JSON.parse(text).error || msg } catch (_) {}
-                if (toast) toast.show('切换项目失败: ' + msg, { icon: '❌', duration: 2000 })
+                if (toast) toast.show('切换项目失败: ' + msg, { icon: '❌', type: 'error', duration: 2000 })
             })
         }
     }).catch(() => {
-        if (toast) toast.show('切换项目失败', { icon: '❌', duration: 2000 })
+        if (toast) toast.show('切换项目失败', { icon: '❌', type: 'error', duration: 2000 })
     })
 }
 

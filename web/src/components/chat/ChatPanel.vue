@@ -299,7 +299,7 @@ async function sendMessage(text) {
         messages.value.push({ role: 'assistant', content: `错误: ${err.message}`, file_path: '' })
         inputDisabled.value = false
         loading.value = false
-        toast.show('发送失败，请重试', { icon: '⚠️' })
+        toast.show('发送失败，请重试', { icon: '⚠️', type: 'error' })
         // Clear session ID on error to prevent using invalid session
         if (err.message?.includes('Session backend not found') || err.message?.includes('session not found')) {
             session.currentSessionId.value = ''

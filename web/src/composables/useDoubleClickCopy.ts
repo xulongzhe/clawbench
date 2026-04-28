@@ -40,7 +40,7 @@ export function useDoubleClickCopy() {
 
             // 显示 toast 提示
             if (toast) {
-                toast.show('已复制', { icon: '📋', duration: 1500 })
+                toast.show('已复制', { icon: '📋', type: 'success', duration: 1500 })
             }
         })
 

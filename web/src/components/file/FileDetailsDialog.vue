@@ -56,7 +56,7 @@ function copyValue(value, event) {
   const doCopy = () => {
     if (btn) { btn.classList.add('copied'); setTimeout(() => btn.classList.remove('copied'), 800) }
     if (txt) { txt.classList.add('copied'); setTimeout(() => txt.classList.remove('copied'), 800) }
-    if (toast) toast.show('已复制', { icon: '📋', duration: 1500 })
+    if (toast) toast.show('已复制', { icon: '📋', type: 'success', duration: 1500 })
   }
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(value).then(doCopy).catch(() => fallbackCopy(value, doCopy))

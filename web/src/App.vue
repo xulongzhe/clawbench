@@ -417,7 +417,7 @@ onMounted(async () => {
         resp = await fetch('/api/me')
     } catch (_) {
         isAuthenticated.value = false
-        toast.show('无法连接到服务器，请检查后端服务是否启动', { icon: '⚠️', duration: 0, onClick: () => location.reload() })
+        toast.show('无法连接到服务器，请检查后端服务是否启动', { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
         return
     }
     if (resp.ok) {
@@ -427,7 +427,7 @@ onMounted(async () => {
         return
     } else {
         isAuthenticated.value = false
-        toast.show('服务器响应异常，后端服务可能未正确启动', { icon: '⚠️', duration: 0, onClick: () => location.reload() })
+        toast.show('服务器响应异常，后端服务可能未正确启动', { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
         return
     }
     initMermaid()
@@ -444,13 +444,13 @@ onMounted(async () => {
     try {
         await store.loadProject()
     } catch (_) {
-        toast.show('项目加载失败，后端服务可能未正确启动', { icon: '⚠️', duration: 0, onClick: () => location.reload() })
+        toast.show('项目加载失败，后端服务可能未正确启动', { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
         return
     }
     try {
         await store.loadFiles('')
     } catch (_) {
-        toast.show('文件列表加载失败', { icon: '⚠️', duration: 6000 })
+        toast.show('文件列表加载失败', { icon: '⚠️', type: 'error', duration: 6000 })
     }
     const lastFile = localStorage.getItem('clawbenchLastFile_' + store.state.projectRoot)
     if (lastFile && lastFile !== store.state.currentFile?.path) {

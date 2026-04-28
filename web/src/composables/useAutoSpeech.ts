@@ -68,7 +68,7 @@ export function useAutoSpeech() {
   // --- Report an error to the user via toast ---
   function reportError(message: string) {
     lastError.value = message
-    toast.show(message, { icon: '🔊', duration: 5000 })
+    toast.show(message, { icon: '🔊', type: 'info', duration: 5000 })
   }
 
   // --- Internal: generate and play TTS for text ---
@@ -106,7 +106,7 @@ export function useAutoSpeech() {
 
       // Warn if summarization failed (fell back to full text)
       if (data.summarizeFailed) {
-        toast.show('摘要生成失败，将朗读原文', { icon: '🔊', duration: 3000 })
+        toast.show('摘要生成失败，将朗读原文', { icon: '🔊', type: 'info', duration: 3000 })
       }
 
       // Store the AI-generated summary for display in TtsPopover

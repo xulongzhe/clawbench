@@ -50,14 +50,14 @@ export function useFileUpload(options) {
             if (previewUrl) URL.revokeObjectURL(previewUrl)
             const i = pendingFiles.value.indexOf(entry)
             if (i !== -1) pendingFiles.value.splice(i, 1)
-            toast.show('上传失败: ' + (data.error || '未知错误'), { icon: '⚠️' })
+            toast.show('上传失败: ' + (data.error || '未知错误'), { icon: '⚠️', type: 'error' })
             resolve(false)
           }
         } catch {
           if (previewUrl) URL.revokeObjectURL(previewUrl)
           const i = pendingFiles.value.indexOf(entry)
           if (i !== -1) pendingFiles.value.splice(i, 1)
-          toast.show('上传失败: 响应解析错误', { icon: '⚠️' })
+          toast.show('上传失败: 响应解析错误', { icon: '⚠️', type: 'error' })
           resolve(false)
         }
       }
@@ -67,7 +67,7 @@ export function useFileUpload(options) {
         if (previewUrl) URL.revokeObjectURL(previewUrl)
         const i = pendingFiles.value.indexOf(entry)
         if (i !== -1) pendingFiles.value.splice(i, 1)
-        toast.show('上传失败: 网络错误', { icon: '⚠️' })
+        toast.show('上传失败: 网络错误', { icon: '⚠️', type: 'error' })
         resolve(false)
       }
 
@@ -76,7 +76,7 @@ export function useFileUpload(options) {
         if (previewUrl) URL.revokeObjectURL(previewUrl)
         const i = pendingFiles.value.indexOf(entry)
         if (i !== -1) pendingFiles.value.splice(i, 1)
-        toast.show('上传超时，请重试', { icon: '⚠️' })
+        toast.show('上传超时，请重试', { icon: '⚠️', type: 'error' })
         resolve(false)
       }
 
@@ -89,20 +89,20 @@ export function useFileUpload(options) {
     const currentCount = pendingFiles.value.filter(f => !f.uploading).length
     const remaining = maxFiles - currentCount
     if (remaining <= 0) {
-      toast.show(`最多上传 ${maxFiles} 个文件`, { icon: '⚠️' })
+      toast.show(`最多上传 ${maxFiles} 个文件`, { icon: '⚠️', type: 'error' })
       return
     }
 
     const toUpload = files.slice(0, remaining)
     if (files.length > remaining) {
-      toast.show(`已选择 ${files.length} 个文件，但仅剩 ${remaining} 个名额`, { icon: '⚠️' })
+      toast.show(`已选择 ${files.length} 个文件，但仅剩 ${remaining} 个名额`, { icon: '⚠️', type: 'error' })
     }
 
     const maxSizeBytes = store.state.uploadMaxSizeMB * 1024 * 1024
 
     for (const file of toUpload) {
       if (file.size > maxSizeBytes) {
-        toast.show(`${file.name} 超过 ${store.state.uploadMaxSizeMB}MB 限制`, { icon: '⚠️' })
+        toast.show(`${file.name} 超过 ${store.state.uploadMaxSizeMB}MB 限制`, { icon: '⚠️', type: 'error' })
         continue
       }
       await uploadOneFile(file)

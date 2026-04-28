@@ -44,7 +44,7 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
     const nextIdx = idx > 0 ? idx - 1 : sessions.length - 1
     if (nextIdx === idx) return
     await switchSession(sessions[nextIdx].id)
-    toast.show(sessions[nextIdx].title, { icon: '👉', duration: 1500 })
+    toast.show(sessions[nextIdx].title, { icon: '👉', type: 'info', duration: 1500 })
   }
 
   async function swipeToPrev() {
@@ -56,7 +56,7 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
     const prevIdx = idx < sessions.length - 1 ? idx + 1 : 0
     if (prevIdx === idx) return
     await switchSession(sessions[prevIdx].id)
-    toast.show(sessions[prevIdx].title, { icon: '👈', duration: 1500 })
+    toast.show(sessions[prevIdx].title, { icon: '👈', type: 'info', duration: 1500 })
   }
 
   // Touch state

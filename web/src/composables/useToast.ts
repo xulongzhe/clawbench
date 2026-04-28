@@ -4,11 +4,13 @@ import { ref } from 'vue'
 const visible = ref(false)
 const message = ref('')
 const icon = ref('')
+const type = ref<'success' | 'error' | 'info'>('success')
 const onClick = ref<(() => void) | null>(null)
 let timer: ReturnType<typeof setTimeout> | null = null
 
 export interface ToastOptions {
     icon?: string
+    type?: 'success' | 'error' | 'info'
     duration?: number
     onClick?: () => void
 }
@@ -22,13 +24,15 @@ export interface ToastOptions {
  * @param msg - Toast message text
  * @param opts - Toast options
  * @param opts.icon - Emoji or text shown before the message
+ * @param opts.type - Toast type: 'success' | 'error' | 'info' (default: 'success')
  * @param opts.duration - Auto-dismiss after N ms, 0 = manual only
  * @param opts.onClick - Callback fired when the toast is clicked
  */
-function show(msg: string, { icon: ico = '', duration = 4000, onClick: cb = null }: ToastOptions = {}): void {
+function show(msg: string, { icon: ico = '', type: tp = 'success', duration = 4000, onClick: cb = null }: ToastOptions = {}): void {
     clearTimeout(timer!)
     message.value = msg
     icon.value = ico
+    type.value = tp
     onClick.value = cb
     visible.value = true
     if (duration > 0) {
@@ -46,6 +50,7 @@ export function useToast() {
         visible,
         message,
         icon,
+        type,
         onClick,
         show,
         dismiss,

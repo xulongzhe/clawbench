@@ -88,7 +88,7 @@ const {
     getContent,
     setContent,
     props.editable,
-    () => { if (toast) toast.show('已复制', { icon: '📋', duration: 1500 }) },
+    () => { if (toast) toast.show('已复制', { icon: '📋', type: 'success', duration: 1500 }) },
 )
 
 // Computed title for edit drawer

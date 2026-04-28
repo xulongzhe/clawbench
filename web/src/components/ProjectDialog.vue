@@ -129,7 +129,7 @@ async function loadBrowse() {
         browseItems.value = (data.items || []).filter(i => i.type === 'dir')
     } catch (_) {
         browseItems.value = []
-        if (toast) toast.show('无法加载目录，后端服务可能未启动', { icon: '⚠️', duration: 5000 })
+        if (toast) toast.show('无法加载目录，后端服务可能未启动', { icon: '⚠️', type: 'error', duration: 5000 })
     } finally {
         loading.value = false
     }

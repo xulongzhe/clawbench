@@ -90,12 +90,12 @@ export function useChatRender(options) {
       })
       const data = await resp.json()
       if (resp.ok && data.ok) {
-        toast.show('定时任务已创建', { icon: '✅', duration: 2000 })
+        toast.show('定时任务已创建', { icon: '✅', type: 'success', duration: 2000 })
       } else {
-        toast.show('任务创建失败: ' + (data.error || resp.statusText), { icon: '⚠️' })
+        toast.show('任务创建失败: ' + (data.error || resp.statusText), { icon: '⚠️', type: 'error' })
       }
     } catch (err) {
-      toast.show('任务创建失败: ' + err.message, { icon: '⚠️' })
+      toast.show('任务创建失败: ' + err.message, { icon: '⚠️', type: 'error' })
     }
   }
 
