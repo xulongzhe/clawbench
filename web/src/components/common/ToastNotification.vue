@@ -18,7 +18,7 @@ defineProps({
 })
 </script>
 
-<style scoped>
+<style>
 .toast {
     position: fixed;
     bottom: 80px;
@@ -31,13 +31,16 @@ defineProps({
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
     cursor: pointer;
     z-index: 9999;
-    white-space: nowrap;
-    max-width: 90vw;
+    white-space: normal;
+    min-width: 80vw;
+    max-width: 95vw;
+    text-align: left;
+    line-height: 1.4;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     transition: opacity 0.1s, transform 0.1s;
@@ -56,6 +59,10 @@ defineProps({
 
 .toast-icon {
     font-size: 16px;
+}
+
+.toast-text {
+    flex: 1;
 }
 
 .toast-enter-active,
