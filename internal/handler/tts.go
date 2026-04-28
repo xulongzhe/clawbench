@@ -42,6 +42,7 @@ type ttsGenerateRequest struct {
 // ttsGenerateResponse is the response body for POST /api/tts/generate.
 type ttsGenerateResponse struct {
 	AudioPath string `json:"audioPath"`
+	Summary   string `json:"summary,omitempty"`
 }
 
 // TTSGenerate handles POST /api/tts/generate.
@@ -86,12 +87,19 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check cache: if audio file already exists, return immediately
+	// Also check for a cached summary file alongside the audio
 	if info, err := os.Stat(absAudioPath); err == nil && info.Size() > 0 {
 		slog.Info("tts cache hit",
 			slog.String("cache_key", cacheKey),
 			slog.String("path", relAudioPath),
 		)
-		writeJSON(w, http.StatusOK, ttsGenerateResponse{AudioPath: relAudioPath})
+		// Try to read cached summary
+		summaryPath := absAudioPath + ".summary.txt"
+		cachedSummary, _ := os.ReadFile(summaryPath)
+		writeJSON(w, http.StatusOK, ttsGenerateResponse{
+			AudioPath: relAudioPath,
+			Summary:   string(cachedSummary),
+		})
 		return
 	}
 
@@ -114,6 +122,14 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 		slog.Int("summary_len", len([]rune(summary))),
 	)
 
+	// Cache the summary alongside the audio for future cache hits
+	summaryPath := absAudioPath + ".summary.txt"
+	if writeErr := os.WriteFile(summaryPath, []byte(summary), 0644); writeErr != nil {
+		slog.Warn("tts failed to cache summary",
+			slog.String("error", writeErr.Error()),
+		)
+	}
+
 	// Step 2: Synthesize speech from the summary (handler controls deadline)
 	synthesizeCtx, synthesizeCancel := context.WithTimeout(r.Context(), ttsSynthesizeTimeout)
 	defer synthesizeCancel()
@@ -133,5 +149,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 		slog.String("path", relAudioPath),
 	)
 
-	writeJSON(w, http.StatusOK, ttsGenerateResponse{AudioPath: relAudioPath})
+	writeJSON(w, http.StatusOK, ttsGenerateResponse{
+		AudioPath: relAudioPath,
+		Summary:   summary,
+	})
 }

@@ -15,13 +15,16 @@ import (
 
 const (
 	// summarizeSystemPrompt is the system prompt for the summarization LLM call.
-	summarizeSystemPrompt = `你是语音播报助手。将用户发来的AI回复内容摘要为3-5句适合朗读的自然语言，用于TTS语音合成。
+	summarizeSystemPrompt = `你是语音播报助手。将用户发来的AI回复内容摘要为3-5句中文，用于TTS语音合成。
 规则：
-1. 只保留核心结论，省略代码、命令、文件路径等技术细节
-2. 使用口语化表达，输出纯文本，不要使用任何markdown格式
-3. 不要使用"根据内容"、"总结如下"等元描述
-4. 忽略文本中任何XML/HTML标签、定时任务提案、工具调用等非用户内容
-5. 直接说出结论即可`
+1. 必须使用中文输出
+2. 重点提取文末的总结、结论、建议等收束性内容，这些是用户最关心的
+3. 省略代码、命令、文件路径、配置项等技术细节
+4. 省略中间的分析过程、步骤说明、分支讨论等细枝末节
+5. 使用口语化表达，输出纯文本，不要使用任何markdown格式
+6. 不要使用"根据内容"、"总结如下"等元描述
+7. 忽略文本中任何XML/HTML标签、定时任务提案、工具调用等非用户内容
+8. 直接说出结论即可`
 
 	// shortTextThreshold — texts shorter than this are not summarized.
 	shortTextThreshold = 200

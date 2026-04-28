@@ -18,6 +18,7 @@ const enabled = ref(false)
 const isGenerating = ref(false)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const playingText = ref<string>('')
+const playingSummary = ref<string>('')
 let abortController: AbortController | null = null
 
 // Load persisted state once at module level
@@ -57,6 +58,7 @@ export function useAutoSpeech() {
       currentAudio.value = null
     }
     playingText.value = ''
+    playingSummary.value = ''
   }
 
   // --- Internal: generate and play TTS for text ---
@@ -83,6 +85,11 @@ export function useAutoSpeech() {
       const data = await resp.json()
       if (!resp.ok) throw new Error(data.error || 'TTS failed')
 
+      // Store the AI-generated summary for display in TtsPopover
+      if (data.summary) {
+        playingSummary.value = data.summary
+      }
+
       // Play audio via HTML5 Audio element
       const audioUrl = `/api/local-file/${encodeURIComponent(data.audioPath)}`
       const audio = new Audio(audioUrl)
@@ -91,11 +98,13 @@ export function useAutoSpeech() {
       audio.onended = () => {
         currentAudio.value = null
         playingText.value = ''
+        playingSummary.value = ''
       }
       audio.onerror = () => {
         console.warn('Auto-speech: audio playback failed')
         currentAudio.value = null
         playingText.value = ''
+        playingSummary.value = ''
       }
 
       await audio.play()
@@ -138,6 +147,11 @@ export function useAutoSpeech() {
     return playingText.value === text && (isGenerating.value || currentAudio.value !== null)
   }
 
+  // --- Get the AI-generated summary for the currently playing text ---
+  function getSummary(text: string): string {
+    return playingText.value === text ? playingSummary.value : ''
+  }
+
   // --- Lifecycle ---
   onUnmounted(() => {
     stopAudio()
@@ -153,5 +167,6 @@ export function useAutoSpeech() {
     isGeneratingText,
     isPlayingAudio,
     isActive,
+    getSummary,
   }
 }
