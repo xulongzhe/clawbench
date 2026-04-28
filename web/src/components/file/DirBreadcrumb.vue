@@ -53,7 +53,7 @@ const parts = computed(() => {
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s;
-  display: flex;
+  display: inline-flex;
   align-items: center;
 }
 

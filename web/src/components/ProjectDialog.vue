@@ -11,7 +11,7 @@
         </button>
         <SearchInput v-model="searchQuery" placeholder="搜索..." />
       </div>
-      <DirBreadcrumb :path="browsePath === '/' ? '' : browsePath.slice(1)" @navigate="onBreadcrumbNavigate" />
+      <DirBreadcrumb :path="browsePath === '/' ? '' : browsePath" @navigate="onBreadcrumbNavigate" />
     </div>
 
     <!-- Content -->
