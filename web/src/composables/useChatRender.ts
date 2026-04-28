@@ -69,7 +69,13 @@ export function useChatRender(options) {
       if (!blockProposals[proposalKey]) {
         try {
           const proposal = JSON.parse(proposalMatch[2].trim())
-          blockProposals[proposalKey] = { proposal }
+          // Default to confirmed=true since backend handles task creation now
+          // Only show failed if explicitly marked with a failure indicator in the future
+          blockProposals[proposalKey] = {
+            proposal,
+            confirmed: true,
+            error: null
+          }
         } catch (e) {
           console.error('Failed to parse schedule proposal:', e)
         }
@@ -78,25 +84,6 @@ export function useChatRender(options) {
       return cleanText ? renderMarkdown(cleanText) : ''
     }
     return renderMarkdown(text)
-  }
-
-  async function createScheduledTask(proposal) {
-    try {
-      const body = { ...proposal, session_id: currentSessionId.value || undefined }
-      const resp = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const data = await resp.json()
-      if (resp.ok && data.ok) {
-        toast.show('定时任务已创建', { icon: '✅', type: 'success', duration: 2000 })
-      } else {
-        toast.show('任务创建失败: ' + (data.error || resp.statusText), { icon: '⚠️', type: 'error' })
-      }
-    } catch (err) {
-      toast.show('任务创建失败: ' + err.message, { icon: '⚠️', type: 'error' })
-    }
   }
 
   function renderMsg(msg) {
@@ -138,7 +125,12 @@ export function useChatRender(options) {
             if (proposalMatch) {
               try {
                 const proposal = JSON.parse(proposalMatch[2].trim())
-                blockProposals[proposalKey] = { proposal }
+                // Default to confirmed=true since backend handles task creation now
+                blockProposals[proposalKey] = {
+                  proposal,
+                  confirmed: true,
+                  error: null
+                }
               } catch (e) {
                 console.error('Failed to parse schedule proposal:', e)
               }
@@ -303,7 +295,6 @@ export function useChatRender(options) {
     parseAssistantContent,
     extractScheduleProposals,
     updateRenderedContents,
-    createScheduledTask,
     toggleToolDetail,
     formatToolInput,
     toolCallSummary,

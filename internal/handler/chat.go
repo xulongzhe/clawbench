@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -443,7 +444,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 					goto finalize
 				}
 
-				accumulateBlock(&blocks, event)
+				accumulateBlock(&blocks, event, projectPath, sessionID, agentID)
 
 				// Handle resume_split: the AI adapter layer detected ExitPlanMode and
 			// will auto-resume. Finalize current DB message and start a new one.
@@ -525,6 +526,19 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		}
 
 	finalize:
+		// Detect <schedule-proposal> in the fully accumulated text blocks.
+		// This must happen after all deltas are coalesced, because the tag
+		// spans multiple incremental content events and is never complete in
+		// any single delta.
+		for _, block := range blocks {
+			if block.Type == "text" && strings.Contains(block.Text, "<schedule-proposal") {
+				slog.Info("detected schedule-proposal tag in accumulated text block",
+					slog.String("session", sessionID),
+				)
+				detectAndCreateScheduleProposal(block.Text, projectPath, sessionID, agentID)
+			}
+		}
+
 		// Determine cancellation reason
 		cancelReason := service.GetAndClearCancelReason(sessionID)
 
@@ -656,6 +670,104 @@ func CancelChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// detectAndCreateScheduleProposal detects <schedule-proposal> tags in text and automatically creates scheduled tasks.
+// It extracts the JSON content from the tag, validates it, and creates the task.
+// Errors are logged but don't interrupt the stream - the proposal tag is preserved for frontend display.
+func detectAndCreateScheduleProposal(text, projectPath, sessionID, agentID string) {
+	// Extract the schedule-proposal tag content
+	re := regexp.MustCompile(`<schedule-proposal\b[^>]*>([\s\S]*?)</schedule-proposal>`)
+	matches := re.FindStringSubmatch(text)
+	if len(matches) < 2 {
+		return
+	}
+
+	jsonStr := strings.TrimSpace(matches[1])
+
+	// Parse the JSON
+	var proposal struct {
+		Name       string `json:"name"`
+		CronExpr   string `json:"cron_expr"`
+		AgentID    string `json:"agent_id"`
+		Prompt     string `json:"prompt"`
+		RepeatMode string `json:"repeat_mode"`
+		MaxRuns    int    `json:"max_runs"`
+	}
+
+	if err := json.Unmarshal([]byte(jsonStr), &proposal); err != nil {
+		slog.Error("failed to parse schedule proposal JSON",
+			slog.String("session", sessionID),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	// Validate required fields
+	if proposal.Name == "" || proposal.CronExpr == "" || proposal.AgentID == "" || proposal.Prompt == "" {
+		slog.Error("schedule proposal missing required fields",
+			slog.String("session", sessionID),
+			slog.String("name", proposal.Name),
+			slog.String("cron_expr", proposal.CronExpr),
+			slog.String("agent_id", proposal.AgentID),
+			slog.String("prompt", proposal.Prompt),
+		)
+		return
+	}
+
+	// Use the agent from the proposal if specified, otherwise use the session's agent
+	effectiveAgentID := proposal.AgentID
+	if effectiveAgentID == "" {
+		effectiveAgentID = agentID
+	}
+
+	// Validate agent is not "assistant"
+	if effectiveAgentID == "assistant" {
+		slog.Error("assistant agent cannot execute scheduled tasks",
+			slog.String("session", sessionID),
+		)
+		return
+	}
+
+	// Set defaults
+	if proposal.RepeatMode == "" {
+		proposal.RepeatMode = "unlimited"
+	}
+
+	// Create the task
+	task := &model.ScheduledTask{
+		ProjectPath: projectPath,
+		Name:        proposal.Name,
+		CronExpr:    proposal.CronExpr,
+		AgentID:     effectiveAgentID,
+		Prompt:      proposal.Prompt,
+		RepeatMode:  proposal.RepeatMode,
+		MaxRuns:     proposal.MaxRuns,
+		SessionID:   sessionID,
+	}
+
+	if err := service.GlobalScheduler.AddTask(task); err != nil {
+		slog.Error("failed to create scheduled task from proposal",
+			slog.String("session", sessionID),
+			slog.String("task_name", proposal.Name),
+			slog.String("error", err.Error()),
+		)
+		return
+	}
+
+	slog.Info("automatically created scheduled task from proposal",
+		slog.String("session", sessionID),
+		slog.String("task_id", task.ID),
+		slog.String("task_name", proposal.Name),
+		slog.String("cron_expr", proposal.CronExpr),
+	)
+}
+
 // accumulateBlock processes a single StreamEvent and updates the blocks slice.
 // Both text and thinking events are coalesced into the most recent block of
 // the same type; tool_use events are deduplicated by ID.
@@ -668,7 +780,7 @@ func CancelChat(w http.ResponseWriter, r *http.Request) {
 // This prevents a single thinking or text block from being fragmented into many
 // tiny blocks when events alternate, while preserving the semantic separation
 // around tool calls.
-func accumulateBlock(blocks *[]model.ContentBlock, event ai.StreamEvent) {
+func accumulateBlock(blocks *[]model.ContentBlock, event ai.StreamEvent, projectPath, sessionID, agentID string) {
 	// findLastBlockOfType searches backward for the most recent block of the
 	// given type, but stops at tool_use boundaries (they are natural separators).
 	findLastBlockOfType := func(typ string) (int, bool) {
@@ -686,6 +798,9 @@ func accumulateBlock(blocks *[]model.ContentBlock, event ai.StreamEvent) {
 
 	switch event.Type {
 	case "content":
+		// Note: <schedule-proposal> detection is done in finalize phase on
+		// the fully accumulated text, not here on incremental deltas — the
+		// tag spans multiple delta events and is never complete in any single one.
 		// Coalesce incremental content deltas into the most recent text block.
 		if idx, found := findLastBlockOfType("text"); found {
 			(*blocks)[idx].Text += event.Content

@@ -102,8 +102,13 @@
           <!-- Text block: streaming uses throttled render to avoid UI freeze -->
           <div v-else-if="block.type === 'text'" v-html="getBlockHtml(bi, block)"></div>
           <!-- Schedule proposal card (inline in message) -->
-          <div v-if="block.type === 'text' && blockProposals[`${msg.id}-${bi}`]" class="schedule-proposal-card confirmed">
-            <div class="proposal-header confirmed">📋 定时任务已创建</div>
+          <div v-if="block.type === 'text' && blockProposals[`${msg.id}-${bi}`]"
+               class="schedule-proposal-card"
+               :class="{ confirmed: blockProposals[`${msg.id}-${bi}`].confirmed, failed: !blockProposals[`${msg.id}-${bi}`].confirmed }">
+            <div class="proposal-header"
+                 :class="blockProposals[`${msg.id}-${bi}`].confirmed ? 'confirmed' : 'failed'">
+              {{ blockProposals[`${msg.id}-${bi}`].confirmed ? '📋 定时任务已创建' : '⚠️ 任务创建失败' }}
+            </div>
             <div class="proposal-body">
               <div class="proposal-row"><strong>任务：</strong>{{ blockProposals[`${msg.id}-${bi}`].proposal.name }}</div>
               <div class="proposal-row"><strong>频率：</strong>{{ humanizeCron(blockProposals[`${msg.id}-${bi}`].proposal.cron_expr) }}</div>
@@ -784,6 +789,11 @@ onUnmounted(() => {
   opacity: 0.85;
 }
 
+.schedule-proposal-card.failed {
+  border-color: #f44336;
+  opacity: 0.9;
+}
+
 .proposal-header {
   background: var(--accent-color, #0066cc);
   color: #fff;
@@ -794,6 +804,10 @@ onUnmounted(() => {
 
 .proposal-header.confirmed {
   background: #4caf50;
+}
+
+.proposal-header.failed {
+  background: #f44336;
 }
 
 .proposal-body {

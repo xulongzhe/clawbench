@@ -226,9 +226,6 @@ export function useChatStream(options: UseChatStreamOptions) {
     // Start stream timeout
     resetStreamTimeout()
 
-    // Track if we've already created a task for this stream's proposal
-    let proposalCreated = false
-
     // Helper: find the most recent block of a given type by searching backward.
     // This handles interleaved thinking/text events correctly — when events
     // alternate, the last block may not be the same type as the incoming event.
@@ -255,20 +252,7 @@ export function useChatStream(options: UseChatStreamOptions) {
       } else {
         blocks.push({ type: 'text', text: data.content })
       }
-      // Detect completed <schedule-proposal> tag during streaming and create task
-      const fullText = findLastBlockOfType(blocks, 'text')?.text || ''
-      if (!proposalCreated && /<schedule-proposal(\s+confirmed)?>[\s\S]*?<\/schedule-proposal>/.test(fullText)) {
-        const match = fullText.match(/<schedule-proposal(\s+confirmed)?>([\s\S]*?)<\/schedule-proposal>/)
-        if (match) {
-          try {
-            const proposal = JSON.parse(match[2].trim())
-            proposalCreated = true
-            createScheduledTask(proposal)
-          } catch (err) {
-            console.error('Failed to parse schedule proposal:', err)
-          }
-        }
-      }
+      // Note: Task creation is now handled by the backend automatically
       debouncedRender()
     })
 
