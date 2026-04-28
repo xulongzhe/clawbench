@@ -1,138 +1,142 @@
 <template>
-  <div class="chat-input-container" :class="{ 'drag-over': isDragOver }"
-    @dragenter="onDragEnter"
-    @dragover="onDragOver"
-    @dragleave="onDragLeave"
-    @drop="onDrop">
-    <input type="file" ref="fileInputRef" @change="onFileSelect" style="display:none" multiple />
-    <!-- Drop overlay -->
-    <div v-if="isDragOver" class="drop-overlay">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="17 8 12 3 7 8"/>
-        <line x1="12" y1="3" x2="12" y2="15"/>
-      </svg>
-      <span>松开上传文件</span>
-    </div>
-    <!-- Upload progress bars -->
-    <div v-if="uploadingFiles.length > 0" class="chat-upload-progress">
-      <div v-for="(f, idx) in uploadingFiles" :key="'prog-' + idx" class="upload-progress-item">
-        <div class="upload-progress-bar" :style="{ width: f.progress + '%' }"></div>
-      </div>
-    </div>
-    <!-- Toolbar -->
-    <div class="chat-toolbar">
-      <div class="attach-menu-wrapper" ref="attachMenuRef">
-        <button class="chat-toolbar-btn" @click.stop="toggleAttachMenu" :disabled="inputDisabled" title="附件">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-          </svg>
-        </button>
-      </div>
-      <span class="chat-toolbar-divider"></span>
-      <button class="chat-toolbar-btn" @click="$emit('open-session-tab', 'sessions')" title="会话管理">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+  <div class="chat-input-wrapper">
+    <!-- Top action bar (above input box) -->
+    <div class="chat-top-actions">
+      <button class="chat-action-btn" @click="$emit('open-session-tab', 'sessions')" title="会话管理">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <rect x="3" y="6" width="18" height="12" rx="2"/><line x1="12" y1="2" x2="12" y2="6"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><line x1="1" y1="10" x2="3" y2="10"/><line x1="1" y1="14" x2="3" y2="14"/><line x1="21" y1="10" x2="23" y2="10"/><line x1="21" y1="14" x2="23" y2="14"/>
         </svg>
+        <span class="chat-action-label">会话</span>
       </button>
-      <button class="chat-toolbar-btn" @click="$emit('open-session-tab', 'tasks')" title="定时任务">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+      <button class="chat-action-btn" @click="$emit('open-session-tab', 'tasks')" title="定时任务">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
         </svg>
+        <span class="chat-action-label">定时</span>
       </button>
     </div>
-    <!-- Attachment tags -->
-    <div v-if="attachedFiles.length > 0 || pendingFiles.length > 0" class="chat-attachment-tags">
-      <span v-for="(filePath, idx) in attachedFiles" :key="'att-' + filePath" class="chat-file-attachment attachment-ref" @click="$emit('file-tag-click', filePath)" title="打开文件">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+    <!-- Input container -->
+    <div class="chat-input-container" :class="{ 'drag-over': isDragOver }"
+      @dragenter="onDragEnter"
+      @dragover="onDragOver"
+      @dragleave="onDragLeave"
+      @drop="onDrop">
+      <input type="file" ref="fileInputRef" @change="onFileSelect" style="display:none" multiple />
+      <!-- Drop overlay -->
+      <div v-if="isDragOver" class="drop-overlay">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="24" height="24">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
         </svg>
-        <span class="chat-file-name">{{ getFileName(filePath) }}</span>
-        <button class="attachment-tag-remove" @click.stop="$emit('remove-attached', idx)" title="移除">×</button>
-      </span>
-      <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="chat-file-attachment attachment-upload" :class="{ 'is-uploading': f.uploading }">
-        <svg v-if="f.isImage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <circle cx="10" cy="13" r="2"/>
-          <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
-        </svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>
-        <span class="chat-file-name">{{ getFileName(f.path) || '上传中...' }}</span>
-        <span v-if="f.uploading" class="attachment-progress-pct">{{ f.progress }}%</span>
-        <button class="attachment-tag-remove" @click.stop="$emit('remove-file', idx)" title="移除">×</button>
-      </span>
-    </div>
-    <!-- Input row -->
-    <div class="chat-input-row">
-      <textarea class="chat-textarea"
-        ref="textareaRef"
-        v-model="inputText"
-        :disabled="inputDisabled"
-        :placeholder="pendingFiles.length > 0 ? '添加描述（可选）...' : '输入消息...'"
-        rows="1"
-        @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
-        @input="autoResizeTextarea"
-        @blur="collapseTextarea"></textarea>
-      <button v-if="inputText && !loading" class="chat-clear-btn" @click="inputText = ''; collapseTextarea()" title="清空输入">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="15" y1="9" x2="9" y2="15"/>
-          <line x1="9" y1="9" x2="15" y2="15"/>
-        </svg>
-      </button>
-      <button v-if="loading" class="chat-stop-btn" @click="$emit('cancel')" title="停止生成">
-        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-        <span class="stop-btn-pulse"></span>
-      </button>
-      <button v-else class="chat-send-btn" @click="$emit('send', inputText.trim())" :class="{ disabled: inputDisabled && pendingFiles.length === 0 && attachedFiles.length === 0 }" title="发送">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-          <line x1="22" y1="2" x2="11" y2="13"/>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-        </svg>
-      </button>
-    </div>
-    <!-- Teleported attach menu (avoids overflow:hidden clipping) -->
-    <Teleport to="body">
-      <div v-if="showAttachMenu" class="attach-menu" :style="menuStyle" @click.stop>
-        <!-- Current file group -->
-        <template v-if="currentFile?.path && !attachedFiles.includes(currentFile.path)">
-          <div class="attach-menu-group-title">当前文件</div>
-          <button class="attach-menu-item" @click="handleAttachFile(currentFile.path)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            <span class="attach-menu-item-name">{{ getFileName(currentFile.path) }}</span>
-          </button>
-        </template>
-        <!-- Recently referenced group -->
-        <template v-if="recentReferencedFiles.length > 0">
-          <div class="attach-menu-group-title">最近引用</div>
-          <button v-for="item in recentReferencedFiles" :key="item.path" class="attach-menu-item" @click="handleAttachFile(item.path)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-            </svg>
-            <span class="attach-menu-item-name">{{ getFileName(item.path) }}</span>
-            <span class="attach-menu-item-count">×{{ item.count }}</span>
-          </button>
-        </template>
-        <!-- Separator + Upload -->
-        <div v-if="hasFileGroups" class="attach-menu-separator"></div>
-        <button class="attach-menu-item" @click="handleUploadClick">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="17 8 12 3 7 8"/>
-            <line x1="12" y1="3" x2="12" y2="15"/>
+        <span>松开上传文件</span>
+      </div>
+      <!-- Upload progress bars -->
+      <div v-if="uploadingFiles.length > 0" class="chat-upload-progress">
+        <div v-for="(f, idx) in uploadingFiles" :key="'prog-' + idx" class="upload-progress-item">
+          <div class="upload-progress-bar" :style="{ width: f.progress + '%' }"></div>
+        </div>
+      </div>
+      <!-- Attachment tags -->
+      <div v-if="attachedFiles.length > 0 || pendingFiles.length > 0" class="chat-attachment-tags">
+        <span v-for="(filePath, idx) in attachedFiles" :key="'att-' + filePath" class="chat-file-attachment attachment-ref" @click="$emit('file-tag-click', filePath)" title="打开文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
           </svg>
-          <span>上传文件</span>
+          <span class="chat-file-name">{{ getFileName(filePath) }}</span>
+          <button class="attachment-tag-remove" @click.stop="$emit('remove-attached', idx)" title="移除">×</button>
+        </span>
+        <span v-for="(f, idx) in pendingFiles" :key="'upload-' + idx" class="chat-file-attachment attachment-upload" :class="{ 'is-uploading': f.uploading }">
+          <svg v-if="f.isImage" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <circle cx="10" cy="13" r="2"/>
+            <path d="m20 17-3.1-3.1a2 2 0 0 0-2.8 0L9 19"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <span class="chat-file-name">{{ getFileName(f.path) || '上传中...' }}</span>
+          <span v-if="f.uploading" class="attachment-progress-pct">{{ f.progress }}%</span>
+          <button class="attachment-tag-remove" @click.stop="$emit('remove-file', idx)" title="移除">×</button>
+        </span>
+      </div>
+      <!-- Input row: attach + clear + textarea + send/stop -->
+      <div class="chat-input-row">
+        <div class="attach-menu-wrapper" ref="attachMenuRef">
+          <button class="chat-attach-btn" @click.stop="toggleAttachMenu" :disabled="inputDisabled" title="附件">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+        </div>
+        <button v-if="inputText && !loading" class="chat-clear-btn" @click="inputText = ''; collapseTextarea()" title="清空输入">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="15" y1="9" x2="9" y2="15"/>
+            <line x1="9" y1="9" x2="15" y2="15"/>
+          </svg>
+        </button>
+        <textarea class="chat-textarea"
+          ref="textareaRef"
+          v-model="inputText"
+          :disabled="inputDisabled"
+          :placeholder="pendingFiles.length > 0 ? '添加描述（可选）...' : '输入消息...'"
+          rows="1"
+          @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
+          @input="autoResizeTextarea"
+          @blur="collapseTextarea"></textarea>
+        <button v-if="loading" class="chat-stop-btn" @click="$emit('cancel')" title="停止生成">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          <span class="stop-btn-pulse"></span>
+        </button>
+        <button v-else class="chat-send-btn" @click="$emit('send', inputText.trim())" :class="{ disabled: inputDisabled && pendingFiles.length === 0 && attachedFiles.length === 0 }" title="发送">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <line x1="22" y1="2" x2="11" y2="13"/>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
         </button>
       </div>
-    </Teleport>
+      <!-- Teleported attach menu (avoids overflow:hidden clipping) -->
+      <Teleport to="body">
+        <div v-if="showAttachMenu" class="attach-menu" :style="menuStyle" @click.stop>
+          <!-- Current file group -->
+          <template v-if="currentFile?.path && !attachedFiles.includes(currentFile.path)">
+            <div class="attach-menu-group-title">当前文件</div>
+            <button class="attach-menu-item" @click="handleAttachFile(currentFile.path)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="attach-menu-item-name">{{ getFileName(currentFile.path) }}</span>
+            </button>
+          </template>
+          <!-- Recently referenced group -->
+          <template v-if="recentReferencedFiles.length > 0">
+            <div class="attach-menu-group-title">最近引用</div>
+            <button v-for="item in recentReferencedFiles" :key="item.path" class="attach-menu-item" @click="handleAttachFile(item.path)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="attach-menu-item-name">{{ getFileName(item.path) }}</span>
+              <span class="attach-menu-item-count">×{{ item.count }}</span>
+            </button>
+          </template>
+          <!-- Separator + Upload -->
+          <div v-if="hasFileGroups" class="attach-menu-separator"></div>
+          <button class="attach-menu-item" @click="handleUploadClick">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span>上传文件</span>
+          </button>
+        </div>
+      </Teleport>
+    </div>
   </div>
 </template>
 
@@ -273,7 +277,7 @@ function toggleAttachMenu() {
     return
   }
   // Calculate menu position from the button's bounding rect
-  const btn = attachMenuRef.value?.querySelector('.chat-toolbar-btn')
+  const btn = attachMenuRef.value?.querySelector('.chat-attach-btn')
   if (btn) {
     const rect = btn.getBoundingClientRect()
     menuStyle.value = {
@@ -309,13 +313,58 @@ defineExpose({
 </script>
 
 <style scoped>
+/* Outer wrapper: top actions + input box stacked vertically */
+.chat-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  margin: 0 8px 8px;
+}
+
+/* Top action bar (above input box, compact) */
+.chat-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px 4px;
+}
+
+.chat-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
+}
+
+.chat-action-btn:hover {
+  color: var(--accent-color, #0066cc);
+  background: var(--bg-tertiary, #f0f0f0);
+}
+
+.chat-action-btn svg {
+  flex-shrink: 0;
+}
+
+.chat-action-label {
+  font-size: 11px;
+  line-height: 1;
+}
+
 /* Unified input container */
 .chat-input-container {
   display: flex;
   flex-direction: column;
   background: var(--bg-primary, #fff);
-  flex-shrink: 0;
-  margin: 0 8px 8px;
+  flex: 1;
+  min-width: 0;
   border: 1px solid var(--border-color, #e5e5e5);
   border-radius: 12px;
   overflow: hidden;
@@ -378,15 +427,13 @@ defineExpose({
   font-variant-numeric: tabular-nums;
 }
 
-/* Toolbar row */
-.chat-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 6px 0;
+/* Attach button (inside input row) */
+.attach-menu-wrapper {
+  position: relative;
+  flex-shrink: 0;
 }
 
-.chat-toolbar-btn {
+.chat-attach-btn {
   background: none;
   border: none;
   cursor: pointer;
@@ -397,34 +444,19 @@ defineExpose({
   justify-content: center;
   border-radius: 4px;
   transition: color 0.15s, background 0.15s;
-  flex-shrink: 0;
 }
 
-.chat-toolbar-btn:hover:not(:disabled) {
+.chat-attach-btn:hover:not(:disabled) {
   color: var(--accent-color, #0066cc);
   background: var(--bg-tertiary, #f0f0f0);
 }
 
-.chat-toolbar-btn:disabled {
+.chat-attach-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* Divider between input and navigation button groups */
-.chat-toolbar-divider {
-  width: 1px;
-  height: 14px;
-  background: var(--border-color, #e5e5e5);
-  margin: 0 4px;
-  flex-shrink: 0;
-  align-self: center;
-}
-
 /* Attach menu (teleported to body, uses fixed positioning) */
-.attach-menu-wrapper {
-  position: relative;
-}
-
 .attach-menu {
   position: fixed;
   background: var(--bg-secondary, #fff);
@@ -613,11 +645,11 @@ defineExpose({
 .chat-input-row {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
+  gap: 2px;
   padding: 4px 6px 6px;
 }
 
-/* Clear input button */
+/* Clear input button (next to attach button) */
 .chat-clear-btn {
   background: none;
   border: none;
