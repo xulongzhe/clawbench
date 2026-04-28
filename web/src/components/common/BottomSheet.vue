@@ -82,7 +82,7 @@ defineExpose({
 
 .bs-overlay {
   position: fixed;
-  top: 0;
+  top: var(--header-height, 44px);
   left: 0;
   right: 0;
   bottom: var(--dock-height, 0);

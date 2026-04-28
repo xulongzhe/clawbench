@@ -4,7 +4,7 @@
   "description": "一款专为移动端设计的轻量级代码和文档工作台",
   "start_url": "/",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "orientation": "any",
   "theme_color": "#0d1117",
   "background_color": "#0d1117",
@@ -51,7 +51,6 @@
     }
   ],
   "display_override": [
-    "fullscreen",
     "standalone",
     "minimal-ui"
   ],
