@@ -268,13 +268,6 @@ function handleSpeak() {
   }
 }
 
-// Auto-close popover when audio finishes
-watch(() => autoSpeech.isActive(msgText.value), (active) => {
-  if (!active && showTtsPopover.value) {
-    showTtsPopover.value = false
-  }
-})
-
 function checkOverflow() {
   if (!wrapperRef.value) return
   overflows.value = wrapperRef.value.scrollHeight > store.state.chatCollapsedHeight

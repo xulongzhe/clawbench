@@ -62,9 +62,12 @@ function updatePosition() {
   const vh = window.innerHeight
   const vw = window.innerWidth
 
+  // Edge padding from viewport
+  const edgePadding = 20
+
   // Calculate available space above and below the anchor
-  const spaceAbove = anchorRect.top - 8
-  const spaceBelow = vh - anchorRect.bottom - 8
+  const spaceAbove = anchorRect.top - edgePadding
+  const spaceBelow = vh - anchorRect.bottom - edgePadding
 
   // Decide placement: prefer above, fall back to below if not enough room
   let placeAbove = spaceAbove >= 80 // need at least status bar height
@@ -82,25 +85,25 @@ function updatePosition() {
   const naturalWidth = popoverRect.width
 
   // Clamp popover height to available space (leave room for padding)
-  const clampedHeight = Math.min(naturalHeight, availableHeight - 8)
+  const clampedHeight = Math.min(naturalHeight, availableHeight - edgePadding)
   popoverRef.value.style.maxHeight = `${Math.max(clampedHeight, 60)}px`
 
   let top, left
 
   if (placeAbove) {
-    top = anchorRect.top - Math.min(naturalHeight, clampedHeight) - 8
+    top = anchorRect.top - Math.min(naturalHeight, clampedHeight) - 12
   } else {
-    top = anchorRect.bottom + 8
+    top = anchorRect.bottom + 12
   }
 
   // Center horizontally
   left = anchorRect.left + anchorRect.width / 2 - naturalWidth / 2
 
   // Clamp horizontal within viewport
-  left = Math.max(8, Math.min(left, vw - naturalWidth - 8))
+  left = Math.max(edgePadding, Math.min(left, vw - naturalWidth - edgePadding))
 
   // Final vertical clamp
-  top = Math.max(8, Math.min(top, vh - clampedHeight - 8))
+  top = Math.max(edgePadding, Math.min(top, vh - clampedHeight - edgePadding))
 
   positionStyle.value = {
     position: 'fixed',
