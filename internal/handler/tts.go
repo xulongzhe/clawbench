@@ -20,10 +20,10 @@ const (
 	ttsMaxBodyBytes = 1 << 20
 
 	// ttsSummarizeTimeout is the timeout for the summarization step.
-	ttsSummarizeTimeout = 15 * time.Second
+	ttsSummarizeTimeout = 60 * time.Second
 
 	// ttsSynthesizeTimeout is the timeout for the TTS synthesis step.
-	ttsSynthesizeTimeout = 30 * time.Second
+	ttsSynthesizeTimeout = 120 * time.Second
 )
 
 // speechProvider is the global speech provider instance.

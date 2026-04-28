@@ -29,6 +29,10 @@ const (
 	// shortTextThreshold — texts shorter than this are not summarized.
 	shortTextThreshold = 300
 
+	// maxSummarizeRunes is the maximum number of runes for summarization input.
+	// Texts longer than this are truncated to the last N characters.
+	maxSummarizeRunes = 10000
+
 	// CacheKeyHexLen is the number of hex characters used for the cache filename.
 	CacheKeyHexLen = 16
 )
@@ -96,13 +100,21 @@ func NewMiniMaxProvider() *MiniMaxProvider {
 
 // Summarize condenses text for voice output using mmx text chat.
 // For short text (<300 chars), it strips markdown and returns the text as-is.
+// For long text (>100k runes), it truncates to the last 100k characters before summarization.
 // The caller is responsible for setting a deadline on ctx.
 func (p *MiniMaxProvider) Summarize(ctx context.Context, text string) (string, error) {
 	cleaned := StripMarkdown(text)
 
 	// Short text: skip summarization, return cleaned text directly
-	if len([]rune(cleaned)) < shortTextThreshold {
+	runes := []rune(cleaned)
+	if len(runes) < shortTextThreshold {
 		return cleaned, nil
+	}
+
+	// Truncate to last 100k runes if too long
+	if len(runes) > maxSummarizeRunes {
+		runes = runes[len(runes)-maxSummarizeRunes:]
+		cleaned = string(runes)
 	}
 
 	// Use --messages-file - to pipe via stdin, avoiding CLI arg length limits

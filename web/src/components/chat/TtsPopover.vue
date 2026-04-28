@@ -54,8 +54,9 @@ defineEmits(['close'])
 
 const popoverRef = ref(null)
 const positionStyle = ref({})
+const isPositioned = ref(false) // Track if initial position is set
 
-function updatePosition() {
+function updatePosition(skipHeightReset = false) {
   if (!props.visible || !props.anchorEl || !popoverRef.value) return
 
   const anchorRect = props.anchorEl.getBoundingClientRect()
@@ -78,20 +79,27 @@ function updatePosition() {
 
   const availableHeight = placeAbove ? spaceAbove : spaceBelow
 
-  // Temporarily remove height constraint to measure natural size
-  popoverRef.value.style.maxHeight = 'none'
-  const popoverRect = popoverRef.value.getBoundingClientRect()
-  const naturalHeight = popoverRect.height
-  const naturalWidth = popoverRect.width
+  // Only recalculate height on initial positioning or content change
+  if (!skipHeightReset) {
+    // Temporarily remove height constraint to measure natural size
+    popoverRef.value.style.maxHeight = 'none'
+    const popoverRect = popoverRef.value.getBoundingClientRect()
+    const naturalHeight = popoverRect.height
+    const naturalWidth = popoverRect.width
 
-  // Clamp popover height to available space (leave room for padding)
-  const clampedHeight = Math.min(naturalHeight, availableHeight - edgePadding)
-  popoverRef.value.style.maxHeight = `${Math.max(clampedHeight, 60)}px`
+    // Clamp popover height to available space (leave room for padding)
+    const clampedHeight = Math.min(naturalHeight, availableHeight - edgePadding)
+    popoverRef.value.style.maxHeight = `${Math.max(clampedHeight, 60)}px`
+  }
+
+  const popoverRect = popoverRef.value.getBoundingClientRect()
+  const naturalWidth = popoverRect.width
+  const currentHeight = popoverRect.height
 
   let top, left
 
   if (placeAbove) {
-    top = anchorRect.top - Math.min(naturalHeight, clampedHeight) - 12
+    top = anchorRect.top - currentHeight - 12
   } else {
     top = anchorRect.bottom + 12
   }
@@ -103,7 +111,7 @@ function updatePosition() {
   left = Math.max(edgePadding, Math.min(left, vw - naturalWidth - edgePadding))
 
   // Final vertical clamp
-  top = Math.max(edgePadding, Math.min(top, vh - clampedHeight - edgePadding))
+  top = Math.max(edgePadding, Math.min(top, vh - currentHeight - edgePadding))
 
   positionStyle.value = {
     position: 'fixed',
@@ -115,8 +123,10 @@ function updatePosition() {
 // Update position when visible changes or anchor moves
 watch(() => props.visible, async (val) => {
   if (val) {
+    isPositioned.value = false
     await nextTick()
     updatePosition()
+    isPositioned.value = true
   }
 })
 
@@ -128,12 +138,12 @@ watch(() => props.text, async () => {
   }
 })
 
-// Update position on scroll/resize while open
+// Update position on scroll/resize while open (skip height reset to preserve scroll position)
 let scrollHandler = null
 
 watch(() => props.visible, (val) => {
   if (val) {
-    scrollHandler = () => updatePosition()
+    scrollHandler = () => updatePosition(true)
     window.addEventListener('scroll', scrollHandler, true)
     window.addEventListener('resize', scrollHandler)
   } else {
