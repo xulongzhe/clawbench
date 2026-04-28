@@ -78,13 +78,7 @@ export function useChatStream(options: UseChatStreamOptions) {
         connectStream(currentSessionId.value)
       } else {
         // Too many reconnect attempts or session no longer active, fall back to polling
-        const streamingMsg = messages.value.find(m => m.role === 'assistant' && m.streaming)
-        if (streamingMsg) {
-          delete streamingMsg.streaming
-          onRenderNeeded(true)
-        }
-        inputDisabled.value = false
-        loading.value = false
+        forceCleanupStreamingState()
         pollUntilDone()
       }
     }, STREAM_TIMEOUT_MS)
@@ -104,6 +98,30 @@ export function useChatStream(options: UseChatStreamOptions) {
       clearTimeout(timer)
     }
     toolUseTimeouts.clear()
+  }
+
+  /**
+   * Clean up streaming state for the current assistant message.
+   * Marks all unfinished tool_use blocks as done, clears streaming flag,
+   * and resets global loading/input state. Called from all interruption paths.
+   */
+  function forceCleanupStreamingState() {
+    clearToolUseTimeouts()
+    const streamingMsg = messages.value.find(m => m.role === 'assistant' && m.streaming)
+    if (streamingMsg) {
+      delete streamingMsg.streaming
+      // Mark all unfinished tool_use blocks as done so spinner stops
+      if (streamingMsg.blocks) {
+        for (const block of streamingMsg.blocks) {
+          if (block.type === 'tool_use' && !block.done) {
+            block.done = true
+          }
+        }
+      }
+    }
+    onRenderNeeded(true)
+    inputDisabled.value = false
+    loading.value = false
   }
 
   function stopPolling() {
@@ -335,12 +353,19 @@ export function useChatStream(options: UseChatStreamOptions) {
 
     eventSource.addEventListener('cancelled', () => {
       if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null }
-      clearToolUseTimeouts()
       disconnectStream()
       if (!guard()) return
       const msg = messages.value[lastIndex]
       msg.cancelled = true
       delete msg.streaming
+      // Mark all unfinished tool_use blocks as done so spinner stops
+      if (msg.blocks) {
+        for (const block of msg.blocks) {
+          if (block.type === 'tool_use' && !block.done) {
+            block.done = true
+          }
+        }
+      }
       // If no content was received, add error block so the UI shows the error card instead of loading dots
       if ((!msg.blocks || msg.blocks.length === 0) && !msg.content) {
         msg.blocks = [{ type: 'error', text: '用户已中断' }]
@@ -375,6 +400,10 @@ export function useChatStream(options: UseChatStreamOptions) {
         messages.value[lastIndex].content = `错误: ${data.error}`
         messages.value[lastIndex].blocks = [{ type: 'error', text: data.error }]
         delete messages.value[lastIndex].streaming
+        // Mark any unfinished tool_use blocks as done
+        for (const block of messages.value[lastIndex].blocks) {
+          if (block.type === 'tool_use' && !block.done) block.done = true
+        }
         onRenderNeeded()
         inputDisabled.value = false
         loading.value = false
@@ -391,13 +420,7 @@ export function useChatStream(options: UseChatStreamOptions) {
         connectStream(currentSessionId.value)
       } else {
         // Too many attempts or session inactive — fall back to polling
-        const streamingMsg = messages.value.find(m => m.role === 'assistant' && m.streaming)
-        if (streamingMsg) {
-          delete streamingMsg.streaming
-          onRenderNeeded()
-        }
-        inputDisabled.value = false
-        loading.value = false
+        forceCleanupStreamingState()
         pollUntilDone()
       }
     }
@@ -411,8 +434,7 @@ export function useChatStream(options: UseChatStreamOptions) {
       console.error('Failed to cancel:', err)
       // Force local state reset even if API call fails
       disconnectStream()
-      inputDisabled.value = false
-      loading.value = false
+      forceCleanupStreamingState()
     }
   }
 

@@ -105,8 +105,8 @@
             </div>
           </div>
         </template>
-        <!-- Loading dots while AI is still streaming -->
-        <div v-if="msg.streaming || msg.blocks.length === 0" class="placeholder-dots"><span></span><span></span><span></span></div>
+        <!-- Loading dots while AI is still streaming (not when cancelled) -->
+        <div v-if="msg.streaming && !msg.cancelled" class="placeholder-dots"><span></span><span></span><span></span></div>
         <!-- Cancelled marker -->
         <div v-if="msg.cancelled" class="chat-cancelled-mark">已中断</div>
       </template>
