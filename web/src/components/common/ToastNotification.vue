@@ -38,7 +38,7 @@ defineProps({
     z-index: 9999;
     white-space: normal;
     width: fit-content;
-    min-width: 200px;
+    min-width: 120px;
     max-width: 95vw;
     text-align: left;
     line-height: 1.4;
