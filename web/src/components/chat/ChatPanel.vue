@@ -29,6 +29,8 @@
       :renderedContents="render.renderedContents.value"
       :hasMore="session.hasMore.value"
       :loadingMore="session.loadingMore.value"
+      @touchstart="swipeSession.onTouchStart"
+      @touchend="swipeSession.onTouchEnd"
       @toggle-tool="render.toggleToolDetail"
       @show-metadata="showMetadata"
       @file-tag-click="handleFileTagClick"
@@ -108,6 +110,7 @@ import { useNotification } from '@/composables/useNotification.ts'
 import { useFileUpload } from '@/composables/useFileUpload.ts'
 import { playNotificationSound } from '@/composables/useNotificationSound.ts'
 import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
+import { useSwipeSession } from '@/composables/useSwipeSession.ts'
 
 const props = defineProps({
     open: Boolean,
@@ -170,6 +173,12 @@ const session = useChatSession({
   onOpen: () => emit('open'),
   isOpen: toRef(props, 'open'),
   onPlaySound: playNotificationSound,
+})
+
+const swipeSession = useSwipeSession({
+  currentSessionId: session.currentSessionId,
+  loading,
+  switchSession: session.switchSession,
 })
 
 // onStreamDone: only fires for current session stream completion (auto-speech trigger)
