@@ -3,12 +3,11 @@ import { useToast } from '@/composables/useToast.ts'
 
 export interface UseSwipeSessionOptions {
   currentSessionId: Ref<string>
-  loading: Ref<boolean>
   switchSession: (sessionId: string) => Promise<void>
 }
 
 export function useSwipeSession(options: UseSwipeSessionOptions) {
-  const { currentSessionId, loading, switchSession } = options
+  const { currentSessionId, switchSession } = options
   const toast = useToast()
 
   // Cached session list
@@ -37,7 +36,6 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
   }
 
   async function swipeToNext() {
-    if (loading.value) return
     const sessions = await fetchSessions()
     if (sessions.length <= 1) return
     const idx = sessions.findIndex(s => s.id === currentSessionId.value)
@@ -50,7 +48,6 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
   }
 
   async function swipeToPrev() {
-    if (loading.value) return
     const sessions = await fetchSessions()
     if (sessions.length <= 1) return
     const idx = sessions.findIndex(s => s.id === currentSessionId.value)
@@ -78,8 +75,6 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
   }
 
   function onTouchEnd(e: TouchEvent) {
-    if (loading.value) return
-
     const touch = e.changedTouches[0]
     const deltaX = touch.clientX - touchStartX
     const deltaY = touch.clientY - touchStartY

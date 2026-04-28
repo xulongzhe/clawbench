@@ -177,7 +177,6 @@ const session = useChatSession({
 
 const swipeSession = useSwipeSession({
   currentSessionId: session.currentSessionId,
-  loading,
   switchSession: session.switchSession,
 })
 

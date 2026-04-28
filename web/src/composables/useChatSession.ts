@@ -71,6 +71,9 @@ export function useChatSession(options: UseChatSessionOptions) {
     return 'AI 对话'
   })
 
+  // Guard against concurrent switchSession calls — only the last one wins
+  let switchSessionSeq = 0
+
   async function loadAgents() {
     try {
       const resp = await fetch('/api/agents')
@@ -176,6 +179,15 @@ export function useChatSession(options: UseChatSessionOptions) {
   }
 
   async function switchSession(sessionId) {
+    // Increment sequence counter — if another switch starts before we finish,
+    // our results will be discarded (last writer wins)
+    const mySeq = ++switchSessionSeq
+
+    // Immediately lock input to prevent sending messages with stale sessionId.
+    // Do NOT set loading=true here — loading means "AI is generating", not
+    // "session is switching". Setting it would flash the stop button.
+    inputDisabled.value = true
+
     onDisconnectStream()
     onStopPolling()
     stopMsgCountPolling()
@@ -187,9 +199,14 @@ export function useChatSession(options: UseChatSessionOptions) {
       const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(sessionId)}&limit=${limit}`)
       if (!resp.ok) {
         toast.show('切换会话失败', { icon: '⚠️' })
+        inputDisabled.value = false
         return
       }
       const data = await resp.json()
+
+      // If another switch happened while we were fetching, discard our results
+      if (switchSessionSeq !== mySeq) return
+
       messages.value = parseMessages(data.messages || [])
       totalMessages.value = data.total || messages.value.length
       currentSessionId.value = data.sessionId || sessionId
@@ -210,8 +227,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         startMsgCountPolling()
       }
     } catch (err) {
+      // If another switch happened, don't touch state
+      if (switchSessionSeq !== mySeq) return
       console.error('Failed to switch session:', err)
       toast.show('切换会话失败', { icon: '⚠️' })
+      inputDisabled.value = false
     }
   }
 
