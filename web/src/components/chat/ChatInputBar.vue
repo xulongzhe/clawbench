@@ -354,9 +354,11 @@ defineExpose({
   transition: color 0.15s, background 0.15s;
 }
 
-.chat-action-btn:hover {
-  color: var(--accent-color, #0066cc);
-  background: var(--bg-tertiary, #f0f0f0);
+@media (hover: hover) {
+  .chat-action-btn:hover {
+    color: var(--accent-color, #0066cc);
+    background: var(--bg-tertiary, #f0f0f0);
+  }
 }
 
 .chat-action-btn.active {
