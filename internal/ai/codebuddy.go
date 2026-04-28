@@ -1,6 +1,9 @@
 package ai
 
-import "strings"
+import (
+	"os/exec"
+	"strings"
+)
 
 // codebuddyBackend is the CLIBackend instance for Codebuddy CLI.
 var codebuddyBackend = &CLIBackend{
@@ -15,5 +18,9 @@ var codebuddyBackend = &CLIBackend{
 		}
 		return line, true
 	},
-	preStart: nil,
+	preStart: func(cmd *exec.Cmd, req ChatRequest) {
+		if req.Resume {
+			cmd.Stdin = strings.NewReader(req.Prompt)
+		}
+	},
 }

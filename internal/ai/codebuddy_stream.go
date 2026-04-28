@@ -6,11 +6,16 @@ func buildCodebuddyStreamArgs(req ChatRequest) []string {
 		"--print",
 		"--output-format", "stream-json",
 		"--include-partial-messages",
-		"--session-id", req.SessionID,
-		"--add-dir", req.WorkDir,
-		"--dangerously-skip-permissions",
-		"--disallowedTools", "CronCreate", "CronDelete", "CronList", "ToolSearch", "DeferExecuteTool",
 	}
+
+	if req.Resume {
+		args = append(args, "--resume", req.SessionID)
+	} else {
+		args = append(args, "--session-id", req.SessionID)
+	}
+
+	args = append(args, "--add-dir", req.WorkDir, "--dangerously-skip-permissions",
+		"--disallowedTools", "CronCreate", "CronDelete", "CronList", "ToolSearch", "DeferExecuteTool")
 
 	if req.SystemPrompt != "" {
 		args = append(args, "--system-prompt", req.SystemPrompt)
@@ -27,8 +32,12 @@ func buildCodebuddyStreamArgs(req ChatRequest) []string {
 		args = append(args, "--model", modelName)
 	}
 
-	// Prompt should be the last argument
-	args = append(args, req.Prompt)
+	if req.Resume {
+		// With --resume, prompt is read from stdin
+	} else {
+		// With --session-id, prompt is the last argument
+		args = append(args, req.Prompt)
+	}
 
 	return args
 }
