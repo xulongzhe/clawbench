@@ -474,7 +474,7 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
+    gap: 16px;
     padding: 6px 16px;
     padding-bottom: calc(6px + env(safe-area-inset-bottom, 0));
     background: var(--bg-primary);
