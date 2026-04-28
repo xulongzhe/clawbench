@@ -59,22 +59,48 @@ function updatePosition() {
   if (!props.visible || !props.anchorEl || !popoverRef.value) return
 
   const anchorRect = props.anchorEl.getBoundingClientRect()
+  const vh = window.innerHeight
+  const vw = window.innerWidth
+
+  // Calculate available space above and below the anchor
+  const spaceAbove = anchorRect.top - 8
+  const spaceBelow = vh - anchorRect.bottom - 8
+
+  // Decide placement: prefer above, fall back to below if not enough room
+  let placeAbove = spaceAbove >= 80 // need at least status bar height
+  if (!placeAbove && spaceBelow < 80) {
+    // Neither side has enough room — pick the larger side
+    placeAbove = spaceAbove >= spaceBelow
+  }
+
+  const availableHeight = placeAbove ? spaceAbove : spaceBelow
+
+  // Temporarily remove height constraint to measure natural size
+  popoverRef.value.style.maxHeight = 'none'
   const popoverRect = popoverRef.value.getBoundingClientRect()
+  const naturalHeight = popoverRect.height
+  const naturalWidth = popoverRect.width
 
-  // Default: position above the anchor button
-  let top = anchorRect.top - popoverRect.height - 8
-  let left = anchorRect.left + anchorRect.width / 2 - popoverRect.width / 2
+  // Clamp popover height to available space (leave room for padding)
+  const clampedHeight = Math.min(naturalHeight, availableHeight - 8)
+  popoverRef.value.style.maxHeight = `${Math.max(clampedHeight, 60)}px`
 
-  // If overflows top, position below the anchor
-  if (top < 8) {
+  let top, left
+
+  if (placeAbove) {
+    top = anchorRect.top - Math.min(naturalHeight, clampedHeight) - 8
+  } else {
     top = anchorRect.bottom + 8
   }
 
-  // Clamp horizontal within viewport
-  left = Math.max(8, Math.min(left, window.innerWidth - popoverRect.width - 8))
+  // Center horizontally
+  left = anchorRect.left + anchorRect.width / 2 - naturalWidth / 2
 
-  // Clamp vertical within viewport
-  top = Math.max(8, Math.min(top, window.innerHeight - popoverRect.height - 8))
+  // Clamp horizontal within viewport
+  left = Math.max(8, Math.min(left, vw - naturalWidth - 8))
+
+  // Final vertical clamp
+  top = Math.max(8, Math.min(top, vh - clampedHeight - 8))
 
   positionStyle.value = {
     position: 'fixed',
@@ -86,6 +112,14 @@ function updatePosition() {
 // Update position when visible changes or anchor moves
 watch(() => props.visible, async (val) => {
   if (val) {
+    await nextTick()
+    updatePosition()
+  }
+})
+
+// Re-position when text content changes (summary arriving mid-display)
+watch(() => props.text, async () => {
+  if (props.visible) {
     await nextTick()
     updatePosition()
   }
@@ -127,7 +161,6 @@ onBeforeUnmount(cleanup)
 .tts-popover {
   position: fixed;
   width: min(360px, 90vw);
-  max-height: 320px;
   background: var(--bg-secondary, #fff);
   border: 1px solid var(--border-color, #e5e5e5);
   border-radius: var(--radius-md, 10px);
