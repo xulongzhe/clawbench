@@ -10,6 +10,7 @@
  */
 
 import { ref, onUnmounted } from 'vue'
+import { useToast } from '@/composables/useToast.ts'
 
 const STORAGE_KEY = 'clawbench-auto-speech'
 
@@ -19,6 +20,7 @@ const isGenerating = ref(false)
 const currentAudio = ref<HTMLAudioElement | null>(null)
 const playingText = ref<string>('')
 const playingSummary = ref<string>('')
+const lastError = ref<string>('')
 let abortController: AbortController | null = null
 
 // Load persisted state once at module level
@@ -30,6 +32,8 @@ try {
 }
 
 export function useAutoSpeech() {
+  const toast = useToast()
+
   // --- Persistence ---
   function saveState() {
     try {
@@ -61,12 +65,19 @@ export function useAutoSpeech() {
     playingSummary.value = ''
   }
 
+  // --- Report an error to the user via toast ---
+  function reportError(message: string) {
+    lastError.value = message
+    toast.show(message, { icon: '🔊', duration: 5000 })
+  }
+
   // --- Internal: generate and play TTS for text ---
   async function _speak(text: string) {
     if (!text) return
 
     // Interrupt any currently playing audio and pending request
     stopAudio()
+    lastError.value = ''
 
     // Set up new abort controller for this request
     const controller = new AbortController()
@@ -82,8 +93,21 @@ export function useAutoSpeech() {
         body: JSON.stringify({ text }),
         signal: controller.signal,
       })
-      const data = await resp.json()
-      if (!resp.ok) throw new Error(data.error || 'TTS failed')
+
+      let data: any
+      try {
+        data = await resp.json()
+      } catch {
+        throw new Error(`语音服务响应异常 (HTTP ${resp.status})`)
+      }
+      if (!resp.ok) throw new Error(data.error || `语音生成失败 (HTTP ${resp.status})`)
+
+      if (!data.audioPath) throw new Error('语音服务未返回音频文件')
+
+      // Warn if summarization failed (fell back to full text)
+      if (data.summarizeFailed) {
+        toast.show('摘要生成失败，将朗读原文', { icon: '🔊', duration: 3000 })
+      }
 
       // Store the AI-generated summary for display in TtsPopover
       if (data.summary) {
@@ -101,17 +125,28 @@ export function useAutoSpeech() {
         playingSummary.value = ''
       }
       audio.onerror = () => {
-        console.warn('Auto-speech: audio playback failed')
         currentAudio.value = null
         playingText.value = ''
         playingSummary.value = ''
+        reportError('音频播放失败，请重试')
       }
 
       await audio.play()
     } catch (err: any) {
-      // Ignore AbortError (interrupted by a newer request)
+      // Ignore AbortError (interrupted by a newer request or user stop)
       if (err?.name === 'AbortError') return
-      console.warn('Auto-speech: generation failed:', err)
+
+      // Determine user-friendly error message
+      let message = '语音生成失败，请稍后重试'
+      if (err?.name === 'NotAllowedError') {
+        message = '浏览器禁止自动播放音频，请手动点击朗读按钮'
+      } else if (err?.message) {
+        message = err.message
+      }
+      reportError(message)
+      // Reset state on error
+      playingText.value = ''
+      playingSummary.value = ''
     } finally {
       // Only clear generating state if this is still the active request
       if (abortController === controller) {
@@ -160,6 +195,7 @@ export function useAutoSpeech() {
   return {
     enabled,
     isGenerating,
+    lastError,
     toggle,
     speakMessage,
     speakText,

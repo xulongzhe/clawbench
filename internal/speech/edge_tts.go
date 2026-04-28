@@ -69,7 +69,7 @@ func (p *EdgeTTSProvider) loadSummarizePrompt() string {
 // Summarize condenses text for voice output using mmx text chat.
 // For short text (<200 chars), it strips markdown and returns the text as-is.
 func (p *EdgeTTSProvider) Summarize(ctx context.Context, text string) (string, error) {
-	cleaned := stripMarkdown(text)
+	cleaned := StripMarkdown(text)
 
 	if len([]rune(cleaned)) < shortTextThreshold {
 		return cleaned, nil

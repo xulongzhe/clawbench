@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,8 +42,9 @@ type ttsGenerateRequest struct {
 
 // ttsGenerateResponse is the response body for POST /api/tts/generate.
 type ttsGenerateResponse struct {
-	AudioPath string `json:"audioPath"`
-	Summary   string `json:"summary,omitempty"`
+	AudioPath        string `json:"audioPath"`
+	Summary          string `json:"summary,omitempty"`
+	SummarizeFailed  bool   `json:"summarizeFailed,omitempty"`
 }
 
 // TTSGenerate handles POST /api/tts/generate.
@@ -70,8 +72,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len([]rune(req.Text)) > speech.MaxTextRunes {
-		model.WriteErrorf(w, http.StatusBadRequest, "文本过长，最多支持10000字符")
+	if speech.MaxTextRunes > 0 && len([]rune(req.Text)) > speech.MaxTextRunes {
+		model.WriteErrorf(w, http.StatusBadRequest, fmt.Sprintf("文本过长，最多支持%d字符", speech.MaxTextRunes))
 		return
 	}
 
@@ -108,13 +110,18 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 	defer summarizeCancel()
 
 	summary, err := speechProvider.Summarize(summarizeCtx, req.Text)
+	summarizeFailed := false
 	if err != nil {
 		// Log warning but fall back to original text
 		slog.Warn("tts summarize failed, using original text",
 			slog.String("error", err.Error()),
 		)
 		summary = req.Text
+		summarizeFailed = true
 	}
+
+	// Strip any markdown from the summary before synthesis and display
+	summary = speech.StripMarkdown(summary)
 
 	slog.Info("tts summarize completed",
 		slog.String("cache_key", cacheKey),
@@ -152,5 +159,6 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ttsGenerateResponse{
 		AudioPath: relAudioPath,
 		Summary:   summary,
+		SummarizeFailed: summarizeFailed,
 	})
 }

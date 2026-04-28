@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -29,27 +28,13 @@ const (
 	// shortTextThreshold — texts shorter than this are not summarized.
 	shortTextThreshold = 200
 
-	// MaxTextRunes is the maximum number of runes accepted for TTS input.
-	MaxTextRunes = 10000
-
 	// CacheKeyHexLen is the number of hex characters used for the cache filename.
 	CacheKeyHexLen = 16
 )
 
-// Pre-compiled regexes for stripMarkdown (avoid recompiling per call).
-var (
-	reCodeBlock      = regexp.MustCompile("(?s)```.*?```")
-	reInlineCode     = regexp.MustCompile("`[^`]+`")
-	reBoldAsterisk   = regexp.MustCompile(`\*\*([^*]+)\*\*`)
-	reBoldUnderscore = regexp.MustCompile(`__([^_]+)__`)
-	reItalicAsterisk = regexp.MustCompile(`\*([^*]+)\*`)
-	reItalicUnder    = regexp.MustCompile(`_([^_]+)_`)
-	reHeaders        = regexp.MustCompile(`(?m)^#{1,6}\s+`)
-	reLinks          = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
-	reImages         = regexp.MustCompile(`!\[([^\]]*)\]\([^)]+\)`)
-	reHorizontalRule = regexp.MustCompile(`(?m)^[-*_]{3,}\s*$`)
-	reMultiBlank     = regexp.MustCompile(`\n{3,}`)
-)
+// MaxTextRunes is the maximum number of runes accepted for TTS input.
+// Set to 0 for no hard limit — long texts are handled by the summarization step before synthesis.
+var MaxTextRunes = 0
 
 // MiniMaxProvider implements SpeechProvider using the mmx CLI tool.
 type MiniMaxProvider struct {
@@ -112,7 +97,7 @@ func NewMiniMaxProvider() *MiniMaxProvider {
 // For short text (<200 chars), it strips markdown and returns the text as-is.
 // The caller is responsible for setting a deadline on ctx.
 func (p *MiniMaxProvider) Summarize(ctx context.Context, text string) (string, error) {
-	cleaned := stripMarkdown(text)
+	cleaned := StripMarkdown(text)
 
 	// Short text: skip summarization, return cleaned text directly
 	if len([]rune(cleaned)) < shortTextThreshold {
@@ -204,20 +189,4 @@ func (p *MiniMaxProvider) Synthesize(ctx context.Context, text string, outputPat
 	}
 
 	return nil
-}
-
-// stripMarkdown removes common markdown formatting from text.
-func stripMarkdown(text string) string {
-	text = reCodeBlock.ReplaceAllString(text, "")
-	text = reInlineCode.ReplaceAllString(text, "")
-	text = reBoldAsterisk.ReplaceAllString(text, "$1")
-	text = reBoldUnderscore.ReplaceAllString(text, "$1")
-	text = reItalicAsterisk.ReplaceAllString(text, "$1")
-	text = reItalicUnder.ReplaceAllString(text, "$1")
-	text = reHeaders.ReplaceAllString(text, "")
-	text = reLinks.ReplaceAllString(text, "$1")
-	text = reImages.ReplaceAllString(text, "")
-	text = reHorizontalRule.ReplaceAllString(text, "")
-	text = reMultiBlank.ReplaceAllString(text, "\n\n")
-	return strings.TrimSpace(text)
 }

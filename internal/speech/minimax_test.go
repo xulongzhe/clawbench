@@ -11,11 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// --- stripMarkdown tests ---
+// --- StripMarkdown tests ---
 
 func TestStripMarkdown_CodeBlock(t *testing.T) {
 	input := "Here is some code:\n```go\nfmt.Println(\"hello\")\n```\nAnd more text."
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.NotContains(t, result, "```")
 	assert.NotContains(t, result, "fmt.Println")
 	assert.Contains(t, result, "Here is some code")
@@ -24,7 +24,7 @@ func TestStripMarkdown_CodeBlock(t *testing.T) {
 
 func TestStripMarkdown_InlineCode(t *testing.T) {
 	input := "Use the `fmt.Println` function to print."
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.NotContains(t, result, "`")
 	assert.Contains(t, result, "Use the")
 	assert.Contains(t, result, "function to print")
@@ -32,19 +32,19 @@ func TestStripMarkdown_InlineCode(t *testing.T) {
 
 func TestStripMarkdown_Bold(t *testing.T) {
 	input := "This is **bold** and __also bold__ text."
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.Equal(t, "This is bold and also bold text.", result)
 }
 
 func TestStripMarkdown_Italic(t *testing.T) {
 	input := "This is *italic* and _also italic_ text."
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.Equal(t, "This is italic and also italic text.", result)
 }
 
 func TestStripMarkdown_Headers(t *testing.T) {
 	input := "# Title\n## Subtitle\n### H3\nNormal text"
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.NotContains(t, result, "#")
 	assert.Contains(t, result, "Title")
 	assert.Contains(t, result, "Normal text")
@@ -52,7 +52,7 @@ func TestStripMarkdown_Headers(t *testing.T) {
 
 func TestStripMarkdown_Links(t *testing.T) {
 	input := "Visit [the website](https://example.com) for details."
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.NotContains(t, result, "https://")
 	assert.NotContains(t, result, "(")
 	assert.Contains(t, result, "Visit")
@@ -62,7 +62,7 @@ func TestStripMarkdown_Links(t *testing.T) {
 
 func TestStripMarkdown_Images(t *testing.T) {
 	input := "Here is an image: ![alt text](image.png) and text after."
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.NotContains(t, result, "![]")
 	assert.NotContains(t, result, "image.png")
 	assert.Contains(t, result, "Here is an image")
@@ -71,7 +71,7 @@ func TestStripMarkdown_Images(t *testing.T) {
 
 func TestStripMarkdown_HorizontalRule(t *testing.T) {
 	input := "Above\n---\nBelow"
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.NotContains(t, result, "---")
 	assert.Contains(t, result, "Above")
 	assert.Contains(t, result, "Below")
@@ -79,7 +79,7 @@ func TestStripMarkdown_HorizontalRule(t *testing.T) {
 
 func TestStripMarkdown_MultipleBlankLines(t *testing.T) {
 	input := "A\n\n\n\n\nB"
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.NotContains(t, result, "\n\n\n")
 	assert.Contains(t, result, "A")
 	assert.Contains(t, result, "B")
@@ -87,12 +87,12 @@ func TestStripMarkdown_MultipleBlankLines(t *testing.T) {
 
 func TestStripMarkdown_PlainText(t *testing.T) {
 	input := "Just plain text without any formatting."
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.Equal(t, input, result)
 }
 
 func TestStripMarkdown_EmptyString(t *testing.T) {
-	result := stripMarkdown("")
+	result := StripMarkdown("")
 	assert.Equal(t, "", result)
 }
 
@@ -112,7 +112,7 @@ Then configure the [settings](/config):
 ---
 
 Run with *npm start*.`
-	result := stripMarkdown(input)
+	result := StripMarkdown(input)
 	assert.NotContains(t, result, "#")
 	assert.NotContains(t, result, "```")
 	assert.NotContains(t, result, "`")
@@ -257,6 +257,6 @@ func TestSynthesize_CancelledContext(t *testing.T) {
 // --- Constants ---
 
 func TestConstants(t *testing.T) {
-	assert.Equal(t, 10000, MaxTextRunes)
+	assert.Equal(t, 0, MaxTextRunes)
 	assert.Equal(t, 16, CacheKeyHexLen)
 }

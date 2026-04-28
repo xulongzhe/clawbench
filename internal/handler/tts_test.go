@@ -15,6 +15,7 @@ import (
 	"clawbench/internal/speech"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // mockSpeechProvider is a test double for speech.SpeechProvider.
@@ -123,11 +124,16 @@ func TestTTSGenerate_EmptyText(t *testing.T) {
 // --- TTSGenerate: text too long ---
 
 func TestTTSGenerate_TextTooLong(t *testing.T) {
+	// Temporarily set MaxTextRunes to enforce a limit
+	origMaxTextRunes := speech.MaxTextRunes
+	speech.MaxTextRunes = 100
+	defer func() { speech.MaxTextRunes = origMaxTextRunes }()
+
 	mock := &mockSpeechProvider{}
 	projectDir, teardown := setupTTSTest(t, mock)
 	defer teardown()
 
-	longText := strings.Repeat("x", 10001)
+	longText := strings.Repeat("x", 101)
 	req := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]string{"text": longText})
 	req = withProjectCookie(req, projectDir)
 	w := httptest.NewRecorder()
@@ -186,6 +192,11 @@ func TestTTSGenerate_SummarizeFailure_Fallback(t *testing.T) {
 	assert.True(t, mock.synthesizeCalled)
 	// The text passed to Synthesize should contain the original text
 	assert.Contains(t, mock.lastSummaryText, "摘要失败")
+
+	// Response should indicate summarizeFailed
+	var resp ttsGenerateResponse
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.True(t, resp.SummarizeFailed)
 }
 
 // --- TTSGenerate: synthesize failure returns 500 ---
