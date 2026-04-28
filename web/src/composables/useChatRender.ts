@@ -110,7 +110,11 @@ export function useChatRender(options) {
       if (parsed.blocks && Array.isArray(parsed.blocks)) {
         return {
           blocks: parsed.blocks.map(b => {
-            if (b.type === 'tool_use' && b.done === undefined) b.done = true
+            if (b.type === 'tool_use') {
+              // DB-loaded blocks from finished sessions: if done is missing or false,
+              // the session ended without receiving the tool result — mark as incomplete
+              if (b.done === undefined || b.done === false) b.done = true
+            }
             return b
           }),
           metadata: parsed.metadata || null,

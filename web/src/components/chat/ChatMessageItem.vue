@@ -59,16 +59,24 @@
           </div>
           <!-- Tool use block -->
           <template v-else-if="block.type === 'tool_use'">
-            <div class="chat-tool-call" :class="{ done: block.done }" :data-category="getToolDisplay(block).category" @click.stop="$emit('toggle-tool', `${index}-${bi}`)">
+            <div class="chat-tool-call" :class="{ done: block.done, incomplete: block.done && !hasToolResult(block) }" :data-category="getToolDisplay(block).category" @click.stop="$emit('toggle-tool', `${index}-${bi}`)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12" class="tool-icon">
                 <path :d="getToolDisplay(block).icon"/>
               </svg>
               <span class="tool-name">{{ block.name }}</span>
               <span v-if="toolCallSummary(block)" class="tool-summary">{{ toolCallSummary(block) }}</span>
-              <span v-if="!(block.done && block.input && Object.keys(block.input).length)" class="tool-spinner"></span>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" width="14" height="14" class="tool-check">
+              <!-- Loading: spinner -->
+              <span v-if="!block.done" class="tool-spinner"></span>
+              <!-- Done with result: green check -->
+              <svg v-else-if="hasToolResult(block)" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" width="14" height="14" class="tool-check">
                 <circle cx="12" cy="12" r="10"/>
                 <polyline points="8 12 11 15 16 9"/>
+              </svg>
+              <!-- Done without result: yellow warning -->
+              <svg v-else viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" width="14" height="14" class="tool-warn">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
             </div>
             <pre v-if="block.input && Object.keys(block.input).length && expandedTools[`${index}-${bi}`]" class="tool-detail" @click.stop v-html="formatToolInput(block.input)"></pre>
@@ -215,6 +223,11 @@ function getToolDisplay(block) {
   const name = (block.name || '').toLowerCase()
   const entry = Object.entries(TOOL_DISPLAY).find(([k]) => k.toLowerCase() === name)
   return entry ? entry[1] : FALLBACK_TOOL_DISPLAY
+}
+
+// Check if a tool_use block has meaningful result data
+function hasToolResult(block) {
+  return block.input && typeof block.input === 'object' && Object.keys(block.input).length > 0
 }
 
 const props = defineProps({
@@ -704,6 +717,16 @@ onUnmounted(() => {
 .chat-tool-call .tool-check {
   flex-shrink: 0;
   margin-left: auto;
+}
+
+.chat-tool-call .tool-warn {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Incomplete tool call: session ended before result arrived */
+.chat-tool-call.incomplete {
+  --tool-accent: #f59e0b;
 }
 
 .tool-detail {
