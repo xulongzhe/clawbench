@@ -30,3 +30,4 @@ public/
 .worktrees/
 dist/
 server
+.venv/

@@ -130,32 +130,67 @@ func main() {
 	model.ChatCollapsedHeight = cfg.Chat.CollapsedHeight
 
 	// Initialize TTS provider from config with defaults
-	ttsProvider := speech.NewMiniMaxProvider()
-	if cfg.TTS.SummarizeModel != "" {
-		ttsProvider.SummarizeModel = cfg.TTS.SummarizeModel
+	var ttsProvider speech.SpeechProvider
+	engine := cfg.TTS.Engine
+	if engine == "" {
+		engine = "minimax"
 	}
-	if cfg.TTS.TTSModel != "" {
-		ttsProvider.TTSModel = cfg.TTS.TTSModel
-	}
-	if cfg.TTS.Voice != "" {
-		ttsProvider.TTSVoice = cfg.TTS.Voice
-	}
-	if cfg.TTS.Language != "" {
-		ttsProvider.TTSLanguage = cfg.TTS.Language
-	}
-	if cfg.TTS.Speed > 0 {
-		ttsProvider.TTSSpeed = cfg.TTS.Speed
-	}
-	if cfg.TTS.Format != "" {
-		ttsProvider.TTSFormat = cfg.TTS.Format
+
+	switch engine {
+	case "edge":
+		p := speech.NewEdgeTTSProvider()
+		if cfg.TTS.SummarizeModel != "" {
+			p.SummarizeModel = cfg.TTS.SummarizeModel
+		}
+		if cfg.TTS.Voice != "" {
+			p.Voice = cfg.TTS.Voice
+		}
+		if cfg.TTS.Speed > 0 {
+			// Convert speed multiplier (e.g. 1.5) to edge-tts rate percentage (e.g. "+50%")
+			ratePercent := int((cfg.TTS.Speed - 1.0) * 100)
+			if ratePercent > 0 {
+				p.Rate = fmt.Sprintf("+%d%%", ratePercent)
+			} else if ratePercent < 0 {
+				p.Rate = fmt.Sprintf("%d%%", ratePercent)
+			}
+		}
+		ttsProvider = p
+		slog.Info("tts provider configured",
+			slog.String("engine", "edge"),
+			slog.String("summarize_model", p.SummarizeModel),
+			slog.String("voice", p.Voice),
+			slog.String("rate", p.Rate),
+		)
+	default:
+		p := speech.NewMiniMaxProvider()
+		if cfg.TTS.SummarizeModel != "" {
+			p.SummarizeModel = cfg.TTS.SummarizeModel
+		}
+		if cfg.TTS.TTSModel != "" {
+			p.TTSModel = cfg.TTS.TTSModel
+		}
+		if cfg.TTS.Voice != "" {
+			p.TTSVoice = cfg.TTS.Voice
+		}
+		if cfg.TTS.Language != "" {
+			p.TTSLanguage = cfg.TTS.Language
+		}
+		if cfg.TTS.Speed > 0 {
+			p.TTSSpeed = cfg.TTS.Speed
+		}
+		if cfg.TTS.Format != "" {
+			p.TTSFormat = cfg.TTS.Format
+		}
+		ttsProvider = p
+		slog.Info("tts provider configured",
+			slog.String("engine", "minimax"),
+			slog.String("summarize_model", p.SummarizeModel),
+			slog.String("tts_model", p.TTSModel),
+			slog.String("voice", p.TTSVoice),
+			slog.Float64("speed", p.TTSSpeed),
+		)
 	}
 	handler.SetSpeechProvider(ttsProvider)
-	slog.Info("tts provider configured",
-		slog.String("summarize_model", ttsProvider.SummarizeModel),
-		slog.String("tts_model", ttsProvider.TTSModel),
-		slog.String("voice", ttsProvider.TTSVoice),
-		slog.Float64("speed", ttsProvider.TTSSpeed),
-	)
 
 	if cfg.LogMaxDays <= 0 {
 		cfg.LogMaxDays = 7

@@ -28,6 +28,7 @@ type Config struct {
 		CollapsedHeight int `yaml:"collapsed_height"` // Collapsed message height in pixels (default: 150)
 	} `yaml:"chat"`
 	TTS struct {
+		Engine         string  `yaml:"engine"`          // TTS engine: "minimax" (default) or "edge"
 		SummarizeModel string  `yaml:"summarize_model"` // LLM model for summarization (default: "MiniMax-Text-02-HS")
 		TTSModel       string  `yaml:"tts_model"`       // TTS model for speech synthesis (default: "Speech-2.8-Turbo")
 		Voice          string  `yaml:"voice"`           // Voice ID for TTS (default: "female-chengshu")

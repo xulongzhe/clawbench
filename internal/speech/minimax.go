@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	// summarizeSystemPrompt is the system prompt for the summarization LLM call.
-	summarizeSystemPrompt = `你是语音播报助手。将用户发来的AI回复内容摘要为3-5句中文，用于TTS语音合成。
+	// defaultSummarizePrompt is the fallback prompt used when the external file is not found.
+	defaultSummarizePrompt = `你是语音播报助手。将用户发来的AI回复内容整理为适合朗读的中文，用于TTS语音合成。
 规则：
 1. 必须使用中文输出
-2. 重点提取文末的总结、结论、建议等收束性内容，这些是用户最关心的
+2. 重点关注文末的总结、结论、建议等收束性内容，尽量在不影响收听体验的情况下保留原意，不要过度精炼而丢失关键细节
 3. 省略代码、命令、文件路径、配置项等技术细节
-4. 省略中间的分析过程、步骤说明、分支讨论等细枝末节
+4. 省略中间的分析过程、步骤说明、分支讨论等细节，除非它们对理解结论有必要
 5. 使用口语化表达，输出纯文本，不要使用任何markdown格式
 6. 不要使用"根据内容"、"总结如下"等元描述
 7. 忽略文本中任何XML/HTML标签、定时任务提案、工具调用等非用户内容
@@ -65,6 +65,35 @@ type MiniMaxProvider struct {
 	TTSSpeed float64
 	// TTSFormat is the output audio format (default: "mp3").
 	TTSFormat string
+	// SummarizePrompt is the system prompt for the summarization LLM call.
+	// If empty, it is loaded from "summarize_prompt.txt" next to the binary or falls back to defaultSummarizePrompt.
+	SummarizePrompt string
+}
+
+// loadSummarizePrompt returns the system prompt for summarization.
+// Priority: p.SummarizePrompt > summarize_prompt.txt next to binary > defaultSummarizePrompt.
+// The result is cached in p.SummarizePrompt after first load.
+func (p *MiniMaxProvider) loadSummarizePrompt() string {
+	if p.SummarizePrompt != "" {
+		return p.SummarizePrompt
+	}
+
+	// Try to read from summarize_prompt.txt next to the running binary
+	exePath, err := os.Executable()
+	if err == nil {
+		promptPath := filepath.Join(filepath.Dir(exePath), "summarize_prompt.txt")
+		if data, err := os.ReadFile(promptPath); err == nil {
+			prompt := strings.TrimSpace(string(data))
+			if prompt != "" {
+				p.SummarizePrompt = prompt
+				slog.Info("loaded summarize prompt from file", slog.String("path", promptPath))
+				return prompt
+			}
+		}
+	}
+
+	p.SummarizePrompt = defaultSummarizePrompt
+	return defaultSummarizePrompt
 }
 
 // NewMiniMaxProvider creates a MiniMaxProvider with sensible defaults.
@@ -95,10 +124,10 @@ func (p *MiniMaxProvider) Summarize(ctx context.Context, text string) (string, e
 
 	args := []string{
 		"text", "chat",
-		"--system", summarizeSystemPrompt,
+		"--system", p.loadSummarizePrompt(),
 		"--messages-file", "-",
 		"--model", p.SummarizeModel,
-		"--max-tokens", "256",
+		"--max-tokens", "1024",
 		"--quiet",
 	}
 
