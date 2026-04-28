@@ -1,4 +1,5 @@
 <template>
+  <Teleport to="body">
   <header class="header">
     <img class="header-logo" src="/logo.png" alt="ClawBench">
 
@@ -65,6 +66,7 @@
       </svg>
     </button>
   </header>
+  </Teleport>
 </template>
 
 <script setup>
