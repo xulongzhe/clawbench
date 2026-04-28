@@ -1,5 +1,20 @@
 <template>
   <div class="chat-messages" id="aiChatMessages" ref="messagesRef" @click="handleChatClick" @scroll="handleScroll">
+    <!-- Session switch indicator -->
+    <Transition name="session-indicator">
+      <div v-if="indicatorText" class="session-switch-indicator" :class="indicatorDirection">
+        <div class="session-indicator-arrow">
+          <svg v-if="indicatorDirection === 'left'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </div>
+        <span class="session-indicator-text">{{ indicatorText }}</span>
+      </div>
+    </Transition>
+
     <!-- Loading indicator for lazy load -->
     <div v-if="loadingMore" class="chat-load-more">
       <span class="chat-load-spinner"></span>
@@ -57,6 +72,8 @@ const props = defineProps({
   renderedContents: Array,
   hasMore: Boolean,
   loadingMore: Boolean,
+  indicatorText: String,
+  indicatorDirection: String,
 })
 
 const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'file-open', 'load-more'])
@@ -321,5 +338,114 @@ defineExpose({
 
 @keyframes tool-spin {
   to { transform: rotate(360deg); }
+}
+
+/* Session switch indicator */
+.session-switch-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: 24px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  position: sticky;
+  top: 8px;
+  z-index: 10;
+  margin: 0 auto 12px;
+  max-width: 260px;
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-md);
+}
+
+.session-indicator-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: var(--accent-color);
+  color: #fff;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.session-switch-indicator.left .session-indicator-arrow {
+  animation: arrow-bounce-left 0.4s ease-out;
+}
+
+.session-switch-indicator.right .session-indicator-arrow {
+  animation: arrow-bounce-right 0.4s ease-out;
+}
+
+.session-indicator-text {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+@keyframes arrow-bounce-left {
+  0% { transform: translateX(-8px); opacity: 0; }
+  60% { transform: translateX(4px); }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes arrow-bounce-right {
+  0% { transform: translateX(8px); opacity: 0; }
+  60% { transform: translateX(-4px); }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+.session-switch-indicator.left {
+  animation: indicator-slide-left 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.session-switch-indicator.right {
+  animation: indicator-slide-right 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes indicator-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(30px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes indicator-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-30px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.session-indicator-enter-active {
+  transition: opacity 0.15s ease-out;
+}
+
+.session-indicator-leave-active {
+  transition: opacity 0.2s ease-in, transform 0.2s ease-in;
+}
+
+.session-indicator-enter-from {
+  opacity: 0;
+}
+
+.session-indicator-leave-to {
+  opacity: 0;
+  transform: scale(0.95);
 }
 </style>

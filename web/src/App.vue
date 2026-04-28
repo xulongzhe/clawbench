@@ -120,7 +120,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
-          <span v-if="chatUnread" class="dock-badge"></span>
+          <span v-if="store.state.chatUnread" class="dock-badge"></span>
         </button>
         <button class="dock-btn" :class="{ active: fileManagerOpen }" @click.stop="openDrawer('fileManager')" title="文件管理器">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -191,7 +191,6 @@ const markdownViewMode = ref('rendered')
 // Chat
 const chatOpen = ref(false)
 const initialChatTab = ref(null)
-const chatUnread = ref(false)
 
 // Global toast
 const toast = useToast()
@@ -225,7 +224,7 @@ function openDrawer(name, tab = null) {
     return
   }
   // 清除聊天未读角标
-  if (name === 'chat') chatUnread.value = false
+  if (name === 'chat') store.state.chatUnread = false
   // 关闭其他抽屉
   Object.entries(drawerStates).forEach(([key, ref]) => {
     if (key !== name && ref.value) {
@@ -437,7 +436,7 @@ onMounted(async () => {
         if (sr.ok) {
             const sd = await sr.json()
             if (sd.sessions?.some(s => s.unreadCount > 0)) {
-                chatUnread.value = true
+                store.state.chatUnread = true
             }
         }
     } catch (_) {}

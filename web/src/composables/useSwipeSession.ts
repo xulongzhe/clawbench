@@ -1,5 +1,4 @@
-import { type Ref } from 'vue'
-import { useToast } from '@/composables/useToast.ts'
+import { ref, type Ref } from 'vue'
 
 export interface UseSwipeSessionOptions {
   currentSessionId: Ref<string>
@@ -8,12 +7,16 @@ export interface UseSwipeSessionOptions {
 
 export function useSwipeSession(options: UseSwipeSessionOptions) {
   const { currentSessionId, switchSession } = options
-  const toast = useToast()
 
   // Cached session list
   let sessionCache: { id: string; title: string }[] = []
   let sessionCacheTime = 0
   const CACHE_TTL = 3000 // 3 seconds
+
+  // Session switch indicator state
+  const indicatorText = ref('')
+  const indicatorDirection = ref<'left' | 'right' | null>(null)
+  let indicatorTimer: ReturnType<typeof setTimeout> | null = null
 
   async function fetchSessions() {
     const now = Date.now()
@@ -35,6 +38,16 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
     }
   }
 
+  function showIndicator(title: string, direction: 'left' | 'right') {
+    if (indicatorTimer) clearTimeout(indicatorTimer)
+    indicatorText.value = title
+    indicatorDirection.value = direction
+    indicatorTimer = setTimeout(() => {
+      indicatorText.value = ''
+      indicatorDirection.value = null
+    }, 1500)
+  }
+
   async function swipeToNext() {
     const sessions = await fetchSessions()
     if (sessions.length <= 1) return
@@ -44,7 +57,7 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
     const nextIdx = idx > 0 ? idx - 1 : sessions.length - 1
     if (nextIdx === idx) return
     await switchSession(sessions[nextIdx].id)
-    toast.show(sessions[nextIdx].title, { icon: '👉', type: 'info', duration: 1500 })
+    showIndicator(sessions[nextIdx].title, 'left')
   }
 
   async function swipeToPrev() {
@@ -56,7 +69,7 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
     const prevIdx = idx < sessions.length - 1 ? idx + 1 : 0
     if (prevIdx === idx) return
     await switchSession(sessions[prevIdx].id)
-    toast.show(sessions[prevIdx].title, { icon: '👈', type: 'info', duration: 1500 })
+    showIndicator(sessions[prevIdx].title, 'right')
   }
 
   // Touch state
@@ -101,5 +114,7 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
     swipeToPrev,
     onTouchStart,
     onTouchEnd,
+    indicatorText,
+    indicatorDirection,
   }
 }

@@ -29,6 +29,8 @@
       :renderedContents="render.renderedContents.value"
       :hasMore="session.hasMore.value"
       :loadingMore="session.loadingMore.value"
+      :indicatorText="swipeSession.indicatorText.value"
+      :indicatorDirection="swipeSession.indicatorDirection.value"
       @touchstart="swipeSession.onTouchStart"
       @touchend="swipeSession.onTouchEnd"
       @toggle-tool="render.toggleToolDetail"

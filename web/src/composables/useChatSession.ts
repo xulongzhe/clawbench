@@ -338,6 +338,12 @@ export function useChatSession(options: UseChatSessionOptions) {
         const sessions = data.sessions || []
         const newRunning = new Set(sessions.filter(s => s.running).map(s => s.id))
 
+        // Check for unread messages in other sessions
+        const hasUnreadOther = sessions.some(s => s.unreadCount > 0 && s.id !== currentSessionId.value)
+        if (hasUnreadOther) {
+          store.state.chatUnread = true
+        }
+
         // Check for completed sessions
         for (const sessionId of runningSessions.value) {
           if (!newRunning.has(sessionId)) {

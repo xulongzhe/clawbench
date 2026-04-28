@@ -21,7 +21,7 @@ defineProps({
 <style>
 .toast {
     position: fixed;
-    bottom: 80px;
+    top: 60px;
     left: 50%;
     transform: translateX(-50%);
     background: var(--accent-color, #4a90d9);
@@ -37,7 +37,8 @@ defineProps({
     cursor: pointer;
     z-index: 9999;
     white-space: normal;
-    min-width: 80vw;
+    width: fit-content;
+    min-width: 200px;
     max-width: 95vw;
     text-align: left;
     line-height: 1.4;
@@ -47,13 +48,11 @@ defineProps({
 }
 
 .toast-error {
-    background: #e74c3c;
-    border: 2px solid #c0392b;
+    background: rgba(220, 38, 38, 0.9);
 }
 
 [data-theme="dark"] .toast-error {
-    background: #c0392b;
-    border-color: #e74c3c;
+    background: rgba(185, 28, 28, 0.9);
 }
 
 .toast-success {
@@ -99,6 +98,6 @@ defineProps({
 .toast-enter-from,
 .toast-leave-to {
     opacity: 0;
-    transform: translateX(-50%) translateY(12px);
+    transform: translateX(-50%) translateY(-12px);
 }
 </style>

@@ -38,6 +38,9 @@ interface AppState {
     chatPageSize: number
     chatCollapsedHeight: number
 
+    // Chat unread badge
+    chatUnread: boolean
+
     // File browser
     currentDir: string
     dirEntries: DirEntry[]
@@ -70,6 +73,7 @@ const state = reactive<AppState>({
     chatInitialMessages: 20,
     chatPageSize: 20,
     chatCollapsedHeight: 150,
+    chatUnread: false,
 
     // File browser
     currentDir: '',
