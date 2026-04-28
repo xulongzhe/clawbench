@@ -146,21 +146,30 @@
         <span v-if="msg.createdAt" class="chat-meta-sep">{{ formatMessageTime(msg.createdAt) }}</span>
       </span>
       <div class="chat-meta-actions">
-        <button v-if="!msg.streaming" ref="speakBtnRef" class="chat-info-btn chat-speak-btn" :class="{ active: autoSpeech.isActive(msgText), loading: autoSpeech.isGeneratingText(msgText) }" @click.stop="handleSpeak" :title="autoSpeech.isGeneratingText(msgText) ? '总结中...' : autoSpeech.isPlayingAudio(msgText) ? '停止朗读' : '朗读'">
-          <!-- Loading state: spinning speaker -->
-          <svg v-if="autoSpeech.isGeneratingText(msgText)" class="speak-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2"/>
-          </svg>
-          <!-- Playing state: pause icon -->
-          <svg v-else-if="autoSpeech.isPlayingAudio(msgText)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
-          </svg>
-          <!-- Default state: speaker icon -->
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
-          </svg>
+        <button v-if="!msg.streaming" ref="speakBtnRef" class="chat-info-btn chat-speak-btn" :class="{ active: autoSpeech.isActive(msgText), loading: autoSpeech.isGeneratingText(msgText) }" @click.stop="handleSpeak">
+          <!-- Generating state -->
+          <template v-if="autoSpeech.isGeneratingText(msgText)">
+            <svg class="speak-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2"/>
+            </svg>
+            <span>总结中</span>
+          </template>
+          <!-- Playing state -->
+          <template v-else-if="autoSpeech.isPlayingAudio(msgText)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>
+            </svg>
+            <span>朗读中</span>
+          </template>
+          <!-- Default state -->
+          <template v-else>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+            </svg>
+            <span>朗读</span>
+          </template>
         </button>
         <button v-if="msg.metadata" class="chat-info-btn" @click="$emit('show-metadata', msg)" title="查看详情">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
@@ -186,14 +195,7 @@
     </div>
 
     <!-- TTS Popover: shows AI-summarized text being read aloud -->
-    <TtsPopover
-      :visible="showTtsPopover"
-      :text="autoSpeech.getSummary(msgText) || msgText"
-      :anchor-el="speakBtnRef"
-      :is-playing="autoSpeech.isPlayingAudio(msgText)"
-      :is-generating="autoSpeech.isGeneratingText(msgText)"
-      @close="showTtsPopover = false"
-    />
+    <!-- TtsPopover removed - status now shown in meta bar -->
   </div>
 </template>
 
@@ -202,7 +204,6 @@ import { ref, inject, computed, watch, nextTick, onMounted, onUnmounted } from '
 import { baseName } from '@/utils/helpers.ts'
 import { store } from '@/stores/app.ts'
 import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
-import TtsPopover from './TtsPopover.vue'
 
 // Tool display configuration: icon SVG paths + category for color
 const TOOL_DISPLAY = {
@@ -253,7 +254,6 @@ const wrapperRef = ref(null)
 const overflows = ref(false)
 const manuallyExpanded = ref(false)
 const speakBtnRef = ref(null)
-const showTtsPopover = ref(false)
 
 // Extract text content from message blocks for TTS
 const msgText = computed(() => {
@@ -262,14 +262,12 @@ const msgText = computed(() => {
   return blocks.filter(b => b.type === 'text').map(b => b.text || '').join('\n').trim()
 })
 
-// Handle speak button click: play or stop, and toggle popover
+// Handle speak button click: play or stop (no popover)
 function handleSpeak() {
   if (autoSpeech.isActive(msgText.value)) {
     autoSpeech.stopAudio()
-    showTtsPopover.value = false
   } else if (msgText.value) {
     autoSpeech.speakText(msgText.value)
-    showTtsPopover.value = true
   }
 }
 
@@ -944,9 +942,9 @@ onUnmounted(() => {
 /* Chat Info Button */
 .chat-info-btn {
     flex-shrink: 0;
-    width: 22px;
+    min-width: 22px;
     height: 22px;
-    padding: 0;
+    padding: 0 6px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
@@ -955,8 +953,10 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 4px;
     opacity: 0.5;
     transition: opacity 0.2s, background 0.2s;
+    font-size: 11px;
 }
 
 .chat-info-btn:hover {
@@ -967,6 +967,26 @@ onUnmounted(() => {
 .chat-info-btn svg {
     width: 14px;
     height: 14px;
+    flex-shrink: 0;
+}
+
+.chat-info-btn span {
+    white-space: nowrap;
+}
+
+/* Speak button specific styles */
+.chat-speak-btn {
+    min-width: auto;
+    padding: 0 8px;
+}
+
+.chat-speak-btn.active {
+    opacity: 1;
+    color: var(--accent-color, #0066cc);
+}
+
+.chat-speak-btn.active:hover {
+    background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
 }
 
 /* Meta bar action buttons container */
@@ -984,6 +1004,11 @@ onUnmounted(() => {
 
 .chat-speak-btn.active:hover {
     background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
+}
+
+/* Speak button loading spinner animation */
+.chat-speak-btn.loading .speak-spinner {
+    animation: speak-spin 1s linear infinite;
 }
 
 /* Speak button loading spinner animation */

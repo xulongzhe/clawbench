@@ -131,10 +131,12 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Cache the summary alongside the audio for future cache hits
 	summaryPath := absAudioPath + ".summary.txt"
-	if writeErr := os.WriteFile(summaryPath, []byte(summary), 0644); writeErr != nil {
-		slog.Warn("tts failed to cache summary",
-			slog.String("error", writeErr.Error()),
-		)
+	if err := os.MkdirAll(filepath.Dir(summaryPath), 0755); err == nil {
+		if writeErr := os.WriteFile(summaryPath, []byte(summary), 0644); writeErr != nil {
+			slog.Warn("tts failed to cache summary",
+				slog.String("error", writeErr.Error()),
+			)
+		}
 	}
 
 	// Step 2: Synthesize speech from the summary (handler controls deadline)
