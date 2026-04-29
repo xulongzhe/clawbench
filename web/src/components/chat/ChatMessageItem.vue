@@ -231,9 +231,18 @@ function getToolDisplay(block) {
   return entry ? entry[1] : FALLBACK_TOOL_DISPLAY
 }
 
-// Check if a tool_use block has meaningful result data
+// Check if a tool_use block has completed successfully.
+// A tool call is considered complete when done=true AND we have at least
+// a name (which is always present) — input can legitimately be empty {}.
+// Only show warning if done=true but the block is clearly incomplete
+// (no name, or input is null/undefined suggesting data was never received).
 function hasToolResult(block) {
-  return block.input && typeof block.input === 'object' && Object.keys(block.input).length > 0
+  if (!block.done) return false
+  // If the block has no name, it's incomplete data
+  if (!block.name) return false
+  // If input is null/undefined (not just empty {}), data was never received
+  if (block.input === null || block.input === undefined) return false
+  return true
 }
 
 const props = defineProps({

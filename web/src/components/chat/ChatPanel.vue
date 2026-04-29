@@ -86,8 +86,8 @@
     :runningSessionIds="session.runningSessions.value"
     @close="session.sessionDrawerOpen.value = false"
     @select="session.switchSession"
-    @create="session.createSession"
-    @delete="session.deleteSession"
+    @create="handleCreateSession"
+    @delete="handleDeleteSessionById"
   />
 
   <!-- Task Drawer -->
@@ -242,14 +242,38 @@ watch(() => props.open, (val) => {
 
 const { pendingFiles, attachedFiles, handleFileSelect, handleFileDrop, removeFile, addAttachedFile, removeAttachedFile, cleanupPreviewUrls, clearPendingFiles } = useFileUpload({ inputDisabled })
 
-async function handleCreateSession() {
-  if (inputDisabled.value) return
-  await session.createSession()
+// Clean up streaming state when user wants to interact with session management
+// (new session, delete session) while AI is still generating
+function cleanupActiveStream() {
+  if (!loading.value) return
+  stream.disconnectStream()
+  stream.stopPolling()
+  const streamingMsg = messages.value.find(m => m.role === 'assistant' && m.streaming)
+  if (streamingMsg) {
+    delete streamingMsg.streaming
+    if (streamingMsg.blocks) {
+      for (const block of streamingMsg.blocks) {
+        if (block.type === 'tool_use' && !block.done) block.done = true
+      }
+    }
+  }
+  render.updateRenderedContents(true)
+}
+
+async function handleCreateSession(agentId) {
+  cleanupActiveStream()
+  await session.createSession(agentId)
 }
 
 async function handleDeleteSession() {
-  if (inputDisabled.value || !session.currentSessionId.value) return
+  if (!session.currentSessionId.value) return
+  cleanupActiveStream()
   await session.deleteSession(session.currentSessionId.value, session.currentBackend.value)
+}
+
+async function handleDeleteSessionById(sessionId, backend) {
+  cleanupActiveStream()
+  await session.deleteSession(sessionId, backend)
 }
 
 async function sendMessage(text) {
