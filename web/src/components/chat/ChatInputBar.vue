@@ -2,24 +2,26 @@
   <div class="chat-input-wrapper">
     <!-- Top action bar (above input box) -->
     <div class="chat-top-actions">
-      <button class="chat-action-btn" @click="$emit('open-session-tab', 'sessions')" title="切换会话">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <rect x="3" y="6" width="18" height="12" rx="2"/><line x1="12" y1="2" x2="12" y2="6"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><line x1="1" y1="10" x2="3" y2="10"/><line x1="1" y1="14" x2="3" y2="14"/><line x1="21" y1="10" x2="23" y2="10"/><line x1="21" y1="14" x2="23" y2="14"/>
-        </svg>
-        <span class="chat-action-label">切换</span>
-      </button>
-      <button class="chat-action-btn" @click="$emit('create-session')" title="新建会话">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <path d="M12 5v14M5 12h14"/>
-        </svg>
-        <span class="chat-action-label">新建</span>
-      </button>
-      <button class="chat-action-btn chat-action-btn-danger" :class="{ disabled: !currentSessionId }" @click="handleDelete" :title="currentSessionId ? '删除当前会话' : '无会话可删除'">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-        </svg>
-        <span class="chat-action-label">删除</span>
-      </button>
+      <div class="chat-action-group">
+        <button class="chat-action-btn" @click="$emit('open-session-tab', 'sessions')" title="切换会话">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <rect x="3" y="6" width="18" height="12" rx="2"/><line x1="12" y1="2" x2="12" y2="6"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><line x1="1" y1="10" x2="3" y2="10"/><line x1="1" y1="14" x2="3" y2="14"/><line x1="21" y1="10" x2="23" y2="10"/><line x1="21" y1="14" x2="23" y2="14"/>
+          </svg>
+          <span class="chat-action-label">切换</span>
+        </button>
+        <button class="chat-action-btn" @click="$emit('create-session')" title="新建会话">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span class="chat-action-label">新建</span>
+        </button>
+        <button class="chat-action-btn chat-action-btn-danger" :class="{ disabled: !currentSessionId }" @click="handleDelete" :title="currentSessionId ? '删除当前会话' : '无会话可删除'">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          <span class="chat-action-label">删除</span>
+        </button>
+      </div>
       <button class="chat-action-btn" @click="$emit('open-session-tab', 'tasks')" title="定时任务">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -357,8 +359,22 @@ defineExpose({
 .chat-top-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   padding: 0 4px 4px;
+}
+
+/* Session button group */
+.chat-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  background: var(--bg-tertiary, #f0f0f0);
+  border-radius: 6px;
+  padding: 1px;
+}
+
+.chat-action-group .chat-action-btn {
+  border-radius: 5px;
 }
 
 .chat-action-btn {
