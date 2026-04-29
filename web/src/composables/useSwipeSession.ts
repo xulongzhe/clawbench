@@ -79,15 +79,35 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
   let touchStartX = 0
   let touchStartY = 0
   let touchStartTime = 0
+  let touchInsideScrollable = false
+
+  /** Walk from target up to boundary (exclusive). Return true if any ancestor
+   *  has horizontal overflow with actual scrollable content. */
+  function isInsideHorizontalScroll(target: EventTarget | null, boundary: EventTarget | null): boolean {
+    if (!(target instanceof Element) || !(boundary instanceof Element)) return false
+    let el: Element | null = target
+    while (el && el !== boundary) {
+      const style = getComputedStyle(el)
+      const overflowX = style.overflowX
+      if ((overflowX === 'auto' || overflowX === 'scroll') && el.scrollWidth > el.clientWidth) {
+        return true
+      }
+      el = el.parentElement
+    }
+    return false
+  }
 
   function onTouchStart(e: TouchEvent) {
     const touch = e.touches[0]
     touchStartX = touch.clientX
     touchStartY = touch.clientY
     touchStartTime = Date.now()
+    touchInsideScrollable = isInsideHorizontalScroll(e.target, e.currentTarget)
   }
 
   function onTouchEnd(e: TouchEvent) {
+    if (touchInsideScrollable) return
+
     const touch = e.changedTouches[0]
     const deltaX = touch.clientX - touchStartX
     const deltaY = touch.clientY - touchStartY
