@@ -27,6 +27,14 @@
             <circle
               :cx="collapsed ? 10 : node.cx"
               :cy="node.cy"
+              r="16"
+              fill="transparent"
+              class="git-graph-hitarea"
+              @click.stop="onNodeClick(node, $event)"
+            />
+            <circle
+              :cx="collapsed ? 10 : node.cx"
+              :cy="node.cy"
               r="7"
               fill="none"
               stroke="#f59e0b"
@@ -45,13 +53,20 @@
             <circle
               :cx="collapsed ? 10 : node.cx"
               :cy="node.cy"
+              r="16"
+              fill="transparent"
+              class="git-graph-hitarea"
+              @click.stop="onNodeClick(node, $event)"
+            />
+            <circle
+              :cx="collapsed ? 10 : node.cx"
+              :cy="node.cy"
               r="6"
               fill="none"
               :stroke="node.color"
               stroke-width="1.5"
               opacity="0.4"
               class="git-graph-ref-node"
-              @click.stop="onNodeClick(node, $event)"
             />
             <circle
               :cx="collapsed ? 10 : node.cx"
@@ -61,21 +76,28 @@
               stroke="var(--bg-primary, #fff)"
               stroke-width="1.5"
               class="git-graph-ref-node"
-              @click.stop="onNodeClick(node, $event)"
             />
           </template>
           <!-- Normal node: simple circle -->
-          <circle
-            v-else
-            :cx="collapsed ? 10 : node.cx"
-            :cy="node.cy"
-            r="4"
-            :fill="node.color"
-            stroke="var(--bg-primary, #fff)"
-            stroke-width="1.5"
-            class="git-graph-node"
-            @click.stop="onNodeClick(node, $event)"
-          />
+          <template v-else>
+            <circle
+              :cx="collapsed ? 10 : node.cx"
+              :cy="node.cy"
+              r="16"
+              fill="transparent"
+              class="git-graph-hitarea"
+              @click.stop="onNodeClick(node, $event)"
+            />
+            <circle
+              :cx="collapsed ? 10 : node.cx"
+              :cy="node.cy"
+              r="4"
+              :fill="node.color"
+              stroke="var(--bg-primary, #fff)"
+              stroke-width="1.5"
+              class="git-graph-node"
+            />
+          </template>
         </g>
       </g>
     </svg>
@@ -197,18 +219,18 @@ const tooltipStyle = computed(() => {
   if (!tooltip.value) return {}
   let x = tooltip.value.x
   let y = tooltip.value.y
-  // Keep tooltip within viewport
   const vw = window.innerWidth
   const vh = window.innerHeight
-  // Estimate tooltip width (rough: 80px per item)
-  const estimatedWidth = Math.max(80, tooltip.value.items.length * 80)
-  const estimatedHeight = 30 + tooltip.value.items.length * 18
+  // Use measured dimensions if available, fall back to estimates
+  const el = tooltipEl.value
+  const tw = el ? el.offsetWidth : Math.max(80, tooltip.value.items.length * 80)
+  const th = el ? el.offsetHeight : 30 + tooltip.value.items.length * 18
   // Clamp right edge
-  if (x + estimatedWidth > vw - 8) x = vw - estimatedWidth - 8
+  if (x + tw > vw - 8) x = vw - tw - 8
   // Clamp left edge
   if (x < 8) x = 8
   // Clamp bottom edge
-  if (y + estimatedHeight > vh - 8) y = y - estimatedHeight - 16
+  if (y + th > vh - 8) y = y - th - 16
   // Clamp top edge
   if (y < 8) y = 8
   return {
@@ -268,6 +290,12 @@ const tooltipStyle = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  animation: tooltipFadeIn 0.15s ease;
+}
+
+@keyframes tooltipFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .tooltip-ref-item {
