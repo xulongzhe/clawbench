@@ -49,6 +49,7 @@
       :attachedFiles="attachedFiles"
       :messages="messages"
       :autoSpeechEnabled="autoSpeech.enabled.value"
+      :currentSessionId="session.currentSessionId.value"
       @send="sendMessage"
       @cancel="stream.cancelStream"
       @file-select="handleFileSelect"
@@ -59,6 +60,8 @@
       @open-session-tab="session.openSessionTab"
       @file-tag-click="handleFileTagClick"
       @toggle-auto-speech="autoSpeech.toggle"
+      @create-session="handleCreateSession"
+      @delete-session="handleDeleteSession"
     />
 
   </BottomSheet>
@@ -238,6 +241,16 @@ watch(() => props.open, (val) => {
 })
 
 const { pendingFiles, attachedFiles, handleFileSelect, handleFileDrop, removeFile, addAttachedFile, removeAttachedFile, cleanupPreviewUrls, clearPendingFiles } = useFileUpload({ inputDisabled })
+
+async function handleCreateSession() {
+  if (inputDisabled.value) return
+  await session.createSession()
+}
+
+async function handleDeleteSession() {
+  if (inputDisabled.value || !session.currentSessionId.value) return
+  await session.deleteSession(session.currentSessionId.value, session.currentBackend.value)
+}
 
 async function sendMessage(text) {
     const inputText = text !== undefined ? text : (inputBarRef.value?.inputText?.trim() || '')

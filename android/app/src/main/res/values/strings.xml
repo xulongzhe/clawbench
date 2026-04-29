@@ -13,9 +13,4 @@
     <string name="error_invalid_url">地址格式不正确，需以 http:// 或 https:// 开头</string>
     <string name="error_connection_failed">无法连接服务器，请检查地址和网络</string>
     <string name="settings_title">服务器设置</string>
-    <string name="menu_refresh">刷新</string>
-    <string name="menu_server">切换服务器</string>
-    <string name="menu_clear_cache">清除缓存并刷新</string>
-    <string name="toast_refreshed">已刷新</string>
-    <string name="toast_cache_cleared">缓存已清除，正在刷新…</string>
 </resources>

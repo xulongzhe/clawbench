@@ -14,8 +14,6 @@ import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.CookieManager;
@@ -31,8 +29,6 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
-
 /**
  * Main Activity: hosts a fullscreen WebView that connects to the ClawBench server.
  *
@@ -40,7 +36,6 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
  * - Server URL configuration dialog on first launch
  * - WebView with JS, DOM storage, and media autoplay enabled
  * - JavaScript interface for native bridge (keep-alive service control)
- * - Swipe-down refresh + overflow menu (refresh, switch server, clear cache)
  * - Proper back navigation within WebView
  * - SSL error handling with user confirmation
  */
@@ -52,7 +47,6 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private ProgressBar progressBar;
-    private SwipeRefreshLayout swipeRefresh;
     private SharedPreferences prefs;
 
     @Override
@@ -66,12 +60,10 @@ public class MainActivity extends Activity {
 
         webView = findViewById(R.id.webView);
         progressBar = findViewById(R.id.progressBar);
-        swipeRefresh = findViewById(R.id.swipeRefresh);
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
         createNotificationChannel();
-        setupSwipeRefresh();
         setupWebView();
 
         // Load saved URL or show configuration dialog
@@ -81,19 +73,6 @@ public class MainActivity extends Activity {
         } else {
             showServerDialog();
         }
-    }
-
-    private void setupSwipeRefresh() {
-        swipeRefresh.setOnRefreshListener(() -> {
-            webView.reload();
-        });
-        // Use the app's accent color scheme
-        swipeRefresh.setColorSchemeResources(
-                android.R.color.holo_blue_bright,
-                android.R.color.holo_green_light,
-                android.R.color.holo_orange_light,
-                android.R.color.holo_red_light
-        );
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -141,8 +120,6 @@ public class MainActivity extends Activity {
                     progressBar.setVisibility(View.VISIBLE);
                 } else {
                     progressBar.setVisibility(View.GONE);
-                    // Stop swipe refresh animation when page finishes loading
-                    swipeRefresh.setRefreshing(false);
                 }
             }
 
@@ -155,38 +132,6 @@ public class MainActivity extends Activity {
 
         // Enable cookies (needed for auth session)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
-    }
-
-    // --- Options Menu (refresh, switch server, clear cache) ---
-
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(Menu.NONE, 1, 0, R.string.menu_refresh);
-        menu.add(Menu.NONE, 2, 1, R.string.menu_server);
-        menu.add(Menu.NONE, 3, 2, R.string.menu_clear_cache);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        switch (item.getItemId()) {
-            case 1: // Refresh
-                webView.reload();
-                Toast.makeText(this, R.string.toast_refreshed, Toast.LENGTH_SHORT).show();
-                return true;
-            case 2: // Switch server
-                showServerDialog();
-                return true;
-            case 3: // Clear cache and refresh
-                webView.clearCache(true);
-                webView.clearHistory();
-                CookieManager.getInstance().removeAllCookies(null);
-                Toast.makeText(this, R.string.toast_cache_cleared, Toast.LENGTH_SHORT).show();
-                webView.reload();
-                return true;
-            default:
-                return super.onOptionsItemSelected(item);
-        }
     }
 
     private void loadUrl(String url) {

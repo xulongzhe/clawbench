@@ -2,11 +2,23 @@
   <div class="chat-input-wrapper">
     <!-- Top action bar (above input box) -->
     <div class="chat-top-actions">
-      <button class="chat-action-btn" @click="$emit('open-session-tab', 'sessions')" title="会话管理">
+      <button class="chat-action-btn" @click="$emit('open-session-tab', 'sessions')" title="切换会话">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <rect x="3" y="6" width="18" height="12" rx="2"/><line x1="12" y1="2" x2="12" y2="6"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><line x1="1" y1="10" x2="3" y2="10"/><line x1="1" y1="14" x2="3" y2="14"/><line x1="21" y1="10" x2="23" y2="10"/><line x1="21" y1="14" x2="23" y2="14"/>
         </svg>
-        <span class="chat-action-label">会话</span>
+        <span class="chat-action-label">切换</span>
+      </button>
+      <button class="chat-action-btn" @click="$emit('create-session')" title="新建会话">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        <span class="chat-action-label">新建</span>
+      </button>
+      <button class="chat-action-btn chat-action-btn-danger" :class="{ disabled: !currentSessionId }" @click="handleDelete" :title="currentSessionId ? '删除当前会话' : '无会话可删除'">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+        </svg>
+        <span class="chat-action-label">删除</span>
       </button>
       <button class="chat-action-btn" @click="$emit('open-session-tab', 'tasks')" title="定时任务">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
@@ -160,6 +172,7 @@ const props = defineProps({
   attachedFiles: Array,
   messages: Array,
   autoSpeechEnabled: Boolean,
+  currentSessionId: String,
 })
 
 const emit = defineEmits([
@@ -173,6 +186,8 @@ const emit = defineEmits([
   'open-session-tab',
   'file-tag-click',
   'toggle-auto-speech',
+  'create-session',
+  'delete-session',
 ])
 
 const inputText = ref('')
@@ -213,6 +228,13 @@ const hasFileGroups = computed(() => {
   const hasCurrent = props.currentFile?.path && !props.attachedFiles.includes(props.currentFile.path)
   return hasCurrent || recentReferencedFiles.value.length > 0
 })
+
+function handleDelete() {
+  if (!props.currentSessionId) return
+  if (confirm('确认删除当前会话？此操作不可撤销。')) {
+    emit('delete-session')
+  }
+}
 
 function getFileName(path) {
   return baseName(path)
@@ -364,6 +386,22 @@ defineExpose({
 .chat-action-btn.active {
   color: var(--accent-color, #0066cc);
   background: color-mix(in srgb, var(--accent-color, #0066cc) 10%, transparent);
+}
+
+.chat-action-btn-danger:not(.disabled) {
+  color: var(--danger-color, #dc3545);
+}
+
+@media (hover: hover) {
+  .chat-action-btn-danger:not(.disabled):hover {
+    color: #fff;
+    background: var(--danger-color, #dc3545);
+  }
+}
+
+.chat-action-btn-danger.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .chat-action-btn svg {
