@@ -33,11 +33,30 @@ defineProps({
 }
 
 .git-diff-scroll {
-  padding: 12px;
+  padding: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .git-diff-scroll.no-wrap {
-  overflow-x: auto;
+  /* no-wrap mode already has overflow-x: auto from above */
+}
+
+/* Thin scrollbar for diff horizontal scroll */
+.git-diff-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.git-diff-scroll::-webkit-scrollbar-track {
+  background: var(--bg-tertiary, #f0f0f0);
+  border-radius: 3px;
+}
+.git-diff-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-color, #ccc);
+  border-radius: 3px;
+}
+.git-diff-scroll::-webkit-scrollbar-thumb:hover {
+  background: #999;
 }
 
 /* Unified diff layout */
@@ -49,9 +68,9 @@ defineProps({
 
 .git-diff-scroll :deep(.diff-hunk) {
   border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .git-diff-scroll :deep(.diff-hunk-header) {
@@ -59,7 +78,7 @@ defineProps({
   font-family: 'SF Mono', 'Fira Code', Menlo, monospace;
   color: var(--text-muted, #999);
   background: var(--bg-tertiary, #f0f0f0);
-  padding: 3px 10px;
+  padding: 2px 8px;
   user-select: none;
 }
 
@@ -68,13 +87,13 @@ defineProps({
   border-collapse: collapse;
   font-family: 'SF Mono', 'Fira Code', Menlo, Monaco, monospace;
   font-size: 12px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .git-diff-scroll :deep(.diff-linum) {
   width: 1%;
-  min-width: 36px;
-  padding: 0 6px;
+  min-width: 30px;
+  padding: 0 4px;
   text-align: right;
   color: var(--text-muted, #999);
   font-size: 11px;
@@ -86,7 +105,7 @@ defineProps({
 
 .git-diff-scroll :deep(.diff-prefix) {
   width: 1%;
-  padding: 0 4px;
+  padding: 0 2px;
   text-align: center;
   font-weight: 700;
   user-select: none;
@@ -94,7 +113,7 @@ defineProps({
 }
 
 .git-diff-scroll :deep(.diff-content) {
-  padding: 0 10px;
+  padding: 0 6px;
   white-space: pre;
   min-width: 0;
 }
