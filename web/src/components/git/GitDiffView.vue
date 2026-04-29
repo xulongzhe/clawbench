@@ -34,29 +34,7 @@ defineProps({
 
 .git-diff-scroll {
   padding: 6px;
-  overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-}
-
-.git-diff-scroll.no-wrap {
-  /* no-wrap mode already has overflow-x: auto from above */
-}
-
-/* Thin scrollbar for diff horizontal scroll */
-.git-diff-scroll::-webkit-scrollbar {
-  height: 6px;
-}
-.git-diff-scroll::-webkit-scrollbar-track {
-  background: var(--bg-tertiary, #f0f0f0);
-  border-radius: 3px;
-}
-.git-diff-scroll::-webkit-scrollbar-thumb {
-  background: var(--border-color, #ccc);
-  border-radius: 3px;
-}
-.git-diff-scroll::-webkit-scrollbar-thumb:hover {
-  background: #999;
 }
 
 /* Unified diff layout */
@@ -69,8 +47,27 @@ defineProps({
 .git-diff-scroll :deep(.diff-hunk) {
   border: 1px solid var(--border-color, #e5e5e5);
   border-radius: 4px;
-  overflow: visible;
+  overflow: auto;
   margin-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.git-diff-scroll :deep(.diff-hunk::-webkit-scrollbar) {
+  height: 6px;
+}
+
+.git-diff-scroll :deep(.diff-hunk::-webkit-scrollbar-track) {
+  background: var(--bg-tertiary, #f0f0f0);
+  border-radius: 3px;
+}
+
+.git-diff-scroll :deep(.diff-hunk::-webkit-scrollbar-thumb) {
+  background: var(--border-color, #ccc);
+  border-radius: 3px;
+}
+
+.git-diff-scroll :deep(.diff-hunk::-webkit-scrollbar-thumb:hover) {
+  background: #999;
 }
 
 .git-diff-scroll :deep(.diff-hunk-header) {
