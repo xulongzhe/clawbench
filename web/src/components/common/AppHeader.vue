@@ -206,7 +206,7 @@ onUnmounted(() => {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 8px 5px 10px;
+    padding: 3px 6px 3px 8px;
     border: 1px solid var(--border-color);
     background: var(--bg-secondary);
     cursor: pointer;
@@ -359,7 +359,7 @@ onUnmounted(() => {
 }
 
 .theme-toggle {
-    padding: 8px;
+    padding: 6px;
     border: none;
     background: transparent;
     cursor: pointer;
