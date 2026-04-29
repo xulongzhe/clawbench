@@ -490,8 +490,12 @@ const lastFilePath = ref(null)
 
 watch(() => props.open, async (val) => {
   if (!val) {
-    // Don't reset state on close — just stop observing
+    // Stop observing and navigate back to commit list so reopening is clean
     commitListRef.value?.unobserveList()
+    currentView.value = 'commits'
+    selectedSHA.value = null
+    selectedFilePath.value = null
+    diffState.value = { loading: false, empty: false, html: '' }
     return
   }
 

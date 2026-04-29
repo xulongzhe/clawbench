@@ -41,6 +41,21 @@ func ServeRecentProjects(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 
+	case http.MethodDelete:
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			model.WriteErrorf(w, http.StatusBadRequest, "Invalid request body")
+			return
+		}
+		if err := service.RemoveRecentProject(req.Path); err != nil {
+			model.WriteError(w, model.Internal(fmt.Errorf("failed to remove recent project")))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+
 	default:
 		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")
 	}

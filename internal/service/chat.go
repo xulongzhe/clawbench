@@ -187,6 +187,12 @@ func AddRecentProject(projectPath string) error {
 	return err
 }
 
+// RemoveRecentProject deletes a project path from the recent projects list.
+func RemoveRecentProject(projectPath string) error {
+	_, err := DB.Exec("DELETE FROM recent_projects WHERE project_path = ?", projectPath)
+	return err
+}
+
 // generateSessionID generates a standard UUID v4 format session ID.
 func generateSessionID() string {
 	return generateUUID("", "chat_sessions", "id")

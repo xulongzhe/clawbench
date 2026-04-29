@@ -70,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import { baseName } from '@/utils/helpers.ts'
 
 const props = defineProps({
@@ -78,6 +78,8 @@ const props = defineProps({
     theme: String,
 })
 const emit = defineEmits(['toggleTheme', 'openProjectDialog'])
+
+const toast = inject('toast')
 
 const projectName = computed(() => {
     if (!props.projectRoot) return '选择项目'
@@ -140,8 +142,27 @@ async function selectRecent(item) {
         })
         if (resp.ok) {
             window.location.reload()
+        } else {
+            const text = await resp.text()
+            let msg = text
+            try { msg = JSON.parse(text).error || msg } catch (_) {}
+            if (msg === 'Not a directory') {
+                toast?.show('项目路径不存在或已被删除', { icon: '⚠️', type: 'error', duration: 3000 })
+                // Remove stale entry from recent projects
+                fetch('/api/recent-projects', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: item.path })
+                }).catch(() => {})
+                // Remove from local list immediately
+                recentItems.value = recentItems.value.filter(r => r.path !== item.path)
+            } else {
+                toast?.show('切换项目失败: ' + msg, { icon: '⚠️', type: 'error', duration: 3000 })
+            }
         }
-    } catch (_) {}
+    } catch (err) {
+        toast?.show('切换项目失败: 网络错误', { icon: '⚠️', type: 'error', duration: 3000 })
+    }
 }
 
 function openBrowse() {
