@@ -33,7 +33,7 @@ function laneCx(lane) {
  *    - Cross-lane "merge-in" (branch commit whose parent is on another lane) →
  *      vertical line on branch lane + short bezier at merge point
  */
-export function computeGraphData(commits, rowHeight, previousShaToLane) {
+export function computeGraphData(commits, rowHeight, previousShaToLane, bottomPadding = 0) {
   if (!commits || !commits.length) {
     return { nodes: [], lines: [], laneCount: 0, graphWidth: 40, shaToLane: new Map() }
   }
@@ -300,6 +300,10 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
   }
 
   // Connection lines: for each commit→parent edge
+  // SVG bottom Y for continuation lines (when parent is outside loaded commits)
+  // Add extra padding so continuation lines clearly reach the bottom edge
+  const svgBottomY = commits.length * rowHeight + bottomPadding + rowHeight
+
   for (let row = 0; row < commits.length; row++) {
     const c = commits[row]
     if (c.isWT) continue
@@ -310,7 +314,28 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
 
     for (let pi = 0; pi < parents.length; pi++) {
       const pSha = parents[pi]
-      if (!shaToRow.has(pSha) || !shaToLane.has(pSha)) continue
+
+      // Parent not in loaded commits
+      if (!shaToRow.has(pSha)) {
+        if (pi === 0) {
+          // First parent: draw vertical continuation line to bottom of SVG
+          const x = laneCx(childLane)
+          const y1 = childCy + 5
+          const y2 = svgBottomY
+          if (y2 > y1) {
+            lines.push({
+              path: `M${x},${y1} L${x},${y2}`,
+              color: laneColor(childLane),
+              lane: childLane,
+            })
+          }
+        }
+        // Non-first parents outside visible range are skipped;
+        // their lines will appear when more commits are loaded.
+        continue
+      }
+
+      if (!shaToLane.has(pSha)) continue
 
       const parentRow = shaToRow.get(pSha)
       const parentLane = shaToLane.get(pSha)
