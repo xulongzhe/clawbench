@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="输入 ClawBench 服务器地址"
+        android:textSize="14sp"
+        android:textColor="#8b949e"
+        android:layout_marginBottom="8dp" />
+
+    <EditText
+        android:id="@+id/serverUrlInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/dialog_hint"
+        android:inputType="textUri"
+        android:singleLine="true"
+        android:padding="12dp"
+        android:background="@android:color/transparent"
+        android:textColor="#e6edf3"
+        android:textColorHint="#484f58"
+        android:textSize="16sp" />
+
+</LinearLayout>
