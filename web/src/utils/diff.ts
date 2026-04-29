@@ -108,6 +108,7 @@ export function renderDiff(raw: string, filePath: string): string {
         if (hunk.header) {
             html += `<div class="diff-hunk-header">${escapeHtml(hunk.header)}</div>`
         }
+        html += `<div class="diff-hunk-body">`
         html += `<table class="diff-table">`
         for (const dl of hunk.lines) {
             const prefix = dl.type === 'add' ? '+' : dl.type === 'del' ? '-' : ' '
@@ -118,7 +119,7 @@ export function renderDiff(raw: string, filePath: string): string {
             html += `<td class="diff-content">${highlightLine(dl.content, lang)}</td>`
             html += `</tr>`
         }
-        html += `</table></div>`
+        html += `</table></div></div>`
     }
     return html + '</div>'
 }
