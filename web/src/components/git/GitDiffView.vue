@@ -69,7 +69,7 @@ defineProps({
 .git-diff-scroll :deep(.diff-hunk) {
   border: 1px solid var(--border-color, #e5e5e5);
   border-radius: 4px;
-  overflow: hidden;
+  overflow: visible;
   margin-bottom: 4px;
 }
 
@@ -83,7 +83,8 @@ defineProps({
 }
 
 .git-diff-scroll :deep(.diff-table) {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-family: 'SF Mono', 'Fira Code', Menlo, Monaco, monospace;
   font-size: 12px;
