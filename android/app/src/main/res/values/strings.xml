@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ClawBench</string>
+    <string name="notification_channel_name">AI Chat</string>
+    <string name="notification_channel_desc">Shows when AI is processing</string>
+    <string name="keep_alive_notification_title">AI 正在处理</string>
+    <string name="keep_alive_notification_text">ClawBench 正在等待 AI 回复…</string>
+    <string name="dialog_title">连接服务器</string>
+    <string name="dialog_hint">https://your-server:20000</string>
+    <string name="dialog_positive">连接</string>
+    <string name="dialog_negative">取消</string>
+    <string name="error_no_url">请输入服务器地址</string>
+    <string name="error_invalid_url">地址格式不正确，需以 http:// 或 https:// 开头</string>
+    <string name="error_connection_failed">无法连接服务器，请检查地址和网络</string>
+    <string name="settings_title">服务器设置</string>
+</resources>

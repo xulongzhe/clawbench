@@ -10,7 +10,7 @@ __pycache__/
 *.pyc
 
 # Go build output
-clawbench
+/clawbench
 
 # Runtime
 nohup.out
@@ -31,3 +31,10 @@ public/
 dist/
 server
 .venv/
+
+# Android build output
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/gradle/wrapper/gradle-wrapper.jar
