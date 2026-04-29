@@ -2,6 +2,7 @@ package service
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -136,13 +137,52 @@ func InitDB() error {
 
 	// Clean up orphaned streaming messages from previous crashes/restarts.
 	// Any message with streaming=1 at startup can never be finalized since
-	// its stream no longer exists, so mark it as complete.
-	result, err := DB.Exec("UPDATE chat_history SET streaming = 0 WHERE streaming = 1")
+	// its stream no longer exists. Mark them as cancelled so the UI shows
+	// an interrupted state instead of silently completing.
+	rows, err := DB.Query("SELECT id, content FROM chat_history WHERE streaming = 1")
 	if err != nil {
-		return fmt.Errorf("failed to clean up orphaned streaming messages: %w", err)
+		return fmt.Errorf("failed to query orphaned streaming messages: %w", err)
 	}
-	if n, _ := result.RowsAffected(); n > 0 {
-		slog.Info("cleaned up orphaned streaming messages", slog.Int64("count", n))
+	type orphanMsg struct {
+		id      int64
+		content string
+	}
+	var orphans []orphanMsg
+	for rows.Next() {
+		var m orphanMsg
+		if err := rows.Scan(&m.id, &m.content); err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to scan orphaned streaming message: %w", err)
+		}
+		orphans = append(orphans, m)
+	}
+	rows.Close()
+
+	for _, m := range orphans {
+		var contentMap map[string]any
+		if err := json.Unmarshal([]byte(m.content), &contentMap); err != nil {
+			// Non-JSON content — wrap it
+			contentMap = map[string]any{
+				"blocks":    []any{map[string]any{"type": "text", "text": m.content}},
+				"cancelled": true,
+			}
+		} else {
+			contentMap["cancelled"] = true
+			// Append warning block
+			blocks, _ := contentMap["blocks"].([]any)
+			blocks = append(blocks, map[string]any{
+				"type": "warning",
+				"text": "服务重启，AI 响应中断",
+			})
+			contentMap["blocks"] = blocks
+		}
+		updatedContent, _ := json.Marshal(contentMap)
+		if _, err := DB.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id); err != nil {
+			slog.Error("failed to finalize orphaned streaming message", slog.Int64("id", m.id), slog.String("err", err.Error()))
+		}
+	}
+	if len(orphans) > 0 {
+		slog.Info("cleaned up orphaned streaming messages", slog.Int("count", len(orphans)))
 	}
 
 	return nil
