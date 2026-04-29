@@ -444,9 +444,51 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 					goto finalize
 				}
 
-				accumulateBlock(&blocks, event, projectPath, sessionID, agentID)
+			accumulateBlock(&blocks, event, projectPath, sessionID, agentID)
 
-				if event.Type == "metadata" && event.Meta != nil {
+			// Handle resume_split: the AI adapter layer detected ExitPlanMode and
+			// will auto-resume. Finalize current DB message and start a new one.
+			if event.Type == "resume_split" {
+				slog.Info("resume_split received, finalizing current message and starting new one",
+					slog.String("session", sessionID))
+
+				// Finalize current streaming message
+				if err := service.FinalizeStreamingMessage(projectPath, backendName, sessionID, serializeBlocks()); err != nil {
+					slog.Error("failed to finalize pre-resume message",
+						slog.String("session", sessionID),
+						slog.String("err", err.Error()))
+				}
+
+				// Save raw output if captured so far
+				if rawOutput != "" {
+					if msgID := service.GetStreamingMessageID(sessionID); msgID > 0 {
+						if err := service.SaveRawResponse(sessionID, backendName, msgID, rawOutput); err != nil {
+							slog.Error("failed to save raw response",
+								slog.String("session", sessionID),
+								slog.String("err", err.Error()))
+						}
+					}
+					rawOutput = ""
+				}
+
+				// Reset blocks and metadata for the resumed stream
+				blocks = nil
+				responseMetadata = nil
+				eventCount = 0
+
+				// Create new streaming assistant placeholder
+				emptyContent, _ = json.Marshal(map[string]any{"blocks": []any{}})
+				if _, err := service.AddChatMessage(projectPath, backendName, sessionID, "assistant", string(emptyContent), "", nil, true); err != nil {
+					slog.Error("failed to create resume streaming message",
+						slog.String("session", sessionID),
+						slog.String("err", err.Error()))
+					sendFinalEvent(streamCh, ai.StreamEvent{Type: "done"})
+					return
+				}
+				continue
+			}
+
+			if event.Type == "metadata" && event.Meta != nil {
 					responseMetadata = event.Meta
 					// Capture external session ID on first response (OpenCode/Codex)
 					if (backendName == "opencode" || backendName == "codex") && event.Meta.SessionID != "" {

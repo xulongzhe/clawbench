@@ -5,24 +5,28 @@ import (
 	"log/slog"
 )
 
-// ExitPlanModeBackend wraps an AIBackend and handles ExitPlanMode by ending
-// the stream cleanly. When it detects a tool_use event with Name="ExitPlanMode"
-// and Done=true, it cancels the CLI process and emits "done" so the caller can
-// finalize. No auto-resume — the user sends a new message to continue.
-type ExitPlanModeBackend struct {
+// AutoResumeBackend wraps an AIBackend and adds ExitPlanMode auto-resume behavior.
+// When it detects a tool_use event with Name="ExitPlanMode" and Done=true,
+// it cancels the inner CLI process, then starts a new ExecuteStream call with
+// the same session ID and prompt="继续" with Resume=true.
+// The outer caller sees a single continuous <-chan StreamEvent.
+type AutoResumeBackend struct {
 	inner AIBackend
 }
 
 // Name returns the wrapped backend's name.
-func (b *ExitPlanModeBackend) Name() string {
+func (b *AutoResumeBackend) Name() string {
 	return b.inner.Name()
 }
 
-// ExecuteStream runs the inner backend and monitors for ExitPlanMode.
-// When detected, the CLI is cancelled and the stream ends with "done".
-func (b *ExitPlanModeBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
+// ExecuteStream runs the inner backend and wraps the event stream with
+// ExitPlanMode auto-resume logic. If ExitPlanMode is detected, the first
+// stream is cancelled and a resume stream is started transparently.
+func (b *AutoResumeBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
 	outerCh := make(chan StreamEvent, streamChanSize)
 
+	// Create a child context for the first stream so we can cancel it
+	// independently of the outer context (for ExitPlanMode resume).
 	innerCtx, innerCancel := context.WithCancel(ctx)
 
 	innerCh, err := b.inner.ExecuteStream(innerCtx, req)
@@ -32,11 +36,17 @@ func (b *ExitPlanModeBackend) ExecuteStream(ctx context.Context, req ChatRequest
 		return nil, err
 	}
 
-	go b.stream(ctx, innerCtx, innerCancel, req, innerCh, outerCh)
+	go b.mergeStreams(ctx, innerCtx, innerCancel, req, innerCh, outerCh)
 	return outerCh, nil
 }
 
-func (b *ExitPlanModeBackend) stream(
+// mergeStreams handles the two-phase stream merge:
+//
+//	Phase 1: Forward events from innerCh → outerCh, watch for ExitPlanMode
+//	Phase 2: On ExitPlanMode, cancel first stream, start resume, forward resumed events
+//
+// If no ExitPlanMode is detected, acts as a transparent proxy.
+func (b *AutoResumeBackend) mergeStreams(
 	ctx context.Context,
 	innerCtx context.Context,
 	innerCancel context.CancelFunc,
@@ -46,42 +56,105 @@ func (b *ExitPlanModeBackend) stream(
 ) {
 	defer close(outerCh)
 
+	exitPlanModeDetected := false
+
+	// Phase 1: forward first stream
 	for {
 		select {
 		case event, ok := <-innerCh:
 			if !ok {
-				return
+				// First stream channel closed normally (no ExitPlanMode).
+				goto phase1Done
 			}
 
-			// Detect ExitPlanMode: end the stream instead of auto-resuming
-			if event.Type == "tool_use" && event.Tool != nil &&
+			// Detect ExitPlanMode: CLI hangs in --print mode because
+			// ExitPlanMode requires user approval, but there is no interactive UI.
+			if !exitPlanModeDetected &&
+				event.Type == "tool_use" && event.Tool != nil &&
 				event.Tool.Name == "ExitPlanMode" && event.Tool.Done {
-				slog.Info("ExitPlanMode detected, ending stream",
+				exitPlanModeDetected = true
+				slog.Info("ExitPlanMode detected, cancelling CLI to auto-resume",
 					slog.String("session", origReq.SessionID))
 
+				// Forward the ExitPlanMode tool_use event
 				forwardEvent(outerCh, event)
+				// Emit resume_split so handler can finalize DB message
+				forwardEvent(outerCh, StreamEvent{Type: "resume_split"})
 
 				// Cancel the inner CLI process
 				innerCancel()
 
-				// Drain remaining events (captures raw_output)
+				// Drain remaining events from the first stream
+				// (captures raw_output, suppresses "done")
 				for drainEvent := range innerCh {
 					if drainEvent.Type == "raw_output" {
 						forwardEvent(outerCh, drainEvent)
 					}
+					// Suppress "done" and other events from the cancelled stream
 				}
-
-				// Emit done so handler finalizes the message
-				forwardEvent(outerCh, StreamEvent{Type: "done"})
-				return
+				goto phase1Done
 			}
 
+			// Normal forwarding — "done" means normal completion
 			if event.Type == "done" {
-				return
+				return // outerCh closed by defer
 			}
 			forwardEvent(outerCh, event)
 
 		case <-ctx.Done():
+			// Outer context cancelled (real user cancel/disconnect)
+			return // outerCh closed by defer
+		}
+	}
+
+phase1Done:
+	if !exitPlanModeDetected {
+		return
+	}
+
+	// Phase 2: resume with "继续"
+	innerCtx2, innerCancel2 := context.WithCancel(ctx)
+	defer innerCancel2()
+
+	resumeReq := ChatRequest{
+		Prompt:       "继续",
+		SessionID:    origReq.SessionID,
+		WorkDir:      origReq.WorkDir,
+		SystemPrompt: origReq.SystemPrompt,
+		Model:        origReq.Model,
+		Command:      origReq.Command,
+		AgentID:      origReq.AgentID,
+		Resume:       true,
+	}
+
+	innerCh2, err := b.inner.ExecuteStream(innerCtx2, resumeReq)
+	if err != nil {
+		slog.Error("failed to start resume stream after ExitPlanMode",
+			slog.String("session", origReq.SessionID),
+			slog.String("err", err.Error()))
+		// Emit done so the handler can finalize
+		forwardEvent(outerCh, StreamEvent{Type: "done"})
+		return
+	}
+
+	// Forward second stream (suppress raw_output, no nested ExitPlanMode detection)
+	for {
+		select {
+		case event2, ok := <-innerCh2:
+			if !ok {
+				// Channel closed without "done" — still end the outer stream
+				return
+			}
+			if event2.Type == "raw_output" {
+				continue // suppress raw_output from resume stream
+			}
+			if event2.Type == "done" {
+				return // outerCh closed by defer
+			}
+			forwardEvent(outerCh, event2)
+
+		case <-ctx.Done():
+			// Outer context cancelled during resume
 			return
 		}
 	}
@@ -92,7 +165,7 @@ func forwardEvent(ch chan<- StreamEvent, event StreamEvent) {
 	select {
 	case ch <- event:
 	default:
-		slog.Warn("exit_plan_mode: event dropped — channel full",
+		slog.Warn("auto_resume: event dropped — channel full",
 			slog.String("type", event.Type),
 		)
 	}
