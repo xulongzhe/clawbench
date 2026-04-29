@@ -21,7 +21,8 @@
       <span>加载中...</span>
     </div>
 
-    <div v-if="messages.length === 0" class="chat-empty">
+    <div class="chat-messages-list">
+      <div v-if="messages.length === 0" class="chat-empty">
       <template v-if="currentAgent">
         <div class="agent-welcome">
           <span class="agent-welcome-icon">{{ currentAgent.icon }}</span>
@@ -54,6 +55,7 @@
       @file-tag-click="$emit('file-tag-click', $event)"
       @expand="handleExpand"
     />
+    </div>
   </div>
 </template>
 
@@ -216,6 +218,14 @@ defineExpose({
   flex: 1;
   overflow-y: auto;
   padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+}
+
+/* Message list container */
+.chat-messages-list {
   display: flex;
   flex-direction: column;
   gap: 8px;

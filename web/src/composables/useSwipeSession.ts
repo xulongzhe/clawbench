@@ -56,8 +56,8 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
     // swiping left (next) goes to a more recent session
     const nextIdx = idx > 0 ? idx - 1 : sessions.length - 1
     if (nextIdx === idx) return
-    await switchSession(sessions[nextIdx].id)
     showIndicator(sessions[nextIdx].title, 'left')
+    switchSession(sessions[nextIdx].id)
   }
 
   async function swipeToPrev() {
@@ -68,8 +68,8 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
     // swiping right (prev) goes to an older session
     const prevIdx = idx < sessions.length - 1 ? idx + 1 : 0
     if (prevIdx === idx) return
-    await switchSession(sessions[prevIdx].id)
     showIndicator(sessions[prevIdx].title, 'right')
+    switchSession(sessions[prevIdx].id)
   }
 
   // Touch state

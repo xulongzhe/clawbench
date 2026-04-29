@@ -11,6 +11,7 @@ export interface UseChatSessionOptions {
   renderedContents: Ref<string[]>
   blockProposals: Record<string, any>
   expandedTools: Ref<Record<string, boolean>>
+  switching?: Ref<boolean>
   onParseAssistantContent: (content: string) => any
   onExtractScheduleProposals: (msgs: any[]) => void
   onRenderUpdate: (forceFull: boolean) => void
@@ -48,6 +49,11 @@ export function useChatSession(options: UseChatSessionOptions) {
 
   const toast = useToast()
   const notification = useNotification()
+
+  // Switching state — true while a session switch is in progress (distinct from
+  // "loading" which means "AI is generating"). Used to show a fade/placeholder
+  // transition so the user sees immediate feedback instead of a frozen UI.
+  const switching = ref(false)
 
   const currentSessionTitle = ref('')
   const currentBackend = ref('')
@@ -183,6 +189,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     // our results will be discarded (last writer wins)
     const mySeq = ++switchSessionSeq
 
+    // Mark switching state immediately so UI can show a fade/placeholder
+    switching.value = true
     // Immediately lock input to prevent sending messages with stale sessionId.
     // Do NOT set loading=true here — loading means "AI is generating", not
     // "session is switching". Setting it would flash the stop button.
@@ -200,11 +208,13 @@ export function useChatSession(options: UseChatSessionOptions) {
       if (!resp.ok) {
         toast.show('切换会话失败', { icon: '⚠️', type: 'error' })
         inputDisabled.value = false
+        switching.value = false
         return
       }
       const data = await resp.json()
 
       // If another switch happened while we were fetching, discard our results
+      // (the newer switch will set switching=false when it completes)
       if (switchSessionSeq !== mySeq) return
 
       messages.value = parseMessages(data.messages || [])
@@ -226,12 +236,14 @@ export function useChatSession(options: UseChatSessionOptions) {
         loading.value = false
         startMsgCountPolling()
       }
+      switching.value = false
     } catch (err) {
       // If another switch happened, don't touch state
       if (switchSessionSeq !== mySeq) return
       console.error('Failed to switch session:', err)
       toast.show('切换会话失败', { icon: '⚠️' })
       inputDisabled.value = false
+      switching.value = false
     }
   }
 
@@ -413,6 +425,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     totalMessages,
     hasMore,
     loadingMore,
+    switching,
     loadHistory,
     loadMoreMessages,
     switchSession,
