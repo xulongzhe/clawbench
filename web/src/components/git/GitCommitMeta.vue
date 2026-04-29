@@ -9,7 +9,7 @@
     <template v-else-if="commit">
       <div class="diff-meta-row">
         <span class="diff-meta-label">SHA</span>
-        <span class="diff-meta-value diff-meta-sha">{{ commit.sha.substring(0, 8) }}</span>
+        <span class="diff-meta-value diff-meta-sha" :class="{ 'sha-copied': shaCopied }" @click="copySHA" title="点击复制">{{ commit.sha.substring(0, 8) }}</span>
       </div>
       <div class="diff-meta-row">
         <span class="diff-meta-label">作者</span>
@@ -28,10 +28,23 @@
 </template>
 
 <script setup>
-defineProps({
+import { ref } from 'vue'
+import { copyText } from '@/utils/helpers.ts'
+
+const props = defineProps({
   commit: Object,
   isWorkingTree: Boolean,
 })
+
+const shaCopied = ref(false)
+
+function copySHA() {
+  if (!props.commit?.sha) return
+  copyText(props.commit.sha, () => {
+    shaCopied.value = true
+    setTimeout(() => { shaCopied.value = false }, 1500)
+  })
+}
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
@@ -78,6 +91,21 @@ function formatDate(dateStr) {
   font-family: 'SF Mono', 'Fira Code', Menlo, Monaco, monospace;
   font-size: 12px;
   color: var(--accent-color, #4a90d9);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 1px 4px;
+  transition: background 0.15s;
+}
+
+.diff-meta-sha:hover {
+  background: var(--bg-tertiary, #f0f0f0);
+}
+
+.sha-copied::after {
+  content: ' 已复制';
+  color: var(--color-green, #16a34a);
+  font-size: 11px;
+  font-weight: 400;
 }
 
 .diff-meta-row-msg .diff-meta-value {

@@ -3,7 +3,13 @@
     <div v-if="!(commits.length === 0 && untracked) && isGit" class="drilldown-header">
       <div class="drilldown-title">
         <span v-if="commits.length > 0" class="drilldown-count">
-          {{ searchLoading ? '加载中…' : filteredCommits.length + (hasMore && !commitSearch ? '+' : '') + ' 条' + countLabel }}
+          <template v-if="searchLoading">
+            <span class="spinner" style="width:10px;height:10px;border-width:1.5px;margin-right:4px;display:inline-block;vertical-align:middle;" />
+            加载全部…
+          </template>
+          <template v-else>
+            {{ filteredCommits.length + (hasMore && !commitSearch ? '+' : '') + ' 条' + countLabel }}
+          </template>
         </span>
         <span v-else-if="!isGit" class="drilldown-count">未初始化</span>
         <span v-else-if="!untracked" class="drilldown-count">加载中…</span>
@@ -12,9 +18,6 @@
     </div>
     <div class="drilldown-body" ref="bodyRef">
       <div v-if="loading" class="git-history-loading">
-        <div class="spinner" style="width:24px;height:24px;border-width:2px;" />
-      </div>
-      <div v-else-if="searchLoading" class="git-history-loading">
         <div class="spinner" style="width:24px;height:24px;border-width:2px;" />
       </div>
       <div v-else-if="error" class="git-history-error">{{ error }}</div>
@@ -57,21 +60,36 @@
           :collapsed="graphCollapsed"
           @update:collapsed="graphCollapsed = $event"
         />
+        <div v-else class="commit-list-graph-hint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+        </div>
         <!-- Commit rows -->
         <div class="commit-list-content" ref="contentRef" @touchstart="onTouchStart" @touchend="onTouchEnd">
           <div
             v-for="c in filteredCommits"
             :key="c.sha"
             class="drilldown-item"
+            :class="{ 'drilldown-item-selected': c.sha === selectedSHA }"
             @click="$emit('select', c)"
           >
             <div class="git-commit-info">
-              <div class="git-commit-msg">{{ c.msg }}</div>
+              <div class="git-commit-msg" :class="{ 'msg-expanded': expandedSha === c.sha }" @click.stop="toggleExpand(c.sha)">{{ c.msg }}</div>
               <div class="git-commit-meta">
+                <span v-if="!c.isWT" class="git-commit-sha">{{ c.sha.slice(0, 7) }}</span>
+                <span v-if="c.refs && c.refs.length" class="git-commit-refs">
+                  <span v-for="ref in c.refs" :key="ref" class="git-ref-tag" :class="refTagClass(ref)">{{ refLabelText(ref) }}</span>
+                </span>
                 <span>{{ formatDate(c.date) }}</span>
                 <span v-if="c.author"> · {{ c.author }}</span>
               </div>
             </div>
+            <svg class="drilldown-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
           </div>
           <div ref="listRef">
             <div v-if="hasMore && loadingMore" class="git-load-more">
@@ -88,6 +106,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import GitGraph from './GitGraph.vue'
 import SearchInput from '@/components/common/SearchInput.vue'
+import { refLabelText } from '@/utils/gitGraph'
+import { formatRelativeTime, formatDateTime } from '@/utils/format'
 
 const props = defineProps({
   commits: { type: Array, default: () => [] },
@@ -101,6 +121,7 @@ const props = defineProps({
   untracked: { type: Boolean, default: false },
   countLabel: { type: String, default: '提交记录' },
   searchPlaceholder: { type: String, default: '搜索提交信息…' },
+  selectedSHA: { type: String, default: null },
 })
 
 const emit = defineEmits(['select', 'search', 'load-more', 'init-git'])
@@ -148,16 +169,26 @@ const filteredCommits = computed(() => {
 
 function formatDate(dateStr) {
   if (!dateStr) return ''
-  try {
-    const d = new Date(dateStr)
-    return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return dateStr
-  }
+  const diffDays = (Date.now() - new Date(dateStr).getTime()) / 86400000
+  return diffDays < 7 ? formatRelativeTime(dateStr) : formatDateTime(dateStr)
 }
 
+function refTagClass(ref) {
+  if (ref === 'HEAD') return 'ref-head'
+  if (ref.startsWith('tag: ')) return 'ref-tag'
+  return 'ref-branch'
+}
+
+const expandedSha = ref(null)
+function toggleExpand(sha) {
+  expandedSha.value = expandedSha.value === sha ? null : sha
+}
+
+let searchTimer = null
+
 watch(commitSearch, (q) => {
-  emit('search', q)
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => emit('search', q), 300)
 })
 
 function setupObserver() {
@@ -186,6 +217,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   unobserveList()
+  clearTimeout(searchTimer)
 })
 
 defineExpose({ observeList, unobserveList, commitSearch })
@@ -264,7 +296,7 @@ defineExpose({ observeList, unobserveList, commitSearch })
   cursor: pointer;
   transition: background 0.15s;
   border-bottom: 1px solid var(--border-color, #dee2e6);
-  height: 46px;
+  min-height: 46px;
   box-sizing: border-box;
 }
 
@@ -274,6 +306,12 @@ defineExpose({ observeList, unobserveList, commitSearch })
 
 .drilldown-item:active {
   background: var(--bg-tertiary, #e9ecef);
+}
+
+.drilldown-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted, #ccc);
+  margin-left: 4px;
 }
 
 .git-commit-info {
@@ -383,5 +421,57 @@ defineExpose({ observeList, unobserveList, commitSearch })
 .init-git-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Selected commit highlight */
+.drilldown-item-selected {
+  background: rgba(74, 144, 217, 0.08);
+  border-left: 3px solid var(--accent-color, #4a90d9);
+  padding-left: 11px;
+}
+
+/* Search graph hint */
+.commit-list-graph-hint {
+  width: 24px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 16px;
+  color: var(--text-muted, #ccc);
+}
+
+/* Short SHA tag */
+.git-commit-sha {
+  font-family: 'SF Mono', 'Fira Code', Menlo, monospace;
+  font-size: 10px;
+  color: var(--text-muted, #999);
+  background: var(--bg-tertiary, #f0f0f0);
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-right: 4px;
+}
+
+/* Ref tags */
+.git-commit-refs {
+  display: inline-flex;
+  gap: 3px;
+  margin-right: 4px;
+}
+.git-ref-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.ref-head { background: #1a1a2e; color: #fff; }
+.ref-branch { background: rgba(74, 144, 217, 0.15); color: #4a90d9; }
+.ref-tag { background: rgba(85, 85, 85, 0.15); color: #666; }
+
+/* Message expand */
+.msg-expanded {
+  white-space: normal !important;
+  overflow: visible !important;
 }
 </style>

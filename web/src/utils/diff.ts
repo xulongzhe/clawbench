@@ -17,10 +17,32 @@ export function highlightLine(line: string, lang: string): string {
     }
 }
 
+interface DiffLine {
+    type: 'add' | 'del' | 'ctx'
+    content: string
+    oldLine: number | null
+    newLine: number | null
+}
+
 interface Hunk {
-    loc: string
-    adds: string[]
-    dels: string[]
+    header: string
+    lines: DiffLine[]
+}
+
+function parseHunkHeader(line: string): {
+    oldStart: number; oldCount: number;
+    newStart: number; newCount: number;
+    text: string
+} | null {
+    const m = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)/)
+    if (!m) return null
+    return {
+        oldStart: parseInt(m[1]),
+        oldCount: parseInt(m[2] || '1'),
+        newStart: parseInt(m[3]),
+        newCount: parseInt(m[4] || '1'),
+        text: m[5].trim(),
+    }
 }
 
 export function renderDiff(raw: string, filePath: string): string {
@@ -28,23 +50,46 @@ export function renderDiff(raw: string, filePath: string): string {
     const lines = raw.split('\n')
     const hunks: Hunk[] = []
     let currentHunk: Hunk | null = null
+    let oldLineNum = 0
+    let newLineNum = 0
 
     for (const line of lines) {
         if (line.startsWith('@@')) {
-            if (currentHunk && (currentHunk.adds.length > 0 || currentHunk.dels.length > 0)) {
-                hunks.push(currentHunk)
+            const header = parseHunkHeader(line)
+            if (header) {
+                if (currentHunk && currentHunk.lines.length > 0) {
+                    hunks.push(currentHunk)
+                }
+                currentHunk = { header: header.text, lines: [] }
+                oldLineNum = header.oldStart
+                newLineNum = header.newStart
             }
-            const content = line.replace(/^@@.*?@@\s*/, '').trim()
-            currentHunk = { loc: content || '', adds: [], dels: [] }
-        } else if (line.startsWith('+') && !line.startsWith('+++')) {
-            if (currentHunk) currentHunk.adds.push(line.substring(1))
-        } else if (line.startsWith('-') && !line.startsWith('---')) {
-            if (currentHunk) currentHunk.dels.push(line.substring(1))
+        } else if (line.startsWith(' ') && currentHunk) {
+            currentHunk.lines.push({
+                type: 'ctx',
+                content: line.substring(1),
+                oldLine: oldLineNum++,
+                newLine: newLineNum++,
+            })
+        } else if (line.startsWith('+') && !line.startsWith('+++') && currentHunk) {
+            currentHunk.lines.push({
+                type: 'add',
+                content: line.substring(1),
+                oldLine: null,
+                newLine: newLineNum++,
+            })
+        } else if (line.startsWith('-') && !line.startsWith('---') && currentHunk) {
+            currentHunk.lines.push({
+                type: 'del',
+                content: line.substring(1),
+                oldLine: oldLineNum++,
+                newLine: null,
+            })
         } else if (/^(diff |index |---|\+\+\+)/.test(line)) {
-            // skip meta
+            // skip meta lines
         }
     }
-    if (currentHunk && (currentHunk.adds.length > 0 || currentHunk.dels.length > 0)) {
+    if (currentHunk && currentHunk.lines.length > 0) {
         hunks.push(currentHunk)
     }
 
@@ -57,48 +102,24 @@ export function renderDiff(raw: string, filePath: string): string {
         return `<div class="diff-view"><pre class="diff-raw">${escapeHtml(clean)}</pre></div>`
     }
 
-    let html = `<div class="diff-view diff-card-view">`
+    let html = `<div class="diff-view diff-unified-view">`
     for (const hunk of hunks) {
-        if (hunk.loc) {
-            html += `<div class="diff-hunk-loc">📍 ${escapeHtml(hunk.loc)}</div>`
+        html += `<div class="diff-hunk">`
+        if (hunk.header) {
+            html += `<div class="diff-hunk-header">${escapeHtml(hunk.header)}</div>`
         }
-
-        const hasBoth = hunk.adds.length > 0 && hunk.dels.length > 0
-
-        if (hasBoth) {
-            html += `<div class="diff-card-pair">`
-            if (hunk.dels.length > 0) {
-                html += `<div class="diff-card diff-card-del">`
-                html += `<div class="diff-card-label">删除</div>`
-                for (const line of hunk.dels) {
-                    html += `<div class="diff-card-line">${highlightLine(line, lang)}</div>`
-                }
-                html += `</div>`
-            }
-            if (hunk.adds.length > 0) {
-                html += `<div class="diff-card diff-card-add">`
-                html += `<div class="diff-card-label">新增</div>`
-                for (const line of hunk.adds) {
-                    html += `<div class="diff-card-line">${highlightLine(line, lang)}</div>`
-                }
-                html += `</div>`
-            }
-            html += `</div>`
-        } else if (hunk.adds.length > 0) {
-            html += `<div class="diff-card diff-card-add">`
-            html += `<div class="diff-card-label">新增</div>`
-            for (const line of hunk.adds) {
-                html += `<div class="diff-card-line">${highlightLine(line, lang)}</div>`
-            }
-            html += `</div>`
-        } else if (hunk.dels.length > 0) {
-            html += `<div class="diff-card diff-card-del">`
-            html += `<div class="diff-card-label">删除</div>`
-            for (const line of hunk.dels) {
-                html += `<div class="diff-card-line">${highlightLine(line, lang)}</div>`
-            }
-            html += `</div>`
+        html += `<div class="diff-hunk-body">`
+        html += `<table class="diff-table">`
+        for (const dl of hunk.lines) {
+            const prefix = dl.type === 'add' ? '+' : dl.type === 'del' ? '-' : ' '
+            html += `<tr class="diff-line diff-line-${dl.type}">`
+            html += `<td class="diff-linum diff-linum-old">${dl.oldLine ?? ''}</td>`
+            html += `<td class="diff-linum diff-linum-new">${dl.newLine ?? ''}</td>`
+            html += `<td class="diff-prefix">${escapeHtml(prefix)}</td>`
+            html += `<td class="diff-content">${highlightLine(dl.content, lang)}</td>`
+            html += `</tr>`
         }
+        html += `</table></div></div>`
     }
     return html + '</div>'
 }

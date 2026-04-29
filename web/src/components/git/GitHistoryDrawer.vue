@@ -50,6 +50,7 @@
       :error="''"
       :untracked="untracked"
       :count-label="mode === 'file' ? '记录' : '提交记录'"
+      :selected-s-h-a="selectedSHA"
       @select="onCommitSelect"
       @search="onSearch"
       @load-more="loadMoreCommits"
@@ -59,15 +60,13 @@
     <!-- View: file list for selected commit (project mode only) -->
     <div v-else-if="currentView === 'files'" class="drilldown-page">
       <div class="drilldown-header">
-        <div class="drilldown-title">
-          <span class="drilldown-count">{{ files.length }} 个变更文件</span>
-        </div>
-        <button class="drilldown-back-btn" @click="drillBack('commits')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-          返回
-        </button>
+        <GitBreadcrumb
+          mode="project"
+          :current-view="currentView"
+          :selected-commit="selectedCommit"
+          @navigate="drillBack"
+        />
+        <span class="drilldown-count">{{ files.length }} 个文件</span>
       </div>
       <GitCommitMeta :commit="selectedCommit" :is-working-tree="isWorkingTree" />
       <div class="drilldown-body">
@@ -76,27 +75,54 @@
         </div>
         <div v-else-if="files.length === 0" class="git-history-empty">此提交无文件变更</div>
         <div v-else class="drilldown-list">
-          <div
-            v-for="f in files"
-            :key="f.path + '-' + f.type + (f.staged ? '-s' : '')"
-            class="drilldown-item"
-            @click="drillToFile(f)"
-          >
-            <span class="git-file-icon">
-              <svg v-if="f.type === 'A'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              <svg v-else-if="f.type === 'D'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-              </svg>
-            </span>
-            <span class="git-file-type-badge" :class="badgeClass(f)">{{ fileTypeLabel(f.type, f.staged) }}</span>
-            <span class="git-file-path">{{ f.path }}</span>
-          </div>
+          <template v-if="hasStaged">
+            <div class="file-group-label">已暂存</div>
+            <div
+              v-for="f in stagedFiles"
+              :key="f.path + '-' + f.type + '-s'"
+              class="drilldown-item"
+              @click="drillToFile(f)"
+            >
+              <span class="git-file-icon">
+                <svg v-if="f.type === 'A'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <svg v-else-if="f.type === 'D'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+              </span>
+              <span class="git-file-type-badge" :class="badgeClass(f)">{{ fileTypeLabel(f.type, f.staged) }}</span>
+              <span class="git-file-path" :title="f.path">{{ f.path }}</span>
+            </div>
+          </template>
+          <template v-if="hasUnstaged">
+            <div v-if="hasStaged" class="file-group-label">未暂存</div>
+            <div
+              v-for="f in unstagedFiles"
+              :key="f.path + '-' + f.type"
+              class="drilldown-item"
+              @click="drillToFile(f)"
+            >
+              <span class="git-file-icon">
+                <svg v-if="f.type === 'A'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
+                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <svg v-else-if="f.type === 'D'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14">
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+              </span>
+              <span class="git-file-type-badge" :class="badgeClass(f)">{{ fileTypeLabel(f.type, f.staged) }}</span>
+              <span class="git-file-path" :title="f.path">{{ f.path }}</span>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -104,15 +130,13 @@
     <!-- View: diff (shared by both modes) -->
     <div v-else-if="currentView === 'diff'" class="drilldown-page">
       <div class="drilldown-header">
-        <div class="drilldown-title">
-          <span class="drilldown-count">{{ diffTitle }}</span>
-        </div>
-        <button class="drilldown-back-btn" @click="drillBack(diffBackTarget)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-          返回
-        </button>
+        <GitBreadcrumb
+          :mode="mode"
+          :current-view="currentView"
+          :selected-commit="selectedCommit"
+          :selected-file-path="selectedFilePath"
+          @navigate="drillBack"
+        />
       </div>
       <div class="drilldown-body">
         <GitCommitMeta :commit="selectedCommit" :is-working-tree="isWorkingTree" />
@@ -133,6 +157,7 @@ import BottomSheet from '@/components/common/BottomSheet.vue'
 import GitCommitList from './GitCommitList.vue'
 import GitCommitMeta from './GitCommitMeta.vue'
 import GitDiffView from './GitDiffView.vue'
+import GitBreadcrumb from './GitBreadcrumb.vue'
 import { renderDiff } from '@/utils/diff.ts'
 import { store } from '@/stores/app.ts'
 
@@ -180,16 +205,16 @@ const selectedCommit = computed(() => {
 })
 const isWorkingTree = computed(() => selectedSHA.value === 'HEAD')
 
-const diffTitle = computed(() => {
-  if (mode === 'file') return '比较报告'
-  return selectedFilePath.value || ''
-})
-
-const diffBackTarget = computed(() => {
-  return props.mode === 'file' ? 'commits' : 'files'
-})
-
 const mode = computed(() => props.mode)
+
+const sortedFiles = computed(() => {
+  const order = { M: 0, A: 1, D: 2, R: 3, '?': 4 }
+  return [...files.value].sort((a, b) => (order[a.type] ?? 5) - (order[b.type] ?? 5))
+})
+const stagedFiles = computed(() => sortedFiles.value.filter(f => f.staged))
+const unstagedFiles = computed(() => sortedFiles.value.filter(f => !f.staged))
+const hasStaged = computed(() => stagedFiles.value.length > 0)
+const hasUnstaged = computed(() => unstagedFiles.value.length > 0)
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -218,6 +243,8 @@ function resetState() {
   isGit.value = false
   untracked.value = false
   wtFiles.value = []
+  lastProjectRoot.value = null
+  lastFilePath.value = null
 }
 
 // Expose commitSearch for the search watcher
@@ -457,18 +484,39 @@ function handleClose() {
   emit('close')
 }
 
+// Track previous identity to detect actual changes
+const lastProjectRoot = ref(null)
+const lastFilePath = ref(null)
+
 watch(() => props.open, async (val) => {
   if (!val) {
-    resetState()
+    // Don't reset state on close — just stop observing
     commitListRef.value?.unobserveList()
     return
   }
 
-  if (props.mode === 'file' && props.file?.path) {
-    await loadFileHistory(props.file.path)
-  } else {
-    await loadProjectHistory()
+  // Check if identity changed (different project or file)
+  const currentProject = store.state.projectRoot
+  const currentFile = props.file?.path
+  const identityChanged =
+    (lastProjectRoot.value !== currentProject) ||
+    (props.mode === 'file' && lastFilePath.value !== currentFile)
+
+  if (identityChanged) {
+    resetState()
+    lastProjectRoot.value = currentProject
+    lastFilePath.value = currentFile
   }
+
+  // Only load data if we have no commits loaded
+  if (commits.value.length === 0 && !error.value) {
+    if (props.mode === 'file' && props.file?.path) {
+      await loadFileHistory(props.file.path)
+    } else {
+      await loadProjectHistory()
+    }
+  }
+
   // Start observing after content loads
   setTimeout(() => commitListRef.value?.observeList(), 100)
 })
@@ -512,18 +560,6 @@ watch(() => props.open, async (val) => {
   gap: 8px;
 }
 
-.drilldown-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary, #212529);
-  overflow: hidden;
-  flex: 1;
-  min-width: 0;
-}
-
 .drilldown-count {
   font-size: 10px;
   font-weight: 700;
@@ -532,26 +568,6 @@ watch(() => props.open, async (val) => {
   padding: 1px 6px;
   border-radius: 10px;
   flex-shrink: 0;
-}
-
-.drilldown-back-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 10px;
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: 6px;
-  background: var(--bg-primary, #ffffff);
-  color: var(--accent-color, #4a90d9);
-  font-size: 13px;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.drilldown-back-btn:hover {
-  background: var(--bg-secondary, #f8f9fa);
-  border-color: var(--accent-color, #4a90d9);
 }
 
 .drilldown-body {
@@ -620,5 +636,13 @@ watch(() => props.open, async (val) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.file-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #999);
+  padding: 8px 14px 4px;
+  letter-spacing: 0.03em;
 }
 </style>
