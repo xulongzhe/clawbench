@@ -87,6 +87,9 @@
                 <span v-if="c.author"> · {{ c.author }}</span>
               </div>
             </div>
+            <svg class="drilldown-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
           </div>
           <div ref="listRef">
             <div v-if="hasMore && loadingMore" class="git-load-more">
@@ -293,7 +296,7 @@ defineExpose({ observeList, unobserveList, commitSearch })
   cursor: pointer;
   transition: background 0.15s;
   border-bottom: 1px solid var(--border-color, #dee2e6);
-  height: 46px;
+  min-height: 46px;
   box-sizing: border-box;
 }
 
@@ -303,6 +306,12 @@ defineExpose({ observeList, unobserveList, commitSearch })
 
 .drilldown-item:active {
   background: var(--bg-tertiary, #e9ecef);
+}
+
+.drilldown-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted, #ccc);
+  margin-left: 4px;
 }
 
 .git-commit-info {
