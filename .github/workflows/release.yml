@@ -75,3 +75,36 @@ jobs:
             pkg-linux/clawbench-linux-amd64.zip
             pkg-windows/clawbench-windows-amd64.zip
             pkg-mac/clawbench-darwin-arm64.zip
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease
+
+      - name: Rename APK
+        run: mv android/app/build/outputs/apk/release/app-release-unsigned.apk clawbench-android.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            clawbench-android.apk
