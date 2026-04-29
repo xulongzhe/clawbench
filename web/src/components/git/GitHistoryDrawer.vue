@@ -440,7 +440,8 @@ async function loadCommitFiles(sha) {
   try {
     const resp = await fetch(`/api/git/commit-files?sha=${encodeURIComponent(sha)}`)
     if (!resp.ok) { files.value = []; return }
-    files.value = await resp.json()
+    const data = await resp.json()
+    files.value = Array.isArray(data) ? data : []
   } catch {
     files.value = []
   } finally {

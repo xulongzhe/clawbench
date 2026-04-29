@@ -276,8 +276,9 @@ func ServeGitCommitFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// git diff-tree --no-commit-id --name-status -r <sha>
-	cmd := exec.Command("git", "diff-tree", "--no-commit-id", "--name-status", "-r", sha)
+	// git diff-tree -m --no-commit-id --name-status -r <sha>
+	// -m splits merge commits so their diffs are shown (otherwise empty)
+	cmd := exec.Command("git", "diff-tree", "-m", "--no-commit-id", "--name-status", "-r", sha)
 	cmd.Dir = projectPath
 	output, err := cmd.CombinedOutput()
 
@@ -301,7 +302,9 @@ func ServeGitCommitFiles(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-
+	if files == nil {
+		files = []fileInfo{}
+	}
 	writeJSON(w, http.StatusOK, files)
 }
 
