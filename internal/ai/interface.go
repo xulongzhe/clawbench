@@ -31,7 +31,7 @@ type Metadata struct {
 
 // StreamEvent represents a single event in the streaming output
 type StreamEvent struct {
-	Type      string    // "content", "thinking", "metadata", "done", "error", "tool_use", "raw_output", "resume_split"
+	Type      string    // "content", "thinking", "metadata", "done", "error", "tool_use", "raw_output"
 	Content   string    // Incremental text (Type=content, Type=thinking)
 	Meta      *Metadata // Metadata (Type=metadata)
 	Error     string    // Error message (Type=error)
