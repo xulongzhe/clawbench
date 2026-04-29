@@ -3,6 +3,7 @@ package service
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -131,6 +132,17 @@ func InitDB() error {
 		if _, err := DB.Exec("ALTER TABLE chat_sessions ADD COLUMN external_session_id TEXT DEFAULT ''"); err != nil {
 			return fmt.Errorf("failed to add external_session_id column: %w", err)
 		}
+	}
+
+	// Clean up orphaned streaming messages from previous crashes/restarts.
+	// Any message with streaming=1 at startup can never be finalized since
+	// its stream no longer exists, so mark it as complete.
+	result, err := DB.Exec("UPDATE chat_history SET streaming = 0 WHERE streaming = 1")
+	if err != nil {
+		return fmt.Errorf("failed to clean up orphaned streaming messages: %w", err)
+	}
+	if n, _ := result.RowsAffected(); n > 0 {
+		slog.Info("cleaned up orphaned streaming messages", slog.Int64("count", n))
 	}
 
 	return nil
