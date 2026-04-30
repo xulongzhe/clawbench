@@ -36,6 +36,14 @@ const (
 
 	// CacheKeyHexLen is the number of hex characters used for the cache filename.
 	CacheKeyHexLen = 16
+
+	// reSummarizeThreshold — if the first summarization result exceeds this
+	// many bytes, a second pass is requested to further condense the text.
+	reSummarizeThreshold = 4000
+
+	// maxSummarizePasses is the maximum number of summarization attempts
+	// (first pass + optional re-summarization).
+	maxSummarizePasses = 2
 )
 
 // MaxTextRunes is the maximum number of runes accepted for TTS input.
@@ -106,6 +114,12 @@ func NeedsSummarization(text string) bool {
 	return needs
 }
 
+// needsReSummarization returns true if the summarization result is still
+// too long (in bytes) and a second pass would be beneficial.
+func needsReSummarization(result string, pass int) bool {
+	return pass < maxSummarizePasses && len(result) > reSummarizeThreshold
+}
+
 // MMXSummarizer implements Summarizer using the mmx CLI tool (mmx text chat).
 type MMXSummarizer struct {
 	// Model is the model ID for text chat (default: "MiniMax-M2.7").
@@ -126,12 +140,36 @@ func (s *MMXSummarizer) Summarize(ctx context.Context, text string) (string, err
 		return cleaned, nil
 	}
 
-	// Use --messages-file - to pipe via stdin, avoiding CLI arg length limits
-	messagesJSON := fmt.Sprintf(`[{"role":"user","content":%q}]`, cleaned)
+	result, err := s.doSummarizePass(ctx, cleaned, loadSummarizePrompt(), 1)
+	if err != nil {
+		return "", err
+	}
+
+	// If the result is still too long, do a second pass with the same prompt
+	if needsReSummarization(result, 1) {
+		slog.Info("tts summarize result too long, starting second pass",
+			slog.Int("result_bytes", len(result)),
+		)
+		second, err := s.doSummarizePass(ctx, result, loadSummarizePrompt(), 2)
+		if err != nil {
+			slog.Warn("tts second summarize pass failed, using first pass result",
+				slog.String("error", err.Error()),
+			)
+			return result, nil // return first pass result on second pass failure
+		}
+		result = second
+	}
+
+	return result, nil
+}
+
+// doSummarizePass performs a single summarization pass using mmx text chat.
+func (s *MMXSummarizer) doSummarizePass(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+	messagesJSON := fmt.Sprintf(`[{"role":"user","content":%q}]`, text)
 
 	args := []string{
 		"text", "chat",
-		"--system", loadSummarizePrompt(),
+		"--system", systemPrompt,
 		"--messages-file", "-",
 		"--model", s.Model,
 		"--max-tokens", "1024",
@@ -145,13 +183,18 @@ func (s *MMXSummarizer) Summarize(ctx context.Context, text string) (string, err
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("mmx text chat failed: %w (stderr: %s)", err, stderr.String())
+		return "", fmt.Errorf("mmx text chat (pass %d) failed: %w (stderr: %s)", pass, err, stderr.String())
 	}
 
 	result := strings.TrimSpace(stdout.String())
 	if result == "" {
-		return "", fmt.Errorf("mmx text chat returned empty output")
+		return "", fmt.Errorf("mmx text chat (pass %d) returned empty output", pass)
 	}
+
+	slog.Info("tts summarize pass completed",
+		slog.Int("pass", pass),
+		slog.Int("result_len", len([]rune(result))),
+	)
 
 	return result, nil
 }
@@ -185,20 +228,45 @@ func (s *AIBackendSummarizer) Summarize(ctx context.Context, text string) (strin
 		return cleaned, nil
 	}
 
+	result, err := s.doSummarizePass(ctx, cleaned, s.prompt, 1)
+	if err != nil {
+		return "", err
+	}
+
+	// If the result is still too long, do a second pass with the same prompt
+	if needsReSummarization(result, 1) {
+		slog.Info("tts summarize result too long, starting second pass",
+			slog.Int("result_bytes", len(result)),
+		)
+		second, err := s.doSummarizePass(ctx, result, s.prompt, 2)
+		if err != nil {
+			slog.Warn("tts second summarize pass failed, using first pass result",
+				slog.String("error", err.Error()),
+			)
+			return result, nil // return first pass result on second pass failure
+		}
+		result = second
+	}
+
+	return result, nil
+}
+
+// doSummarizePass performs a single summarization pass using an AI backend.
+func (s *AIBackendSummarizer) doSummarizePass(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
 	req := ai.ChatRequest{
-		Prompt:       cleaned,
-		SessionID:    "",    // single-turn, no session
-		WorkDir:      "",    // no workdir needed for summarization
-		SystemPrompt: s.prompt,
+		Prompt:       text,
+		SessionID:    "", // single-turn, no session
+		WorkDir:      "", // no workdir needed for summarization
+		SystemPrompt: systemPrompt,
 		Model:        s.Model, // use configured model or backend default
-		Command:      "",    // use backend default command
-		AgentID:      "",    // not associated with any agent
-		Resume:       false, // single-turn, no resume
+		Command:      "",      // use backend default command
+		AgentID:      "",      // not associated with any agent
+		Resume:       false,   // single-turn, no resume
 	}
 
 	ch, err := s.backend.ExecuteStream(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("AI backend %q failed to start: %w", s.backend.Name(), err)
+		return "", fmt.Errorf("AI backend %q (pass %d) failed to start: %w", s.backend.Name(), pass, err)
 	}
 
 	// Collect content events from the stream
@@ -210,14 +278,20 @@ func (s *AIBackendSummarizer) Summarize(ctx context.Context, text string) (strin
 		case "done":
 			// Stream completed successfully
 		case "error":
-			return "", fmt.Errorf("AI backend %q error: %s", s.backend.Name(), event.Error)
+			return "", fmt.Errorf("AI backend %q (pass %d) error: %s", s.backend.Name(), pass, event.Error)
 		}
 	}
 
 	result := strings.TrimSpace(buf.String())
 	if result == "" {
-		return "", fmt.Errorf("AI backend %q returned empty output", s.backend.Name())
+		return "", fmt.Errorf("AI backend %q (pass %d) returned empty output", s.backend.Name(), pass)
 	}
+
+	slog.Info("tts summarize pass completed",
+		slog.Int("pass", pass),
+		slog.String("backend", s.backend.Name()),
+		slog.Int("result_len", len([]rune(result))),
+	)
 
 	return result, nil
 }
