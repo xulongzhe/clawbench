@@ -447,14 +447,49 @@ onMounted(async () => {
         resp = await fetch('/api/me')
     } catch (_) {
         isAuthenticated.value = false
-        toast.show('无法连接到服务器，请检查后端服务是否启动', { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
+        if (isAppMode.value && window.AndroidNative?.showServerDialog) {
+            toast.show('无法连接到服务器，点击重新配置', {
+                icon: '⚠️', type: 'error', duration: 0,
+                onClick: () => window.AndroidNative.showServerDialog()
+            })
+        } else {
+            toast.show('无法连接到服务器，请检查后端服务是否启动', { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
+        }
         return
     }
     if (resp.ok) {
         isAuthenticated.value = true
     } else if (resp.status === 401 || resp.status === 403) {
-        isAuthenticated.value = false
-        return
+        // Android app mode: try auto-login with saved password
+        if (isAppMode.value && window.AndroidNative?.getPassword?.()) {
+            const savedPwd = window.AndroidNative.getPassword()
+            if (savedPwd) {
+                try {
+                    const loginRes = await fetch('/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: savedPwd })
+                    })
+                    if (loginRes.ok) {
+                        isAuthenticated.value = true
+                        // Continue with normal initialization below
+                    } else {
+                        // Auto-login failed (password changed), show login form
+                        isAuthenticated.value = false
+                        return
+                    }
+                } catch (_) {
+                    isAuthenticated.value = false
+                    return
+                }
+            } else {
+                isAuthenticated.value = false
+                return
+            }
+        } else {
+            isAuthenticated.value = false
+            return
+        }
     } else {
         isAuthenticated.value = false
         toast.show('服务器响应异常，后端服务可能未正确启动', { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })

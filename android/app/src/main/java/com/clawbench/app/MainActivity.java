@@ -282,7 +282,14 @@ public class MainActivity extends Activity {
         if (webView.canGoBack()) {
             webView.goBack();
         } else {
-            super.onBackPressed();
+            // No more WebView history — offer to reconfigure server instead of exiting
+            new AlertDialog.Builder(this)
+                    .setTitle(R.string.dialog_title)
+                    .setMessage("是否重新配置服务器地址？")
+                    .setPositiveButton("重新配置", (dialog, which) -> showServerDialog())
+                    .setNegativeButton("退出", (dialog, which) -> super.onBackPressed())
+                    .setCancelable(true)
+                    .show();
         }
     }
 
@@ -467,6 +474,24 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String getServerUrl() {
             return activity.prefs.getString(KEY_SERVER_URL, "");
+        }
+
+        /**
+         * Show the server configuration dialog (change URL/password).
+         * Called from WebView when connection fails or user wants to reconfigure.
+         */
+        @JavascriptInterface
+        public void showServerDialog() {
+            activity.runOnUiThread(() -> activity.showServerDialog());
+        }
+
+        /**
+         * Get the saved SSH/web password for auto-login.
+         * Returns empty string if no password is saved.
+         */
+        @JavascriptInterface
+        public String getPassword() {
+            return activity.prefs.getString(KEY_SSH_PASSWORD, "");
         }
 
         /**
