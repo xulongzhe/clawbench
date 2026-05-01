@@ -115,20 +115,15 @@
         @close="proxyOpen = false"
       />
 
-      <!-- Quote question floating bar + sheet -->
+      <!-- Quote question floating bar -->
       <QuoteQuestionBar
         :visible="quoteQuestion.visible.value"
-        :quoteData="quoteQuestion.quoteData.value"
-        @open="quoteQuestion.openSheet()"
-      />
-      <QuoteQuestionSheet
-        :open="quoteQuestion.sheetOpen.value"
         :quoteData="quoteQuestion.quoteData.value"
         :sessionIcon="chatSessionInfo?.getAgentIcon?.(chatSessionInfo?.currentAgentId?.value) || '🤖'"
         :sessionName="chatSessionInfo?.agentHeaderTitle?.value || 'AI 对话'"
         :currentSessionId="chatSessionInfo?.currentSessionId?.value || ''"
-        @close="quoteQuestion.closeSheet()"
         @send="quoteQuestion.sendMessage"
+        @close="quoteQuestion.closeSheet()"
       />
 
       <!-- Bottom dock -->
@@ -218,7 +213,6 @@ import ToastNotification from './components/common/ToastNotification.vue'
 import ProxyPanel from './components/proxy/ProxyPanel.vue'
 import PortForwardBrowser from './components/proxy/PortForwardBrowser.vue'
 import QuoteQuestionBar from './components/common/QuoteQuestionBar.vue'
-import QuoteQuestionSheet from './components/common/QuoteQuestionSheet.vue'
 import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
 import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'

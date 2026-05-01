@@ -242,48 +242,7 @@ provide('chatUI', { closeSheet: () => bottomSheetRef.value?.close() })
 provide('autoSpeech', autoSpeech)
 provide('layoutRefreshKey', layoutRefreshKey)
 
-// Provide a function for external components (QuoteQuestion) to send messages
-// to the current session without opening the chat panel
-provide('sendQuoteMessage', async (message, sessionId) => {
-  const targetSessionId = sessionId || session.currentSessionId.value
-
-  // If no session exists, create one first
-  if (!targetSessionId) {
-    await session.createSession()
-  }
-
-  const sid = sessionId || session.currentSessionId.value
-  const effectiveAgentId = session.currentAgentId.value
-
-  try {
-    const url = sid
-      ? `/api/ai/chat?session_id=${encodeURIComponent(sid)}`
-      : '/api/ai/chat'
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message,
-        filePaths: [],
-        files: [],
-        agentId: effectiveAgentId,
-      }),
-    })
-    const data = await resp.json()
-    if (!resp.ok) throw new Error(data.error || '发送失败')
-
-    // If this was sent to the current session, the stream needs to be connected
-    if (sid === session.currentSessionId.value) {
-      stream.connectStream(sid)
-    }
-
-    toast.show('已发送到会话', { icon: '✅', type: 'success', duration: 2000 })
-  } catch (err) {
-    toast.show('发送失败: ' + err.message, { icon: '⚠️', type: 'error' })
-  }
-})
-
-// Provide session info for the QuoteQuestionSheet
+// Provide session info for the QuoteQuestionBar
 provide('chatSessionInfo', {
   currentSessionId: session.currentSessionId,
   currentSessionTitle: session.currentSessionTitle,

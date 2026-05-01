@@ -95,7 +95,6 @@ function onSelectionChange() {
 let listenerCount = 0
 
 export function useQuoteQuestion() {
-  const sendQuoteMessage = inject<(message: string, sessionId?: string) => Promise<void>>('sendQuoteMessage', null)
   const toast = inject<any>('toast', null)
 
   onMounted(() => {
@@ -112,12 +111,7 @@ export function useQuoteQuestion() {
     }
   })
 
-  function openSheet() {
-    sheetOpen.value = true
-  }
-
   function closeSheet() {
-    sheetOpen.value = false
     // Clear selection when closing
     const sel = window.getSelection()
     if (sel) sel.removeAllRanges()
@@ -139,24 +133,37 @@ export function useQuoteQuestion() {
 
     const message = `\`\`\`${langPrefix}${q.filePath}${lineSuffix}\n${q.text}\n\`\`\`\n\n${userMessage.trim()}`
 
-    if (sendQuoteMessage) {
-      await sendQuoteMessage(message, sessionId)
-    } else {
-      // Fallback: direct API call
-      try {
-        const url = sessionId
-          ? `/api/ai/chat?session_id=${encodeURIComponent(sessionId)}`
-          : '/api/ai/chat'
-        const resp = await fetch(url, {
+    // Direct API call — always works regardless of provide/inject hierarchy
+    try {
+      // If no session, create one first
+      let sid = sessionId
+      if (!sid) {
+        const createResp = await fetch('/api/ai/sessions', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({}),
         })
-        if (!resp.ok) throw new Error('发送失败')
-        if (toast) toast.show('已发送到会话', { icon: '✅', type: 'success', duration: 2000 })
-      } catch (err) {
-        if (toast) toast.show('发送失败', { icon: '⚠️', type: 'error' })
+        const createData = await createResp.json()
+        if (createData.ok && createData.sessionId) {
+          sid = createData.sessionId
+        }
       }
+
+      const url = sid
+        ? `/api/ai/chat?session_id=${encodeURIComponent(sid)}`
+        : '/api/ai/chat'
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      })
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}))
+        throw new Error(errData.error || '发送失败')
+      }
+      if (toast) toast.show('已发送到会话', { icon: '✅', type: 'success', duration: 2000 })
+    } catch (err) {
+      if (toast) toast.show('发送失败: ' + (err as Error).message, { icon: '⚠️', type: 'error' })
     }
 
     closeSheet()
@@ -166,7 +173,7 @@ export function useQuoteQuestion() {
     visible: barVisible,
     quoteData,
     sheetOpen,
-    openSheet,
+    openSheet: () => { sheetOpen.value = true },
     closeSheet,
     sendMessage,
   }
