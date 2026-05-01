@@ -302,7 +302,8 @@ export function useChatSession(options: UseChatSessionOptions) {
             await createSession()
           }
         }
-        toast.show('会话已删除', { icon: '🗑️', type: 'success', duration: 2000 })
+        const maxCount = store.state.sessionMaxCount
+        toast.show(`会话已删除 (${data.sessionCount ?? ''}/${maxCount})`, { icon: '🗑️', type: 'success', duration: 2000 })
       }
     } catch (err) {
       console.error('Failed to delete session:', err)

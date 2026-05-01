@@ -112,7 +112,8 @@ func DeleteSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	sessionCount, _ := service.GetSessionCount(projectPath)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "sessionCount": sessionCount})
 }
 
 // getSessionID retrieves session ID from query param or cookie.
