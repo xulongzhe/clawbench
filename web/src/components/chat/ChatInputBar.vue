@@ -338,6 +338,8 @@ function toggleAttachMenu() {
 function handleSendClick() {
   if (inputText.value.trim()) {
     emit('send', inputText.value.trim())
+  } else if (props.pendingFiles.length > 0 || props.attachedFiles.length > 0) {
+    emit('send', '')
   } else if (props.quickSend.length > 0) {
     toggleQuickMenu()
   }
