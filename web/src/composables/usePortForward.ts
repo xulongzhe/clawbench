@@ -41,6 +41,10 @@ const loading = ref(false)
 const sshInfo = ref<SSHInfo | null>(null)
 const tunnelStatus = ref<TunnelStatus>('unknown')
 const tunnelMessage = ref('')
+const tunnelChecking = ref(false)
+
+// Auto-refresh interval when tunnel is unhealthy
+let tunnelPollTimer: ReturnType<typeof setInterval> | null = null
 
 // Callback for opening port in the embedded browser (set by App.vue)
 let openPortBrowserFn: ((port: number, protocol?: string) => void) | null = null
@@ -110,6 +114,7 @@ export function usePortForward() {
 
   /** Check SSH tunnel health and determine status */
   async function checkTunnelHealth() {
+    tunnelChecking.value = true
     tunnelStatus.value = 'unknown'
     tunnelMessage.value = ''
 
@@ -118,18 +123,56 @@ export function usePortForward() {
     const info = sshInfo.value
     // No SSH or not in app mode — skip tunnel check
     if (!info?.enabled || !isAppMode.value) {
+      tunnelChecking.value = false
       return
     }
 
+    // Prefer native SSH tunnel status (Android PortForwardService knows its own connection)
+    const nativeConnected = getNativeTunnelStatus()
+    if (nativeConnected === true) {
+      // Native says connected — trust it regardless of server-side connCount
+      const hasPorts = ports.value.length > 0
+      const anyActive = ports.value.some(p => p.active)
+      if (hasPorts && !anyActive) {
+        tunnelStatus.value = 'degraded'
+        tunnelMessage.value = 'SSH 隧道已连接，但所有转发端口均无服务响应'
+        tunnelChecking.value = false
+        startTunnelPoll()
+        return
+      }
+      tunnelStatus.value = 'ok'
+      tunnelChecking.value = false
+      stopTunnelPoll()
+      return
+    } else if (nativeConnected === false) {
+      tunnelStatus.value = 'disconnected'
+      tunnelMessage.value = 'SSH 隧道未连接，端口转发将无法使用'
+      tunnelChecking.value = false
+      startTunnelPoll()
+      return
+    }
+
+    // Native status unavailable — fall back to server-side connection stats
     const stats = info.connectionStats
     if (!stats) {
-      // No connection stats available (shouldn't happen when SSH is enabled)
+      tunnelChecking.value = false
       return
     }
 
     if (!stats.connected) {
+      // Server says disconnected, but check if any ports are actually active
+      // (health check passes = tunnel is working despite connCount=0)
+      const anyActive = ports.value.some(p => p.active)
+      if (anyActive) {
+        tunnelStatus.value = 'ok'
+        tunnelChecking.value = false
+        stopTunnelPoll()
+        return
+      }
       tunnelStatus.value = 'disconnected'
       tunnelMessage.value = 'SSH 隧道未连接，端口转发将无法使用'
+      tunnelChecking.value = false
+      startTunnelPoll()
       return
     }
 
@@ -140,10 +183,90 @@ export function usePortForward() {
     if (hasPorts && !anyActive) {
       tunnelStatus.value = 'degraded'
       tunnelMessage.value = 'SSH 隧道已连接，但所有转发端口均无服务响应'
+      tunnelChecking.value = false
+      startTunnelPoll()
       return
     }
 
     tunnelStatus.value = 'ok'
+    tunnelChecking.value = false
+    stopTunnelPoll()
+  }
+
+  /**
+   * Query Android native layer for SSH tunnel connection status.
+   * Returns true (connected), false (disconnected), or null (unavailable/not app mode).
+   */
+  function getNativeTunnelStatus(): boolean | null {
+    if (!isAppMode.value) return null
+    const native = (window as any).AndroidNative
+    if (!native || typeof native.isTunnelConnected !== 'function') return null
+    try {
+      const result = native.isTunnelConnected()
+      if (typeof result === 'boolean') return result
+      return null
+    } catch {
+      return null
+    }
+  }
+
+  /** Start polling tunnel health every 5s while unhealthy */
+  function startTunnelPoll() {
+    if (tunnelPollTimer) return
+    tunnelPollTimer = setInterval(async () => {
+      // Check native status first (fast, no network)
+      const nativeConnected = getNativeTunnelStatus()
+      if (nativeConnected === true) {
+        await loadPorts()
+        const hasPorts = ports.value.length > 0
+        const anyActive = ports.value.some(p => p.active)
+        if (!hasPorts || anyActive) {
+          tunnelStatus.value = 'ok'
+          tunnelMessage.value = ''
+          stopTunnelPoll()
+        } else {
+          tunnelStatus.value = 'degraded'
+          tunnelMessage.value = 'SSH 隧道已连接，但所有转发端口均无服务响应'
+        }
+        return
+      }
+
+      // Fall back to server-side check
+      await loadSSHInfo()
+      const info = sshInfo.value
+      const stats = info?.connectionStats
+      if (stats?.connected) {
+        // Re-check full health (ports + ssh)
+        await loadPorts()
+        const hasPorts = ports.value.length > 0
+        const anyActive = ports.value.some(p => p.active)
+        if (!hasPorts || anyActive) {
+          tunnelStatus.value = 'ok'
+          tunnelMessage.value = ''
+          stopTunnelPoll()
+        } else {
+          tunnelStatus.value = 'degraded'
+          tunnelMessage.value = 'SSH 隧道已连接，但所有转发端口均无服务响应'
+        }
+      } else {
+        // Server says disconnected — still check if ports are actually active
+        await loadPorts()
+        const anyActive = ports.value.some(p => p.active)
+        if (anyActive) {
+          tunnelStatus.value = 'ok'
+          tunnelMessage.value = ''
+          stopTunnelPoll()
+        }
+      }
+    }, 5000)
+  }
+
+  /** Stop the tunnel health polling */
+  function stopTunnelPoll() {
+    if (tunnelPollTimer) {
+      clearInterval(tunnelPollTimer)
+      tunnelPollTimer = null
+    }
   }
 
   /** Open a forwarded port — in app mode opens system browser, otherwise window.open */
@@ -165,6 +288,7 @@ export function usePortForward() {
     sshInfo,
     tunnelStatus,
     tunnelMessage,
+    tunnelChecking,
     loadPorts,
     registerPort,
     unregisterPort,

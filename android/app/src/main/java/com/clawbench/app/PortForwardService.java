@@ -74,6 +74,7 @@ public class PortForwardService extends Service {
     private static final int MONITOR_CHECK_INTERVAL_MS = 15000;
 
     private static boolean isRunning = false;
+    private static PortForwardService instance;
 
     private JSch jsch;
     private Session sshSession;
@@ -105,6 +106,18 @@ public class PortForwardService extends Service {
 
     public static boolean isRunning() {
         return isRunning;
+    }
+
+    /**
+     * Check whether the SSH tunnel is currently connected.
+     * Can be called from any thread (used by WebAppInterface for JS bridge).
+     * Returns false if the service is not running or the session is disconnected.
+     */
+    public static boolean isTunnelConnected() {
+        // Access via static reference is inherently racy, but sufficient for
+        // a health-check ping — worst case we return a stale value that gets
+        // corrected on the next poll.
+        return isRunning && instance != null && instance.sshSession != null && instance.sshSession.isConnected();
     }
 
     /**
@@ -162,6 +175,7 @@ public class PortForwardService extends Service {
     public void onCreate() {
         super.onCreate();
         isRunning = true;
+        instance = this;
         jsch = new JSch();
         startForegroundCompat(NOTIFICATION_ID, buildNotification(0, null));
 
@@ -215,6 +229,7 @@ public class PortForwardService extends Service {
         releaseWakeLock();
         disconnectInternal();
         isRunning = false;
+        instance = null;
         networkExecutor.shutdownNow();
         stopForeground(true);
         super.onDestroy();

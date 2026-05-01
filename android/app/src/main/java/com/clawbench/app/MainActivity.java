@@ -560,6 +560,16 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /**
+         * Check whether the SSH tunnel is currently connected.
+         * Queries the PortForwardService's SSH session state.
+         * Returns true if connected, false if disconnected or service not running.
+         */
+        @JavascriptInterface
+        public boolean isTunnelConnected() {
+            return PortForwardService.isTunnelConnected();
+        }
+
+        /**
          * Add a port to be forwarded via SSH tunnel.
          * The PortForwardService creates a local port forward: localhost:{port} → server:{port}
          * WebView can then access http://localhost:{port} directly.

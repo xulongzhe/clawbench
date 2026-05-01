@@ -21,6 +21,12 @@
           <span class="tunnel-banner-title">SSH 隧道未连接</span>
           <span class="tunnel-banner-detail">端口转发将无法使用，请检查网络或重新打开页面</span>
         </div>
+        <button class="tunnel-retry-btn" :class="{ spinning: tunnelChecking }" @click="handleRetryTunnel" title="重新检测">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+        </button>
       </div>
       <div v-else-if="tunnelStatus === 'degraded'" class="tunnel-banner warning">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -32,6 +38,12 @@
           <span class="tunnel-banner-title">转发端口无响应</span>
           <span class="tunnel-banner-detail">SSH 隧道已连接，但所有端口的服务均未响应</span>
         </div>
+        <button class="tunnel-retry-btn" :class="{ spinning: tunnelChecking }" @click="handleRetryTunnel" title="重新检测">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+          </svg>
+        </button>
       </div>
 
       <!-- Loading -->
@@ -149,6 +161,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import ProxyPortItem from './ProxyPortItem.vue'
 import { usePortForward } from '@/composables/usePortForward.ts'
+import { useToast } from '@/composables/useToast.ts'
 
 const props = defineProps({ open: Boolean })
 const emit = defineEmits(['close'])
@@ -161,7 +174,8 @@ const newProtocol = ref('http')
 const detecting = ref(false)
 const portInputRef = ref(null)
 
-const { ports, detectedPorts, loading, isAppMode, sshInfo, tunnelStatus, tunnelMessage, registerPort, unregisterPort, detectPorts, checkTunnelHealth, openPort } = usePortForward()
+const { ports, detectedPorts, loading, isAppMode, sshInfo, tunnelStatus, tunnelMessage, tunnelChecking, registerPort, unregisterPort, detectPorts, checkTunnelHealth, openPort } = usePortForward()
+const toast = useToast()
 
 const sshCopied = ref(false)
 
@@ -207,6 +221,25 @@ async function copySSHCommand() {
     sshCopied.value = true
     setTimeout(() => { sshCopied.value = false }, 2000)
   } catch {}
+}
+
+async function handleRetryTunnel() {
+  const prevStatus = tunnelStatus.value
+  try {
+    await checkTunnelHealth()
+  } catch {
+    toast.show('检测失败，请检查网络连接', { type: 'error' })
+    return
+  }
+  if (tunnelStatus.value === 'ok') {
+    toast.show('SSH 隧道已恢复', { type: 'success' })
+  } else if (tunnelStatus.value === 'degraded' && prevStatus === 'disconnected') {
+    toast.show('SSH 隧道已连接，但端口服务未响应', { type: 'info' })
+  } else if (tunnelStatus.value === 'disconnected') {
+    toast.show('SSH 隧道仍未连接', { type: 'error' })
+  } else if (tunnelStatus.value === 'degraded') {
+    toast.show('端口服务仍未响应', { type: 'error' })
+  }
 }
 
 watch(() => props.open, async (val) => {
@@ -269,6 +302,35 @@ watch(() => props.open, async (val) => {
 .tunnel-banner-detail {
   font-size: 11px;
   opacity: 0.8;
+}
+
+.tunnel-retry-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-left: auto;
+  align-self: center;
+}
+
+.tunnel-retry-btn:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.tunnel-retry-btn.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .proxy-loading,
