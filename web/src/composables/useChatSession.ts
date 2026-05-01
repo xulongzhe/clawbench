@@ -1,6 +1,8 @@
 import { ref, computed, type Ref } from 'vue'
 import { useToast } from '@/composables/useToast.ts'
 import { useNotification } from '@/composables/useNotification.ts'
+import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
+import { useAgents } from '@/composables/useAgents.ts'
 import { store } from '@/stores/app.ts'
 
 export interface UseChatSessionOptions {
@@ -50,18 +52,20 @@ export function useChatSession(options: UseChatSessionOptions) {
   const toast = useToast()
   const notification = useNotification()
 
+  // ── Identity refs from singleton ──
+  const identity = useSessionIdentity()
+  const { currentSessionTitle, currentBackend, currentAgentId, runningSessions } = identity
+
+  // ── Agents from singleton ──
+  const { agents, loadAgents, getAgentIcon, getAgentName } = useAgents()
+
   // Switching state — true while a session switch is in progress (distinct from
   // "loading" which means "AI is generating"). Used to show a fade/placeholder
   // transition so the user sees immediate feedback instead of a frozen UI.
   const switching = ref(false)
 
-  const currentSessionTitle = ref('')
-  const currentBackend = ref('')
-  const currentAgentId = ref('')
   const sessionDrawerOpen = ref(false)
   const taskDrawerOpen = ref(false)
-  const agents = ref([])
-  const runningSessions = ref(new Set())
   const lastMsgCount = ref(0)
   let msgCountInterval: ReturnType<typeof setInterval> | null = null
   let globalPollingInterval: ReturnType<typeof setInterval> | null = null
@@ -79,26 +83,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
   // Guard against concurrent switchSession calls — only the last one wins
   let switchSessionSeq = 0
-
-  async function loadAgents() {
-    try {
-      const resp = await fetch('/api/agents')
-      const data = await resp.json()
-      agents.value = data.agents || []
-    } catch (err) {
-      console.error('Failed to load agents:', err)
-    }
-  }
-
-  function getAgentIcon(agentId) {
-    const agent = agents.value.find(a => a.id === agentId)
-    return agent ? agent.icon : '🤖'
-  }
-
-  function getAgentName(agentId) {
-    const agent = agents.value.find(a => a.id === agentId)
-    return agent ? agent.name : (agentId || '助手')
-  }
 
   function parseMessages(rawMsgs) {
     return rawMsgs.map(msg => {
@@ -141,7 +125,6 @@ export function useChatSession(options: UseChatSessionOptions) {
       currentSessionTitle.value = data.sessionTitle || ''
       currentBackend.value = data.backend || ''
       currentAgentId.value = data.agentId || ''
-      console.log('loadHistory - agentId:', data.agentId, 'currentAgentId:', currentAgentId.value)
       onExtractScheduleProposals(messages.value)
       onRenderUpdate(true)
       if (data.running) {
@@ -267,7 +250,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         throw new Error(data.error || `创建失败 (${resp.status})`)
       }
       currentSessionId.value = data.sessionId
-      currentSessionTitle.value = ''
+      currentSessionTitle.value = data.title || ''
       currentBackend.value = data.backend || ''
       currentAgentId.value = data.agentId || agentId || ''
       messages.value = []
@@ -421,32 +404,35 @@ export function useChatSession(options: UseChatSessionOptions) {
   }
 
   return {
+    // Identity refs — from singleton, but still returned for backward compat
+    // (ChatPanel uses session.currentSessionTitle.value, etc.)
     currentSessionId,
     currentSessionTitle,
     currentBackend,
     currentAgentId,
+    runningSessions,
+    // UI state — local to this instance
     sessionDrawerOpen,
     taskDrawerOpen,
-    agents,
-    runningSessions,
     agentHeaderTitle,
     totalMessages,
     hasMore,
     loadingMore,
     switching,
+    // Operations
     loadHistory,
     loadMoreMessages,
     switchSession,
     createSession,
     deleteSession,
-    loadAgents,
-    getAgentIcon,
-    getAgentName,
     openSessionTab,
     startGlobalPolling,
     stopGlobalPolling,
     startMsgCountPolling,
     stopMsgCountPolling,
     handleVisibilityChange,
+    // Agent helpers — delegate to singleton
+    getAgentIcon,
+    getAgentName,
   }
 }

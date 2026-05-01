@@ -16,9 +16,9 @@
       :messages="messages"
       :expandedTools="render.expandedTools.value"
       :blockProposals="render.blockProposals"
-      :agents="session.agents.value"
+      :agents="agentsList"
       :currentAgent="currentAgent"
-      :currentSessionId="session.currentSessionId.value"
+      :currentSessionId="identity.currentSessionId.value"
       :renderedContents="render.renderedContents.value"
       :hasMore="session.hasMore.value"
       :loadingMore="session.loadingMore.value"
@@ -49,7 +49,7 @@
       :attachedFiles="attachedFiles"
       :messages="messages"
       :autoSpeechEnabled="autoSpeech.enabled.value"
-      :currentSessionId="session.currentSessionId.value"
+      :currentSessionId="identity.currentSessionId.value"
       :chatUnread="store.state.chatUnread"
       :chatRunning="store.state.chatRunning"
       :quickSend="store.state.chatQuickSend"
@@ -85,8 +85,8 @@
   <SessionDrawer
     ref="sessionDrawerRef"
     :open="session.sessionDrawerOpen.value"
-    :currentSessionId="session.currentSessionId.value"
-    :runningSessionIds="session.runningSessions.value"
+    :currentSessionId="identity.currentSessionId.value"
+    :runningSessionIds="identity.runningSessions.value"
     @close="session.sessionDrawerOpen.value = false"
     @select="session.switchSession"
     @create="handleCreateSession"
@@ -111,9 +111,10 @@ import ChatMetadataModal from './ChatMetadataModal.vue'
 import ChatInputBar from './ChatInputBar.vue'
 import ChatMessageList from './ChatMessageList.vue'
 import { useChatRender } from '@/composables/useChatRender.ts'
-import { store } from '@/stores/app.ts'
 import { useChatStream } from '@/composables/useChatStream.ts'
 import { useChatSession } from '@/composables/useChatSession.ts'
+import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
+import { useAgents } from '@/composables/useAgents.ts'
 import { useToast } from '@/composables/useToast.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useNotification } from '@/composables/useNotification.ts'
@@ -121,6 +122,7 @@ import { useFileUpload } from '@/composables/useFileUpload.ts'
 import { playNotificationSound } from '@/composables/useNotificationSound.ts'
 import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
 import { useSwipeSession } from '@/composables/useSwipeSession.ts'
+import { store } from '@/stores/app.ts'
 
 const props = defineProps({
     open: Boolean,
@@ -128,17 +130,20 @@ const props = defineProps({
 })
 const emit = defineEmits(['close', 'open', 'message'])
 
+// ── Singletons ──
+const identity = useSessionIdentity()
+const { agents: agentsList, getAgentIcon, getAgentName } = useAgents()
+
 const messages = ref([])
 const inputDisabled = ref(true)
 const loading = ref(false)
-const currentSessionId = ref('')
 // Incremented when the panel reopens, so ChatMessageItem can re-check
 // overflow after being hidden (display:none gives scrollHeight=0).
 const layoutRefreshKey = ref(0)
 const currentAgent = computed(() => {
-  const agentId = session.currentAgentId.value
+  const agentId = identity.currentAgentId.value
   if (!agentId) return null
-  return session.agents.value.find(a => a.id === agentId) || null
+  return agentsList.value.find(a => a.id === agentId) || null
 })
 const sessionDrawerRef = ref(null)
 const bottomSheetRef = ref(null)
@@ -165,10 +170,10 @@ function handleFileTagClick(filePath) {
     }
 }
 
-const render = useChatRender({ messages, theme, currentSessionId })
+const render = useChatRender({ messages, theme, currentSessionId: identity.currentSessionId })
 
 const session = useChatSession({
-  currentSessionId,
+  currentSessionId: identity.currentSessionId,
   messages,
   loading,
   inputDisabled,
@@ -189,7 +194,7 @@ const session = useChatSession({
 })
 
 const swipeSession = useSwipeSession({
-  currentSessionId: session.currentSessionId,
+  currentSessionId: identity.currentSessionId,
   switchSession: session.switchSession,
 })
 
@@ -211,8 +216,8 @@ function onStreamDone() {
 
 const stream = useChatStream({
   messages,
-  currentSessionId: session.currentSessionId,
-  currentBackend: session.currentBackend,
+  currentSessionId: identity.currentSessionId,
+  currentBackend: identity.currentBackend,
   loading,
   inputDisabled,
   onRenderNeeded: (forceFull) => render.updateRenderedContents(forceFull),
@@ -238,10 +243,26 @@ provide('chatRender', {
   truncate: render.truncate,
   hasImagesInContent: render.hasImagesInContent,
 })
-provide('chatSession', { getAgentIcon: session.getAgentIcon, getAgentName: session.getAgentName })
+provide('chatSession', { getAgentIcon, getAgentName })
 provide('chatUI', { closeSheet: () => bottomSheetRef.value?.close() })
 provide('autoSpeech', autoSpeech)
 provide('layoutRefreshKey', layoutRefreshKey)
+
+// Register session actions with the identity singleton so that
+// App.vue / QuoteQuestionBar can trigger ChatPanel operations.
+identity.registerSessionActions({
+  switchSession: session.switchSession,
+  createSession: async (agentId) => {
+    cleanupActiveStream()
+    await session.createSession(agentId)
+  },
+  deleteSession: async (sessionId, backend) => {
+    cleanupActiveStream()
+    await session.deleteSession(sessionId, backend)
+  },
+  sendMessage: (text, filePaths) => sendMessage(text, filePaths),
+  openChatPanel: () => emit('open'),
+})
 
 // 子抽屉跟随聊天框关闭；面板打开时刷新渲染（修复 display:none 期间的过时布局状态）
 watch(() => props.open, async (val) => {
@@ -285,9 +306,9 @@ async function handleCreateSession(agentId) {
 }
 
 async function handleDeleteSession() {
-  if (!session.currentSessionId.value) return
+  if (!identity.currentSessionId.value) return
   cleanupActiveStream()
-  await session.deleteSession(session.currentSessionId.value, session.currentBackend.value)
+  await session.deleteSession(identity.currentSessionId.value, identity.currentBackend.value)
 }
 
 async function handleDeleteSessionById(sessionId, backend) {
@@ -295,13 +316,14 @@ async function handleDeleteSessionById(sessionId, backend) {
   await session.deleteSession(sessionId, backend)
 }
 
-async function sendMessage(text) {
+async function sendMessage(text, extraFilePaths) {
     const inputText = text !== undefined ? text : (inputBarRef.value?.inputText?.trim() || '')
     const hasFiles = pendingFiles.value.length > 0 || attachedFiles.value.length > 0
 
     if ((!inputText && !hasFiles) || inputDisabled.value) return
 
-    const filePaths = attachedFiles.value.length > 0 ? [...attachedFiles.value] : []
+    // Merge attached files from the input bar with extra file paths (e.g. from quote-question)
+    const filePaths = [...(extraFilePaths || []), ...(attachedFiles.value.length > 0 ? attachedFiles.value : [])]
     const uploadedFiles = pendingFiles.value.map(f => ({ path: f.path }))
     const projectFiles = filePaths.map(p => ({ path: p }))
 
@@ -325,10 +347,10 @@ async function sendMessage(text) {
 
     try {
         // Use currentAgentId as-is (backend will use default agent if empty)
-        const effectiveAgentId = session.currentAgentId.value
+        const effectiveAgentId = identity.currentAgentId.value
 
-        const url = session.currentSessionId.value
-            ? `/api/ai/chat?session_id=${encodeURIComponent(session.currentSessionId.value)}`
+        const url = identity.currentSessionId.value
+            ? `/api/ai/chat?session_id=${encodeURIComponent(identity.currentSessionId.value)}`
             : '/api/ai/chat'
         const resp = await fetch(url, {
             method: 'POST',
@@ -340,17 +362,17 @@ async function sendMessage(text) {
             throw new Error(data.error || 'Unknown error')
         }
         // Update session ID if backend created a new one
-        if (data.sessionId && !session.currentSessionId.value) {
-            session.currentSessionId.value = data.sessionId
+        if (data.sessionId && !identity.currentSessionId.value) {
+            identity.currentSessionId.value = data.sessionId
         }
         // Session already running — another request is in progress
         if (data.running) {
             loading.value = true
             inputDisabled.value = true
-            stream.connectStream(session.currentSessionId.value)
+            stream.connectStream(identity.currentSessionId.value)
             return
         }
-        stream.connectStream(session.currentSessionId.value)
+        stream.connectStream(identity.currentSessionId.value)
     } catch (err) {
         stream.stopPolling()
         stream.disconnectStream()
@@ -360,7 +382,7 @@ async function sendMessage(text) {
         toast.show('发送失败，请重试', { icon: '⚠️', type: 'error' })
         // Clear session ID on error to prevent using invalid session
         if (err.message?.includes('Session backend not found') || err.message?.includes('session not found')) {
-            session.currentSessionId.value = ''
+            identity.currentSessionId.value = ''
         }
     }
 }

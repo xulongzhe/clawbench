@@ -117,8 +117,6 @@
           :content="file.content"
           :language="rawFileLanguage"
           :file-path="file.path"
-          :editable="true"
-          @content-change="file.content = $event"
         />
       </div>
     </div>

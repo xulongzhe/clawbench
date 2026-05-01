@@ -65,7 +65,6 @@
         @close="chatOpen = false"
         @open="chatOpen = true"
         @message="handleChatMessage()"
-        :initial-tab="initialChatTab"
       />
 
       <GitHistoryDrawer
@@ -113,6 +112,31 @@
         v-if="isAppMode"
         :open="proxyOpen"
         @close="proxyOpen = false"
+      />
+
+      <!-- Quote question floating bar — uses session identity singleton -->
+      <QuoteQuestionBar
+        :visible="quoteQuestion.visible.value"
+        :quoteData="quoteQuestion.quoteData.value"
+        :sessionLabel="sessionIdentity.agentHeaderTitle.value"
+        :sessionTitle="sessionIdentity.currentSessionTitle.value"
+        :currentSessionId="sessionIdentity.currentSessionId.value"
+        @send="quoteQuestion.sendMessage($event, sessionIdentity.currentSessionId.value)"
+        @close="quoteQuestion.closeSheet()"
+        @pin="quoteQuestion.pinBar()"
+        @unpin="quoteQuestion.unpinBar()"
+        @open-sessions="handleQuoteOpenSessions"
+      />
+
+      <!-- Session drawer for quote-question session switching -->
+      <SessionDrawer
+        :open="quoteSessionDrawerOpen"
+        :currentSessionId="sessionIdentity.currentSessionId.value"
+        :runningSessionIds="sessionIdentity.runningSessions.value"
+        @close="quoteSessionDrawerOpen = false"
+        @select="handleQuoteSessionSelect"
+        @create="handleQuoteSessionCreate"
+        @delete="handleQuoteSessionDelete"
       />
 
       <!-- Bottom dock -->
@@ -198,8 +222,12 @@ import FileDetailsDialog from './components/file/FileDetailsDialog.vue'
 import GitHistoryDrawer from './components/git/GitHistoryDrawer.vue'
 import SearchDrawer from './components/common/SearchDrawer.vue'
 import ToastNotification from './components/common/ToastNotification.vue'
+import SessionDrawer from './components/session/SessionDrawer.vue'
 import ProxyPanel from './components/proxy/ProxyPanel.vue'
 import PortForwardBrowser from './components/proxy/PortForwardBrowser.vue'
+import QuoteQuestionBar from './components/common/QuoteQuestionBar.vue'
+import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
+import { useSessionIdentity } from './composables/useSessionIdentity.ts'
 import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'
 import { usePortForward, setOpenPortBrowser } from './composables/usePortForward.ts'
@@ -227,12 +255,13 @@ const markdownViewMode = ref('rendered')
 
 // Chat
 const chatOpen = ref(false)
-const initialChatTab = ref(null)
 
 // Global toast
 const toast = useToast()
 provide('toast', toast)
 
+// Session identity singleton — single source of truth for session state
+const sessionIdentity = useSessionIdentity()
 
 // TOC state
 const tocOpen = ref(false)
@@ -247,6 +276,29 @@ const sortDir = ref('asc')
 const { isAppMode } = useAppMode()
 const { syncToNative } = usePortForward()
 const proxyOpen = ref(false)
+
+// Quote question feature
+const quoteQuestion = useQuoteQuestion()
+const quoteSessionDrawerOpen = ref(false)
+
+// Open session drawer directly when user clicks session info in QuoteQuestionBar
+function handleQuoteOpenSessions() {
+  quoteSessionDrawerOpen.value = true
+}
+
+function handleQuoteSessionSelect(sessionId) {
+  sessionIdentity.switchSession(sessionId)
+  quoteSessionDrawerOpen.value = false
+}
+
+function handleQuoteSessionCreate(agentId) {
+  sessionIdentity.createSession(agentId)
+  quoteSessionDrawerOpen.value = false
+}
+
+function handleQuoteSessionDelete(sessionId, backend) {
+  sessionIdentity.deleteSession(sessionId, backend)
+}
 
 // 抽屉互斥：打开一个时关闭其他（瞬间关闭，无动画）
 const drawerStates = {
@@ -274,12 +326,6 @@ function openDrawer(name, tab = null) {
       ref.value = false
     }
   })
-  // 如果是 chat 抽屉，设置 initial tab
-  if (name === 'chat' && tab) {
-    initialChatTab.value = tab
-  } else {
-    initialChatTab.value = null
-  }
   // 打开目标抽屉
   drawerStates[name].value = true
 }
@@ -495,6 +541,9 @@ onMounted(async () => {
         return
     }
     initMermaid()
+    // Pre-fill session identity from API so QuoteQuestionBar shows correct info
+    // even before ChatPanel is opened
+    await sessionIdentity.initSessionFromAPI()
     // Check unread chat messages on startup
     try {
         const sr = await fetch('/api/ai/sessions')

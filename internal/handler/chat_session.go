@@ -81,7 +81,7 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		setSessionID(w, sessionID)
 		// Return session count for UI indicator
 		sessionCount, _ := service.GetSessionCount(projectPath)
-		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "sessionId": sessionID, "backend": backend, "agentId": resolvedAgentID, "sessionCount": sessionCount})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true, "sessionId": sessionID, "backend": backend, "agentId": resolvedAgentID, "sessionCount": sessionCount, "title": title})
 
 	default:
 		model.WriteErrorf(w, http.StatusMethodNotAllowed, "Method not allowed")

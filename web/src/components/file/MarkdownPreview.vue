@@ -1,7 +1,7 @@
 <template>
   <div class="markdown-preview">
     <!-- Rendered markdown -->
-    <div v-if="viewMode === 'rendered'" class="markdown-body" ref="bodyRef" v-html="renderedHtml" @click="handleClick" />
+    <div v-if="viewMode === 'rendered'" class="markdown-body" ref="bodyRef" :data-file-path="file?.path || ''" v-html="renderedHtml" @click="handleClick" />
 
     <!-- Raw markdown -->
     <CodePreview
@@ -9,8 +9,6 @@
       :content="file.content"
       language="markdown"
       :file-path="file.path"
-      :editable="true"
-      @content-change="file.content = $event"
     />
   </div>
 </template>
