@@ -66,6 +66,7 @@ public class PortForwardService extends Service {
 
     // Reconnect parameters: exponential backoff delays in milliseconds
     private static final int[] RECONNECT_DELAYS_MS = {5000, 10000, 30000, 60000, 120000};
+    private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final int MONITOR_CHECK_INTERVAL_MS = 15000;
 
     private static boolean isRunning = false;
@@ -183,7 +184,15 @@ public class PortForwardService extends Service {
             } else if ("DISCONNECT".equals(action)) {
                 networkExecutor.execute(this::disconnect);
             } else if ("RESTORE_PORTS".equals(action)) {
-                // Service restarted by START_STICKY — restore ports and reconnect
+                // Explicit restore request — e.g. from Activity after configuration change
+                networkExecutor.execute(this::restoreAndReconnect);
+            }
+        } else {
+            // START_STICKY restart: Android killed the service and recreated it with null intent.
+            // onCreate() already restored port numbers into forwardedPorts via restoreForwardedPorts(),
+            // but the SSH session was lost. Re-establish the tunnel now.
+            if (!forwardedPorts.isEmpty()) {
+                Log.i(TAG, "SSH: service restarted by START_STICKY, restoring " + forwardedPorts.size() + " port forwards");
                 networkExecutor.execute(this::restoreAndReconnect);
             }
         }
@@ -304,7 +313,7 @@ public class PortForwardService extends Service {
                         // Wait before attempt (except first attempt)
                         if (reconnectAttempt > 1) {
                             updateNotification(forwardedPorts.size(),
-                                    "SSH 隧道断开，第 " + reconnectAttempt + " 次重连…");
+                                    "SSH 隧道断开，第 " + reconnectAttempt + "/" + MAX_RECONNECT_ATTEMPTS + " 次重连…");
                             try {
                                 Thread.sleep(delay);
                             } catch (InterruptedException e) {
@@ -313,6 +322,13 @@ public class PortForwardService extends Service {
                         }
 
                         if (!monitorActive || intentionalDisconnect) break;
+
+                        // Give up after max attempts
+                        if (reconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
+                            Log.e(TAG, "SSH: exhausted " + MAX_RECONNECT_ATTEMPTS + " reconnect attempts, giving up");
+                            updateNotification(forwardedPorts.size(), "SSH 隧道重连失败，请重新打开页面");
+                            break;
+                        }
 
                         try {
                             Log.i(TAG, "SSH: auto-reconnect attempt #" + reconnectAttempt);

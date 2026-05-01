@@ -32,6 +32,7 @@ type ProxyRegistry struct {
 var ProxyService *ProxyRegistry
 
 // NewProxyRegistry creates a new port registry and starts background health checks.
+// It also restores any previously persisted ports from the database.
 func NewProxyRegistry(cfg model.ProxyConfig, selfPort int) *ProxyRegistry {
 	if !cfg.Enabled {
 		slog.Info("proxy service disabled by config")
@@ -55,9 +56,13 @@ func NewProxyRegistry(cfg model.ProxyConfig, selfPort int) *ProxyRegistry {
 		r.cfg.AllowedPorts = "1024-65535"
 	}
 
+	// Restore persisted ports from database
+	r.loadPortsFromDB()
+
 	slog.Info("proxy service initialized",
 		slog.String("allowed_ports", r.cfg.AllowedPorts),
 		slog.Int("self_port", selfPort),
+		slog.Int("restored_ports", len(r.ports)),
 	)
 
 	// Start background health checker
@@ -101,6 +106,9 @@ func (r *ProxyRegistry) RegisterPort(port int, name string, protocol string) err
 		Active:     false, // will be updated by health check
 	}
 
+	// Persist to database
+	r.savePortToDB(port, name, protocol)
+
 	slog.Info("proxy port registered",
 		slog.Int("port", port),
 		slog.String("name", name),
@@ -120,6 +128,10 @@ func (r *ProxyRegistry) UnregisterPort(port int) error {
 	}
 
 	delete(r.ports, port)
+
+	// Remove from database
+	r.deletePortFromDB(port)
+
 	slog.Info("proxy port unregistered", slog.Int("port", port))
 	return nil
 }
@@ -458,4 +470,70 @@ func isPortInRange(port int, rangeStr string) bool {
 	}
 
 	return false
+}
+
+// loadPortsFromDB restores previously persisted forwarded ports from the database.
+// Called once during ProxyRegistry initialization.
+func (r *ProxyRegistry) loadPortsFromDB() {
+	if DB == nil {
+		return
+	}
+
+	rows, err := DB.Query("SELECT port, name, protocol FROM forwarded_ports")
+	if err != nil {
+		slog.Warn("failed to load persisted ports from DB", slog.String("err", err.Error()))
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var port int
+		var name, protocol string
+		if err := rows.Scan(&port, &name, &protocol); err != nil {
+			continue
+		}
+		if !r.IsPortAllowed(port) {
+			slog.Warn("skipping persisted port outside allowed range", slog.Int("port", port))
+			continue
+		}
+		if protocol != "https" {
+			protocol = "http"
+		}
+		r.ports[port] = &model.ForwardedPort{
+			Port:       port,
+			Name:       name,
+			Protocol:   protocol,
+			AutoDetect: false,
+			Active:     false, // will be updated by health check
+		}
+	}
+
+	if len(r.ports) > 0 {
+		slog.Info("restored forwarded ports from database", slog.Int("count", len(r.ports)))
+	}
+}
+
+// savePortToDB persists a single forwarded port to the database.
+func (r *ProxyRegistry) savePortToDB(port int, name, protocol string) {
+	if DB == nil {
+		return
+	}
+	_, err := DB.Exec(
+		"INSERT OR REPLACE INTO forwarded_ports (port, name, protocol) VALUES (?, ?, ?)",
+		port, name, protocol,
+	)
+	if err != nil {
+		slog.Error("failed to persist port to DB", slog.Int("port", port), slog.String("err", err.Error()))
+	}
+}
+
+// deletePortFromDB removes a forwarded port from the database.
+func (r *ProxyRegistry) deletePortFromDB(port int) {
+	if DB == nil {
+		return
+	}
+	_, err := DB.Exec("DELETE FROM forwarded_ports WHERE port = ?", port)
+	if err != nil {
+		slog.Error("failed to delete port from DB", slog.Int("port", port), slog.String("err", err.Error()))
+	}
 }

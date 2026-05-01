@@ -10,6 +10,30 @@
     </template>
 
     <div class="proxy-panel">
+      <!-- Tunnel status banner -->
+      <div v-if="tunnelStatus === 'disconnected'" class="tunnel-banner error">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <div class="tunnel-banner-content">
+          <span class="tunnel-banner-title">SSH 隧道未连接</span>
+          <span class="tunnel-banner-detail">端口转发将无法使用，请检查网络或重新打开页面</span>
+        </div>
+      </div>
+      <div v-else-if="tunnelStatus === 'degraded'" class="tunnel-banner warning">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div class="tunnel-banner-content">
+          <span class="tunnel-banner-title">转发端口无响应</span>
+          <span class="tunnel-banner-detail">SSH 隧道已连接，但所有端口的服务均未响应</span>
+        </div>
+      </div>
+
       <!-- Loading -->
       <div v-if="loading" class="proxy-loading">加载中...</div>
 
@@ -22,6 +46,7 @@
           :name="p.name"
           :protocol="p.protocol"
           :active="p.active"
+          :tunnel-disconnected="tunnelStatus === 'disconnected'"
           @open="openPort"
           @remove="handleRemove"
         />
@@ -136,7 +161,7 @@ const newProtocol = ref('http')
 const detecting = ref(false)
 const portInputRef = ref(null)
 
-const { ports, detectedPorts, loading, isAppMode, sshInfo, loadPorts, registerPort, unregisterPort, detectPorts, loadSSHInfo, openPort } = usePortForward()
+const { ports, detectedPorts, loading, isAppMode, sshInfo, tunnelStatus, tunnelMessage, registerPort, unregisterPort, detectPorts, checkTunnelHealth, openPort } = usePortForward()
 
 const sshCopied = ref(false)
 
@@ -186,8 +211,7 @@ async function copySSHCommand() {
 
 watch(() => props.open, async (val) => {
   if (val) {
-    await loadPorts()
-    await loadSSHInfo()
+    await checkTunnelHealth()
   }
 })
 </script>
@@ -201,6 +225,50 @@ watch(() => props.open, async (val) => {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Tunnel status banner */
+.tunnel-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 3px solid;
+  flex-shrink: 0;
+}
+
+.tunnel-banner.error {
+  background: rgba(239, 68, 68, 0.08);
+  border-left-color: #ef4444;
+  color: #dc2626;
+}
+
+.tunnel-banner.warning {
+  background: rgba(245, 158, 11, 0.08);
+  border-left-color: #f59e0b;
+  color: #d97706;
+}
+
+.tunnel-banner svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.tunnel-banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tunnel-banner-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tunnel-banner-detail {
+  font-size: 11px;
+  opacity: 0.8;
 }
 
 .proxy-loading,

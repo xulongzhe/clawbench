@@ -1,10 +1,14 @@
 <template>
-  <div class="proxy-port-item" :class="{ inactive: !active }">
+  <div class="proxy-port-item" :class="{ inactive: !active && !tunnelDisconnected }">
     <div class="port-info">
       <div class="port-main">
         <span class="port-number">{{ port }}</span>
         <span class="port-protocol" :class="protocol">{{ protocol }}</span>
-        <span class="port-status" :class="active ? 'active' : 'inactive'" :title="active ? '活跃' : '离线'"></span>
+        <span
+          class="port-status"
+          :class="statusClass"
+          :title="statusTitle"
+        ></span>
         <span v-if="name" class="port-name">{{ name }}</span>
       </div>
     </div>
@@ -27,14 +31,29 @@
 </template>
 
 <script setup>
-defineProps({
+import { computed } from 'vue'
+
+const props = defineProps({
   port: { type: Number, required: true },
   name: { type: String, default: '' },
   protocol: { type: String, default: 'http' },
   active: { type: Boolean, default: false },
+  tunnelDisconnected: { type: Boolean, default: false },
 })
 
 defineEmits(['open', 'remove'])
+
+const statusClass = computed(() => {
+  if (props.active) return 'active'
+  if (props.tunnelDisconnected) return 'tunnel-down'
+  return 'inactive'
+})
+
+const statusTitle = computed(() => {
+  if (props.active) return '活跃'
+  if (props.tunnelDisconnected) return '隧道断开'
+  return '离线'
+})
 </script>
 
 <style scoped>
@@ -105,6 +124,21 @@ defineEmits(['open', 'remove'])
 
 .port-status.inactive {
   background: #9ca3af;
+}
+
+.port-status.tunnel-down {
+  background: #ef4444;
+  box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+  animation: pulse-red 2s ease-in-out infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+  }
 }
 
 .port-name {

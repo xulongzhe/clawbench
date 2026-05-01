@@ -27,12 +27,13 @@ func ServeSSHInfo(w http.ResponseWriter, r *http.Request) {
 
 	if sshServerRef == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"enabled":     false,
-			"host":        "",
-			"port":        0,
-			"username":    "",
-			"fingerprint": "",
-			"command":     "",
+			"enabled":          false,
+			"host":             "",
+			"port":             0,
+			"username":         "",
+			"fingerprint":      "",
+			"command":          "",
+			"connectionStats":  nil,
 		})
 		return
 	}
@@ -62,11 +63,12 @@ func ServeSSHInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"enabled":     true,
-		"host":        host,
-		"port":        port,
-		"username":    "clawbench",
-		"fingerprint": fingerprint,
-		"command":     command,
+		"enabled":         true,
+		"host":            host,
+		"port":            port,
+		"username":        "clawbench",
+		"fingerprint":     fingerprint,
+		"command":         command,
+		"connectionStats": sshServerRef.ConnectionStats(),
 	})
 }

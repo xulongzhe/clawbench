@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	gossh "golang.org/x/crypto/ssh"
 
@@ -23,15 +24,18 @@ import (
 // It allows authenticated clients to create `-L` tunnels to forward local ports
 // to services running on the server (127.0.0.1).
 type Server struct {
-	mu          sync.Mutex
-	listener    net.Listener
-	hostKey     gossh.Signer
-	password    string
-	portReg     *service.ProxyRegistry
-	done        chan struct{}
-	fingerprint string
-	addr        string
-	cfg         model.SSHConfig
+	mu             sync.Mutex
+	listener       net.Listener
+	hostKey        gossh.Signer
+	password       string
+	portReg        *service.ProxyRegistry
+	done           chan struct{}
+	fingerprint    string
+	addr           string
+	cfg            model.SSHConfig
+	connCount      int
+	activeChannels int
+	lastConnected  time.Time
 }
 
 // NewServer creates a new SSH tunnel server.
@@ -138,6 +142,30 @@ func (s *Server) Port() int {
 	return port
 }
 
+// SSHConnectionStats represents the current state of SSH client connections.
+type SSHConnectionStats struct {
+	Connected       bool   `json:"connected"`
+	ClientCount     int    `json:"clientCount"`
+	ActiveChannels  int    `json:"activeChannels"`
+	LastConnectedAt string `json:"lastConnectedAt,omitempty"`
+}
+
+// ConnectionStats returns the current SSH connection statistics.
+func (s *Server) ConnectionStats() SSHConnectionStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	stats := SSHConnectionStats{
+		Connected:      s.connCount > 0,
+		ClientCount:    s.connCount,
+		ActiveChannels: s.activeChannels,
+	}
+	if !s.lastConnected.IsZero() {
+		stats.LastConnectedAt = s.lastConnected.Format(time.RFC3339)
+	}
+	return stats
+}
+
 // handleConn handles a single SSH connection.
 func (s *Server) handleConn(conn net.Conn, config *gossh.ServerConfig) {
 	defer conn.Close()
@@ -154,6 +182,18 @@ func (s *Server) handleConn(conn net.Conn, config *gossh.ServerConfig) {
 		slog.String("user", sshConn.User()),
 	)
 
+	s.mu.Lock()
+	s.connCount++
+	s.lastConnected = time.Now()
+	s.mu.Unlock()
+
+	defer func() {
+		s.mu.Lock()
+		s.connCount--
+		s.mu.Unlock()
+		slog.Info("ssh: client disconnected", slog.String("remote", sshConn.RemoteAddr().String()))
+	}()
+
 	// Discard global requests (keep-alive, etc.)
 	go gossh.DiscardRequests(reqs)
 
@@ -167,8 +207,6 @@ func (s *Server) handleConn(conn net.Conn, config *gossh.ServerConfig) {
 
 		go s.handleDirectTCPIP(newChannel)
 	}
-
-	slog.Info("ssh: client disconnected", slog.String("remote", sshConn.RemoteAddr().String()))
 }
 
 // handleDirectTCPIP handles a direct-tcpip channel request (SSH -L port forwarding).
@@ -207,6 +245,15 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 		return
 	}
 	defer channel.Close()
+
+	s.mu.Lock()
+	s.activeChannels++
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.activeChannels--
+		s.mu.Unlock()
+	}()
 
 	// Discard channel-specific requests
 	go gossh.DiscardRequests(requests)

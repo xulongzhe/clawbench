@@ -15,6 +15,13 @@ interface DetectedPort {
   protocol: string
 }
 
+export interface SSHConnectionStats {
+  connected: boolean
+  clientCount: number
+  activeChannels: number
+  lastConnectedAt?: string
+}
+
 export interface SSHInfo {
   enabled: boolean
   host: string
@@ -22,13 +29,18 @@ export interface SSHInfo {
   username: string
   fingerprint: string
   command: string
+  connectionStats: SSHConnectionStats | null
 }
+
+export type TunnelStatus = 'unknown' | 'ok' | 'disconnected' | 'degraded'
 
 // Module-level shared state
 const ports = ref<ForwardedPort[]>([])
 const detectedPorts = ref<DetectedPort[]>([])
 const loading = ref(false)
 const sshInfo = ref<SSHInfo | null>(null)
+const tunnelStatus = ref<TunnelStatus>('unknown')
+const tunnelMessage = ref('')
 
 // Callback for opening port in the embedded browser (set by App.vue)
 let openPortBrowserFn: ((port: number, protocol?: string) => void) | null = null
@@ -96,6 +108,44 @@ export function usePortForward() {
     }
   }
 
+  /** Check SSH tunnel health and determine status */
+  async function checkTunnelHealth() {
+    tunnelStatus.value = 'unknown'
+    tunnelMessage.value = ''
+
+    await Promise.all([loadPorts(), loadSSHInfo()])
+
+    const info = sshInfo.value
+    // No SSH or not in app mode — skip tunnel check
+    if (!info?.enabled || !isAppMode.value) {
+      return
+    }
+
+    const stats = info.connectionStats
+    if (!stats) {
+      // No connection stats available (shouldn't happen when SSH is enabled)
+      return
+    }
+
+    if (!stats.connected) {
+      tunnelStatus.value = 'disconnected'
+      tunnelMessage.value = 'SSH 隧道未连接，端口转发将无法使用'
+      return
+    }
+
+    // SSH is connected — check if any ports have active backends
+    const hasPorts = ports.value.length > 0
+    const anyActive = ports.value.some(p => p.active)
+
+    if (hasPorts && !anyActive) {
+      tunnelStatus.value = 'degraded'
+      tunnelMessage.value = 'SSH 隧道已连接，但所有转发端口均无服务响应'
+      return
+    }
+
+    tunnelStatus.value = 'ok'
+  }
+
   /** Open a forwarded port — in app mode opens system browser, otherwise window.open */
   function openPort(targetPort: number, protocol?: string) {
     const scheme = protocol === 'https' ? 'https' : 'http'
@@ -113,12 +163,15 @@ export function usePortForward() {
     loading,
     isAppMode,
     sshInfo,
+    tunnelStatus,
+    tunnelMessage,
     loadPorts,
     registerPort,
     unregisterPort,
     detectPorts,
     syncToNative,
     loadSSHInfo,
+    checkTunnelHealth,
     openPort,
   }
 }

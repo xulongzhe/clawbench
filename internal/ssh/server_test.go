@@ -457,3 +457,137 @@ func TestSSHServer_AutoPortAssignment(t *testing.T) {
 		t.Errorf("expected explicit port 22222, got %d", srv2.Port())
 	}
 }
+
+// --- Connection Stats Tests ---
+
+func TestSSHServer_ConnectionStats_NoConnections(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := testServerHelper(t, "test-password", portReg)
+
+	stats := srv.ConnectionStats()
+	if stats.Connected {
+		t.Error("expected Connected=false when no clients are connected")
+	}
+	if stats.ClientCount != 0 {
+		t.Errorf("expected ClientCount=0, got %d", stats.ClientCount)
+	}
+	if stats.ActiveChannels != 0 {
+		t.Errorf("expected ActiveChannels=0, got %d", stats.ActiveChannels)
+	}
+	if stats.LastConnectedAt != "" {
+		t.Errorf("expected empty LastConnectedAt, got %q", stats.LastConnectedAt)
+	}
+}
+
+func TestSSHServer_ConnectionStats_ClientConnected(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := testServerHelper(t, "test-password", portReg)
+
+	// Before connecting
+	stats := srv.ConnectionStats()
+	if stats.Connected {
+		t.Error("expected Connected=false before client connects")
+	}
+
+	// Connect a client
+	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
+
+	// Give the server a moment to update stats
+	time.Sleep(50 * time.Millisecond)
+
+	stats = srv.ConnectionStats()
+	if !stats.Connected {
+		t.Error("expected Connected=true after client connects")
+	}
+	if stats.ClientCount != 1 {
+		t.Errorf("expected ClientCount=1, got %d", stats.ClientCount)
+	}
+	if stats.LastConnectedAt == "" {
+		t.Error("expected non-empty LastConnectedAt after client connects")
+	}
+
+	// Disconnect
+	client.Close()
+
+	// Wait for server to detect disconnect
+	time.Sleep(200 * time.Millisecond)
+
+	stats = srv.ConnectionStats()
+	if stats.Connected {
+		t.Error("expected Connected=false after client disconnects")
+	}
+	if stats.ClientCount != 0 {
+		t.Errorf("expected ClientCount=0 after disconnect, got %d", stats.ClientCount)
+	}
+}
+
+func TestSSHServer_ConnectionStats_MultipleClients(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := testServerHelper(t, "test-password", portReg)
+
+	client1 := testSSHClient(t, srv.addr, "clawbench", "test-password")
+	client2 := testSSHClient(t, srv.addr, "clawbench", "test-password")
+
+	time.Sleep(50 * time.Millisecond)
+
+	stats := srv.ConnectionStats()
+	if stats.ClientCount != 2 {
+		t.Errorf("expected ClientCount=2, got %d", stats.ClientCount)
+	}
+
+	client1.Close()
+	time.Sleep(200 * time.Millisecond)
+
+	stats = srv.ConnectionStats()
+	if stats.ClientCount != 1 {
+		t.Errorf("expected ClientCount=1 after one disconnect, got %d", stats.ClientCount)
+	}
+
+	client2.Close()
+	time.Sleep(200 * time.Millisecond)
+
+	stats = srv.ConnectionStats()
+	if stats.Connected {
+		t.Error("expected Connected=false after all clients disconnect")
+	}
+}
+
+func TestSSHServer_ConnectionStats_ActiveChannels(t *testing.T) {
+	portReg := newTestRegistry(t)
+	echoPort := startEchoServer(t)
+	portReg.RegisterPort(echoPort, "echo", "http")
+
+	srv := testServerHelper(t, "test-password", portReg)
+	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Before opening any channels
+	stats := srv.ConnectionStats()
+	if stats.ActiveChannels != 0 {
+		t.Errorf("expected ActiveChannels=0 before port forward, got %d", stats.ActiveChannels)
+	}
+
+	// Open a port forward channel
+	conn, err := client.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", echoPort))
+	if err != nil {
+		t.Fatalf("failed to dial forwarded port: %v", err)
+	}
+	defer conn.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	stats = srv.ConnectionStats()
+	if stats.ActiveChannels < 1 {
+		t.Errorf("expected ActiveChannels>=1 after opening channel, got %d", stats.ActiveChannels)
+	}
+
+	// Close the forwarded connection
+	conn.Close()
+	time.Sleep(200 * time.Millisecond)
+
+	stats = srv.ConnectionStats()
+	if stats.ActiveChannels != 0 {
+		t.Errorf("expected ActiveChannels=0 after closing channel, got %d", stats.ActiveChannels)
+	}
+}

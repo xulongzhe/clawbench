@@ -1,9 +1,12 @@
 package service
 
 import (
+	"database/sql"
 	"testing"
 
 	"clawbench/internal/model"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -210,4 +213,203 @@ func TestParseProcNetTCPData_HeaderOnly(t *testing.T) {
 `
 	ports := parseProcNetTCPData(data)
 	assert.Empty(t, ports)
+}
+
+// --- DB Persistence Tests ---
+
+// setupTestDB creates an in-memory SQLite database with the forwarded_ports table.
+func setupTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	assert.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	db.SetMaxOpenConns(1)
+	_, err = db.Exec("PRAGMA journal_mode=WAL")
+	assert.NoError(t, err)
+	_, err = db.Exec("PRAGMA busy_timeout=5000")
+	assert.NoError(t, err)
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS forwarded_ports (
+			port INTEGER PRIMARY KEY,
+			name TEXT NOT NULL DEFAULT '',
+			protocol TEXT NOT NULL DEFAULT 'http',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	assert.NoError(t, err)
+
+	return db
+}
+
+func TestProxyRegistry_PortPersistence_RegisterAndLoad(t *testing.T) {
+	// Set up in-memory DB and make it available globally
+	origDB := DB
+	DB = setupTestDB(t)
+	defer func() { DB = origDB }()
+
+	// Create registry and register ports — should persist to DB
+	r := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	defer r.Stop()
+
+	err := r.RegisterPort(5173, "Vite Dev", "http")
+	assert.NoError(t, err)
+	err = r.RegisterPort(8080, "API", "https")
+	assert.NoError(t, err)
+
+	// Verify ports are in the database
+	var count int
+	err = DB.QueryRow("SELECT COUNT(*) FROM forwarded_ports").Scan(&count)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, count)
+
+	// Verify individual records
+	var name, protocol string
+	err = DB.QueryRow("SELECT name, protocol FROM forwarded_ports WHERE port = 5173").Scan(&name, &protocol)
+	assert.NoError(t, err)
+	assert.Equal(t, "Vite Dev", name)
+	assert.Equal(t, "http", protocol)
+
+	err = DB.QueryRow("SELECT name, protocol FROM forwarded_ports WHERE port = 8080").Scan(&name, &protocol)
+	assert.NoError(t, err)
+	assert.Equal(t, "API", name)
+	assert.Equal(t, "https", protocol)
+}
+
+func TestProxyRegistry_PortPersistence_UnregisterDeletesFromDB(t *testing.T) {
+	origDB := DB
+	DB = setupTestDB(t)
+	defer func() { DB = origDB }()
+
+	r := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	defer r.Stop()
+
+	r.RegisterPort(3000, "app", "http")
+	r.RegisterPort(8080, "api", "http")
+
+	// Unregister one port
+	err := r.UnregisterPort(3000)
+	assert.NoError(t, err)
+
+	// Verify only one port remains in DB
+	var count int
+	err = DB.QueryRow("SELECT COUNT(*) FROM forwarded_ports").Scan(&count)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	// Verify the right port remains
+	var port int
+	err = DB.QueryRow("SELECT port FROM forwarded_ports").Scan(&port)
+	assert.NoError(t, err)
+	assert.Equal(t, 8080, port)
+}
+
+func TestProxyRegistry_PortPersistence_RestoreOnStartup(t *testing.T) {
+	origDB := DB
+	DB = setupTestDB(t)
+	defer func() { DB = origDB }()
+
+	// First registry: register ports (persists to DB)
+	r1 := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	r1.RegisterPort(5173, "Vite Dev", "http")
+	r1.RegisterPort(8080, "API", "https")
+	r1.Stop()
+
+	// Second registry: should load ports from DB
+	r2 := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	defer r2.Stop()
+
+	ports := r2.ListPorts()
+	assert.Len(t, ports, 2)
+	assert.Equal(t, 5173, ports[0].Port)
+	assert.Equal(t, "Vite Dev", ports[0].Name)
+	assert.Equal(t, "http", ports[0].Protocol)
+	assert.Equal(t, 8080, ports[1].Port)
+	assert.Equal(t, "API", ports[1].Name)
+	assert.Equal(t, "https", ports[1].Protocol)
+
+	assert.True(t, r2.IsPortRegistered(5173))
+	assert.True(t, r2.IsPortRegistered(8080))
+}
+
+func TestProxyRegistry_PortPersistence_FullLifecycle(t *testing.T) {
+	origDB := DB
+	DB = setupTestDB(t)
+	defer func() { DB = origDB }()
+
+	// Phase 1: Create, register, verify
+	r1 := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	r1.RegisterPort(3000, "frontend", "http")
+	r1.RegisterPort(4000, "backend", "http")
+	r1.RegisterPort(5432, "database", "http")
+	r1.Stop()
+
+	// Phase 2: Load, remove one, add another, verify
+	r2 := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	assert.True(t, r2.IsPortRegistered(3000))
+	assert.True(t, r2.IsPortRegistered(4000))
+	assert.True(t, r2.IsPortRegistered(5432))
+
+	r2.UnregisterPort(4000)      // remove one
+	r2.RegisterPort(9090, "metrics", "http") // add new
+	r2.Stop()
+
+	// Phase 3: Load again, verify final state
+	r3 := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	defer r3.Stop()
+
+	ports := r3.ListPorts()
+	assert.Len(t, ports, 3)
+
+	portMap := make(map[int]model.ForwardedPort)
+	for _, p := range ports {
+		portMap[p.Port] = p
+	}
+
+	assert.Contains(t, portMap, 3000)
+	assert.Equal(t, "frontend", portMap[3000].Name)
+	assert.Contains(t, portMap, 5432)
+	assert.Equal(t, "database", portMap[5432].Name)
+	assert.Contains(t, portMap, 9090)
+	assert.Equal(t, "metrics", portMap[9090].Name)
+	assert.NotContains(t, portMap, 4000) // was removed
+}
+
+func TestProxyRegistry_PortPersistence_SkipsOutOfAllowedRange(t *testing.T) {
+	origDB := DB
+	DB = setupTestDB(t)
+	defer func() { DB = origDB }()
+
+	// Insert a port directly into DB that is outside the new allowed range
+	_, err := DB.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (80, 'system', 'http')")
+	assert.NoError(t, err)
+
+	// Create registry with restricted range — port 80 should be skipped
+	r := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	defer r.Stop()
+
+	assert.False(t, r.IsPortRegistered(80))
+	ports := r.ListPorts()
+	assert.Empty(t, ports)
+}
+
+func TestProxyRegistry_PortPersistence_NoDB(t *testing.T) {
+	// When DB is nil, persistence methods should be no-ops (not panic)
+	origDB := DB
+	DB = nil
+	defer func() { DB = origDB }()
+
+	r := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	defer r.Stop()
+
+	// Register should work (in-memory only)
+	err := r.RegisterPort(8080, "test", "http")
+	assert.NoError(t, err)
+	assert.True(t, r.IsPortRegistered(8080))
+
+	// Unregister should work
+	err = r.UnregisterPort(8080)
+	assert.NoError(t, err)
+	assert.False(t, r.IsPortRegistered(8080))
 }

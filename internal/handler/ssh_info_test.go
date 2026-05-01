@@ -222,6 +222,67 @@ func TestServeSSHInfo_EmptyPortList(t *testing.T) {
 	}
 }
 
+func TestServeSSHInfo_ConnectionStats_Disabled(t *testing.T) {
+	// When SSH is disabled, connectionStats should be nil
+	origSSH := sshServerRef
+	sshServerRef = nil
+	defer func() { sshServerRef = origSSH }()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+	w := httptest.NewRecorder()
+	ServeSSHInfo(w, req)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if result["connectionStats"] != nil {
+		t.Errorf("expected connectionStats=nil when SSH disabled, got %v", result["connectionStats"])
+	}
+}
+
+func TestServeSSHInfo_ConnectionStats_Enabled(t *testing.T) {
+	// When SSH is enabled but no clients connected, connectionStats should reflect that
+	origProxy := service.ProxyService
+	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	defer func() {
+		service.ProxyService.Stop()
+		service.ProxyService = origProxy
+	}()
+
+	srv := ssh.NewServer(model.SSHConfig{Enabled: true, Port: 20001}, 20000, "test", service.ProxyService)
+	if err := srv.InitHostKey(); err != nil {
+		t.Fatalf("failed to init host key: %v", err)
+	}
+	origSSH := sshServerRef
+	sshServerRef = srv
+	defer func() { sshServerRef = origSSH }()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+	req.Host = "server:20000"
+	w := httptest.NewRecorder()
+	ServeSSHInfo(w, req)
+
+	var result map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	stats, ok := result["connectionStats"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected connectionStats to be a map, got %v", result["connectionStats"])
+	}
+	if stats["connected"] != false {
+		t.Errorf("expected connected=false, got %v", stats["connected"])
+	}
+	if stats["clientCount"] != float64(0) {
+		t.Errorf("expected clientCount=0, got %v", stats["clientCount"])
+	}
+	if stats["activeChannels"] != float64(0) {
+		t.Errorf("expected activeChannels=0, got %v", stats["activeChannels"])
+	}
+}
+
 // helper
 func containsStr(s, sub string) bool {
 	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
