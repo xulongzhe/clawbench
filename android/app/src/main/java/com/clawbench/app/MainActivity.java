@@ -1,6 +1,7 @@
 package com.clawbench.app;
 
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -17,6 +18,9 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
@@ -24,6 +28,7 @@ import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
@@ -34,10 +39,18 @@ import android.widget.EditText;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
 import org.json.JSONArray;
 
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -63,6 +76,38 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private ProgressBar progressBar;
     private SharedPreferences prefs;
+
+    // File chooser state for WebView <input type="file"> support
+    private ValueCallback<Uri[]> filePathCallback;
+    private Uri cameraImageUri; // URI for camera capture image
+
+    // Activity result launcher for file chooser (replaces deprecated onActivityResult)
+    private final ActivityResultLauncher<Intent> fileChooserLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                if (filePathCallback == null) return;
+                Uri[] results = null;
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    Intent data = result.getData();
+                    String dataString = data.getDataString();
+                    if (dataString != null) {
+                        results = new Uri[]{ Uri.parse(dataString) };
+                    } else if (data.getClipData() != null) {
+                        // Multiple files selected
+                        int count = data.getClipData().getItemCount();
+                        results = new Uri[count];
+                        for (int i = 0; i < count; i++) {
+                            results[i] = data.getClipData().getItemAt(i).getUri();
+                        }
+                    }
+                }
+                // If camera was used and no other result, use the saved camera URI
+                if (results == null && cameraImageUri != null) {
+                    results = new Uri[]{ cameraImageUri };
+                }
+                filePathCallback.onReceiveValue(results);
+                filePathCallback = null;
+                cameraImageUri = null;
+            });
 
     // Set of ports currently being forwarded (thread-safe for access from WebView background threads)
     final Set<Integer> forwardedPorts = java.util.concurrent.ConcurrentHashMap.newKeySet();
@@ -145,9 +190,64 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
-            public boolean onShowFileChooser(WebView webView, android.webkit.ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
-                // TODO: handle file chooser for uploads
-                return false;
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> callback, FileChooserParams fileChooserParams) {
+                // Cancel any previous pending request
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                }
+                filePathCallback = callback;
+
+                // Build the file chooser intent from the <input> element's accept/multiple attributes
+                Intent chooserIntent;
+                try {
+                    chooserIntent = fileChooserParams.createIntent();
+                } catch (Exception e) {
+                    // Fallback: generic file picker
+                    chooserIntent = new Intent(Intent.ACTION_GET_CONTENT);
+                    chooserIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                    chooserIntent.setType("*/*");
+                    if (fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                        chooserIntent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    }
+                }
+
+                // Offer camera as an additional option
+                Intent cameraIntent = null;
+                try {
+                    cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+                    if (cameraIntent.resolveActivity(getPackageManager()) != null) {
+                        File photoFile = createImageFile();
+                        if (photoFile != null) {
+                            cameraImageUri = androidx.core.content.FileProvider.getUriForFile(
+                                    MainActivity.this,
+                                    getPackageName() + ".fileprovider",
+                                    photoFile
+                            );
+                            cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraImageUri);
+                        } else {
+                            cameraIntent = null;
+                        }
+                    } else {
+                        cameraIntent = null;
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "Camera intent not available", e);
+                    cameraIntent = null;
+                }
+
+                try {
+                    if (cameraIntent != null) {
+                        // Show chooser with both file picker and camera options
+                        chooserIntent = Intent.createChooser(chooserIntent, "选择文件");
+                        chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{ cameraIntent });
+                    }
+                    fileChooserLauncher.launch(chooserIntent);
+                } catch (Exception e) {
+                    Log.e(TAG, "File chooser failed to launch", e);
+                    filePathCallback = null;
+                    return false;
+                }
+                return true;
             }
         });
 
@@ -193,6 +293,21 @@ public class MainActivity extends AppCompatActivity {
             return decoded.substring(lastSlash + 1);
         }
         return "download";
+    }
+
+    /**
+     * Create a temporary image file for camera capture.
+     * Used by onShowFileChooser to provide a URI for the camera intent.
+     */
+    private File createImageFile() {
+        String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
+        File storageDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+        try {
+            return File.createTempFile("IMG_" + timestamp, ".jpg", storageDir);
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to create image file", e);
+            return null;
+        }
     }
 
     private void loadUrl(String url) {
@@ -447,13 +562,46 @@ public class MainActivity extends AppCompatActivity {
          * Add a port to be forwarded via SSH tunnel.
          * The PortForwardService creates a local port forward: localhost:{port} → server:{port}
          * WebView can then access http://localhost:{port} directly.
+         * Also requests battery optimization exemption on first port forward.
          */
         @JavascriptInterface
         public void addForwardedPort(int port) {
             activity.runOnUiThread(() -> {
                 activity.forwardedPorts.add(port);
                 PortForwardService.addForwardedPort(activity, port);
+
+                // Request battery optimization exemption on first port forward
+                // This helps prevent the SSH tunnel service from being killed on some OEM ROMs
+                if (!PortForwardService.isBatteryOptRequested(activity)) {
+                    requestIgnoreBatteryOptimization();
+                }
             });
+        }
+
+        /**
+         * Request the system to exclude ClawBench from battery optimization.
+         * This prevents the OS from aggressively killing the port forward service.
+         * Only requested once — tracked via SharedPreferences.
+         */
+        private void requestIgnoreBatteryOptimization() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PowerManager pm = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+                String packageName = activity.getPackageName();
+                if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                        intent.setData(Uri.parse("urn:android:pkg:" + packageName));
+                        activity.startActivity(intent);
+                        PortForwardService.setBatteryOptRequested(activity);
+                        Log.i(TAG, "Requested battery optimization exemption");
+                    } catch (Exception e) {
+                        Log.w(TAG, "Failed to request battery optimization exemption", e);
+                    }
+                } else {
+                    // Already whitelisted, just mark as requested
+                    PortForwardService.setBatteryOptRequested(activity);
+                }
+            }
         }
 
         /**

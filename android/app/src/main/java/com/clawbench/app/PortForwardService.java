@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
@@ -45,6 +46,11 @@ import javax.net.ssl.X509TrustManager;
  * 2. Creates a local port forward: 127.0.0.1:{port} on device → 127.0.0.1:{port} on server
  * 3. WebView can then access http://localhost:{port} transparently
  *
+ * Reliability features:
+ * - Auto-reconnect: monitors SSH connection and reconnects with exponential backoff
+ * - Port persistence: saves forwarded ports to SharedPreferences, restores on Service restart
+ * - WifiLock: prevents WiFi from disconnecting while SSH tunnel is active
+ *
  * All SSH/HTTP network operations run on a background thread to avoid NetworkOnMainThreadException.
  */
 public class PortForwardService extends Service {
@@ -55,6 +61,12 @@ public class PortForwardService extends Service {
     private static final String PREFS_NAME = "clawbench_prefs";
     private static final String KEY_SERVER_URL = "server_url";
     private static final String KEY_SSH_PASSWORD = "ssh_password";
+    private static final String KEY_FORWARDED_PORTS = "forwarded_ports";
+    private static final String KEY_BATTERY_OPT_REQUESTED = "battery_opt_requested";
+
+    // Reconnect parameters: exponential backoff delays in milliseconds
+    private static final int[] RECONNECT_DELAYS_MS = {5000, 10000, 30000, 60000, 120000};
+    private static final int MONITOR_CHECK_INTERVAL_MS = 15000;
 
     private static boolean isRunning = false;
 
@@ -70,6 +82,18 @@ public class PortForwardService extends Service {
 
     // Lazily initialized SSL context that trusts all certs (for self-signed ClawBench servers)
     private static SSLContext trustAllSSLContext;
+
+    // Connection monitor: watches sshSession.isConnected() and triggers reconnect
+    private Thread connectionMonitor;
+    private volatile boolean monitorActive = false;
+    private volatile boolean intentionalDisconnect = false;
+
+    // WifiLock: prevents WiFi from being disabled while SSH tunnel is active
+    private WifiManager.WifiLock wifiLock;
+
+    // Reconnect state
+    private volatile boolean isReconnecting = false;
+    private volatile int reconnectAttempt = 0;
 
     public static boolean isRunning() {
         return isRunning;
@@ -108,19 +132,40 @@ public class PortForwardService extends Service {
                 .apply();
     }
 
+    /**
+     * Check whether battery optimization has already been requested.
+     */
+    public static boolean isBatteryOptRequested(Context context) {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_BATTERY_OPT_REQUESTED, false);
+    }
+
+    /**
+     * Mark battery optimization as requested (so we don't ask again).
+     */
+    public static void setBatteryOptRequested(Context context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_BATTERY_OPT_REQUESTED, true)
+                .apply();
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
         isRunning = true;
         jsch = new JSch();
-        startForeground(NOTIFICATION_ID, buildNotification(0));
+        startForeground(NOTIFICATION_ID, buildNotification(0, null));
+
+        // Restore previously saved ports (from before Service was killed)
+        restoreForwardedPorts();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (!isRunning) {
             isRunning = true;
-            startForeground(NOTIFICATION_ID, buildNotification(0));
+            startForeground(NOTIFICATION_ID, buildNotification(0, null));
         }
 
         if (intent != null) {
@@ -128,7 +173,6 @@ public class PortForwardService extends Service {
             if ("ADD_PORT".equals(action)) {
                 int port = intent.getIntExtra("port", 0);
                 if (port > 0) {
-                    // Run on background thread to avoid NetworkOnMainThreadException
                     networkExecutor.execute(() -> addPortForward(port));
                 }
             } else if ("REMOVE_PORT".equals(action)) {
@@ -138,6 +182,9 @@ public class PortForwardService extends Service {
                 }
             } else if ("DISCONNECT".equals(action)) {
                 networkExecutor.execute(this::disconnect);
+            } else if ("RESTORE_PORTS".equals(action)) {
+                // Service restarted by START_STICKY — restore ports and reconnect
+                networkExecutor.execute(this::restoreAndReconnect);
             }
         }
 
@@ -146,7 +193,10 @@ public class PortForwardService extends Service {
 
     @Override
     public void onDestroy() {
-        disconnect();
+        intentionalDisconnect = true;
+        stopConnectionMonitor();
+        releaseWifiLock();
+        disconnectInternal();
         isRunning = false;
         networkExecutor.shutdownNow();
         stopForeground(true);
@@ -159,8 +209,200 @@ public class PortForwardService extends Service {
         return null;
     }
 
+    // --- Port list persistence ---
+
+    /**
+     * Save the current forwarded ports set to SharedPreferences.
+     */
+    private void saveForwardedPorts() {
+        Set<String> portStrings = new HashSet<>();
+        for (int port : forwardedPorts) {
+            portStrings.add(String.valueOf(port));
+        }
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit()
+                .putStringSet(KEY_FORWARDED_PORTS, portStrings)
+                .apply();
+    }
+
+    /**
+     * Restore forwarded ports from SharedPreferences (without actually connecting).
+     * The actual SSH connection and port forward setup happens when restoreAndReconnect() is called.
+     */
+    private void restoreForwardedPorts() {
+        Set<String> portStrings = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .getStringSet(KEY_FORWARDED_PORTS, null);
+        if (portStrings != null && !portStrings.isEmpty()) {
+            for (String ps : portStrings) {
+                try {
+                    int port = Integer.parseInt(ps);
+                    forwardedPorts.add(port);
+                } catch (NumberFormatException ignored) {}
+            }
+            Log.i(TAG, "SSH: restored " + forwardedPorts.size() + " forwarded ports from prefs");
+            updateNotification(forwardedPorts.size(), null);
+        }
+    }
+
+    /**
+     * Restore ports and reconnect SSH — called after START_STICKY restart.
+     */
+    private void restoreAndReconnect() {
+        if (forwardedPorts.isEmpty()) {
+            restoreForwardedPorts();
+        }
+        if (!forwardedPorts.isEmpty()) {
+            try {
+                ensureConnection();
+                Log.i(TAG, "SSH: restored all port forwards after service restart");
+            } catch (Exception e) {
+                Log.e(TAG, "SSH: failed to restore connection after service restart", e);
+                // Connection monitor will handle reconnect
+            }
+        }
+    }
+
+    // --- Connection monitor (auto-reconnect) ---
+
+    /**
+     * Start the connection monitor thread.
+     * Periodically checks if the SSH session is still alive and triggers reconnect if not.
+     */
+    private void startConnectionMonitor() {
+        if (monitorActive) return;
+        monitorActive = true;
+
+        connectionMonitor = new Thread(() -> {
+            Log.i(TAG, "SSH: connection monitor started");
+            while (monitorActive && !Thread.currentThread().isInterrupted()) {
+                try {
+                    Thread.sleep(MONITOR_CHECK_INTERVAL_MS);
+                } catch (InterruptedException e) {
+                    break;
+                }
+
+                if (!monitorActive || intentionalDisconnect) break;
+
+                // Check if session is dead
+                if (sshSession == null || !sshSession.isConnected()) {
+                    if (forwardedPorts.isEmpty()) {
+                        // No ports to maintain — don't bother reconnecting
+                        Log.d(TAG, "SSH: session disconnected but no ports to forward, skipping reconnect");
+                        continue;
+                    }
+
+                    Log.w(TAG, "SSH: session disconnected, starting auto-reconnect");
+                    isReconnecting = true;
+                    reconnectAttempt = 0;
+                    updateNotification(forwardedPorts.size(), "SSH 隧道断开，正在重连…");
+
+                    while (monitorActive && !intentionalDisconnect && !Thread.currentThread().isInterrupted()) {
+                        reconnectAttempt++;
+                        int delayIdx = Math.min(reconnectAttempt - 1, RECONNECT_DELAYS_MS.length - 1);
+                        int delay = RECONNECT_DELAYS_MS[delayIdx];
+
+                        // Wait before attempt (except first attempt)
+                        if (reconnectAttempt > 1) {
+                            updateNotification(forwardedPorts.size(),
+                                    "SSH 隧道断开，第 " + reconnectAttempt + " 次重连…");
+                            try {
+                                Thread.sleep(delay);
+                            } catch (InterruptedException e) {
+                                break;
+                            }
+                        }
+
+                        if (!monitorActive || intentionalDisconnect) break;
+
+                        try {
+                            Log.i(TAG, "SSH: auto-reconnect attempt #" + reconnectAttempt);
+                            ensureConnection();
+                            Log.i(TAG, "SSH: auto-reconnect succeeded on attempt #" + reconnectAttempt);
+                            isReconnecting = false;
+                            reconnectAttempt = 0;
+                            updateNotification(forwardedPorts.size(), "SSH 隧道已恢复");
+                            // Clear the "recovered" status after 3 seconds
+                            try {
+                                Thread.sleep(3000);
+                            } catch (InterruptedException e) {
+                                break;
+                            }
+                            if (monitorActive && !isReconnecting) {
+                                updateNotification(forwardedPorts.size(), null);
+                            }
+                            break; // Reconnected successfully
+                        } catch (Exception e) {
+                            Log.w(TAG, "SSH: auto-reconnect attempt #" + reconnectAttempt + " failed: " + e.getMessage());
+                        }
+                    }
+
+                    if (isReconnecting) {
+                        // Exhausted all attempts or monitor stopped
+                        isReconnecting = false;
+                    }
+                }
+            }
+            Log.i(TAG, "SSH: connection monitor stopped");
+        }, "SSH-ConnectionMonitor");
+
+        connectionMonitor.setDaemon(true);
+        connectionMonitor.start();
+    }
+
+    /**
+     * Stop the connection monitor thread.
+     */
+    private void stopConnectionMonitor() {
+        monitorActive = false;
+        if (connectionMonitor != null) {
+            connectionMonitor.interrupt();
+            connectionMonitor = null;
+        }
+    }
+
+    // --- WifiLock ---
+
+    /**
+     * Acquire a WifiLock to prevent WiFi from disconnecting while the SSH tunnel is active.
+     */
+    private void acquireWifiLock() {
+        if (wifiLock != null && wifiLock.isHeld()) return;
+        try {
+            WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            if (wifiManager != null) {
+                // WIFI_MODE_FULL_HIGH_PERF uses less power than WIFI_MODE_FULL (Android 12+)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "ClawBench-SSH");
+                } else {
+                    wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL, "ClawBench-SSH");
+                }
+                wifiLock.setReferenceCounted(false);
+                wifiLock.acquire();
+                Log.i(TAG, "SSH: WifiLock acquired");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "SSH: failed to acquire WifiLock", e);
+        }
+    }
+
+    /**
+     * Release the WifiLock.
+     */
+    private void releaseWifiLock() {
+        if (wifiLock != null && wifiLock.isHeld()) {
+            try {
+                wifiLock.release();
+                Log.i(TAG, "SSH: WifiLock released");
+            } catch (Exception e) {
+                Log.w(TAG, "SSH: failed to release WifiLock", e);
+            }
+            wifiLock = null;
+        }
+    }
+
     /**
      * Ensure SSH connection is established. Connects if not already connected.
+     * On successful connection, starts the connection monitor and acquires WifiLock.
      * MUST be called from a background thread (network I/O).
      */
     private synchronized void ensureConnection() throws Exception {
@@ -210,16 +452,26 @@ public class PortForwardService extends Service {
 
         Log.i(TAG, "SSH: connected to " + serverHost + ":" + sshPort);
 
+        // Acquire WifiLock to prevent WiFi from being disabled
+        acquireWifiLock();
+
         // Re-establish any previously forwarded ports
+        int reEstablished = 0;
         for (int port : forwardedPorts) {
             try {
                 sshSession.setPortForwardingL("127.0.0.1", port, "127.0.0.1", port);
+                reEstablished++;
                 Log.i(TAG, "SSH: re-established port forward " + port);
             } catch (Exception e) {
                 Log.e(TAG, "SSH: failed to re-establish port forward " + port, e);
             }
         }
-        updateNotification();
+        Log.i(TAG, "SSH: re-established " + reEstablished + "/" + forwardedPorts.size() + " port forwards");
+
+        updateNotification(forwardedPorts.size(), null);
+
+        // Start connection monitor to detect future disconnects
+        startConnectionMonitor();
     }
 
     /**
@@ -238,18 +490,20 @@ public class PortForwardService extends Service {
             ensureConnection();
             sshSession.setPortForwardingL("127.0.0.1", port, "127.0.0.1", port);
             forwardedPorts.add(port);
+            saveForwardedPorts();
             Log.i(TAG, "SSH: port forward added: localhost:" + port + " → server:" + port);
-            updateNotification();
+            updateNotification(forwardedPorts.size(), null);
         } catch (Exception e) {
             Log.e(TAG, "SSH: failed to add port forward for " + port + ", retrying...", e);
             // Disconnect and retry once (password may have been updated, or session stale)
-            disconnect();
+            disconnectInternal();
             try {
                 ensureConnection();
                 sshSession.setPortForwardingL("127.0.0.1", port, "127.0.0.1", port);
                 forwardedPorts.add(port);
+                saveForwardedPorts();
                 Log.i(TAG, "SSH: port forward added on retry: localhost:" + port + " → server:" + port);
-                updateNotification();
+                updateNotification(forwardedPorts.size(), null);
             } catch (Exception e2) {
                 Log.e(TAG, "SSH: failed to add port forward for " + port + " on retry", e2);
             }
@@ -274,7 +528,8 @@ public class PortForwardService extends Service {
         }
 
         forwardedPorts.remove(port);
-        updateNotification();
+        saveForwardedPorts();
+        updateNotification(forwardedPorts.size(), null);
 
         // If no more forwarded ports, stop the service
         if (forwardedPorts.isEmpty()) {
@@ -340,9 +595,22 @@ public class PortForwardService extends Service {
     }
 
     /**
-     * Disconnect the SSH session and clear all port forwards.
+     * Disconnect the SSH session (user-initiated, stops reconnect).
+     * Clears port list and stops the service.
      */
     private synchronized void disconnect() {
+        intentionalDisconnect = true;
+        stopConnectionMonitor();
+        releaseWifiLock();
+        disconnectInternal();
+    }
+
+    /**
+     * Internal disconnect: tears down SSH session but does NOT affect monitor/wifi lock.
+     * Used by ensureConnection retry logic (disconnect old session before reconnecting).
+     * Note: does NOT clear forwardedPorts — we want to preserve them for reconnect.
+     */
+    private synchronized void disconnectInternal() {
         if (sshSession != null) {
             try {
                 // Remove all port forwards before disconnecting
@@ -358,26 +626,35 @@ public class PortForwardService extends Service {
             }
             sshSession = null;
         }
-        forwardedPorts.clear();
     }
 
-    private void updateNotification() {
+    private void updateNotification(int portCount, String statusText) {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm != null) {
-            nm.notify(NOTIFICATION_ID, buildNotification(forwardedPorts.size()));
+            nm.notify(NOTIFICATION_ID, buildNotification(portCount, statusText));
         }
     }
 
-    private Notification buildNotification(int portCount) {
+    /**
+     * Build the foreground service notification.
+     * @param portCount  Number of currently forwarded ports
+     * @param statusText Optional status override (e.g. "SSH 隧道断开，正在重连…"). Null = normal status.
+     */
+    private Notification buildNotification(int portCount, String statusText) {
         Intent notificationIntent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this, 0, notificationIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        String text = portCount > 0
-                ? portCount + " 个端口转发活跃"
-                : "SSH 隧道已连接";
+        String text;
+        if (statusText != null) {
+            text = statusText;
+        } else if (portCount > 0) {
+            text = portCount + " 个端口转发活跃";
+        } else {
+            text = "SSH 隧道已连接";
+        }
 
         // Create notification channel for Android O+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

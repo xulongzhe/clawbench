@@ -17,4 +17,6 @@
     <string name="download_started">开始下载</string>
     <string name="download_failed">下载失败</string>
     <string name="download_description">ClawBench 文件下载</string>
+    <string name="ssh_notification_reconnecting">SSH 隧道断开，正在重连…</string>
+    <string name="ssh_notification_recovered">SSH 隧道已恢复</string>
 </resources>
