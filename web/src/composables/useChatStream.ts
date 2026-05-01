@@ -323,7 +323,7 @@ export function useChatStream(options: UseChatStreamOptions) {
         loading.value = false
         onMessage()
         onScrollBottom(true)
-        onPlaySound?.()
+        onStreamDone?.()
         if (!isOpen.value) {
           const lastMsg = messages.value[messages.value.length - 1]
           if (lastMsg?.role === 'assistant') {

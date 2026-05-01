@@ -331,6 +331,11 @@ export function useChatSession(options: UseChatSessionOptions) {
     if (globalPollingInterval) { clearInterval(globalPollingInterval); globalPollingInterval = null }
   }
 
+  // Track which sessions have already had their completion notification fired.
+  // Prevents repeated sound/notification if an exception in the callback
+  // prevents runningSessions from being updated.
+  const notifiedSessions = new Set<string>()
+
   async function startGlobalPolling() {
     stopGlobalPolling()
     globalPollingInterval = setInterval(async () => {
@@ -348,29 +353,50 @@ export function useChatSession(options: UseChatSessionOptions) {
         store.state.chatRunning = newRunning.size > 0
 
         // Check for completed sessions
+        const completedSessions: string[] = []
         for (const sessionId of runningSessions.value) {
           if (!newRunning.has(sessionId)) {
-            if (sessionId === currentSessionId.value) {
-              // Current session completed but UI may be stuck in loading state
-              // (e.g. done event was dropped) — force reset
-              if (loading.value) {
-                loadHistory()
-              }
-            } else {
-              // Other session completed
-              const session = sessions.find(s => s.id === sessionId)
-              if (session) {
-                onStreamDone?.()
-                toast.show('会话已完成', {
-                  icon: '✅',
-                  type: 'success',
-                  duration: 5000,
-                  onClick: () => {
-                    switchSession(sessionId, session.backend)
-                    onOpen()
-                  }
-                })
-                // Also show browser notification for completed session
+            completedSessions.push(sessionId)
+          }
+        }
+
+        // Update runningSessions FIRST so that even if callbacks throw,
+        // we won't re-detect these sessions as "just completed" on the next poll.
+        runningSessions.value = newRunning
+
+        // Clean up notifiedSessions: remove entries that are no longer running
+        // and have already been processed.
+        for (const sid of completedSessions) {
+          notifiedSessions.delete(sid)
+        }
+
+        // Now fire callbacks for completed sessions (with idempotency guard)
+        for (const sessionId of completedSessions) {
+          if (notifiedSessions.has(sessionId)) continue
+          notifiedSessions.add(sessionId)
+
+          if (sessionId === currentSessionId.value) {
+            // Current session completed but UI may be stuck in loading state
+            // (e.g. done event was dropped) — force reset
+            if (loading.value) {
+              loadHistory()
+            }
+          } else {
+            // Other session completed
+            const session = sessions.find(s => s.id === sessionId)
+            if (session) {
+              onStreamDone?.()
+              toast.show('会话已完成', {
+                icon: '✅',
+                type: 'success',
+                duration: 5000,
+                onClick: () => {
+                  switchSession(sessionId, session.backend)
+                  onOpen()
+                }
+              })
+              // Also show browser notification for completed session
+              try {
                 notification.show('会话已完成', {
                   body: '点击查看详情',
                   onClick: () => {
@@ -378,12 +404,12 @@ export function useChatSession(options: UseChatSessionOptions) {
                     onOpen()
                   }
                 })
+              } catch (e) {
+                console.warn('Failed to show browser notification:', e)
               }
             }
           }
         }
-
-        runningSessions.value = newRunning
       } catch (err) {
         console.error('Global polling error:', err)
       }
