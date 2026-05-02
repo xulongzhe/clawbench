@@ -46,6 +46,18 @@
         </button>
       </div>
 
+      <!-- App mode: background service tip -->
+      <div v-if="isAppMode && tunnelStatus === 'ok'" class="tunnel-banner tip">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+        <div class="tunnel-banner-content">
+          <span class="tunnel-banner-detail">请允许应用后台运行，否则隧道可能在 APP 进入后台后被系统终止</span>
+        </div>
+      </div>
+
       <!-- Loading -->
       <div v-if="loading" class="proxy-loading">加载中...</div>
 
@@ -284,6 +296,16 @@ watch(() => props.open, async (val) => {
   background: rgba(245, 158, 11, 0.08);
   border-left-color: #f59e0b;
   color: #d97706;
+}
+
+.tunnel-banner.tip {
+  background: rgba(59, 130, 246, 0.06);
+  border-left-color: #3b82f6;
+  color: var(--text-secondary, #666);
+}
+
+.tunnel-banner.tip .tunnel-banner-detail {
+  opacity: 1;
 }
 
 .tunnel-banner svg {
