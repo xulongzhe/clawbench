@@ -425,7 +425,7 @@ defineExpose({
 .chat-action-group {
     display: inline-flex;
     background: var(--bg-tertiary, #f0f0f0);
-    border-radius: 999px;
+    border-radius: 20px;
     overflow: hidden;
 }
 
@@ -539,19 +539,24 @@ defineExpose({
 .chat-input-container {
   display: flex;
   flex-direction: column;
-  background: var(--bg-primary, #fff);
+  background: var(--bg-tertiary, #f0f0f0);
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 12px;
+  border: none;
+  border-radius: 20px;
   overflow: hidden;
   position: relative;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.chat-input-container:focus-within {
+  background: var(--bg-primary, #fff);
+  box-shadow: 0 0 0 1px var(--accent-color, #0066cc);
 }
 
 .chat-input-container.drag-over {
-  border-color: var(--accent-color, #0066cc);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color, #0066cc) 20%, transparent);
+  background: var(--bg-primary, #fff);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent);
 }
 
 /* Drop overlay */
@@ -567,7 +572,7 @@ defineExpose({
   color: var(--accent-color, #0066cc);
   font-size: 13px;
   font-weight: 500;
-  border-radius: 12px;
+  border-radius: 20px;
   pointer-events: none;
 }
 

@@ -1,33 +1,44 @@
 <template>
   <Transition name="quote-bar">
     <div v-if="visible && quoteData" ref="barRef" class="quote-question-bar">
-      <!-- Preview row — always visible when bar is shown -->
-      <div class="quote-bar-row" @click="!expanded && expand()">
-        <div class="quote-bar-preview">
-          <span class="quote-bar-icon">💬</span>
-          <span class="quote-bar-text">{{ previewText }}</span>
-        </div>
-        <button v-if="!expanded" class="quote-bar-btn" @click.stop="expand">
-          对话
-        </button>
-        <button v-else class="quote-bar-btn quote-bar-btn-collapse" @click.stop="collapse" title="收起">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="18 15 12 9 6 15"/>
+
+      <!-- Collapsed: quoted snippet (single-line) + 对话 button -->
+      <div v-if="!expanded" class="quote-bar-row" @click="expand()">
+        <div class="qq-quoted-snippet qq-quoted-snippet--inline">
+          <svg class="qq-quoted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
           </svg>
+          <span class="qq-quoted-text qq-quoted-text--single">{{ fullQuoteText }}</span>
+        </div>
+        <button class="quote-bar-btn" @click.stop="expand">
+          对话
         </button>
       </div>
 
-      <!-- Expanded: session info + input + send -->
-      <div v-if="expanded" class="quote-bar-expanded">
-        <div class="qq-session" @click="openSessionDrawer">
-          <span class="qq-session-label">{{ sessionLabel }}</span>
-          <div class="qq-session-title">
-            <HeaderMarquee :text="displaySessionTitle">{{ displaySessionTitle }}</HeaderMarquee>
+      <!-- Expanded: session selector (top) + quoted snippet + input -->
+      <div v-else class="quote-bar-expanded">
+        <!-- Top: session selector -->
+        <div class="qq-top-row">
+          <div class="qq-session" @click="openSessionDrawer">
+            <span class="qq-session-label">{{ sessionLabel }}</span>
+            <div class="qq-session-title">
+              <HeaderMarquee :text="displaySessionTitle">{{ displaySessionTitle }}</HeaderMarquee>
+            </div>
+            <svg class="qq-session-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
           </div>
-          <svg class="qq-session-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
         </div>
+
+        <!-- Quoted snippet -->
+        <div class="qq-quoted-snippet">
+          <svg class="qq-quoted-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span class="qq-quoted-text">{{ fullQuoteText }}</span>
+        </div>
+
+        <!-- Input -->
         <div class="qq-input-container">
           <div class="qq-input-row">
             <button v-if="inputText" class="qq-clear-btn" @click="inputText = ''; collapseTextarea()" title="清空">
@@ -52,6 +63,7 @@
           </div>
         </div>
       </div>
+
     </div>
   </Transition>
 </template>
@@ -74,10 +86,11 @@ const inputText = ref('')
 const inputRef = ref(null)
 const barRef = ref(null)
 
-const previewText = computed(() => {
+const fullQuoteText = computed(() => {
   if (!props.quoteData) return ''
   const text = props.quoteData.text || ''
-  return text.length > 60 ? text.slice(0, 60) + '…' : text
+  // Show up to 3 lines when expanded; single-line will be truncated via CSS
+  return text.length > 150 ? text.slice(0, 150) + '…' : text
 })
 
 const canSend = computed(() => inputText.value.trim().length > 0)
@@ -112,7 +125,7 @@ onUnmounted(() => {
 })
 
 async function expand() {
-  emit('pin')  // Pin bar so selection loss won't auto-hide it
+  emit('pin')
   expanded.value = true
   await nextTick()
   inputRef.value?.focus()
@@ -122,8 +135,6 @@ function collapse() {
   expanded.value = false
   inputText.value = ''
   collapseTextarea()
-  // Don't close the bar — just collapse the input area, keep the preview visible
-  // Reset barPinned so selection changes can auto-hide the bar again
   emit('unpin')
 }
 
@@ -143,14 +154,12 @@ function collapseTextarea() {
 }
 
 function openSessionDrawer() {
-  // Delegate to the existing SessionDrawer via event
   emit('open-sessions')
 }
 
 function handleSend() {
   if (!canSend.value) return
   emit('send', inputText.value)
-  // Keep the bar visible after send, just collapse the input area
   expanded.value = false
   inputText.value = ''
   collapseTextarea()
@@ -160,12 +169,12 @@ function handleSend() {
 <style scoped>
 .quote-question-bar {
   position: fixed;
-  top: calc(48px + env(safe-area-inset-top, 0px));
+  top: calc(var(--header-height, 40px) + 8px + env(safe-area-inset-top, 0px));
   left: 8px;
   right: 8px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 20px;
   box-shadow: var(--shadow-md);
   z-index: 2400;
   max-width: 400px;
@@ -173,34 +182,19 @@ function handleSend() {
   overflow: hidden;
 }
 
-/* Collapsed row */
+/* ===== Collapsed row ===== */
 .quote-bar-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-}
-
-.quote-bar-preview {
-  display: flex;
-  align-items: center;
   gap: 6px;
-  flex: 1;
-  min-width: 0;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
 }
 
-.quote-bar-icon {
-  flex-shrink: 0;
-  font-size: 14px;
-}
-
-.quote-bar-text {
-  font-size: 13px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.quote-bar-row:active {
+  background: var(--bg-tertiary);
 }
 
 .quote-bar-btn {
@@ -220,27 +214,18 @@ function handleSend() {
   opacity: 0.8;
 }
 
-.quote-bar-btn-collapse {
-  padding: 4px 6px;
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-}
-
-.quote-bar-btn-collapse:active {
-  background: var(--bg-secondary);
-}
-
-/* Expanded */
+/* ===== Expanded panel ===== */
 .quote-bar-expanded {
-  padding: 8px 10px;
   display: flex;
   flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+/* Top row: session selector */
+.qq-top-row {
+  display: flex;
+  align-items: center;
   gap: 6px;
 }
 
@@ -248,15 +233,17 @@ function handleSend() {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 5px 8px;
   background: var(--bg-tertiary);
-  border-radius: 6px;
+  border-radius: 20px;
   cursor: pointer;
   transition: background 0.15s;
+  flex: 1;
+  min-width: 0;
 }
 
 .qq-session:active {
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
 }
 
 .qq-session-label {
@@ -279,19 +266,70 @@ function handleSend() {
   color: var(--text-muted);
 }
 
-/* Input container — same style as ChatInputBar */
+/* Quoted snippet block */
+.qq-quoted-snippet {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 6px 8px;
+  background: var(--bg-tertiary);
+  border-left: 2px solid var(--accent-color);
+  border-radius: 0 4px 4px 0;
+  margin: 0 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Collapsed inline variant — single row, no flex-start */
+.qq-quoted-snippet--inline {
+  align-items: center;
+  padding: 5px 8px;
+  margin: 0;
+}
+
+.qq-quoted-icon {
+  flex-shrink: 0;
+  color: var(--accent-color);
+  opacity: 0.6;
+  margin-top: 1px;
+}
+
+.qq-quoted-snippet--inline .qq-quoted-icon {
+  margin-top: 0;
+}
+
+.qq-quoted-text {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Collapsed single-line variant */
+.qq-quoted-text--single {
+  -webkit-line-clamp: 1;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+/* Input container — capsule style */
 .qq-input-container {
   display: flex;
   flex-direction: column;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: 20px;
   overflow: hidden;
-  transition: border-color 0.2s;
+  transition: background 0.2s, box-shadow 0.2s;
 }
 
 .qq-input-container:focus-within {
-  border-color: var(--accent-color);
+  background: var(--bg-primary);
+  box-shadow: 0 0 0 1px var(--accent-color);
 }
 
 .qq-input-row {
@@ -370,7 +408,7 @@ function handleSend() {
   cursor: not-allowed;
 }
 
-/* Transition */
+/* ===== Transitions ===== */
 .quote-bar-enter-active {
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
