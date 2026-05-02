@@ -51,7 +51,7 @@
   </BottomSheet>
 
   <!-- Agent selector dialog -->
-  <ModalDialog :open="showAgentSelector" title="选择智能体" @close="showAgentSelector = false">
+  <ModalDialog :open="showAgentSelector" title="🤖 选择智能体" @close="showAgentSelector = false">
     <div class="agent-list">
       <button
         v-for="agent in agents"
