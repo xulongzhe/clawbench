@@ -127,7 +127,6 @@ export function useChatSession(options: UseChatSessionOptions) {
       onExtractScheduleProposals(messages.value)
       onRenderUpdate(true)
       if (data.running) {
-        inputDisabled.value = true
         loading.value = true
         stopMsgCountPolling()
         onScrollBottom(true)
@@ -214,7 +213,6 @@ export function useChatSession(options: UseChatSessionOptions) {
       onRenderUpdate(true)
       onScrollBottom(true)
       if (data.running) {
-        inputDisabled.value = true
         loading.value = true
         stopMsgCountPolling()
         onConnectStream(sessionId)
@@ -431,7 +429,6 @@ export function useChatSession(options: UseChatSessionOptions) {
       onStopPolling()
       loadHistory().catch(() => {
         // loadHistory failed — reset loading state so user isn't stuck
-        inputDisabled.value = false
         loading.value = false
       })
     }

@@ -6,7 +6,6 @@ export interface UseChatStreamOptions {
   currentSessionId: Ref<string>
   currentBackend: Ref<string>
   loading: Ref<boolean>
-  inputDisabled: Ref<boolean>
   onRenderNeeded: (forceFull?: boolean) => void
   onScrollBottom: (force?: boolean) => void
   onLoadHistory: () => Promise<void>
@@ -17,7 +16,7 @@ export interface UseChatStreamOptions {
   onParseAssistantContent: (content: string) => { blocks: any[]; metadata?: any; cancelled?: boolean }
   onToast: (msg: string, opts?: any) => void
   onNotification: (title: string, opts?: any) => void
-  onStreamDone?: () => void
+  onStreamEnd?: (reason: 'done' | 'cancelled' | 'error') => void
 }
 
 export function useChatStream(options: UseChatStreamOptions) {
@@ -26,7 +25,6 @@ export function useChatStream(options: UseChatStreamOptions) {
     currentSessionId,
     currentBackend,
     loading,
-    inputDisabled,
     onRenderNeeded,
     onScrollBottom,
     onLoadHistory,
@@ -37,7 +35,7 @@ export function useChatStream(options: UseChatStreamOptions) {
     onParseAssistantContent,
     onToast,
     onNotification,
-    onStreamDone,
+    onStreamEnd,
   } = options
 
   let eventSource: EventSource | null = null
@@ -103,7 +101,7 @@ export function useChatStream(options: UseChatStreamOptions) {
   /**
    * Clean up streaming state for the current assistant message.
    * Marks all unfinished tool_use blocks as done, clears streaming flag,
-   * and resets global loading/input state. Called from all interruption paths.
+   * and resets loading state. Called from all interruption paths.
    */
   function forceCleanupStreamingState() {
     clearToolUseTimeouts()
@@ -120,7 +118,6 @@ export function useChatStream(options: UseChatStreamOptions) {
       }
     }
     onRenderNeeded(true)
-    inputDisabled.value = false
     loading.value = false
   }
 
@@ -164,11 +161,10 @@ export function useChatStream(options: UseChatStreamOptions) {
           })
           currentSessionId.value = data.sessionId || currentSessionId.value
           onRenderNeeded(true)
-          inputDisabled.value = false
           loading.value = false
           onMessage()
           onScrollBottom(true)
-          onStreamDone?.()
+          onStreamEnd?.('done')
           // Show toast notification when AI replies and chat panel is not open
           if (!isOpen.value) {
             const lastMsg = messages.value[messages.value.length - 1]
@@ -186,8 +182,8 @@ export function useChatStream(options: UseChatStreamOptions) {
         console.error('Polling error:', err)
         stopPolling()
         onToast('连接失败，请刷新页面', { icon: '⚠️' })
-        inputDisabled.value = false
         loading.value = false
+        onStreamEnd?.('error')
       }
     }, 2000)
   }
@@ -327,11 +323,10 @@ export function useChatStream(options: UseChatStreamOptions) {
       // Reload from DB to ensure complete content — SSE events may have been
       // dropped during transmission, so the local state may be incomplete.
       onLoadHistory().finally(() => {
-        inputDisabled.value = false
         loading.value = false
         onMessage()
         onScrollBottom(true)
-        onStreamDone?.()
+        onStreamEnd?.('done')
         if (!isOpen.value) {
           const lastMsg = messages.value[messages.value.length - 1]
           if (lastMsg?.role === 'assistant') {
@@ -365,8 +360,8 @@ export function useChatStream(options: UseChatStreamOptions) {
         msg.blocks = [{ type: 'error', text: '用户已中断' }]
       }
       onRenderNeeded()
-      inputDisabled.value = false
       loading.value = false
+      onStreamEnd?.('cancelled')
     })
 
     eventSource.addEventListener('warning', (e) => {
@@ -399,9 +394,9 @@ export function useChatStream(options: UseChatStreamOptions) {
           if (block.type === 'tool_use' && !block.done) block.done = true
         }
         onRenderNeeded()
-        inputDisabled.value = false
         loading.value = false
       })
+      onStreamEnd?.('error')
     })
 
     eventSource.onerror = () => {

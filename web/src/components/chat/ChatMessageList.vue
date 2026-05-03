@@ -56,12 +56,24 @@
       @expand="handleExpand"
     />
     </div>
+
+    <!-- Pending messages (queued while AI is generating) -->
+    <div v-if="pendingMessages.length > 0" class="pending-messages-list">
+      <PendingMessageItem
+        v-for="(msg, i) in pendingMessages"
+        :key="'pending-' + i"
+        :msg="msg"
+        :index="i"
+        @remove="$emit('remove-pending', $event)"
+      />
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, nextTick, inject, computed, watch } from 'vue'
 import ChatMessageItem from './ChatMessageItem.vue'
+import PendingMessageItem from './PendingMessageItem.vue'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 
@@ -76,9 +88,10 @@ const props = defineProps({
   hasMore: Boolean,
   loadingMore: Boolean,
   totalMessages: { type: Number, default: 0 },
+  pendingMessages: { type: Array, default: () => [] },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'file-open', 'load-more', 'edit-task', 'send-message'])
+const emit = defineEmits(['toggle-tool', 'show-metadata', 'file-tag-click', 'file-open', 'load-more', 'edit-task', 'send-message', 'remove-pending'])
 
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()
@@ -408,6 +421,14 @@ defineExpose({
 .load-hint-fade-enter-from,
 .load-hint-fade-leave-to {
   opacity: 0;
+}
+
+/* Pending messages list */
+.pending-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
 }
 
 </style>

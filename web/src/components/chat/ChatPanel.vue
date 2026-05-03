@@ -23,6 +23,7 @@
       :hasMore="session.hasMore.value"
       :loadingMore="session.loadingMore.value"
       :totalMessages="session.totalMessages.value"
+      :pendingMessages="pendingMessages.value"
       @touchstart="swipeSession.onTouchStart"
       @touchend="swipeSession.onTouchEnd"
       @toggle-tool="render.toggleToolDetail"
@@ -31,6 +32,7 @@
       @load-more="handleLoadMore"
       @edit-task="openTaskEdit"
       @send-message="handleToolSendMessage"
+      @remove-pending="handleRemovePending"
     />
 
     <!-- Session switching overlay — placed here to cover the entire message area -->
@@ -70,6 +72,7 @@
       :chatRunning="store.state.chatRunning"
       :taskUnread="store.state.taskUnread"
       :quickSend="store.state.chatQuickSend"
+      :pendingCount="pendingMessages.value.length"
       @send="sendMessage"
       @cancel="stream.cancelStream"
       @file-select="handleFileSelect"
@@ -165,6 +168,9 @@ const { agents: agentsList, getAgentIcon, getAgentName } = useAgents()
 const messages = ref([])
 const inputDisabled = ref(true)
 const loading = ref(false)
+// Pending message queue: messages enqueued while AI is generating,
+// consumed automatically when the current stream ends normally.
+const pendingMessages = ref([])
 // Incremented when the panel reopens, so ChatMessageItem can re-check
 // overflow after being hidden (display:none gives scrollHeight=0).
 const layoutRefreshKey = ref(0)
@@ -247,20 +253,30 @@ const swipeSession = useSwipeSession({
   switchSession: session.switchSession,
 })
 
-// onStreamDone: fires when current session stream completes
-// Plays notification sound and triggers auto-speech if enabled
-function onStreamDone() {
-  playNotificationSound()
-  if (autoSpeech.enabled.value) {
-    const lastMsg = messages.value[messages.value.length - 1]
-    if (lastMsg?.role === 'assistant') {
-      const textBlocks = (lastMsg.blocks || []).filter(b => b.type === 'text')
-      const fullText = textBlocks.map(b => b.text || '').join('\n')
-      if (fullText.trim() && lastMsg.id) {
-        autoSpeech.speakMessage(lastMsg.id, fullText.trim())
+// onStreamEnd: fires when current session stream completes with a reason
+// - 'done': normal completion → consume pending queue, play sound, auto-speech
+// - 'cancelled': user cancelled → clear queue (user chose to stop)
+// - 'error': error occurred → pause queue, let user decide
+function onStreamEnd(reason) {
+  if (reason === 'done') {
+    playNotificationSound()
+    if (autoSpeech.enabled.value) {
+      const lastMsg = messages.value[messages.value.length - 1]
+      if (lastMsg?.role === 'assistant') {
+        const textBlocks = (lastMsg.blocks || []).filter(b => b.type === 'text')
+        const fullText = textBlocks.map(b => b.text || '').join('\n')
+        if (fullText.trim() && lastMsg.id) {
+          autoSpeech.speakMessage(lastMsg.id, fullText.trim())
+        }
       }
     }
+    // Consume pending queue after a tick so loading=false has settled
+    nextTick(() => consumeQueue())
+  } else if (reason === 'cancelled') {
+    // User explicitly cancelled — clear the pending queue
+    pendingMessages.value = []
   }
+  // 'error': don't touch the queue — user can decide to continue or clear
 }
 
 const stream = useChatStream({
@@ -268,7 +284,6 @@ const stream = useChatStream({
   currentSessionId: identity.currentSessionId,
   currentBackend: identity.currentBackend,
   loading,
-  inputDisabled,
   onRenderNeeded: (forceFull) => render.updateRenderedContents(forceFull),
   onScrollBottom: (force) => scrollBottom(force),
   onLoadHistory: () => session.loadHistory(),
@@ -279,7 +294,7 @@ const stream = useChatStream({
   onParseAssistantContent: (content) => render.parseAssistantContent(content),
   onToast: (msg, opts) => toast.show(msg, opts),
   onNotification: (title, opts) => notification.show(title, opts),
-  onStreamDone,
+  onStreamEnd,
 })
 
 provide('chatRender', {
@@ -331,6 +346,37 @@ watch(() => props.open, async (val) => {
 
 const { pendingFiles, attachedFiles, handleFileSelect, handleFileDrop, removeFile, addAttachedFile, removeAttachedFile, cleanupPreviewUrls, clearPendingFiles } = useFileUpload({ inputDisabled })
 
+// ── Pending message queue ──
+
+/** Enqueue a message for later delivery while AI is generating. */
+function enqueueMessage(text, extraFilePaths) {
+  const inputText = text !== undefined ? text : ''
+  const filePaths = [...(extraFilePaths || []), ...(attachedFiles.value.length > 0 ? attachedFiles.value : [])]
+  const uploadedFiles = pendingFiles.value.map(f => ({ path: f.path }))
+  const projectFiles = filePaths.map(p => ({ path: p }))
+
+  pendingMessages.value.push({
+    text: inputText,
+    filePaths,
+    files: [...uploadedFiles, ...projectFiles].map(f => f.path),
+    createdAt: new Date().toISOString(),
+  })
+
+  // Clear input state after enqueueing
+  attachedFiles.value = []
+  inputBarRef.value?.clearInput()
+  clearPendingFiles()
+  scrollBottom(true)
+}
+
+/** Consume the next pending message from the queue (called after stream ends normally). */
+function consumeQueue() {
+  if (pendingMessages.value.length === 0) return
+  if (loading.value) return // safety: don't send if somehow still loading
+  const next = pendingMessages.value.shift()
+  sendMessageNow(next.text, next.filePaths, next.files)
+}
+
 // Clean up streaming state when user wants to interact with session management
 // (new session, delete session) while AI is still generating
 function cleanupActiveStream() {
@@ -347,6 +393,8 @@ function cleanupActiveStream() {
     }
   }
   render.updateRenderedContents(true)
+  // Clear pending queue on forced cleanup (session switch / delete)
+  pendingMessages.value = []
 }
 
 async function handleCreateSession(agentId) {
@@ -378,31 +426,41 @@ async function sendMessage(text, extraFilePaths) {
 
     if ((!inputText && !hasFiles) || inputDisabled.value) return
 
+    // If AI is generating, enqueue the message instead of sending immediately
+    if (loading.value) {
+      enqueueMessage(inputText, extraFilePaths)
+      return
+    }
+
     // Merge attached files from the input bar with extra file paths (e.g. from quote-question)
     const filePaths = [...(extraFilePaths || []), ...(attachedFiles.value.length > 0 ? attachedFiles.value : [])]
     const uploadedFiles = pendingFiles.value.map(f => ({ path: f.path }))
     const projectFiles = filePaths.map(p => ({ path: p }))
+    const allFiles = [...uploadedFiles, ...projectFiles].map(f => f.path)
 
-    messages.value.push({
-        role: 'user',
-        content: inputText,
-        filePath: filePaths.length > 0 ? filePaths[0] : '',
-        files: [...uploadedFiles, ...projectFiles],
-        createdAt: new Date().toISOString()
-    })
-
-    render.updateRenderedContents()
-
+    // Clear input state before async request
     attachedFiles.value = []
     inputBarRef.value?.clearInput()
     clearPendingFiles()
 
-    inputDisabled.value = true
+    await sendMessageNow(inputText, filePaths, allFiles)
+}
+
+/** Actually send a message to the backend (no queue check). */
+async function sendMessageNow(text, filePaths, files) {
+    messages.value.push({
+        role: 'user',
+        content: text || '',
+        filePath: filePaths.length > 0 ? filePaths[0] : '',
+        files: (files || []).map(p => ({ path: p })),
+        createdAt: new Date().toISOString()
+    })
+
+    render.updateRenderedContents()
     loading.value = true
     scrollBottom(true)
 
     try {
-        // Use currentAgentId as-is (backend will use default agent if empty)
         const effectiveAgentId = identity.currentAgentId.value
 
         const url = identity.currentSessionId.value
@@ -411,7 +469,7 @@ async function sendMessage(text, extraFilePaths) {
         const resp = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, filePaths, files: [...uploadedFiles, ...projectFiles].map(f => f.path), agentId: effectiveAgentId }),
+            body: JSON.stringify({ message: text, filePaths, files: files || [], agentId: effectiveAgentId }),
         })
         const data = await resp.json()
         if (!resp.ok) {
@@ -423,8 +481,6 @@ async function sendMessage(text, extraFilePaths) {
         }
         // Session already running — another request is in progress
         if (data.running) {
-            loading.value = true
-            inputDisabled.value = true
             stream.connectStream(identity.currentSessionId.value)
             return
         }
@@ -433,7 +489,6 @@ async function sendMessage(text, extraFilePaths) {
         stream.stopPolling()
         stream.disconnectStream()
         messages.value.push({ role: 'assistant', content: `错误: ${err.message}`, file_path: '' })
-        inputDisabled.value = false
         loading.value = false
         toast.show('发送失败，请重试', { icon: '⚠️', type: 'error' })
         // Clear session ID on error to prevent using invalid session
@@ -444,23 +499,19 @@ async function sendMessage(text, extraFilePaths) {
 }
 
 /** Handle a tool-triggered message send (e.g. AskUserQuestion answer).
- *  If the AI stream is still running, waits for it to finish first. */
+ *  If the AI stream is still running, enqueues the message for delivery after stream ends. */
 async function handleToolSendMessage(text) {
     if (!text) return
-    // Wait for the current stream to finish (AI may still be outputting after the tool event)
     if (loading.value) {
-        await new Promise(resolve => {
-            const timer = setTimeout(() => { unwatch(); resolve() }, 60000) // 60s safety timeout
-            const unwatch = watch(loading, (val) => {
-                if (!val) {
-                    clearTimeout(timer)
-                    unwatch()
-                    resolve()
-                }
-            })
-        })
+      enqueueMessage(text)
+    } else {
+      await sendMessage(text)
     }
-    await sendMessage(text)
+}
+
+/** Remove a pending message from the queue by index. */
+function handleRemovePending(index) {
+  pendingMessages.value.splice(index, 1)
 }
 
 function scrollBottom(force = false) {
