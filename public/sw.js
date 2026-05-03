@@ -1,5 +1,5 @@
 // Smart Workbench Service Worker
-const CACHE_NAME = 'smartworkbench-v7';
+const CACHE_NAME = 'smartworkbench-v8';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
