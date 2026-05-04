@@ -279,9 +279,6 @@ func main() {
 		if cfg.TTS.Voice != "" {
 			p.TTSVoice = cfg.TTS.Voice
 		}
-		if cfg.TTS.Language != "" {
-			p.TTSLanguage = cfg.TTS.Language
-		}
 		if cfg.TTS.Speed > 0 {
 			p.TTSSpeed = cfg.TTS.Speed
 		}

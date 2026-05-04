@@ -156,7 +156,6 @@ tts:
   # summarize_model: "MiniMax-M2.7"
   # voice: "female-chengshu"
   # tts_model: "speech-2.8-hd"
-  # language: "zh"
   # speed: 1.5
   # format: "mp3"
 

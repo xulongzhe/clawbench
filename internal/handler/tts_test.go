@@ -19,15 +19,17 @@ import (
 
 // mockSummarizer is a test double for speech.Summarizer.
 type mockSummarizer struct {
-	result string
-	err    error
-	called bool
-	lastText string
+	result       string
+	err          error
+	called       bool
+	lastText     string
+	lastLanguage string
 }
 
 func (m *mockSummarizer) Summarize(ctx context.Context, text string, language string) (string, error) {
 	m.called = true
 	m.lastText = text
+	m.lastLanguage = language
 	if m.err != nil {
 		return "", m.err
 	}
@@ -42,11 +44,13 @@ type mockSpeechProvider struct {
 	synthesizeErr    error
 	synthesizeCalled bool
 	lastSynthText    string
+	lastSynthLang    string
 }
 
 func (m *mockSpeechProvider) Synthesize(ctx context.Context, text string, outputPath string, language string) error {
 	m.synthesizeCalled = true
 	m.lastSynthText = text
+	m.lastSynthLang = language
 	if m.synthesizeErr != nil {
 		return m.synthesizeErr
 	}
@@ -323,3 +327,62 @@ var _ speech.Summarizer = (*mockSummarizer)(nil)
 
 // --- ensure mockSpeechProvider satisfies SpeechProvider interface ---
 var _ speech.SpeechProvider = (*mockSpeechProvider)(nil)
+
+// --- TTSGenerate: language propagation ---
+
+func TestTTSGenerate_LanguageDefaultToZh(t *testing.T) {
+	mockProvider := &mockSpeechProvider{}
+	mockSum := &mockSummarizer{result: "核心结论"}
+	env, teardown := setupTTSTest(t, mockProvider, mockSum)
+	defer teardown()
+
+	// Send request WITHOUT language field
+	text := "这是一段较长的AI回复内容，需要被总结为语音。包含了详细的分析和代码示例，需要提取核心要点。"
+	req := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]string{"text": text})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := httptest.NewRecorder()
+
+	TTSGenerate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Language should default to "zh"
+	assert.Equal(t, "zh", mockSum.lastLanguage)
+	assert.Equal(t, "zh", mockProvider.lastSynthLang)
+}
+
+func TestTTSGenerate_LanguageEn(t *testing.T) {
+	mockProvider := &mockSpeechProvider{}
+	mockSum := &mockSummarizer{result: "Core conclusion"}
+	env, teardown := setupTTSTest(t, mockProvider, mockSum)
+	defer teardown()
+
+	// Send request WITH language="en"
+	text := "This is a long AI response that contains detailed analysis and code examples, requiring core point extraction."
+	req := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]string{"text": text, "language": "en"})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := httptest.NewRecorder()
+
+	TTSGenerate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	assert.Equal(t, "en", mockSum.lastLanguage)
+	assert.Equal(t, "en", mockProvider.lastSynthLang)
+}
+
+func TestTTSGenerate_LanguageJa(t *testing.T) {
+	mockProvider := &mockSpeechProvider{}
+	mockSum := &mockSummarizer{result: "核心の結論"}
+	env, teardown := setupTTSTest(t, mockProvider, mockSum)
+	defer teardown()
+
+	text := "これは長いAIの応答内容であり、音声に要約する必要があります。詳細な分析とコード例が含まれています。"
+	req := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]string{"text": text, "language": "ja"})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := httptest.NewRecorder()
+
+	TTSGenerate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	assert.Equal(t, "ja", mockSum.lastLanguage)
+	assert.Equal(t, "ja", mockProvider.lastSynthLang)
+}

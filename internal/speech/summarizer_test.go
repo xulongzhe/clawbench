@@ -1,0 +1,288 @@
+package speech
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+// --- languageName ---
+
+func TestLanguageName_CommonCodes(t *testing.T) {
+	tests := []struct {
+		code     string
+		expected string
+	}{
+		{"zh", "Chinese"},
+		{"en", "English"},
+		{"ja", "Japanese"},
+		{"ko", "Korean"},
+		{"fr", "French"},
+		{"de", "German"},
+		{"es", "Spanish"},
+		{"pt", "Portuguese"},
+		{"ru", "Russian"},
+		{"ar", "Arabic"},
+		{"it", "Italian"},
+	}
+	for _, tc := range tests {
+		assert.Equal(t, tc.expected, languageName(tc.code))
+	}
+}
+
+func TestLanguageName_Aliases(t *testing.T) {
+	tests := []struct {
+		code     string
+		expected string
+	}{
+		{"cmn", "Chinese"},
+		{"chinese", "Chinese"},
+		{"eng", "English"},
+		{"english", "English"},
+		{"jpn", "Japanese"},
+		{"japanese", "Japanese"},
+		{"kor", "Korean"},
+		{"korean", "Korean"},
+		{"fra", "French"},
+		{"deu", "German"},
+		{"spa", "Spanish"},
+		{"por", "Portuguese"},
+		{"rus", "Russian"},
+		{"ara", "Arabic"},
+		{"ita", "Italian"},
+	}
+	for _, tc := range tests {
+		assert.Equal(t, tc.expected, languageName(tc.code))
+	}
+}
+
+func TestLanguageName_CaseInsensitive(t *testing.T) {
+	assert.Equal(t, "Chinese", languageName("ZH"))
+	assert.Equal(t, "Chinese", languageName("Zh"))
+	assert.Equal(t, "English", languageName("EN"))
+	assert.Equal(t, "English", languageName("En"))
+}
+
+func TestLanguageName_UnknownCode(t *testing.T) {
+	assert.Equal(t, "xx", languageName("xx"))
+	assert.Equal(t, "th", languageName("th"))
+	assert.Equal(t, "vi", languageName("vi"))
+}
+
+func TestLanguageName_Empty(t *testing.T) {
+	assert.Equal(t, "", languageName(""))
+}
+
+// --- genericSummarizer.Summarize with language ---
+
+func TestGenericSummarize_ShortText_SkipsLLM(t *testing.T) {
+	var passCalled bool
+	passFn := func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+		passCalled = true
+		return "", nil
+	}
+
+	s := genericSummarizer{
+		passFn:     passFn,
+		basePrompt: "base prompt",
+	}
+
+	shortText := "短文本不需要总结"
+	result, err := s.Summarize(context.Background(), shortText, "zh")
+	assert.NoError(t, err)
+	assert.Contains(t, result, "短文本")
+	assert.False(t, passCalled)
+}
+
+func TestGenericSummarize_LongText_ConstructsLanguageAwarePrompt(t *testing.T) {
+	var capturedPrompt string
+	passFn := func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+		capturedPrompt = systemPrompt
+		return "summarized result", nil
+	}
+
+	s := genericSummarizer{
+		passFn:     passFn,
+		basePrompt: "Base prompt for summarization",
+	}
+
+	longText := strings.Repeat("这是一段较长的AI回复内容，包含了详细的技术分析。", 20)
+
+	// Test with Chinese
+	_, err := s.Summarize(context.Background(), longText, "zh")
+	assert.NoError(t, err)
+	assert.Contains(t, capturedPrompt, "Base prompt for summarization")
+	assert.Contains(t, capturedPrompt, "Output in Chinese.")
+	assert.Contains(t, capturedPrompt, "Translate any non-Chinese content first")
+}
+
+func TestGenericSummarize_LanguageDirective_VariesByLanguage(t *testing.T) {
+	var capturedPrompt string
+	passFn := func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+		capturedPrompt = systemPrompt
+		return "result", nil
+	}
+
+	s := genericSummarizer{
+		passFn:     passFn,
+		basePrompt: "Base",
+	}
+
+	longText := strings.Repeat("This is a long AI response with detailed analysis and conclusions. ", 20)
+
+	// Chinese
+	_, _ = s.Summarize(context.Background(), longText, "zh")
+	assert.Contains(t, capturedPrompt, "Output in Chinese.")
+
+	// English
+	_, _ = s.Summarize(context.Background(), longText, "en")
+	assert.Contains(t, capturedPrompt, "Output in English.")
+
+	// Japanese
+	_, _ = s.Summarize(context.Background(), longText, "ja")
+	assert.Contains(t, capturedPrompt, "Output in Japanese.")
+}
+
+func TestGenericSummarize_ReSummarization_UsesSamePrompt(t *testing.T) {
+	callCount := 0
+	var prompts []string
+	passFn := func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+		callCount++
+		prompts = append(prompts, systemPrompt)
+		// Return a long result on first pass to trigger re-summarization
+		if pass == 1 {
+			return strings.Repeat("a", reSummarizeThreshold+1), nil
+		}
+		return "condensed", nil
+	}
+
+	s := genericSummarizer{
+		passFn:     passFn,
+		basePrompt: "Base",
+	}
+
+	longText := strings.Repeat("Long text that needs summarization. ", 30)
+	result, err := s.Summarize(context.Background(), longText, "en")
+	assert.NoError(t, err)
+	assert.Equal(t, 2, callCount)
+	assert.Equal(t, "condensed", result)
+	// Both passes should use the same prompt
+	assert.Equal(t, prompts[0], prompts[1])
+}
+
+func TestGenericSummarize_SecondPassFailure_FallsBackToFirstPass(t *testing.T) {
+	callCount := 0
+	passFn := func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+		callCount++
+		if pass == 1 {
+			return strings.Repeat("first pass result ", reSummarizeThreshold/10), nil
+		}
+		return "", context.DeadlineExceeded
+	}
+
+	s := genericSummarizer{
+		passFn:     passFn,
+		basePrompt: "Base",
+	}
+
+	longText := strings.Repeat("Long text that needs summarization. ", 30)
+	result, err := s.Summarize(context.Background(), longText, "zh")
+	assert.NoError(t, err)
+	assert.Contains(t, result, "first pass result")
+	assert.Equal(t, 2, callCount)
+}
+
+func TestGenericSummarize_PassFnError(t *testing.T) {
+	passFn := func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+		return "", context.DeadlineExceeded
+	}
+
+	s := genericSummarizer{
+		passFn:     passFn,
+		basePrompt: "Base",
+	}
+
+	longText := strings.Repeat("这是一段较长的AI回复内容。", 30)
+	_, err := s.Summarize(context.Background(), longText, "zh")
+	assert.Error(t, err)
+}
+
+// --- loadSummarizeBasePrompt ---
+
+func TestLoadSummarizeBasePrompt_Default(t *testing.T) {
+	// Reset cache
+	cachedSummarizeBasePrompt = ""
+
+	prompt := loadSummarizeBasePrompt()
+	assert.Contains(t, prompt, "Condense AI replies into spoken-language text")
+	assert.Contains(t, prompt, "TTS synthesis")
+	// Should be cached now
+	assert.Equal(t, prompt, cachedSummarizeBasePrompt)
+}
+
+func TestLoadSummarizeBasePrompt_Cached(t *testing.T) {
+	// Set a cached value
+	cachedSummarizeBasePrompt = "cached prompt"
+	defer func() { cachedSummarizeBasePrompt = "" }()
+
+	prompt := loadSummarizeBasePrompt()
+	assert.Equal(t, "cached prompt", prompt)
+}
+
+// --- prepareTextForSummarization ---
+
+func TestPrepareTextForSummarization_ShortText(t *testing.T) {
+	text := "短文本"
+	cleaned, needs := prepareTextForSummarization(text)
+	assert.Equal(t, text, cleaned)
+	assert.False(t, needs)
+}
+
+func TestPrepareTextForSummarization_LongText(t *testing.T) {
+	text := strings.Repeat("这是一段较长的文本内容。", 50)
+	cleaned, needs := prepareTextForSummarization(text)
+	assert.True(t, needs)
+	assert.Equal(t, text, cleaned) // no truncation needed
+}
+
+func TestPrepareTextForSummarization_Truncation(t *testing.T) {
+	origMax := MaxSummarizeRunes
+	MaxSummarizeRunes = 100
+	defer func() { MaxSummarizeRunes = origMax }()
+
+	text := strings.Repeat("长文本", 200) // 600 runes
+	cleaned, needs := prepareTextForSummarization(text)
+	assert.True(t, needs)
+	assert.Equal(t, 100, len([]rune(cleaned)))
+}
+
+// --- needsReSummarization ---
+
+func TestNeedsReSummarization(t *testing.T) {
+	assert.True(t, needsReSummarization(strings.Repeat("a", reSummarizeThreshold+1), 1))
+	assert.False(t, needsReSummarization("short", 1))
+	assert.False(t, needsReSummarization(strings.Repeat("a", reSummarizeThreshold+1), 2)) // max pass reached
+}
+
+// --- NeedsSummarization ---
+
+func TestNeedsSummarization(t *testing.T) {
+	assert.False(t, NeedsSummarization("短文本"))
+	assert.True(t, NeedsSummarization(strings.Repeat("这是一段较长的文本内容。", 50)))
+}
+
+// --- NewGenericSummarizer ---
+
+func TestNewGenericSummarizer(t *testing.T) {
+	// Reset cache so it loads the default prompt
+	cachedSummarizeBasePrompt = ""
+
+	passFn := func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+		return "", nil
+	}
+
+	s := NewGenericSummarizer(passFn)
+	assert.Equal(t, defaultSummarizePrompt, s.basePrompt)
+}

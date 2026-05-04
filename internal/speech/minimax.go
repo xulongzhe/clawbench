@@ -18,8 +18,6 @@ type MiniMaxProvider struct {
 	TTSModel string
 	// TTSVoice is the voice ID for speech synthesis (default: "female-chengshu").
 	TTSVoice string
-	// TTSLanguage is the language boost code (default: "zh").
-	TTSLanguage string
 	// TTSSpeed is the speech speed multiplier (default: 1.5).
 	TTSSpeed float64
 	// TTSFormat is the output audio format (default: "mp3").
@@ -29,11 +27,10 @@ type MiniMaxProvider struct {
 // NewMiniMaxProvider creates a MiniMaxProvider with sensible defaults.
 func NewMiniMaxProvider() *MiniMaxProvider {
 	return &MiniMaxProvider{
-		TTSModel:    "speech-2.8-hd",
-		TTSVoice:    "female-chengshu",
-		TTSLanguage: "zh",
-		TTSSpeed:    1.5,
-		TTSFormat:   "mp3",
+		TTSModel:  "speech-2.8-hd",
+		TTSVoice:  "female-chengshu",
+		TTSSpeed:  1.5,
+		TTSFormat: "mp3",
 	}
 }
 
@@ -62,13 +59,8 @@ func (p *MiniMaxProvider) Synthesize(ctx context.Context, text string, outputPat
 	if p.TTSVoice != "" {
 		args = append(args, "--voice", p.TTSVoice)
 	}
-	// Use per-request language if provided, otherwise fall back to configured default
-	lang := language
-	if lang == "" {
-		lang = p.TTSLanguage
-	}
-	if lang != "" {
-		args = append(args, "--language", lang)
+	if language != "" {
+		args = append(args, "--language", language)
 	}
 	if p.TTSSpeed > 0 {
 		args = append(args, "--speed", strconv.FormatFloat(p.TTSSpeed, 'f', -1, 64))
@@ -81,7 +73,7 @@ func (p *MiniMaxProvider) Synthesize(ctx context.Context, text string, outputPat
 
 	slog.Info("mmx speech synthesize",
 		slog.String("output", outputPath),
-		slog.String("language", lang),
+		slog.String("language", language),
 		slog.String("voice", p.TTSVoice),
 		slog.Float64("speed", p.TTSSpeed),
 		slog.Int("text_len", len(text)),

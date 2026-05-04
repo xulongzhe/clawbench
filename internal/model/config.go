@@ -37,7 +37,6 @@ type Config struct {
 		SummarizeModel    string         `yaml:"summarize_model"`    // Model for summarization (default: "MiniMax-M2.7" for mmx-cli, "gemma3:270m" for ollama; empty = backend default for others)
 		TTSModel          string         `yaml:"tts_model"`          // TTS model for speech synthesis (default: "Speech-2.8-Turbo")
 		Voice             string         `yaml:"voice"`              // Voice ID for TTS (default: "female-chengshu")
-		Language          string         `yaml:"language"`           // Language boost code (default: "zh")
 		Speed             float64        `yaml:"speed"`              // Speech speed multiplier (default: 1.0)
 		Format            string         `yaml:"format"`             // Audio output format (default: "mp3")
 		InlineCodeMaxLen  int            `yaml:"inline_code_max_len"` // Max inline code content length (runes) to preserve for TTS; longer code is removed (default: 100)

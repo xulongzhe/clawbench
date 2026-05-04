@@ -259,7 +259,6 @@ func TestNewMiniMaxProvider_Defaults(t *testing.T) {
 	p := NewMiniMaxProvider()
 	assert.Equal(t, "speech-2.8-hd", p.TTSModel)
 	assert.Equal(t, "female-chengshu", p.TTSVoice)
-	assert.Equal(t, "zh", p.TTSLanguage)
 	assert.Equal(t, 1.5, p.TTSSpeed)
 	assert.Equal(t, "mp3", p.TTSFormat)
 }
