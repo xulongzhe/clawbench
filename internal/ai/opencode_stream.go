@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 )
@@ -155,9 +156,17 @@ func (p *OpenCodeStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 
 // buildOpenCodeStreamArgs constructs the CLI arguments for OpenCode streaming
 func buildOpenCodeStreamArgs(req ChatRequest) []string {
+	// Prompt: prepend system prompt if set.
+	// OpenCode CLI has no --system-prompt flag, so injecting the system prompt
+	// into the user prompt is the only way to pass it through.
+	prompt := req.Prompt
+	if req.SystemPrompt != "" {
+		prompt = fmt.Sprintf("[System Instructions: %s]\n\n%s", req.SystemPrompt, prompt)
+	}
+
 	args := []string{
 		"run",
-		req.Prompt,
+		prompt,
 		"--format", "json",
 		"--dangerously-skip-permissions",
 	}
