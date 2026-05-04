@@ -25,7 +25,7 @@ type mockSummarizer struct {
 	lastText string
 }
 
-func (m *mockSummarizer) Summarize(ctx context.Context, text string) (string, error) {
+func (m *mockSummarizer) Summarize(ctx context.Context, text string, language string) (string, error) {
 	m.called = true
 	m.lastText = text
 	if m.err != nil {
@@ -44,7 +44,7 @@ type mockSpeechProvider struct {
 	lastSynthText    string
 }
 
-func (m *mockSpeechProvider) Synthesize(ctx context.Context, text string, outputPath string) error {
+func (m *mockSpeechProvider) Synthesize(ctx context.Context, text string, outputPath string, language string) error {
 	m.synthesizeCalled = true
 	m.lastSynthText = text
 	if m.synthesizeErr != nil {

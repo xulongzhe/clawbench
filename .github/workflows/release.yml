@@ -44,8 +44,7 @@ jobs:
           mkdir -p pkg-linux/clawbench
           cp clawbench-linux pkg-linux/clawbench/clawbench
           cp -r public pkg-linux/clawbench/public
-          cp config.example.yaml pkg-linux/clawbench/
-          cp -r agents pkg-linux/clawbench/agents
+          cp -r config pkg-linux/clawbench/config
           cp server.sh pkg-linux/clawbench/
           chmod +x pkg-linux/clawbench/clawbench pkg-linux/clawbench/server.sh
           cd pkg-linux && zip -r clawbench-linux-amd64.zip clawbench/
@@ -55,8 +54,7 @@ jobs:
           mkdir -p pkg-windows/clawbench
           cp clawbench.exe pkg-windows/clawbench/
           cp -r public pkg-windows/clawbench/public
-          cp config.example.yaml pkg-windows/clawbench/
-          cp -r agents pkg-windows/clawbench/agents
+          cp -r config pkg-windows/clawbench/config
           cp server.ps1 pkg-windows/clawbench/
           cd pkg-windows && zip -r clawbench-windows-amd64.zip clawbench/
 
@@ -65,8 +63,7 @@ jobs:
           mkdir -p pkg-mac-arm64/clawbench
           cp clawbench-darwin-arm64 pkg-mac-arm64/clawbench/clawbench
           cp -r public pkg-mac-arm64/clawbench/public
-          cp config.example.yaml pkg-mac-arm64/clawbench/
-          cp -r agents pkg-mac-arm64/clawbench/agents
+          cp -r config pkg-mac-arm64/clawbench/config
           cp server.sh pkg-mac-arm64/clawbench/
           chmod +x pkg-mac-arm64/clawbench/clawbench pkg-mac-arm64/clawbench/server.sh
           cd pkg-mac-arm64 && zip -r clawbench-darwin-arm64.zip clawbench/
@@ -76,8 +73,7 @@ jobs:
           mkdir -p pkg-mac-amd64/clawbench
           cp clawbench-darwin-amd64 pkg-mac-amd64/clawbench/clawbench
           cp -r public pkg-mac-amd64/clawbench/public
-          cp config.example.yaml pkg-mac-amd64/clawbench/
-          cp -r agents pkg-mac-amd64/clawbench/agents
+          cp -r config pkg-mac-amd64/clawbench/config
           cp server.sh pkg-mac-amd64/clawbench/
           chmod +x pkg-mac-amd64/clawbench/clawbench pkg-mac-amd64/clawbench/server.sh
           cd pkg-mac-amd64 && zip -r clawbench-darwin-amd64.zip clawbench/

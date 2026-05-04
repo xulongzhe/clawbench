@@ -115,18 +115,18 @@ cd clawbench
 
 ### Configure Agents
 
-YAML files in the `agents/` directory define available AI agents. Create your agents based on the example template:
+YAML files in the `config/agents/` directory define available AI agents. Create your agents based on the example template:
 
 ```bash
 # View the example template (includes detailed field descriptions)
-cat agents/example.yaml.example
+cat config/agents/agent.yaml.example
 
 # Copy and modify to create your own agent
-cp agents/example.yaml.example agents/my-agent.yaml
+cp config/agents/agent.yaml.example config/agents/my-agent.yaml
 # Edit id, name, icon, specialty, backend, model, system_prompt, etc.
 ```
 
-Each YAML file corresponds to one agent and requires at minimum: `id` (unique identifier), `name` (display name), `icon` (emoji icon), `specialty` (specialty description), `backend` (AI backend type). Optional fields: `model` (specific model), `command` (custom CLI path or arguments), `system_prompt` (role prompt — omitted by default uses `common_prompt.md` content).
+Each YAML file corresponds to one agent and requires at minimum: `id` (unique identifier), `name` (display name), `icon` (emoji icon), `specialty` (specialty description), `backend` (AI backend type). Optional fields: `model` (specific model), `command` (custom CLI path or arguments), `system_prompt` (role prompt — omitted by default uses `agent_common_prompt.md` content).
 
 ### Start the Server
 
@@ -134,7 +134,7 @@ Each YAML file corresponds to one agent and requires at minimum: `id` (unique id
 ./server.sh
 ```
 
-> A random password is auto-generated on first startup and printed to the console. Save it securely. To customize configuration, copy `config.example.yaml` to `config.yaml` and modify.
+> A random password is auto-generated on first startup and printed to the console. Save it securely. To customize configuration, copy `config/config.example.yaml` to `config.yaml` and modify.
 
 Once deployed, access `http://server-ip:20000` from your phone app or mobile browser:
 

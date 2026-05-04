@@ -18,7 +18,7 @@ cd clawbench
 ./server.sh
 ```
 
-> On first startup, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it automatically. To customize configuration, copy `config.example.yaml` to `config.yaml` and modify as needed.
+> On first startup, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it automatically. To customize configuration, copy `config/config.example.yaml` to `config.yaml` and modify as needed.
 
 Release package contents (Linux):
 
@@ -26,8 +26,8 @@ Release package contents (Linux):
 |------|-------------|
 | `clawbench-linux-amd64` | Backend binary |
 | `public/` | Frontend static assets (pre-built) |
-| `config.example.yaml` | Config template (optional) |
-| `agents/` | Agent configurations |
+| `config/config.example.yaml` | Config template (optional) |
+| `config/agents/` | Agent configurations |
 | `dev-server.sh` | Dev debug startup script |
 | `server.sh` | Production startup script |
 
@@ -37,8 +37,8 @@ Release package contents (Windows):
 |------|-------------|
 | `clawbench-windows-amd64.exe` | Backend binary |
 | `public/` | Frontend static assets (pre-built) |
-| `config.example.yaml` | Config template (optional) |
-| `agents/` | Agent configurations |
+| `config/config.example.yaml` | Config template (optional) |
+| `config/agents/` | Agent configurations |
 | `server.ps1` | Start/stop script |
 
 ### Option 2: Build from Source
@@ -100,7 +100,7 @@ cd clawbench
 
 ### Configuration File
 
-`config.yaml` is entirely optional — all configuration items have default values. To customize, copy `config.example.yaml` to `config.yaml` and modify.
+`config.yaml` is entirely optional — all configuration items have default values. To customize, copy `config/config.example.yaml` to `config.yaml` and modify.
 
 **Defaults:**
 
@@ -178,7 +178,7 @@ cd clawbench
 
 ## Advanced Configuration
 
-For full configuration reference, see `config.example.yaml`. All items are optional; below are examples that override defaults:
+For full configuration reference, see `config/config.example.yaml`. All items are optional; below are examples that override defaults:
 
 ```yaml
 # port: 20000                        # Production server port (default 20000)
@@ -315,8 +315,7 @@ Use `./dev-server.sh` to start an independent development environment:
 ClawBench is more than just a "chat shell" — it is a complete agent runtime platform:
 
 ```
-agents/
-├── common_prompt.md   # Shared prompt (web search, multimodal tools, media processing rules)
+config/agents/
 ├── assistant.yaml     # All-round assistant — general Q&A, code, docs, ops
 ├── codebuddy2.yaml    # Gemini (via CodeBuddy)
 ├── coder.yaml         # Coding expert — complex coding, architecture design, code refactoring
@@ -327,7 +326,7 @@ agents/
 ```
 
 - **Configurable Agents**: Each agent is defined via YAML with dedicated system prompt, model, and backend — no code changes needed
-- **Shared Prompt**: `common_prompt.md` defines common behaviors for all agents (web search, multimodal, media processing), avoiding duplicate configuration
+- **Shared Prompt**: `config/agent_common_prompt.md` defines common behaviors for all agents (web search, multimodal, media processing), avoiding duplicate configuration
 - **Template Placeholder**: `{{AVAILABLE_AGENTS}}` is auto-replaced with the available agent list, facilitating inter-agent dispatching
 - **Multi-Agent Dispatching**: Different tasks match different agents; the all-round assistant handles conversations while specialized agents execute scheduled tasks
 - **Transparent Tool Calls**: AI tool calls (file read/write, Bash commands, code editing) are visualized in real time
@@ -384,22 +383,23 @@ clawbench/
 │       ├── ollama_summarizer.go # OllamaSummarizer (HTTP /api/chat)
 │       ├── ai_backend_summarizer.go # AIBackendSummarizer (CLI backend summarization)
 │       ├── minimax.go / edge.go / piper.go / kokoro.go / moss_tts_nano.go  # TTS engine implementations
-├── agents/                      # Agent configurations
-│   ├── common_prompt.md         # Shared prompt
-│   ├── assistant.yaml           # All-round assistant
-│   ├── codebuddy2.yaml          # Gemini (via CodeBuddy)
-│   ├── coder.yaml               # Coding expert
-│   ├── codex.yaml               # Codex CLI
-│   ├── gemini.yaml              # Gemini CLI
-│   ├── gpt54.yaml               # GPT (via CodeBuddy)
-│   └── handyman.yaml            # Handyman
+├── config/                      # Configuration files
+│   ├── agent_common_prompt.md   # Agent shared prompt
+│   ├── agents/                  # Agent configurations
+│   │   ├── assistant.yaml       # All-round assistant
+│   │   ├── codebuddy2.yaml      # Gemini (via CodeBuddy)
+│   │   ├── coder.yaml           # Coding expert
+│   │   ├── codex.yaml           # Codex CLI
+│   │   ├── gemini.yaml          # Gemini CLI
+│   │   ├── gpt54.yaml           # GPT (via CodeBuddy)
+│   │   └── handyman.yaml        # Handyman
 ├── web/                         # Vue 3 frontend source
 │   └── src/
 │       ├── components/          # 41 Vue components
 │       ├── composables/         # 13 composable functions
 │       ├── stores/              # State management
 │       └── utils/               # Utility functions
-├── config.example.yaml          # Config template
+├── config/config.example.yaml   # Config template
 ├── build.sh                     # Build script (Linux/macOS)
 ├── build.ps1                    # Build script (Windows)
 ├── dev-server.sh                # Dev debug startup script (Linux/macOS)

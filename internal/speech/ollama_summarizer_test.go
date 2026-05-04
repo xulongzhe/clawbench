@@ -29,7 +29,7 @@ func TestNewOllamaSummarizer_CustomConfig(t *testing.T) {
 func TestOllamaSummarizer_ShortText(t *testing.T) {
 	s := NewOllamaSummarizer("", "")
 	// Text shorter than 300 chars should be returned as-is without any HTTP call
-	result, err := s.Summarize(context.Background(), "这是一段短文本")
+	result, err := s.Summarize(context.Background(), "这是一段短文本", "zh")
 	assert.NoError(t, err)
 	assert.Equal(t, "这是一段短文本", result)
 }
@@ -54,7 +54,7 @@ func TestOllamaSummarizer_APICall(t *testing.T) {
 
 	s := NewOllamaSummarizer(server.URL, "gemma3:270m")
 	longText := strings.Repeat("这是一段很长的AI回复内容，用于测试总结功能。", 20) // >300 chars
-	result, err := s.Summarize(context.Background(), longText)
+	result, err := s.Summarize(context.Background(), longText, "zh")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "这是总结后的内容。", result)
@@ -87,7 +87,7 @@ func TestOllamaSummarizer_MultiPass(t *testing.T) {
 
 	s := NewOllamaSummarizer(server.URL, "gemma3:270m")
 	longText := strings.Repeat("这是一段很长的AI回复内容，用于测试总结功能。", 20)
-	result, err := s.Summarize(context.Background(), longText)
+	result, err := s.Summarize(context.Background(), longText, "zh")
 
 	assert.NoError(t, err)
 	assert.Equal(t, "精简后的总结。", result)
@@ -103,7 +103,7 @@ func TestOllamaSummarizer_ErrorStatus(t *testing.T) {
 
 	s := NewOllamaSummarizer(server.URL, "nonexistent:model")
 	longText := strings.Repeat("这是一段很长的AI回复内容，用于测试总结功能。", 20)
-	_, err := s.Summarize(context.Background(), longText)
+	_, err := s.Summarize(context.Background(), longText, "zh")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "status 500")
@@ -116,7 +116,7 @@ func TestOllamaSummarizer_ConnectionRefused(t *testing.T) {
 	s.HTTPClient.Timeout = 2 * time.Second
 
 	longText := strings.Repeat("这是一段很长的AI回复内容，用于测试总结功能。", 20)
-	_, err := s.Summarize(context.Background(), longText)
+	_, err := s.Summarize(context.Background(), longText, "zh")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "ollama request")
@@ -134,7 +134,7 @@ func TestOllamaSummarizer_EmptyResponse(t *testing.T) {
 
 	s := NewOllamaSummarizer(server.URL, "gemma3:270m")
 	longText := strings.Repeat("这是一段很长的AI回复内容，用于测试总结功能。", 20)
-	_, err := s.Summarize(context.Background(), longText)
+	_, err := s.Summarize(context.Background(), longText, "zh")
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "empty output")
@@ -157,7 +157,7 @@ func TestOllamaSummarizer_ContextCancellation(t *testing.T) {
 	defer cancel()
 
 	longText := strings.Repeat("这是一段很长的AI回复内容，用于测试总结功能。", 20)
-	_, err := s.Summarize(ctx, longText)
+	_, err := s.Summarize(ctx, longText, "zh")
 
 	assert.Error(t, err)
 }

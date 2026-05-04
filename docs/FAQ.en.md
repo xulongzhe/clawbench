@@ -12,7 +12,7 @@ A: Five CLI backends are supported: CodeBuddy, Claude Code, OpenCode, Gemini CLI
 
 **Q: How do I add a new agent?**
 
-A: Create a YAML file in the `agents/` directory, defining id, name, icon, specialty, backend, model, and system_prompt. Common prompts go in `common_prompt.md`, which is automatically injected into all agents. The `{{AVAILABLE_AGENTS}}` placeholder is automatically replaced with the list of available agents.
+A: Create a YAML file in the `config/agents/` directory, defining id, name, icon, specialty, backend, model, and system_prompt. Common prompts go in `config/agent_common_prompt.md`, which is automatically injected into all agents. The `{{AVAILABLE_AGENTS}}` placeholder is automatically replaced with the list of available agents.
 
 **Q: Do I need to configure an API Key?**
 
@@ -28,7 +28,7 @@ A: Yes. The release and dev versions use independent ports and databases, so the
 
 **Q: Do I need a config file to start?**
 
-A: No. All configuration options have default values, so you can start without `config.yaml`. When `password` is not configured, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it. To customize, copy `config.example.yaml` to `config.yaml` and modify as needed.
+A: No. All configuration options have default values, so you can start without `config.yaml`. When `password` is not configured, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it. To customize, copy `config/config.example.yaml` to `config.yaml` and modify as needed.
 
 **Q: What if I forget the auto-generated password?**
 

@@ -60,7 +60,7 @@ func NewMossNanoProvider() *MossNanoProvider {
 // Synthesize generates an audio file at outputPath using MOSS-TTS-Nano via CLI.
 // Text is written to a temporary file and passed via --text-file, since the CLI
 // does not support reading from stdin.
-func (p *MossNanoProvider) Synthesize(ctx context.Context, text string, outputPath string) error {
+func (p *MossNanoProvider) Synthesize(ctx context.Context, text string, outputPath string, _ string) error {
 	dir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %w", dir, err)

@@ -41,7 +41,7 @@ func TestResolveKokoroPaths_Explicit(t *testing.T) {
 func TestGenericSummarizer_ShortText_BypassesLLM(t *testing.T) {
 	s := NewMMXSummarizer()
 	shortText := "这是一个简短的消息，不需要总结。"
-	result, err := s.Summarize(context.Background(), shortText)
+	result, err := s.Summarize(context.Background(), shortText, "zh")
 	assert.NoError(t, err)
 	assert.Contains(t, result, "简短的消息")
 }
@@ -49,7 +49,7 @@ func TestGenericSummarizer_ShortText_BypassesLLM(t *testing.T) {
 func TestGenericSummarizer_ShortTextWithMarkdown_StripsMarkdown(t *testing.T) {
 	s := NewMMXSummarizer()
 	input := "Short **bold** and *italic* text."
-	result, err := s.Summarize(context.Background(), input)
+	result, err := s.Summarize(context.Background(), input, "zh")
 	assert.NoError(t, err)
 	assert.NotContains(t, result, "**")
 	assert.NotContains(t, result, "*")
@@ -70,7 +70,7 @@ func TestGenericSummarizer_LongText_WithCLI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	result, err := s.Summarize(ctx, longText)
+	result, err := s.Summarize(ctx, longText, "zh")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, result)
 	assert.Less(t, len([]rune(result)), len([]rune(longText)))
@@ -85,7 +85,7 @@ func TestGenericSummarizer_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := s.Summarize(ctx, longText)
+	_, err := s.Summarize(ctx, longText, "zh")
 	assert.Error(t, err)
 }
 
@@ -97,7 +97,7 @@ func TestKokoroSynthesize_MissingModel(t *testing.T) {
 	p.VoicesPath = "/nonexistent/voices-v1.0.bin"
 	outputPath := filepath.Join(t.TempDir(), "output.wav")
 
-	err := p.Synthesize(context.Background(), "test", outputPath)
+	err := p.Synthesize(context.Background(), "test", outputPath, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "model file not found")
 }
@@ -108,7 +108,7 @@ func TestKokoroSynthesize_NoModelConfigured(t *testing.T) {
 	p := NewKokoroProvider()
 	outputPath := filepath.Join(t.TempDir(), "output.wav")
 
-	err := p.Synthesize(context.Background(), "test", outputPath)
+	err := p.Synthesize(context.Background(), "test", outputPath, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "model path not configured")
 }
@@ -124,6 +124,6 @@ func TestKokoroSynthesize_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := p.Synthesize(ctx, "test", outputPath)
+	err := p.Synthesize(ctx, "test", outputPath, "")
 	assert.Error(t, err)
 }

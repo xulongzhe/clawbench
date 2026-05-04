@@ -17,7 +17,8 @@ func NewSimpleSummarizer() *SimpleSummarizer {
 // Uses SimpleMaxSummarizeRunes (1000) as the truncation limit instead of
 // the AI summarizer's DefaultMaxSummarizeRunes (10000), because without
 // AI condensation, longer text would be too verbose for TTS.
-func (s *SimpleSummarizer) Summarize(_ context.Context, text string) (string, error) {
+// The language parameter is ignored — simple summarizer has no language awareness.
+func (s *SimpleSummarizer) Summarize(_ context.Context, text string, _ string) (string, error) {
 	cleaned := StripMarkdown(text)
 
 	runes := []rune(cleaned)

@@ -77,8 +77,10 @@ system_prompt: Prompt 2
 
 func TestLoadAgents_CommonPrompt(t *testing.T) {
 	dir := t.TempDir()
+	agentsDir := filepath.Join(dir, "agents")
+	require.NoError(t, os.Mkdir(agentsDir, 0755))
 	commonPrompt := "This is the common prompt for all agents."
-	os.WriteFile(filepath.Join(dir, "common_prompt.md"), []byte(commonPrompt), 0644)
+	os.WriteFile(filepath.Join(dir, "agent_common_prompt.md"), []byte(commonPrompt), 0644)
 
 	yaml := `id: with-common
 name: With Common
@@ -87,9 +89,9 @@ specialty: Common
 backend: codebuddy
 system_prompt: My specific prompt
 `
-	os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(yaml), 0644)
+	os.WriteFile(filepath.Join(agentsDir, "agent.yaml"), []byte(yaml), 0644)
 
-	err := model.LoadAgents(dir)
+	err := model.LoadAgents(agentsDir)
 	assert.NoError(t, err)
 	agent := model.Agents["with-common"]
 	assert.NotNil(t, agent)
@@ -99,16 +101,18 @@ system_prompt: My specific prompt
 
 func TestLoadAgents_CommonPromptOnly(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "common_prompt.md"), []byte("Common only"), 0644)
+	agentsDir := filepath.Join(dir, "agents")
+	require.NoError(t, os.Mkdir(agentsDir, 0755))
+	os.WriteFile(filepath.Join(dir, "agent_common_prompt.md"), []byte("Common only"), 0644)
 	yaml := `id: no-prompt
 name: No Prompt
 icon: "N"
 specialty: None
 backend: claude
 `
-	os.WriteFile(filepath.Join(dir, "agent.yaml"), []byte(yaml), 0644)
+	os.WriteFile(filepath.Join(agentsDir, "agent.yaml"), []byte(yaml), 0644)
 
-	err := model.LoadAgents(dir)
+	err := model.LoadAgents(agentsDir)
 	assert.NoError(t, err)
 	agent := model.Agents["no-prompt"]
 	assert.NotNil(t, agent)

@@ -10,8 +10,11 @@ import (
 // Implementations can be swapped (MiniMax, Edge TTS, Piper, etc.)
 type SpeechProvider interface {
 	// Synthesize generates an audio file at outputPath from the given text.
+	// language is a language code (e.g. "zh", "en") — implementations that
+	// support language-specific synthesis (e.g. MiniMax) should use it;
+	// others may ignore it.
 	// Returns an error if synthesis fails.
-	Synthesize(ctx context.Context, text string, outputPath string) error
+	Synthesize(ctx context.Context, text string, outputPath string, language string) error
 }
 
 // Pre-compiled regexes for StripMarkdown.

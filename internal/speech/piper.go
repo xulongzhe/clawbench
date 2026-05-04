@@ -45,7 +45,7 @@ func NewPiperProvider() *PiperProvider {
 
 // Synthesize generates an audio file at outputPath using piper.
 // Text is written to a temp file and piped via stdin to avoid shell argument limits.
-func (p *PiperProvider) Synthesize(ctx context.Context, text string, outputPath string) error {
+func (p *PiperProvider) Synthesize(ctx context.Context, text string, outputPath string, _ string) error {
 	dir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %w", dir, err)

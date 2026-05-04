@@ -115,18 +115,18 @@ cd clawbench
 
 ### 配置智能体
 
-`agents/` 目录下的 YAML 文件定义了可用的 AI 智能体。基于示例创建你需要的智能体：
+`config/agents/` 目录下的 YAML 文件定义了可用的 AI 智能体。基于示例创建你需要的智能体：
 
 ```bash
 # 查看示例模板（包含所有字段的详细说明）
-cat agents/example.yaml.example
+cat config/agents/agent.yaml.example
 
 # 复制示例并修改，创建你自己的智能体
-cp agents/example.yaml.example agents/my-agent.yaml
+cp config/agents/agent.yaml.example config/agents/my-agent.yaml
 # 编辑 id、name、icon、specialty、backend、model、system_prompt 等字段
 ```
 
-每个 YAML 文件对应一个智能体，至少需要配置：`id`（唯一标识）、`name`（显示名）、`icon`（Emoji 图标）、`specialty`（专长描述）、`backend`（AI 后端类型）。可选字段：`model`（指定模型）、`command`（自定义 CLI 路径或参数）、`system_prompt`（角色设定，省略时使用 `common_prompt.md` 的内容）。
+每个 YAML 文件对应一个智能体，至少需要配置：`id`（唯一标识）、`name`（显示名）、`icon`（Emoji 图标）、`specialty`（专长描述）、`backend`（AI 后端类型）。可选字段：`model`（指定模型）、`command`（自定义 CLI 路径或参数）、`system_prompt`（角色设定，省略时使用 `agent_common_prompt.md` 的内容）。
 
 ### 启动服务
 
@@ -134,7 +134,7 @@ cp agents/example.yaml.example agents/my-agent.yaml
 ./server.sh
 ```
 
-> 首次启动会自动生成随机密码并打印到控制台，请妥善保存。如需自定义配置，可复制 `config.example.yaml` 为 `config.yaml` 并修改。
+> 首次启动会自动生成随机密码并打印到控制台，请妥善保存。如需自定义配置，可复制 `config/config.example.yaml` 为 `config.yaml` 并修改。
 
 部署完成后，使用手机 App 或手机浏览器访问 `http://服务器IP:20000` 即可开始使用：
 

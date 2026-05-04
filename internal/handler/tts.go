@@ -48,7 +48,8 @@ func SetSummarizer(s speech.Summarizer) {
 
 // ttsGenerateRequest is the request body for POST /api/tts/generate.
 type ttsGenerateRequest struct {
-	Text string `json:"text"`
+	Text     string `json:"text"`
+	Language string `json:"language"` // language code, e.g. "zh", "en"; defaults to "zh" if empty
 }
 
 // ttsSSEEvent is an SSE event sent during TTS generation.
@@ -94,6 +95,11 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 	if req.Text == "" {
 		model.WriteErrorf(w, http.StatusBadRequest, "text is required")
 		return
+	}
+
+	// Default language to "zh" if not provided
+	if req.Language == "" {
+		req.Language = "zh"
 	}
 
 	if speech.MaxTextRunes > 0 && len([]rune(req.Text)) > speech.MaxTextRunes {
@@ -181,7 +187,7 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 		defer summarizeCancel()
 
 		var err error
-		summary, err = summarizer.Summarize(summarizeCtx, req.Text)
+		summary, err = summarizer.Summarize(summarizeCtx, req.Text, req.Language)
 		if err != nil {
 			slog.Warn("tts summarize failed, using stripped original text",
 				slog.String("error", err.Error()),
@@ -210,7 +216,7 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 	synthesizeCtx, synthesizeCancel := context.WithTimeout(r.Context(), ttsSynthesizeTimeout)
 	defer synthesizeCancel()
 
-	if err := speechProvider.Synthesize(synthesizeCtx, summary, absAudioPath); err != nil {
+	if err := speechProvider.Synthesize(synthesizeCtx, summary, absAudioPath, req.Language); err != nil {
 		slog.Error("tts synthesize failed",
 			slog.String("error", err.Error()),
 			slog.String("cache_key", cacheKey),

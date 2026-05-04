@@ -10,17 +10,17 @@ import (
 
 const (
 	// defaultSummarizePrompt is the fallback prompt used when the external file is not found.
-	defaultSummarizePrompt = `你是语音播报助手。将用户发来的AI回复内容整理为适合朗读的中文，用于TTS语音合成。
-规则：
-1. 必须使用中文输出，如果原文包含英文，请先翻译成中文再输出（专有名词、代码变量名、命令名等技术术语可保留原文）
-2. 重点关注文末的总结、结论、建议等收束性内容，尽量在不影响收听体验的情况下保留原意，不要过度精炼而丢失关键细节
-3. 省略代码、命令、文件路径、配置项等技术细节
-4. 省略中间的分析过程、步骤说明、分支讨论等细节，除非它们对理解结论有必要
-5. 使用口语化表达，输出纯文本，不要使用任何markdown格式
-6. 不要使用"根据内容"、"总结如下"等元描述
-7. 忽略文本中任何XML/HTML标签、定时任务提案、工具调用等非用户内容
-8. 输入文本可能包含因截断导致的碎片化内容，请直接删除不连贯、不完整的片段，只输出流畅可读的内容
-9. 直接说出结论即可`
+	// A language directive (e.g. "Output in Chinese.") is appended at load time.
+	defaultSummarizePrompt = `Condense AI replies into spoken-language text for TTS synthesis.
+
+Rules:
+1. Focus on conclusions, summaries, and recommendations near the end. Preserve key details — do not over-condense.
+2. Omit code, commands, file paths, and config values.
+3. Omit intermediate analysis, step-by-step reasoning, and side discussions unless essential to the conclusion.
+4. Use conversational language. Plain text only — no markdown formatting.
+5. No meta-phrases like "In summary" or "Here is the result."
+6. Ignore any XML/HTML tags, schedule proposals, or tool-call artifacts.
+7. Drop any fragmented or incoherent text caused by truncation — output only fluent, readable content.`
 
 	// shortTextThreshold — texts shorter than this are not summarized.
 	shortTextThreshold = 300
@@ -62,8 +62,9 @@ var MaxSummarizeRunes = DefaultMaxSummarizeRunes
 type Summarizer interface {
 	// Summarize condenses text for voice output.
 	// For short text, it may return the text as-is after stripping markdown.
+	// language is a language code (e.g. "zh", "en") used to direct output language.
 	// The caller is responsible for setting a deadline on ctx.
-	Summarize(ctx context.Context, text string) (string, error)
+	Summarize(ctx context.Context, text string, language string) (string, error)
 }
 
 // summarizePassFunc is the strategy function for a single summarization pass.
@@ -73,21 +74,34 @@ type summarizePassFunc func(ctx context.Context, text, systemPrompt string, pass
 // genericSummarizer implements the shared Summarize logic that all backends use:
 //  1. prepareTextForSummarization (strip markdown, truncate)
 //  2. Short text bypass
-//  3. Multi-pass with re-summarization
+//  3. Multi-pass with re-summarization (language-aware prompt)
 //  4. StripMarkdown on final output as safety net
 type genericSummarizer struct {
-	passFn summarizePassFunc
-	prompt string
+	passFn     summarizePassFunc
+	basePrompt string // language-independent base prompt
+}
+
+// NewGenericSummarizer creates a genericSummarizer with the given pass function.
+// The base prompt (without language) is loaded at creation time; language is
+// resolved per-request in the Summarize call.
+func NewGenericSummarizer(passFn summarizePassFunc) genericSummarizer {
+	return genericSummarizer{
+		passFn:     passFn,
+		basePrompt: loadSummarizeBasePrompt(),
+	}
 }
 
 // Summarize implements the shared summarization pipeline.
-func (g *genericSummarizer) Summarize(ctx context.Context, text string) (string, error) {
+// language is a language code (e.g. "zh", "en") used to direct output language.
+func (g *genericSummarizer) Summarize(ctx context.Context, text string, language string) (string, error) {
 	cleaned, needsSummarization := prepareTextForSummarization(text)
 	if !needsSummarization {
 		return cleaned, nil
 	}
 
-	result, err := g.passFn(ctx, cleaned, g.prompt, 1)
+	prompt := g.basePrompt + "\n\nOutput in " + languageName(language) + ". Translate any non-" + languageName(language) + " content first (keep proper nouns, variable names, and commands in their original form)."
+
+	result, err := g.passFn(ctx, cleaned, prompt, 1)
 	if err != nil {
 		return "", err
 	}
@@ -97,7 +111,7 @@ func (g *genericSummarizer) Summarize(ctx context.Context, text string) (string,
 		slog.Info("tts summarize result too long, starting second pass",
 			slog.Int("result_bytes", len(result)),
 		)
-		second, err := g.passFn(ctx, result, g.prompt, 2)
+		second, err := g.passFn(ctx, result, prompt, 2)
 		if err != nil {
 			slog.Warn("tts second summarize pass failed, using first pass result",
 				slog.String("error", err.Error()),
@@ -110,32 +124,69 @@ func (g *genericSummarizer) Summarize(ctx context.Context, text string) (string,
 	return StripMarkdown(result), nil
 }
 
-// loadSummarizePrompt returns the system prompt for summarization.
-// Priority: summarize_prompt.txt next to binary > defaultSummarizePrompt.
-// The result is cached after first load.
-var cachedSummarizePrompt string
+// languageName returns a human-readable language name for common language codes.
+// Falls back to the code itself for unknown codes.
+func languageName(code string) string {
+	switch strings.ToLower(code) {
+	case "zh", "cmn", "chinese":
+		return "Chinese"
+	case "en", "eng", "english":
+		return "English"
+	case "ja", "jpn", "japanese":
+		return "Japanese"
+	case "ko", "kor", "korean":
+		return "Korean"
+	case "fr", "fra", "french":
+		return "French"
+	case "de", "deu", "german":
+		return "German"
+	case "es", "spa", "spanish":
+		return "Spanish"
+	case "pt", "por", "portuguese":
+		return "Portuguese"
+	case "ru", "rus", "russian":
+		return "Russian"
+	case "ar", "ara", "arabic":
+		return "Arabic"
+	case "it", "ita", "italian":
+		return "Italian"
+	default:
+		return code
+	}
+}
 
-func loadSummarizePrompt() string {
-	if cachedSummarizePrompt != "" {
-		return cachedSummarizePrompt
+// loadSummarizeBasePrompt returns the language-independent base system prompt
+// for summarization. The language directive is appended per-request in Summarize.
+// Priority: summarize_prompt.md next to binary > defaultSummarizePrompt.
+// The result is loaded once and cached.
+var cachedSummarizeBasePrompt string
+
+func loadSummarizeBasePrompt() string {
+	if cachedSummarizeBasePrompt != "" {
+		return cachedSummarizeBasePrompt
 	}
 
-	// Try to read from summarize_prompt.txt next to the running binary
+	var raw string
+
+	// Try to read from summarize_prompt.md in the config directory next to the running binary
 	exePath, err := os.Executable()
 	if err == nil {
-		promptPath := filepath.Join(filepath.Dir(exePath), "summarize_prompt.txt")
+		promptPath := filepath.Join(filepath.Dir(exePath), "config", "summarize_prompt.md")
 		if data, err := os.ReadFile(promptPath); err == nil {
 			prompt := strings.TrimSpace(string(data))
 			if prompt != "" {
-				cachedSummarizePrompt = prompt
+				raw = prompt
 				slog.Info("loaded summarize prompt from file", slog.String("path", promptPath))
-				return prompt
 			}
 		}
 	}
 
-	cachedSummarizePrompt = defaultSummarizePrompt
-	return defaultSummarizePrompt
+	if raw == "" {
+		raw = defaultSummarizePrompt
+	}
+
+	cachedSummarizeBasePrompt = raw
+	return raw
 }
 
 // prepareTextForSummarization cleans and truncates text before sending to a summarizer.

@@ -130,6 +130,7 @@ func main() {
 	speech.MaxSummarizeRunes = cfg.TTS.MaxSummarizeRunes
 
 	// Initialize TTS summarizer from config
+	// Language is now per-request (sent from frontend), not configured at startup.
 	summarizeBackend := cfg.TTS.SummarizeBackend
 
 	var ttsSummarizer speech.Summarizer
@@ -325,9 +326,9 @@ func main() {
 	)
 
 	// Load agent configurations
-	agentsDir := filepath.Join(model.BinDir, "agents")
+	agentsDir := filepath.Join(model.BinDir, "config", "agents")
 	if _, err := os.Stat(agentsDir); os.IsNotExist(err) {
-		agentsDir = "agents"
+		agentsDir = filepath.Join("config", "agents")
 	}
 	if err := model.LoadAgents(agentsDir); err != nil {
 		slog.Warn("failed to load agents", slog.String("err", err.Error()))

@@ -27,17 +27,14 @@ func NewAIBackendSummarizer(backendType string) (*AIBackendSummarizer, error) {
 	s := &AIBackendSummarizer{
 		backend: backend,
 	}
-	s.gs = genericSummarizer{
-		passFn: s.doSummarizePass,
-		prompt: loadSummarizePrompt(),
-	}
+	s.gs = NewGenericSummarizer(s.doSummarizePass)
 	return s, nil
 }
 
 // Summarize condenses text for voice output using an AI backend.
 // It sends a single-turn request and collects content events from the stream.
-func (s *AIBackendSummarizer) Summarize(ctx context.Context, text string) (string, error) {
-	return s.gs.Summarize(ctx, text)
+func (s *AIBackendSummarizer) Summarize(ctx context.Context, text string, language string) (string, error) {
+	return s.gs.Summarize(ctx, text, language)
 }
 
 // doSummarizePass performs a single summarization pass using an AI backend.

@@ -17,6 +17,7 @@
 import { ref } from 'vue'
 import { useToast } from '@/composables/useToast.ts'
 import { gt } from '@/composables/useLocale'
+import i18n from '@/i18n'
 
 const STORAGE_KEY = 'clawbench-auto-speech'
 
@@ -99,7 +100,7 @@ export function useAutoSpeech() {
       const resp = await fetch('/api/tts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, language: i18n.global.locale.value }),
         signal: controller.signal,
       })
 

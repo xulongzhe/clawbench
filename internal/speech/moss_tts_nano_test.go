@@ -58,7 +58,7 @@ func TestMossNanoSynthesize_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := p.Synthesize(ctx, "test", outputPath)
+	err := p.Synthesize(ctx, "test", outputPath, "")
 	assert.Error(t, err)
 }
 
@@ -71,7 +71,7 @@ func TestMossNanoSynthesize_CLIUnavailable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := p.Synthesize(ctx, "测试文本", outputPath)
+	err := p.Synthesize(ctx, "测试文本", outputPath, "")
 	assert.Error(t, err)
 }
 
@@ -88,7 +88,7 @@ func TestMossNanoSynthesize_WithCLI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	err := p.Synthesize(ctx, "你好，这是一个测试。", outputPath)
+	err := p.Synthesize(ctx, "你好，这是一个测试。", outputPath, "")
 	assert.NoError(t, err)
 
 	// Verify the output file was created and has content

@@ -39,9 +39,9 @@ docs/promo_rewritten.md
 
 # Private agent configs (user-specific, keep only example template in repo)
 # 智能体配置（用户私有，仓库仅保留示例模板）
-agents/*.yaml
-!agents/example.yaml.example
-!agents/common_prompt.md
+config/agents/*.yaml
+!config/agents/agent.yaml.example
+!config/agents/common_prompt.md
 
 # Android build output
 android/.gradle/

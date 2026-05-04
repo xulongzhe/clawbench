@@ -43,7 +43,7 @@ func GetDefaultAgentID() string {
 
 // LoadAgents reads all YAML files from the given directory and registers them as agents.
 // If no agents are found, a default agent is created from existing global config.
-// It also loads the common prompt from common_prompt.md and prepends it to each agent's system prompt.
+// It also loads the common prompt from agent_common_prompt.md (in the parent directory) and prepends it to each agent's system prompt.
 func LoadAgents(dir string) error {
 	Agents = make(map[string]*Agent)
 	AgentList = nil
@@ -105,10 +105,10 @@ func LoadAgents(dir string) error {
 	return nil
 }
 
-// loadCommonPrompt reads the common prompt file from the agents directory.
+// loadCommonPrompt reads the common prompt file from the parent of the agents directory.
 // Returns empty string if the file does not exist or cannot be read.
 func loadCommonPrompt(dir string) string {
-	data, err := os.ReadFile(filepath.Join(dir, "common_prompt.md"))
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(dir), "agent_common_prompt.md"))
 	if err != nil {
 		return ""
 	}

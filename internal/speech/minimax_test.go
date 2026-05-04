@@ -269,7 +269,7 @@ func TestNewMiniMaxProvider_Defaults(t *testing.T) {
 func TestSummarize_ShortText_BypassesLLM(t *testing.T) {
 	s := NewMMXSummarizer()
 	shortText := "这是一个简短的消息，不需要总结。"
-	result, err := s.Summarize(context.Background(), shortText)
+	result, err := s.Summarize(context.Background(), shortText, "zh")
 	assert.NoError(t, err)
 	// Short text should be returned as-is (after markdown stripping)
 	assert.Contains(t, result, "简短的消息")
@@ -278,7 +278,7 @@ func TestSummarize_ShortText_BypassesLLM(t *testing.T) {
 func TestSummarize_ShortTextWithMarkdown_StripsMarkdown(t *testing.T) {
 	s := NewMMXSummarizer()
 	input := "Short **bold** and *italic* text."
-	result, err := s.Summarize(context.Background(), input)
+	result, err := s.Summarize(context.Background(), input, "zh")
 	assert.NoError(t, err)
 	assert.NotContains(t, result, "**")
 	assert.NotContains(t, result, "*")
@@ -302,7 +302,7 @@ func TestSummarize_LongText_WithCLI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	result, err := s.Summarize(ctx, longText)
+	result, err := s.Summarize(ctx, longText, "zh")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, result)
 	// Summary should be shorter than original
@@ -318,7 +318,7 @@ func TestSummarize_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	_, err := s.Summarize(ctx, longText)
+	_, err := s.Summarize(ctx, longText, "zh")
 	assert.Error(t, err)
 }
 
@@ -337,7 +337,7 @@ func TestSynthesize_WithCLI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err := p.Synthesize(ctx, "这是一个测试语音。", outputPath)
+	err := p.Synthesize(ctx, "这是一个测试语音。", outputPath, "")
 	assert.NoError(t, err)
 
 	// Verify output file exists and has content
@@ -362,7 +362,7 @@ func TestSynthesize_CreatesDirectory(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err := p.Synthesize(ctx, "测试目录创建。", outputPath)
+	err := p.Synthesize(ctx, "测试目录创建。", outputPath, "")
 	assert.NoError(t, err)
 
 	// Verify the directory was created
@@ -379,7 +379,7 @@ func TestSynthesize_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately
 
-	err := p.Synthesize(ctx, "test", outputPath)
+	err := p.Synthesize(ctx, "test", outputPath, "")
 	assert.Error(t, err)
 }
 

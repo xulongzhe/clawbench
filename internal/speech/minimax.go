@@ -40,7 +40,7 @@ func NewMiniMaxProvider() *MiniMaxProvider {
 // Synthesize generates an audio file at outputPath using mmx speech synthesize.
 // Text is passed via stdin (--text-file -) to avoid shell argument length limits.
 // The caller is responsible for setting a deadline on ctx.
-func (p *MiniMaxProvider) Synthesize(ctx context.Context, text string, outputPath string) error {
+func (p *MiniMaxProvider) Synthesize(ctx context.Context, text string, outputPath string, language string) error {
 	// Ensure output directory exists
 	dir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -62,8 +62,13 @@ func (p *MiniMaxProvider) Synthesize(ctx context.Context, text string, outputPat
 	if p.TTSVoice != "" {
 		args = append(args, "--voice", p.TTSVoice)
 	}
-	if p.TTSLanguage != "" {
-		args = append(args, "--language", p.TTSLanguage)
+	// Use per-request language if provided, otherwise fall back to configured default
+	lang := language
+	if lang == "" {
+		lang = p.TTSLanguage
+	}
+	if lang != "" {
+		args = append(args, "--language", lang)
 	}
 	if p.TTSSpeed > 0 {
 		args = append(args, "--speed", strconv.FormatFloat(p.TTSSpeed, 'f', -1, 64))
@@ -76,7 +81,7 @@ func (p *MiniMaxProvider) Synthesize(ctx context.Context, text string, outputPat
 
 	slog.Info("mmx speech synthesize",
 		slog.String("output", outputPath),
-		slog.String("language", p.TTSLanguage),
+		slog.String("language", lang),
 		slog.String("voice", p.TTSVoice),
 		slog.Float64("speed", p.TTSSpeed),
 		slog.Int("text_len", len(text)),

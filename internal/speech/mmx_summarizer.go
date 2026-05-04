@@ -22,16 +22,13 @@ func NewMMXSummarizer() *MMXSummarizer {
 	s := &MMXSummarizer{
 		Model: "MiniMax-M2.7",
 	}
-	s.gs = genericSummarizer{
-		passFn: s.doSummarizePass,
-		prompt: loadSummarizePrompt(),
-	}
+	s.gs = NewGenericSummarizer(s.doSummarizePass)
 	return s
 }
 
 // Summarize condenses text for voice output using mmx text chat.
-func (s *MMXSummarizer) Summarize(ctx context.Context, text string) (string, error) {
-	return s.gs.Summarize(ctx, text)
+func (s *MMXSummarizer) Summarize(ctx context.Context, text string, language string) (string, error) {
+	return s.gs.Summarize(ctx, text, language)
 }
 
 // doSummarizePass performs a single summarization pass using mmx text chat.

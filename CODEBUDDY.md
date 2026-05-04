@@ -60,7 +60,7 @@ npx vitest run web/src/components/__tests__/gitGraphUtils.test.ts  # Single test
 - `internal/ssh/` — SSH tunnel server (`server.go`). Supports direct-tcpip channels (-L port forwarding), password auth, ECDSA host key generation/persistence. Integrates with ProxyRegistry for port validation.
 - `internal/platform/` — Platform-specific adaptations (Windows paths).
 
-**Agent system:** YAML files in `agents/` define agents with id, backend, model, system_prompt, and optional `command` (custom CLI path). `common_prompt.md` is prepended to all agents. `{{AVAILABLE_AGENTS}}` placeholder is replaced with the agent list. Loaded at startup by `model.LoadAgents()`. Agent prompts may include `<schedule-proposal>` tag format for the scheduled task system.
+**Agent system:** YAML files in `config/agents/` define agents with id, backend, model, system_prompt, and optional `command` (custom CLI path). `agent_common_prompt.md` is prepended to all agents. `{{AVAILABLE_AGENTS}}` placeholder is replaced with the agent list. Loaded at startup by `model.LoadAgents()`. Agent prompts may include `<schedule-proposal>` tag format for the scheduled task system.
 
 **Data flow for chat:**
 1. Frontend sends POST to `/api/ai/chat`
@@ -177,7 +177,7 @@ npx vitest run web/src/components/__tests__/gitGraphUtils.test.ts  # Single test
 
 ## Configuration
 
-`config.yaml` is entirely optional — all settings have sensible defaults. See `config.example.yaml` for available options.
+`config.yaml` is entirely optional — all settings have sensible defaults. See `config/config.example.yaml` for available options.
 
 | Section | Key options |
 |---------|------------|

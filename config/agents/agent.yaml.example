@@ -11,12 +11,12 @@
 # 启动时 LoadAgents() 会扫描该目录，读取所有 .yaml 文件并注册智能体。
 #
 # Loading process / 加载流程：
-#   1. Read agents/common_prompt.md as the common prefix prompt
-#      读取 agents/common_prompt.md 作为公共前缀提示词
+#   1. Read agent_common_prompt.md (in the parent directory) as the common prefix prompt
+#      读取上级目录的 agent_common_prompt.md 作为公共前缀提示词
 #   2. Parse each .yaml file → Agent struct
 #      解析每个 .yaml 文件 → Agent 结构体
-#   3. Prepend common_prompt to each agent's system_prompt
-#      将 common_prompt 拼接到 system_prompt 前面
+#   3. Prepend agent_common_prompt to each agent's system_prompt
+#      将 agent_common_prompt 拼接到 system_prompt 前面
 #   4. Replace {{AVAILABLE_AGENTS}} placeholder in system_prompt with the full agent list
 #      替换 system_prompt 中的 {{AVAILABLE_AGENTS}} 占位符为所有智能体列表
 #   5. Sort by ID alphabetically for deterministic ordering
@@ -94,17 +94,17 @@ backend: codebuddy
 #   backend=claude    → "claude-sonnet-4-6", "claude-opus-4"
 #   backend=codebuddy → "glm-5.1", "gpt-5.4", "gemini-3.1-pro", "kimi-k2.5"
 #   backend=opencode  → "opencode/minimax-m2.5-free", "minimax-cn/MiniMax-M2.7"
-#   backend=gemini    → "gemini-3-pro-preview"
-#   backend=codex     → "codex-MiniMax-M2.7"
+#   backend=gemini    → "gemini-3.1-pro"
+#   backend=codex     → "gpt-5.4"
 model: glm-5.1
 
 # system_prompt [string, optional]
 # The agent's system prompt / role definition.
 # 智能体的系统提示词 / 角色设定。
-# When omitted, the agent uses only common_prompt.md as its system prompt (if it exists).
-# 省略时，智能体仅使用 common_prompt.md 作为系统提示词（如果存在）。
-# When set, common_prompt.md content is automatically prepended.
-# 设置后，加载时会自动在前面拼接 common_prompt.md 的内容。
+# When omitted, the agent uses only agent_common_prompt.md as its system prompt (if it exists).
+# 省略时，智能体仅使用 agent_common_prompt.md 作为系统提示词（如果存在）。
+# When set, agent_common_prompt.md content is automatically prepended.
+# 设置后，加载时会自动在前面拼接 agent_common_prompt.md 的内容。
 # Supports multi-line text using YAML | (preserve newlines) or > (fold newlines) syntax.
 # 支持多行，使用 YAML 的 |（保留换行）或 >（折叠换行）语法。
 # You may use the placeholder {{AVAILABLE_AGENTS}}, which is replaced at load time with the

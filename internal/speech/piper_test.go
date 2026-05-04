@@ -44,7 +44,7 @@ func TestResolveModelPath_Empty(t *testing.T) {
 func TestPiperSummarize_ShortText_BypassesLLM(t *testing.T) {
 	s := NewMMXSummarizer()
 	shortText := "这是一个简短的消息，不需要总结。"
-	result, err := s.Summarize(context.Background(), shortText)
+	result, err := s.Summarize(context.Background(), shortText, "zh")
 	assert.NoError(t, err)
 	assert.Contains(t, result, "简短的消息")
 }
@@ -52,7 +52,7 @@ func TestPiperSummarize_ShortText_BypassesLLM(t *testing.T) {
 func TestPiperSummarize_ShortTextWithMarkdown_StripsMarkdown(t *testing.T) {
 	s := NewMMXSummarizer()
 	input := "Short **bold** and *italic* text."
-	result, err := s.Summarize(context.Background(), input)
+	result, err := s.Summarize(context.Background(), input, "zh")
 	assert.NoError(t, err)
 	assert.NotContains(t, result, "**")
 	assert.NotContains(t, result, "*")
@@ -73,7 +73,7 @@ func TestPiperSummarize_LongText_WithCLI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	result, err := s.Summarize(ctx, longText)
+	result, err := s.Summarize(ctx, longText, "zh")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, result)
 	assert.Less(t, len([]rune(result)), len([]rune(longText)))
@@ -88,7 +88,7 @@ func TestPiperSummarize_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := s.Summarize(ctx, longText)
+	_, err := s.Summarize(ctx, longText, "zh")
 	assert.Error(t, err)
 }
 
@@ -122,7 +122,7 @@ func TestPiperSynthesize_WithCLI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err = p.Synthesize(ctx, "这是一个测试语音。", outputPath)
+	err = p.Synthesize(ctx, "这是一个测试语音。", outputPath, "")
 	assert.NoError(t, err)
 
 	info, statErr := os.Stat(outputPath)
@@ -150,7 +150,7 @@ func TestPiperSynthesize_CreatesDirectory(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	err := p.Synthesize(ctx, "测试目录创建。", outputPath)
+	err := p.Synthesize(ctx, "测试目录创建。", outputPath, "")
 	assert.NoError(t, err)
 
 	_, err = os.Stat(nestedDir)
@@ -164,7 +164,7 @@ func TestPiperSynthesize_MissingModel(t *testing.T) {
 	p.ModelPath = "/nonexistent/model.onnx"
 	outputPath := filepath.Join(t.TempDir(), "output.wav")
 
-	err := p.Synthesize(context.Background(), "test", outputPath)
+	err := p.Synthesize(context.Background(), "test", outputPath, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "model file not found")
 }
@@ -176,7 +176,7 @@ func TestPiperSynthesize_NoModelConfigured(t *testing.T) {
 	// ModelPath is empty by default
 	outputPath := filepath.Join(t.TempDir(), "output.wav")
 
-	err := p.Synthesize(context.Background(), "test", outputPath)
+	err := p.Synthesize(context.Background(), "test", outputPath, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "model path not configured")
 }
@@ -191,7 +191,7 @@ func TestPiperSynthesize_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := p.Synthesize(ctx, "test", outputPath)
+	err := p.Synthesize(ctx, "test", outputPath, "")
 	assert.Error(t, err)
 }
 

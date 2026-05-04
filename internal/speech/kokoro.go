@@ -51,7 +51,7 @@ func NewKokoroProvider() *KokoroProvider {
 
 // Synthesize generates an audio file at outputPath using Kokoro via Python bridge.
 // Text is piped via stdin to the bridge script.
-func (p *KokoroProvider) Synthesize(ctx context.Context, text string, outputPath string) error {
+func (p *KokoroProvider) Synthesize(ctx context.Context, text string, outputPath string, _ string) error {
 	dir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %w", dir, err)

@@ -37,7 +37,7 @@ func NewEdgeTTSProvider() *EdgeTTSProvider {
 
 // Synthesize generates an audio file at outputPath using edge-tts.
 // Text is written to a temp file and passed via --file to avoid shell argument limits.
-func (p *EdgeTTSProvider) Synthesize(ctx context.Context, text string, outputPath string) error {
+func (p *EdgeTTSProvider) Synthesize(ctx context.Context, text string, outputPath string, _ string) error {
 	dir := filepath.Dir(outputPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %w", dir, err)

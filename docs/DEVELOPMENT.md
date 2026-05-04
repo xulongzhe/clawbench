@@ -18,7 +18,7 @@ cd clawbench
 ./server.sh
 ```
 
-> 首次启动会自动生成随机密码并保存到 `.clawbench/auto-password`，启动脚本会自动显示。如需自定义配置，可复制 `config.example.yaml` 为 `config.yaml` 并修改。
+> 首次启动会自动生成随机密码并保存到 `.clawbench/auto-password`，启动脚本会自动显示。如需自定义配置，可复制 `config/config.example.yaml` 为 `config.yaml` 并修改。
 
 发布包内容（Linux）：
 
@@ -26,8 +26,8 @@ cd clawbench
 |------|------|
 | `clawbench-linux-amd64` | 后端二进制 |
 | `public/` | 前端静态资源（已构建） |
-| `config.example.yaml` | 配置模板（可选） |
-| `agents/` | 智能体配置 |
+| `config/config.example.yaml` | 配置模板（可选） |
+| `config/agents/` | 智能体配置 |
 | `dev-server.sh` | 开发调试启动脚本 |
 | `server.sh` | 正式版启动脚本 |
 
@@ -37,8 +37,8 @@ cd clawbench
 |------|------|
 | `clawbench-windows-amd64.exe` | 后端二进制 |
 | `public/` | 前端静态资源（已构建） |
-| `config.example.yaml` | 配置模板（可选） |
-| `agents/` | 智能体配置 |
+| `config/config.example.yaml` | 配置模板（可选） |
+| `config/agents/` | 智能体配置 |
 | `server.ps1` | 启动/停止脚本 |
 
 ### 方式二：从源码构建
@@ -100,7 +100,7 @@ cd clawbench
 
 ### 配置文件
 
-`config.yaml` 完全可选，所有配置项均有默认值。如需自定义，复制 `config.example.yaml` 为 `config.yaml` 并修改。
+`config.yaml` 完全可选，所有配置项均有默认值。如需自定义，复制 `config/config.example.yaml` 为 `config.yaml` 并修改。
 
 **默认值**：
 
@@ -178,7 +178,7 @@ cd clawbench
 
 ## 高级配置
 
-完整配置参考 `config.example.yaml`。所有项均可选，以下为覆盖默认值的示例：
+完整配置参考 `config/config.example.yaml`。所有项均可选，以下为覆盖默认值的示例：
 
 ```yaml
 # port: 20000                        # 发布版服务端口（默认 20000）
@@ -315,8 +315,7 @@ ClawBench 支持 TTS 语音合成，自动将 AI 回复总结后朗读。支持 
 ClawBench 不只是一个"聊天壳"——它是一个完整的智能体运行平台：
 
 ```
-agents/
-├── common_prompt.md   # 共享提示词（网络搜索、多模态工具、媒体处理规则）
+config/agents/
 ├── assistant.yaml     # 全能助手 — 通用问答、代码、文档、运维
 ├── codebuddy2.yaml    # Gemini（通过 CodeBuddy 调用）
 ├── coder.yaml         # 编码专家 — 复杂编码、架构设计、代码重构
@@ -327,7 +326,7 @@ agents/
 ```
 
 - **Agent 配置化**：每个智能体通过 YAML 定义专属 system prompt、模型、后端，无需改代码
-- **共享提示词**：`common_prompt.md` 定义所有智能体的公共行为（网络搜索、多模态、媒体处理），避免重复配置
+- **共享提示词**：`config/agent_common_prompt.md` 定义所有智能体的公共行为（网络搜索、多模态、媒体处理），避免重复配置
 - **模板占位符**：`{{AVAILABLE_AGENTS}}` 自动替换为可用智能体列表，方便智能体间互相调度
 - **多 Agent 调度**：不同任务匹配不同智能体，全能助手负责对话，专业 Agent 执行定时任务
 - **工具调用透传**：AI 的工具调用（文件读写、Bash 命令、代码编辑）实时可视化展示
@@ -384,22 +383,23 @@ clawbench/
 │       ├── ollama_summarizer.go # OllamaSummarizer（HTTP /api/chat）
 │       ├── ai_backend_summarizer.go # AIBackendSummarizer（CLI 后端总结）
 │       ├── minimax.go / edge.go / piper.go / kokoro.go / moss_tts_nano.go  # TTS 引擎实现
-├── agents/                      # Agent 配置
-│   ├── common_prompt.md         # 共享提示词
-│   ├── assistant.yaml           # 全能助手
-│   ├── codebuddy2.yaml          # Gemini（CodeBuddy 调用）
-│   ├── coder.yaml               # 编码专家
-│   ├── codex.yaml               # Codex CLI
-│   ├── gemini.yaml              # Gemini CLI
-│   ├── gpt54.yaml               # GPT（CodeBuddy 调用）
-│   └── handyman.yaml            # 勤杂工
+├── config/                      # 配置目录
+│   ├── agent_common_prompt.md   # 智能体共享提示词
+│   ├── agents/                  # Agent 配置
+│   │   ├── assistant.yaml       # 全能助手
+│   │   ├── codebuddy2.yaml      # Gemini（CodeBuddy 调用）
+│   │   ├── coder.yaml           # 编码专家
+│   │   ├── codex.yaml           # Codex CLI
+│   │   ├── gemini.yaml          # Gemini CLI
+│   │   ├── gpt54.yaml           # GPT（CodeBuddy 调用）
+│   │   └── handyman.yaml        # 勤杂工
+│   └── config.example.yaml      # 配置模板
 ├── web/                         # Vue 3 前端源码
 │   └── src/
 │       ├── components/          # 41 个 Vue 组件
 │       ├── composables/         # 13 个组合式函数
 │       ├── stores/              # 状态管理
 │       └── utils/               # 工具函数
-├── config.example.yaml          # 配置模板
 ├── build.sh                     # 编译脚本 (Linux/macOS)
 ├── build.ps1                    # 编译脚本 (Windows)
 ├── dev-server.sh                # 开发调试启动脚本 (Linux/macOS)
