@@ -205,8 +205,9 @@ watch(() => props.open, (isOpen) => {
 
 .detail-content {
   flex: 1;
-  overflow-y: auto;
-  /* Override .chat-message styles that conflict with modal context */
+  min-height: 0;
+  overflow-y: auto !important;
+  /* Override .chat-message.assistant styles that conflict with modal context */
   background: transparent !important;
   border-radius: 0 !important;
   align-self: stretch !important;
