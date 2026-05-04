@@ -218,17 +218,12 @@ func TestApplyDefaultsBoolPresenceProxyEnabledFalse(t *testing.T) {
 func TestApplyDefaultsBoolPresenceProxySectionNoEnabled(t *testing.T) {
 	cfg := Config{}
 	// User wrote a proxy section but didn't include "enabled" key
-	presence := map[string]any{
-		"proxy":               true,
-		"proxy.allowed_ports": true,
-	}
-	_ = presence
-	presence2 := map[string]bool{
+	presence := map[string]bool{
 		"proxy":               true,
 		"proxy.allowed_ports": true,
 	}
 
-	ApplyDefaults(&cfg, presence2)
+	ApplyDefaults(&cfg, presence)
 
 	// When proxy section exists but enabled key is absent, should still default to true
 	if !cfg.Proxy.Enabled {
