@@ -13,10 +13,11 @@ import (
 const (
 	// mossNanoCmd is the CLI command for MOSS-TTS-Nano (installed via pip install -e .).
 	mossNanoCmd = "moss-tts-nano"
-
-	// mossNanoDefaultModelDir is the default directory for MOSS-TTS-Nano ONNX model files.
-	mossNanoDefaultModelDir = ".clawbench/moss-nano-models"
 )
+
+// mossNanoDefaultModelDir is the default directory for MOSS-TTS-Nano ONNX model files.
+// Package-level var (not const) to allow override in tests.
+var mossNanoDefaultModelDir = ".clawbench/moss-nano-models"
 
 // MossNanoProvider implements SpeechProvider using MOSS-TTS-Nano (local, ONNX-based TTS).
 //
@@ -140,10 +141,18 @@ func (p *MossNanoProvider) Synthesize(ctx context.Context, text string, outputPa
 
 // ResolveMossNanoModelDir resolves the MOSS-TTS-Nano model directory.
 // If modelDir is explicitly set, it is returned as-is.
-// Otherwise, the default directory (.clawbench/moss-nano-models) is used.
+// Otherwise, it checks the default directory (.clawbench/moss-nano-models);
+// if it contains model files (browser_poc_manifest.json exists in a subdirectory),
+// the default is returned. Otherwise, returns "" to let the CLI auto-download models.
 func ResolveMossNanoModelDir(modelDir string) string {
 	if modelDir != "" {
 		return modelDir
 	}
-	return mossNanoDefaultModelDir
+	// Check if default directory has models (look for browser_poc_manifest.json)
+	defaultDir := mossNanoDefaultModelDir
+	matches, _ := filepath.Glob(filepath.Join(defaultDir, "*", "browser_poc_manifest.json"))
+	if len(matches) > 0 {
+		return defaultDir
+	}
+	return "" // let CLI auto-download
 }

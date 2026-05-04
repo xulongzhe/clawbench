@@ -231,8 +231,8 @@ tts:
   # summarize_backend: "mmx-cli"
   # summarize_model: "MiniMax-M2.7"
   # moss_nano:
-  #   model_dir: ""                                      # ONNX model directory; leave empty to use .clawbench/moss-nano-models (CLI auto-downloads on first run)
-                                                        # ONNX模型目录，留空则使用 .clawbench/moss-nano-models（首次运行CLI会自动下载）
+  #   model_dir: ""                                      # ONNX model directory; leave empty to auto-detect (.clawbench/moss-nano-models if present, otherwise CLI auto-downloads)
+                                                        # ONNX模型目录；留空则自动检测（若 .clawbench/moss-nano-models 存在则使用，否则CLI首次运行自动下载）
   #   prompt_speech: ""                                  # Reference audio for voice cloning; leave empty for default voice (no cloning)
                                                         # 参考音频用于音色克隆，留空则使用默认音色（不克隆）
   #   backend: "onnx"                                    # Inference backend: "onnx" (default, CPU-friendly) or "pytorch" (requires GPU)

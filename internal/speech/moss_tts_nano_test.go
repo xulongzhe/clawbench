@@ -23,9 +23,25 @@ func TestNewMossNanoProvider_Defaults(t *testing.T) {
 
 // --- ResolveMossNanoModelDir ---
 
-func TestResolveMossNanoModelDir_Default(t *testing.T) {
+func TestResolveMossNanoModelDir_DefaultNoModels(t *testing.T) {
 	dir := ResolveMossNanoModelDir("")
-	assert.Equal(t, mossNanoDefaultModelDir, dir)
+	assert.Equal(t, "", dir, "should return empty when default dir has no models, letting CLI auto-download")
+}
+
+func TestResolveMossNanoModelDir_DefaultWithModels(t *testing.T) {
+	// Create a temp directory mimicking the default model structure
+	tmpDir := t.TempDir()
+	subDir := filepath.Join(tmpDir, "MOSS-TTS-Nano-100M-ONNX")
+	os.MkdirAll(subDir, 0755)
+	os.WriteFile(filepath.Join(subDir, "browser_poc_manifest.json"), []byte("{}"), 0644)
+
+	// Temporarily override default for testing
+	origDefault := mossNanoDefaultModelDir
+	mossNanoDefaultModelDir = tmpDir
+	defer func() { mossNanoDefaultModelDir = origDefault }()
+
+	dir := ResolveMossNanoModelDir("")
+	assert.Equal(t, tmpDir, dir, "should return default dir when models exist")
 }
 
 func TestResolveMossNanoModelDir_Explicit(t *testing.T) {
