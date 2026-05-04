@@ -97,8 +97,9 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 
 	// --- Proxy ---
 	// Bool zero-value trap: Go defaults bool to false, but we want true.
-	// Only apply default if the key was NOT explicitly present in the config.
-	if !presence["proxy"] && !presence["proxy.enabled"] {
+	// Only keep false if user explicitly wrote "enabled: false".
+	// If proxy section is absent OR proxy.enabled key is absent, default to true.
+	if !presence["proxy.enabled"] {
 		cfg.Proxy.Enabled = true
 	}
 	if cfg.Proxy.AllowedPorts == "" {
@@ -107,7 +108,7 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 
 	// --- SSH ---
 	// Same bool zero-value trap as Proxy.
-	if !presence["ssh"] && !presence["ssh.enabled"] {
+	if !presence["ssh.enabled"] {
 		cfg.SSH.Enabled = true
 	}
 
