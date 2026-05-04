@@ -892,7 +892,7 @@ func TestAccumulateBlock_ErrorEvent(t *testing.T) {
 
 func TestAccumulateBlock_ErrorEventOnly(t *testing.T) {
 	events := []ai.StreamEvent{
-		{Type: "error", Error: "AI 请求失败"},
+		{Type: "error", Error: "AI request failed", Reason: ai.ReasonRequestFailed},
 	}
 
 	blocks := feedEvents(events)
@@ -903,8 +903,11 @@ func TestAccumulateBlock_ErrorEventOnly(t *testing.T) {
 	if blocks[0].Type != "warning" {
 		t.Errorf("expected warning block from error event, got %q", blocks[0].Type)
 	}
-	if blocks[0].Text != "AI 请求失败" {
-		t.Errorf("expected 'AI 请求失败', got %q", blocks[0].Text)
+	if blocks[0].Text != "AI request failed" {
+		t.Errorf("expected 'AI request failed', got %q", blocks[0].Text)
+	}
+	if blocks[0].Reason != ai.ReasonRequestFailed {
+		t.Errorf("expected reason 'request_failed', got %q", blocks[0].Reason)
 	}
 }
 

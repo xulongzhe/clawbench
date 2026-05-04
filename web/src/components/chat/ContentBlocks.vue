@@ -28,12 +28,17 @@
       <!-- Error block -->
       <div v-else-if="block.type === 'error'" class="chat-error-card">
         <AlertTriangle :size="14" class="error-icon" />
-        <span class="error-text">{{ block.text }}</span>
+        <span class="error-text">{{ getWarningText(block) }}</span>
       </div>
-      <!-- Warning block -->
+      <!-- Warning block: severe (disconnect/timeout/restart) renders as error-level red -->
+      <div v-else-if="block.type === 'warning' && isSevereWarning(block)" class="chat-error-card">
+        <AlertTriangle :size="14" class="error-icon" />
+        <span class="error-text">{{ getWarningText(block) }}</span>
+      </div>
+      <!-- Warning block: normal (parse errors, stderr) renders as amber -->
       <div v-else-if="block.type === 'warning'" class="chat-warning-card">
         <AlertCircle :size="14" class="warning-icon" />
-        <span class="warning-text">{{ block.text }}</span>
+        <span class="warning-text">{{ getWarningText(block) }}</span>
       </div>
       <!-- Schedule proposal card (inline in message) — must come before generic text block -->
       <template v-else-if="block.type === 'text' && blockProposals[blockProposalsKey(bi)]">
@@ -85,6 +90,39 @@ import { getToolIcon } from '@/utils/icons'
 import { CircleHelp, ChevronDown, CheckCircle2, AlertCircle, AlertTriangle, Pencil } from 'lucide-vue-next'
 
 const { t } = useI18n()
+
+// Reasons that indicate a severe issue (red error-level styling)
+const SEVERE_REASONS = new Set(['disconnect', 'timeout', 'restart', 'panic'])
+
+function isSevereWarning(block) {
+  return SEVERE_REASONS.has(block.reason)
+}
+
+/** Get localized warning/error text. Uses i18n key from block.reason if available, falls back to block.text for backward compat. */
+function getWarningText(block) {
+  if (block.reason) {
+    const key = `chat.contentBlocks.warningReasons.${block.reason}`
+    const translated = t(key)
+    // t() returns the key itself when not found — fall back to block.text
+    if (translated !== key) {
+      // For parse_error: append detail after ": " from block.text
+      // For backend_exit: append stderr after "\n" from block.text
+      if ((block.reason === 'parse_error' || block.reason === 'backend_exit') && block.text) {
+        const newlineIdx = block.text.indexOf('\n')
+        if (newlineIdx >= 0) {
+          return translated + block.text.substring(newlineIdx)
+        }
+        const colonIdx = block.text.indexOf(': ')
+        if (colonIdx >= 0) {
+          return translated + ': ' + block.text.substring(colonIdx + 2)
+        }
+      }
+      return translated
+    }
+  }
+  // Fallback: no reason code or no matching i18n key (handles old DB records)
+  return block.text || ''
+}
 
 function hasToolResult(block) {
   if (!block.done) return false

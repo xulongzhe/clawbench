@@ -700,8 +700,11 @@ func TestCodexStream_TurnFailedNoMessage(t *testing.T) {
 	if events[0].Type != "error" {
 		t.Errorf("expected error event, got %s", events[0].Type)
 	}
-	if events[0].Error != "AI 请求失败" {
+	if events[0].Error != "AI request failed" {
 		t.Errorf("expected default error message, got %q", events[0].Error)
+	}
+	if events[0].Reason != ReasonRequestFailed {
+		t.Errorf("expected reason 'request_failed', got %q", events[0].Reason)
 	}
 }
 
@@ -717,6 +720,9 @@ func TestCodexStream_ErrorType(t *testing.T) {
 	}
 	if events[0].Content != "Something went wrong" {
 		t.Errorf("expected 'Something went wrong', got %q", events[0].Content)
+	}
+	if events[0].Reason != ReasonRequestFailed {
+		t.Errorf("expected reason 'request_failed', got %q", events[0].Reason)
 	}
 }
 

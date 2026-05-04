@@ -157,6 +157,18 @@ export default {
       repeat: 'Repeat:',
       prompt: 'Prompt:',
       cancelled: 'Cancelled',
+      warningReasons: {
+        user_cancel: 'User cancelled',
+        disconnect: 'Connection lost, AI response interrupted',
+        context_cancel: 'AI response cancelled',
+        timeout: 'AI response timed out (30 min)',
+        empty: 'AI returned no content',
+        parse_error: 'AI output parse error',
+        backend_exit: 'AI backend exited abnormally',
+        request_failed: 'AI request failed',
+        restart: 'Server restarted, AI response interrupted',
+        panic: 'AI internal error, please retry',
+      },
     },
     metadata: {
       title: 'Message Details',

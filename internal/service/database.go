@@ -205,8 +205,9 @@ func InitDB() error {
 			// Append warning block
 			blocks, _ := contentMap["blocks"].([]any)
 			blocks = append(blocks, map[string]any{
-				"type": "warning",
-				"text": "服务重启，AI 响应中断",
+				"type":   "warning",
+				"text":   "Server restarted, AI response interrupted",
+				"reason": "restart",
 			})
 			contentMap["blocks"] = blocks
 		}

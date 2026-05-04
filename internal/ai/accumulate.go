@@ -83,8 +83,8 @@ func AccumulateBlock(blocks *[]model.ContentBlock, event StreamEvent) {
 			}
 		}
 	case "warning":
-		*blocks = append(*blocks, model.ContentBlock{Type: "warning", Text: event.Content})
+		*blocks = append(*blocks, model.ContentBlock{Type: "warning", Text: event.Content, Reason: event.Reason})
 	case "error":
-		*blocks = append(*blocks, model.ContentBlock{Type: "warning", Text: event.Error})
+		*blocks = append(*blocks, model.ContentBlock{Type: "warning", Text: event.Error, Reason: event.Reason})
 	}
 }

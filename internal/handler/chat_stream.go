@@ -113,14 +113,22 @@ func AIChatStream(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			case "error":
-				data, _ := json.Marshal(map[string]string{"error": event.Error})
+				payload := map[string]string{"error": event.Error}
+				if event.Reason != "" {
+					payload["reason"] = event.Reason
+				}
+				data, _ := json.Marshal(payload)
 				fmt.Fprintf(w, "event: error\ndata: %s\n\n", data)
 				if canFlush {
 					flusher.Flush()
 				}
 				return
 			case "warning":
-				data, _ := json.Marshal(map[string]string{"text": event.Content})
+				payload := map[string]string{"text": event.Content}
+				if event.Reason != "" {
+					payload["reason"] = event.Reason
+				}
+				data, _ := json.Marshal(payload)
 				fmt.Fprintf(w, "event: warning\ndata: %s\n\n", data)
 			case "queue_consume":
 				if event.QueueEvent != nil {

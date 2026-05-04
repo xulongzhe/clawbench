@@ -142,7 +142,7 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 
 		if err := scanner.Err(); err != nil {
 			select {
-			case ch <- StreamEvent{Type: "warning", Content: fmt.Sprintf("AI 输出解析错误: %v", err)}:
+			case ch <- StreamEvent{Type: "warning", Content: fmt.Sprintf("AI output parse error: %v", err), Reason: ReasonParseError}:
 			case <-ctx.Done():
 			}
 		}
@@ -169,12 +169,12 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 				slog.String("exit_error", err.Error()),
 				slog.String("stderr", stderr),
 			)
-			warnMsg := "AI 后端异常退出"
+			warnMsg := "AI backend exited abnormally"
 			if stderr != "" {
-				warnMsg = fmt.Sprintf("AI 后端异常退出\n%s", stderr)
+				warnMsg = fmt.Sprintf("AI backend exited abnormally\n%s", stderr)
 			}
 			select {
-			case ch <- StreamEvent{Type: "warning", Content: warnMsg}:
+			case ch <- StreamEvent{Type: "warning", Content: warnMsg, Reason: ReasonBackendExit}:
 			case <-ctx.Done():
 			}
 		} else if stderrBuf.Len() > 0 {

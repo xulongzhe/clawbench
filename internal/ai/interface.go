@@ -32,10 +32,25 @@ type Metadata struct {
 	ErrorMessage string  `json:"errorMessage,omitempty"`
 }
 
+// Warning reason codes — used by frontend for i18n lookup and visual severity
+const (
+	ReasonDisconnect    = "disconnect"     // SSE client disconnected
+	ReasonTimeout       = "timeout"        // AI response timeout
+	ReasonUserCancel    = "user_cancel"    // User explicitly cancelled
+	ReasonContextCancel = "context_cancel" // Context cancelled (generic interruption)
+	ReasonEmpty         = "empty"          // AI returned no content
+	ReasonParseError    = "parse_error"    // CLI output parsing error
+	ReasonBackendExit   = "backend_exit"   // CLI process exited abnormally
+	ReasonRequestFailed = "request_failed" // Codex turn.failed
+	ReasonRestart       = "restart"        // Server restart, AI response interrupted
+	ReasonPanic         = "panic"          // AI goroutine panicked
+)
+
 // StreamEvent represents a single event in the streaming output
 type StreamEvent struct {
 	Type       string          // "content", "thinking", "metadata", "done", "error", "tool_use", "raw_output", "resume_split", "queue_consume", "queue_update", "session_capture"
 	Content    string          // Incremental text (Type=content, Type=thinking) or captured session ID (Type=session_capture)
+	Reason     string          // Structured reason code for i18n (e.g. "disconnect", "timeout", "parse_error")
 	Meta       *Metadata       // Metadata (Type=metadata)
 	Error      string          // Error message (Type=error)
 	Tool       *ToolCall       // Tool call info (Type=tool_use)

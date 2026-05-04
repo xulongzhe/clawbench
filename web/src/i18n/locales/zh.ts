@@ -157,6 +157,18 @@ export default {
       repeat: '重复：',
       prompt: '提示词：',
       cancelled: '已中断',
+      warningReasons: {
+        user_cancel: '用户已中断',
+        disconnect: '连接已断开，AI 响应中断',
+        context_cancel: 'AI 响应被中断',
+        timeout: 'AI 响应超时（30分钟）',
+        empty: 'AI 未返回任何内容',
+        parse_error: 'AI 输出解析错误',
+        backend_exit: 'AI 后端异常退出',
+        request_failed: 'AI 请求失败',
+        restart: '服务重启，AI 响应中断',
+        panic: 'AI 内部错误，请重试',
+      },
     },
     metadata: {
       title: '消息详情',

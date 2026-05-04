@@ -168,16 +168,14 @@ export function useChatStream(options: UseChatStreamOptions) {
           onMessage()
           onScrollBottom(true)
           onStreamEnd?.('done')
-          const lastMsg = messages.value[messages.value.length - 1]
-          if (lastMsg?.role === 'assistant') {
-            const appInBackground = document.visibilityState !== 'visible'
-            if (!isOpen.value || appInBackground) {
+          if (!isOpen.value) {
+            const lastMsg = messages.value[messages.value.length - 1]
+            if (lastMsg?.role === 'assistant') {
               onToast(gt('chat.stream.aiReplied'), { icon: '🤖', duration: 5000, onClick: () => onOpen() })
               onNotification(gt('chat.stream.aiReplied'), {
                 body: gt('chat.stream.clickToViewReply'),
                 onClick: () => onOpen()
               })
-            }
             }
           }
           return
@@ -331,10 +329,9 @@ export function useChatStream(options: UseChatStreamOptions) {
         onMessage()
         onScrollBottom(true)
         onStreamEnd?.('done')
-        const lastMsg = messages.value[messages.value.length - 1]
-        if (lastMsg?.role === 'assistant') {
-          const appInBackground = document.visibilityState !== 'visible'
-          if (!isOpen.value || appInBackground) {
+        if (!isOpen.value) {
+          const lastMsg = messages.value[messages.value.length - 1]
+          if (lastMsg?.role === 'assistant') {
             onToast(gt('chat.stream.aiReplied'), { icon: '🤖', duration: 5000, onClick: () => onOpen() })
             onNotification(gt('chat.stream.aiReplied'), {
               body: gt('chat.stream.clickToViewReply'),
@@ -379,7 +376,9 @@ export function useChatStream(options: UseChatStreamOptions) {
         msg.blocks.push({ type: 'text', text: msg.streamingText })
         msg.streamingText = ''
       }
-      msg.blocks.push({ type: 'warning', text: data.text })
+      const warningBlock = { type: 'warning', text: data.text }
+      if (data.reason) warningBlock.reason = data.reason
+      msg.blocks.push(warningBlock)
       onRenderNeeded()
     })
 
@@ -428,7 +427,9 @@ export function useChatStream(options: UseChatStreamOptions) {
         if (!guard()) return
         const data = JSON.parse(e.data)
         messages.value[lastIndex].content = `${gt('chat.stream.errorPrefix')} ${data.error}`
-        messages.value[lastIndex].blocks = [{ type: 'error', text: data.error }]
+        const errorBlock = { type: 'error', text: data.error }
+        if (data.reason) errorBlock.reason = data.reason
+        messages.value[lastIndex].blocks = [errorBlock]
         delete messages.value[lastIndex].streaming
         // Mark any unfinished tool_use blocks as done
         for (const block of messages.value[lastIndex].blocks) {

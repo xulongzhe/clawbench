@@ -336,11 +336,11 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				service.SetSessionRunning(sessionID, false)
 				service.UnregisterSessionCancel(sessionID)
 				// Try to send error event to SSE stream
-				service.SendSessionEvent(sessionID, ai.StreamEvent{Type: "error", Error: "AI 内部错误，请重试"})
+				service.SendSessionEvent(sessionID, ai.StreamEvent{Type: "error", Error: "AI internal error, please retry", Reason: ai.ReasonPanic})
 				service.UnregisterSessionStream(sessionID)
 				// Persist error to database
-				errMsg := "AI 内部错误，请重试"
-				errContent, _ := json.Marshal(map[string]any{"blocks": []any{map[string]string{"type": "error", "text": errMsg}}})
+				errMsg := "AI internal error, please retry"
+				errContent, _ := json.Marshal(map[string]any{"blocks": []any{map[string]string{"type": "error", "text": errMsg, "reason": ai.ReasonPanic}}})
 				service.FinalizeStreamingMessage(projectPath, backendName, sessionID, string(errContent))
 			}
 		}()
@@ -374,7 +374,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if result.empty {
-				sendFinalEvent(streamCh, ai.StreamEvent{Type: "error", Error: "AI 未返回任何内容"})
+				sendFinalEvent(streamCh, ai.StreamEvent{Type: "error", Error: "AI returned no content", Reason: ai.ReasonEmpty})
 				return
 			}
 			if result.cancelReason != "" {
@@ -653,19 +653,20 @@ func finalizeStreamRun(
 	if len(blocks) == 0 {
 		// Auto-infer reason for empty response
 		var errMsg string
+		var reason string
 		switch {
 		case cancelReason == "user":
-			errMsg = "用户已中断"
+			errMsg, reason = "User cancelled", ai.ReasonUserCancel
 		case cancelReason == "disconnect":
-			errMsg = "连接已断开，AI 响应中断"
+			errMsg, reason = "Connection lost, AI response interrupted", ai.ReasonDisconnect
 		case ctx.Err() == context.Canceled:
-			errMsg = "AI 响应被中断"
+			errMsg, reason = "AI response cancelled", ai.ReasonContextCancel
 		case ctx.Err() == context.DeadlineExceeded:
-			errMsg = "AI 响应超时（30分钟）"
+			errMsg, reason = "AI response timed out (30 min)", ai.ReasonTimeout
 		default:
-			errMsg = "AI 未返回任何内容"
+			errMsg, reason = "AI returned no content", ai.ReasonEmpty
 		}
-		blocks = append(blocks, model.ContentBlock{Type: "warning", Text: errMsg})
+		blocks = append(blocks, model.ContentBlock{Type: "warning", Text: errMsg, Reason: reason})
 		contentMap := map[string]any{"blocks": blocks}
 		if cancelReason == "user" || cancelReason == "disconnect" || ctx.Err() == context.Canceled {
 			contentMap["cancelled"] = true
@@ -679,14 +680,14 @@ func finalizeStreamRun(
 		}
 		// When there are blocks but the stream was interrupted, add a warning and mark cancelled
 		if cancelReason == "disconnect" {
-			blocks = append(blocks, model.ContentBlock{Type: "warning", Text: "连接已断开，AI 响应中断"})
+			blocks = append(blocks, model.ContentBlock{Type: "warning", Text: "Connection lost, AI response interrupted", Reason: ai.ReasonDisconnect})
 			contentMap["cancelled"] = true
 		} else if cancelReason == "user" {
 			contentMap["cancelled"] = true
 		} else if ctx.Err() == context.Canceled {
 			contentMap["cancelled"] = true
 		} else if ctx.Err() == context.DeadlineExceeded {
-			blocks = append(blocks, model.ContentBlock{Type: "warning", Text: "AI 响应超时（30分钟）"})
+			blocks = append(blocks, model.ContentBlock{Type: "warning", Text: "AI response timed out (30 min)", Reason: ai.ReasonTimeout})
 		}
 		contentMap["blocks"] = blocks
 		blocksJSON, _ := json.Marshal(contentMap)
@@ -735,7 +736,7 @@ saveRaw:
 	} else if ctx.Err() == context.Canceled {
 		result.cancelReason = "cancel"
 	} else if ctx.Err() == context.DeadlineExceeded {
-		result.err = "AI 响应超时（30分钟）"
+		result.err = "AI response timed out (30 min)"
 	} else if len(blocks) == 0 {
 		result.empty = true
 	}
@@ -778,7 +779,7 @@ func buildChatRequest(prompt, sessionID, backendName, agentID, fileDir string) a
 		} else {
 			// No external session ID available — don't pass the invalid ClawBench UUID
 			// to OpenCode/Codex. They don't recognize it and would silently fail
-			// (stdout empty, exit 0), resulting in "AI 未返回任何内容".
+			// (stdout empty, exit 0), resulting in "AI returned no content".
 			// Let them start a fresh session instead.
 			effectiveSessionID = ""
 		}

@@ -121,15 +121,15 @@ func (p *CodexStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 
 	case "error":
 		if msg.Message != "" {
-			ch <- StreamEvent{Type: "warning", Content: msg.Message}
+			ch <- StreamEvent{Type: "warning", Content: msg.Message, Reason: ReasonRequestFailed}
 		}
 
 	case "turn.failed":
-		errMsg := "AI 请求失败"
+		errMsg := "AI request failed"
 		if msg.Error != nil && msg.Error.Message != "" {
 			errMsg = msg.Error.Message
 		}
-		ch <- StreamEvent{Type: "error", Error: errMsg}
+		ch <- StreamEvent{Type: "error", Error: errMsg, Reason: ReasonRequestFailed}
 		ch <- StreamEvent{Type: "done"}
 
 	default:
@@ -567,7 +567,7 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 
 			if err := scanner.Err(); err != nil {
 				select {
-				case ch <- StreamEvent{Type: "warning", Content: fmt.Sprintf("AI 输出解析错误: %v", err)}:
+				case ch <- StreamEvent{Type: "warning", Content: fmt.Sprintf("AI output parse error: %v", err), Reason: ReasonParseError}:
 				case <-ctx.Done():
 				}
 			}
@@ -593,7 +593,7 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 				slog.String("exit_error", err.Error()),
 			)
 			select {
-			case ch <- StreamEvent{Type: "warning", Content: "AI 后端异常退出"}:
+			case ch <- StreamEvent{Type: "warning", Content: "AI backend exited abnormally", Reason: ReasonBackendExit}:
 			case <-ctx.Done():
 			}
 		}
