@@ -62,10 +62,8 @@
     <!-- Bottom bar for assistant messages -->
     <div v-if="msg.role === 'assistant' && !msg.streaming && (msgText || msg.blocks?.length)" class="chat-meta-bar">
       <span class="chat-meta-info">
-        <span v-if="msg.backend">{{ msg.backend }}</span>
-        <span v-if="msg.metadata?.model" class="chat-meta-sep">{{ msg.metadata.model }}</span>
-        <span v-if="msg.metadata?.wallMs" class="chat-meta-sep chat-meta-duration">{{ formatDuration(msg.metadata.wallMs) }}</span>
-        <span v-if="msg.createdAt" class="chat-meta-sep">{{ formatMessageTime(msg.createdAt) }}</span>
+        <span v-if="msg.metadata?.wallMs" class="chat-meta-duration">{{ formatDuration(msg.metadata.wallMs) }}</span>
+        <span v-if="msg.createdAt" :class="msg.metadata?.wallMs ? 'chat-meta-sep' : ''">{{ formatMessageTime(msg.createdAt) }}</span>
       </span>
       <div class="chat-meta-actions">
         <button v-if="msgText" ref="speakBtnRef" class="chat-info-btn chat-speak-btn" :class="{ active: autoSpeech.isActive(msg.id), loading: autoSpeech.isGeneratingText(msg.id) }" @click.stop="handleSpeak">
