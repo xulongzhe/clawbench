@@ -620,8 +620,8 @@ func finalizeStreamRun(
 				slog.Info("detected schedule-proposal tag in accumulated text block",
 					slog.String("session", sessionID),
 				)
-				if taskID := detectAndCreateScheduleProposal(blocks[i].Text, projectPath, sessionID, agentID); taskID != "" {
-					blocks[i].Text = injectTaskIDIntoProposal(blocks[i].Text, taskID)
+				if taskIDs := detectAndCreateScheduleProposals(blocks[i].Text, projectPath, sessionID, agentID); len(taskIDs) > 0 {
+					blocks[i].Text = injectTaskIDsIntoProposals(blocks[i].Text, taskIDs)
 				}
 			}
 		}
@@ -830,112 +830,135 @@ func min(a, b int) int {
 	return b
 }
 
-// detectAndCreateScheduleProposal detects <schedule-proposal> tags in text and automatically creates scheduled tasks.
-// It extracts the JSON content from the tag, validates it, and creates the task.
+// scheduleProposalRe matches <schedule-proposal>...</schedule-proposal> tags (compiled once at package level).
+var scheduleProposalRe = regexp.MustCompile(`<schedule-proposal\b[^>]*>([\s\S]*?)</schedule-proposal>`)
+
+// detectAndCreateScheduleProposals detects all <schedule-proposal> tags in text and automatically creates scheduled tasks.
+// It extracts the JSON content from each tag, validates it, and creates the task.
 // Errors are logged but don't interrupt the stream - the proposal tag is preserved for frontend display.
-// Returns the created task ID on success, or empty string on failure.
-func detectAndCreateScheduleProposal(text, projectPath, sessionID, agentID string) string {
-	// Extract the schedule-proposal tag content
-	re := regexp.MustCompile(`<schedule-proposal\b[^>]*>([\s\S]*?)</schedule-proposal>`)
-	matches := re.FindStringSubmatch(text)
-	if len(matches) < 2 {
-		return ""
+// Returns a slice of created task IDs (one per successfully created proposal), in tag order.
+func detectAndCreateScheduleProposals(text, projectPath, sessionID, agentID string) []string {
+	allMatches := scheduleProposalRe.FindAllStringSubmatch(text, -1)
+	if len(allMatches) == 0 {
+		return nil
 	}
 
-	jsonStr := strings.TrimSpace(matches[1])
+	var taskIDs []string
+	for _, matches := range allMatches {
+		if len(matches) < 2 {
+			continue
+		}
 
-	// Parse the JSON
-	var proposal struct {
-		Name       string `json:"name"`
-		CronExpr   string `json:"cron_expr"`
-		AgentID    string `json:"agent_id"`
-		Prompt     string `json:"prompt"`
-		RepeatMode string `json:"repeat_mode"`
-		MaxRuns    int    `json:"max_runs"`
-	}
+		jsonStr := strings.TrimSpace(matches[1])
 
-	if err := json.Unmarshal([]byte(jsonStr), &proposal); err != nil {
-		slog.Error("failed to parse schedule proposal JSON",
+		// Parse the JSON
+		var proposal struct {
+			Name       string `json:"name"`
+			CronExpr   string `json:"cron_expr"`
+			AgentID    string `json:"agent_id"`
+			Prompt     string `json:"prompt"`
+			RepeatMode string `json:"repeat_mode"`
+			MaxRuns    int    `json:"max_runs"`
+		}
+
+		if err := json.Unmarshal([]byte(jsonStr), &proposal); err != nil {
+			slog.Error("failed to parse schedule proposal JSON",
+				slog.String("session", sessionID),
+				slog.String("error", err.Error()),
+			)
+			taskIDs = append(taskIDs, "") // preserve position for injectTaskIDsIntoProposals
+			continue
+		}
+
+		// Validate required fields
+		if proposal.Name == "" || proposal.CronExpr == "" || proposal.AgentID == "" || proposal.Prompt == "" {
+			slog.Error("schedule proposal missing required fields",
+				slog.String("session", sessionID),
+				slog.String("name", proposal.Name),
+				slog.String("cron_expr", proposal.CronExpr),
+				slog.String("agent_id", proposal.AgentID),
+				slog.String("prompt", proposal.Prompt),
+			)
+			taskIDs = append(taskIDs, "")
+			continue
+		}
+
+		// Use the agent from the proposal if specified, otherwise use the session's agent
+		effectiveAgentID := proposal.AgentID
+		if effectiveAgentID == "" {
+			effectiveAgentID = agentID
+		}
+
+		// Set defaults
+		if proposal.RepeatMode == "" {
+			proposal.RepeatMode = "unlimited"
+		}
+
+		// Create the task
+		task := &model.ScheduledTask{
+			ProjectPath: projectPath,
+			Name:        proposal.Name,
+			CronExpr:    proposal.CronExpr,
+			AgentID:     effectiveAgentID,
+			Prompt:      proposal.Prompt,
+			RepeatMode:  proposal.RepeatMode,
+			MaxRuns:     proposal.MaxRuns,
+			SessionID:   sessionID,
+		}
+
+		if err := service.GlobalScheduler.AddTask(task); err != nil {
+			slog.Error("failed to create scheduled task from proposal",
+				slog.String("session", sessionID),
+				slog.String("task_name", proposal.Name),
+				slog.String("error", err.Error()),
+			)
+			taskIDs = append(taskIDs, "")
+			continue
+		}
+
+		slog.Info("automatically created scheduled task from proposal",
 			slog.String("session", sessionID),
-			slog.String("error", err.Error()),
-		)
-		return ""
-	}
-
-	// Validate required fields
-	if proposal.Name == "" || proposal.CronExpr == "" || proposal.AgentID == "" || proposal.Prompt == "" {
-		slog.Error("schedule proposal missing required fields",
-			slog.String("session", sessionID),
-			slog.String("name", proposal.Name),
-			slog.String("cron_expr", proposal.CronExpr),
-			slog.String("agent_id", proposal.AgentID),
-			slog.String("prompt", proposal.Prompt),
-		)
-		return ""
-	}
-
-	// Use the agent from the proposal if specified, otherwise use the session's agent
-	effectiveAgentID := proposal.AgentID
-	if effectiveAgentID == "" {
-		effectiveAgentID = agentID
-	}
-
-	// Set defaults
-	if proposal.RepeatMode == "" {
-		proposal.RepeatMode = "unlimited"
-	}
-
-	// Create the task
-	task := &model.ScheduledTask{
-		ProjectPath: projectPath,
-		Name:        proposal.Name,
-		CronExpr:    proposal.CronExpr,
-		AgentID:     effectiveAgentID,
-		Prompt:      proposal.Prompt,
-		RepeatMode:  proposal.RepeatMode,
-		MaxRuns:     proposal.MaxRuns,
-		SessionID:   sessionID,
-	}
-
-	if err := service.GlobalScheduler.AddTask(task); err != nil {
-		slog.Error("failed to create scheduled task from proposal",
-			slog.String("session", sessionID),
+			slog.String("task_id", task.ID),
 			slog.String("task_name", proposal.Name),
-			slog.String("error", err.Error()),
+			slog.String("cron_expr", proposal.CronExpr),
 		)
-		return ""
+		taskIDs = append(taskIDs, task.ID)
 	}
-
-	slog.Info("automatically created scheduled task from proposal",
-		slog.String("session", sessionID),
-		slog.String("task_id", task.ID),
-		slog.String("task_name", proposal.Name),
-		slog.String("cron_expr", proposal.CronExpr),
-	)
-	return task.ID
+	return taskIDs
 }
 
-// injectTaskIDIntoProposal adds a "task_id" field to the JSON inside a <schedule-proposal> tag.
-// This allows the frontend to link the proposal card to the created task for editing.
-func injectTaskIDIntoProposal(text, taskID string) string {
-	re := regexp.MustCompile(`<schedule-proposal\b[^>]*>([\s\S]*?)</schedule-proposal>`)
-	matches := re.FindStringSubmatch(text)
-	if len(matches) < 2 {
-		return text
-	}
+// injectTaskIDsIntoProposals adds a "task_id" field to the JSON inside each <schedule-proposal> tag.
+// taskIDs is a slice of task IDs in the same order as the tags appear in the text.
+// Empty strings in taskIDs are skipped (tag is left unchanged).
+// This allows the frontend to link each proposal card to the created task for editing.
+func injectTaskIDsIntoProposals(text string, taskIDs []string) string {
+	idx := 0
+	return scheduleProposalRe.ReplaceAllStringFunc(text, func(match string) string {
+		if idx >= len(taskIDs) {
+			return match
+		}
+		taskID := taskIDs[idx]
+		idx++
+		if taskID == "" {
+			return match // preserve the original tag unchanged
+		}
 
-	var proposal map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(matches[1])), &proposal); err != nil {
-		return text
-	}
-
-	proposal["task_id"] = taskID
-	updatedJSON, err := json.Marshal(proposal)
-	if err != nil {
-		return text
-	}
-
-	return re.ReplaceAllString(text, "<schedule-proposal>"+string(updatedJSON)+"</schedule-proposal>")
+		// Extract JSON from this match
+		subMatches := scheduleProposalRe.FindStringSubmatch(match)
+		if len(subMatches) < 2 {
+			return match
+		}
+		var proposal map[string]any
+		if err := json.Unmarshal([]byte(strings.TrimSpace(subMatches[1])), &proposal); err != nil {
+			return match
+		}
+		proposal["task_id"] = taskID
+		updatedJSON, err := json.Marshal(proposal)
+		if err != nil {
+			return match
+		}
+		return "<schedule-proposal>" + string(updatedJSON) + "</schedule-proposal>"
+	})
 }
 
 // stringsContainsAnyBlock checks if any text ContentBlock contains the given substring.
