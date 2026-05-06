@@ -302,3 +302,43 @@ func TestQoderStreamParser_UnparseableLine(t *testing.T) {
 	}
 	assert.Empty(t, events, "unparseable lines should be silently skipped")
 }
+
+// TestQoderStreamParser_ErrorDuringExecution verifies that Qoder's
+// error_during_execution result type (with errors array instead of result field)
+// properly emits a warning event with the error message.
+func TestQoderStreamParser_ErrorDuringExecution(t *testing.T) {
+	ch := make(chan StreamEvent, 10)
+	parser := &StreamParser{}
+	line := `{"type":"result","subtype":"error_during_execution","duration_ms":5168,"is_error":true,"num_turns":1,"stop_reason":null,"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"errors":["unknown certificate verification error"],"session_id":"6453c2ba"}`
+	parser.ParseLine(line, ch)
+	close(ch)
+	var events []StreamEvent
+	for ev := range ch {
+		events = append(events, ev)
+	}
+	// Should emit warning + metadata + done (same as ResultError but using errors[] field)
+	assert.Len(t, events, 3)
+	assert.Equal(t, "warning", events[0].Type)
+	assert.Contains(t, events[0].Content, "unknown certificate verification error")
+	assert.Equal(t, "metadata", events[1].Type)
+	assert.True(t, events[1].Meta.IsError)
+	assert.Contains(t, events[1].Meta.ErrorMessage, "unknown certificate verification error")
+	assert.Equal(t, "done", events[2].Type)
+}
+
+// TestQoderStreamParser_ResultWithBothResultAndErrors verifies that when both
+// result and errors fields are present, result takes priority (Claude/Codebuddy behavior).
+func TestQoderStreamParser_ResultWithBothResultAndErrors(t *testing.T) {
+	ch := make(chan StreamEvent, 10)
+	parser := &StreamParser{}
+	line := `{"type":"result","subtype":"success","is_error":true,"result":"Model overloaded","errors":["rate_limit"],"session_id":"s-3","duration_ms":0,"total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0},"stop_reason":"stop_sequence"}`
+	parser.ParseLine(line, ch)
+	close(ch)
+	var events []StreamEvent
+	for ev := range ch {
+		events = append(events, ev)
+	}
+	assert.Len(t, events, 3)
+	assert.Equal(t, "warning", events[0].Type)
+	assert.Equal(t, "Model overloaded", events[0].Content, "result field should take priority over errors")
+}

@@ -3,6 +3,7 @@ package ai
 import (
 	"encoding/json"
 	"log/slog"
+	"strings"
 )
 
 // LineParser is the interface for parsing individual JSON lines from CLI output.
@@ -58,6 +59,9 @@ type ClaudeStreamMessage struct {
 	DurationMs   int     `json:"duration_ms"`
 	TotalCostUSD float64 `json:"total_cost_usd"`
 	StopReason   string  `json:"stop_reason"`
+
+	// Qoder-specific: error_during_execution errors list
+	Errors []string `json:"errors,omitempty"`
 
 	// Usage fields (pointer so it can be nil)
 	Usage *ClaudeStreamUsage `json:"usage,omitempty"`
@@ -228,11 +232,16 @@ func (p *StreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 		}
 
 		if msg.IsError {
-			meta.ErrorMessage = msg.Result
+			// Build error message: prefer Result field, fall back to Errors array (Qoder)
+			errMsg := msg.Result
+			if errMsg == "" && len(msg.Errors) > 0 {
+				errMsg = strings.Join(msg.Errors, "; ")
+			}
+			meta.ErrorMessage = errMsg
 			// Also emit warning event so error shows as warning block in chat message
-			if msg.Result != "" {
-				slog.Warn("stream: CLI returned is_error result", "result", msg.Result)
-				ch <- StreamEvent{Type: "warning", Content: msg.Result}
+			if errMsg != "" {
+				slog.Warn("stream: CLI returned is_error result", "result", errMsg)
+				ch <- StreamEvent{Type: "warning", Content: errMsg}
 			}
 		}
 		slog.Info("stream: emitting done event", "is_error", msg.IsError)
