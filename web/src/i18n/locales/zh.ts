@@ -38,6 +38,8 @@ export default {
     sendFailed: '发送失败，请重试',
   },
   login: {
+    slogan: '从终端到掌心',
+    subtitle: '为移动端打造的 AI 工作台',
     prompt: '请输入密码以继续访问。',
     passwordPlaceholder: '请输入密码',
     verifying: '验证中...',

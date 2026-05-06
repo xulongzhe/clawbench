@@ -38,6 +38,8 @@ export default {
     sendFailed: 'Send failed, please retry',
   },
   login: {
+    slogan: 'From Terminal to Palm',
+    subtitle: 'AI Workstation Built for Mobile',
     prompt: 'Enter password to continue.',
     passwordPlaceholder: 'Enter password',
     verifying: 'Verifying...',
