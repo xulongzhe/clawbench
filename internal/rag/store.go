@@ -131,7 +131,8 @@ func (s *Store) InsertChunks(chunks []Chunk) error {
 
 // SearchSimple performs vector similarity search without JOIN to SQLite
 // (DuckDB cannot access SQLite directly). Session titles are fetched separately.
-func (s *Store) SearchSimple(queryEmbedding []float64, limit int, projectPath, backend, sessionID, fromTime, toTime string) ([]SearchHit, error) {
+// sessionID limits results to that session; excludeSessionID excludes that session.
+func (s *Store) SearchSimple(queryEmbedding []float64, limit int, projectPath, backend, sessionID, excludeSessionID, fromTime, toTime string) ([]SearchHit, error) {
 	query := `
 		SELECT chunk_text,
 		       array_cosine_similarity(embedding, ?::FLOAT[1024]) AS score,
@@ -157,6 +158,10 @@ func (s *Store) SearchSimple(queryEmbedding []float64, limit int, projectPath, b
 	if sessionID != "" {
 		query += " AND session_id = ?"
 		args = append(args, sessionID)
+	}
+	if excludeSessionID != "" {
+		query += " AND session_id != ?"
+		args = append(args, excludeSessionID)
 	}
 	if fromTime != "" {
 		query += " AND created_at >= ?"

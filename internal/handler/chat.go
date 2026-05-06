@@ -764,10 +764,15 @@ func buildChatRequest(prompt, sessionID, backendName, agentID, modelOverride, fi
 
 	// Inject RAG prompt if enabled
 	if model.RAGPrompt != "" {
+		ragPrompt := model.RAGPrompt
+		// Append current session ID so AI can exclude it from search
+		if sessionID != "" {
+			ragPrompt += fmt.Sprintf("\n\n**Current session ID:** %s — use this as exclude_session_id when searching.", sessionID)
+		}
 		if systemPrompt != "" {
-			systemPrompt = systemPrompt + "\n\n" + model.RAGPrompt
+			systemPrompt = systemPrompt + "\n\n" + ragPrompt
 		} else {
-			systemPrompt = model.RAGPrompt
+			systemPrompt = ragPrompt
 		}
 	}
 

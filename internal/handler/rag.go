@@ -19,12 +19,13 @@ func RAGSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := rag.SearchParams{
-		Query:       r.URL.Query().Get("q"),
-		ProjectPath: r.URL.Query().Get("project"),
-		Backend:     r.URL.Query().Get("backend"),
-		SessionID:   r.URL.Query().Get("session_id"),
-		FromTime:    r.URL.Query().Get("from"),
-		ToTime:      r.URL.Query().Get("to"),
+		Query:            r.URL.Query().Get("q"),
+		ProjectPath:      r.URL.Query().Get("project"),
+		Backend:          r.URL.Query().Get("backend"),
+		SessionID:        r.URL.Query().Get("session_id"),
+		ExcludeSessionID: r.URL.Query().Get("exclude_session_id"),
+		FromTime:         r.URL.Query().Get("from"),
+		ToTime:           r.URL.Query().Get("to"),
 	}
 
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
