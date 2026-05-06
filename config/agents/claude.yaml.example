@@ -18,6 +18,8 @@ models:
   - id: claude-sonnet-4-6
     name: Claude Sonnet 4.6
     default: true
+  - id: claude-opus-4-6
+    name: Claude Opus 4.6
 system_prompt: |
   You are a versatile assistant powered by Claude, capable of handling code, documentation, operations, research, and various tasks.
 

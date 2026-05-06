@@ -11,11 +11,35 @@
 #
 # Default codebuddy models / 默认 codebuddy 可用模型：
 #   - glm-5.1         (智谱 GLM)
+#   - glm-5.0         (智谱 GLM)
+#   - glm-4.7         (智谱 GLM)
+#   - glm-4.6         (智谱 GLM)
+#   - glm-4.6v        (智谱 GLM 视觉)
 #   - kimi-k2.5       (Moonshot Kimi，支持原生视觉识图)
+#   - minimax-m2.7    (MiniMax)
+#   - minimax-m2.5    (MiniMax)
+#   - deepseek-v3-2-volc  (DeepSeek V3 火山引擎版)
+#   - deepseek-v3-0324    (DeepSeek V3 0324)
+#   - hunyuan-2.0-instruct (腾讯混元)
 #
-# codebuddy2 (双账号实例) models / codebuddy2 可用模型：
-#   - gpt-5.4         (OpenAI GPT)
-#   - gemini-3.1-pro  (Google Gemini)
+# codebuddy2 (双账号/海外版实例) models / codebuddy2 可用模型：
+#   - gpt-5.5             (OpenAI GPT)
+#   - gpt-5.4             (OpenAI GPT)
+#   - gpt-5.3-codex       (OpenAI GPT Codex)
+#   - gpt-5.2             (OpenAI GPT)
+#   - gpt-5.2-codex       (OpenAI GPT Codex)
+#   - gpt-5.1             (OpenAI GPT)
+#   - gpt-5.1-codex       (OpenAI GPT Codex)
+#   - gpt-5.1-codex-max   (OpenAI GPT Codex Max)
+#   - gpt-5.1-codex-mini  (OpenAI GPT Codex Mini)
+#   - gemini-3.1-pro      (Google Gemini)
+#   - gemini-3.0-flash    (Google Gemini)
+#   - gemini-2.5-pro      (Google Gemini)
+#   - gemini-2.5-flash    (Google Gemini)
+#   - gemini-3.1-flash-lite (Google Gemini)
+#   - deepseek-v3-2-volc  (DeepSeek V3)
+#   - glm-5.0             (智谱 GLM)
+#   - kimi-k2.5           (Moonshot Kimi)
 #
 # This file is NOT loaded (the .yaml.example extension is ignored by LoadAgents).
 # 本文件不会被加载（.yaml.example 后缀会被 LoadAgents 忽略）。
@@ -32,24 +56,72 @@ models:
   - id: glm-5.1
     name: GLM 5.1
     default: true
+  - id: glm-5.0
+    name: GLM 5.0
+  - id: glm-4.7
+    name: GLM 4.7
+  - id: glm-4.6
+    name: GLM 4.6
+  - id: glm-4.6v
+    name: GLM 4.6V
   - id: kimi-k2.5
     name: Kimi K2.5
+  - id: minimax-m2.7
+    name: MiniMax M2.7
+  - id: minimax-m2.5
+    name: MiniMax M2.5
+  - id: deepseek-v3-2-volc
+    name: DeepSeek V3
+  - id: deepseek-v3-0324
+    name: DeepSeek V3 0324
+  - id: hunyuan-2.0-instruct
+    name: 混元 2.0
 system_prompt: |
   You are a versatile assistant powered by CodeBuddy, capable of handling code, documentation, operations, research, and various tasks.
 
-# --- Example: codebuddy2 dual-account instance ---
-# id: codebuddy2
-# name: 副号
+# --- Example: codebuddy-overseas dual-account instance ---
+# id: codebuddy-overseas
+# name: 海外版
 # icon: 🔵
-# specialty: CodeBuddy 双账号并行实例
+# specialty: CodeBuddy 海外版并行实例
 # backend: codebuddy
 # command: /home/user/codebuddy2
 # models:
+#   - id: gpt-5.5
+#     name: GPT 5.5
+#     default: true
 #   - id: gpt-5.4
 #     name: GPT 5.4
-#     default: true
+#   - id: gpt-5.3-codex
+#     name: GPT 5.3 Codex
+#   - id: gpt-5.2
+#     name: GPT 5.2
+#   - id: gpt-5.2-codex
+#     name: GPT 5.2 Codex
+#   - id: gpt-5.1
+#     name: GPT 5.1
+#   - id: gpt-5.1-codex
+#     name: GPT 5.1 Codex
+#   - id: gpt-5.1-codex-max
+#     name: GPT 5.1 Codex Max
+#   - id: gpt-5.1-codex-mini
+#     name: GPT 5.1 Codex Mini
 #   - id: gemini-3.1-pro
 #     name: Gemini 3.1 Pro
+#   - id: gemini-3.0-flash
+#     name: Gemini 3.0 Flash
+#   - id: gemini-2.5-pro
+#     name: Gemini 2.5 Pro
+#   - id: gemini-2.5-flash
+#     name: Gemini 2.5 Flash
+#   - id: gemini-3.1-flash-lite
+#     name: Gemini 3.1 Flash Lite
+#   - id: deepseek-v3-2-volc
+#     name: DeepSeek V3
+#   - id: glm-5.0
+#     name: GLM 5.0
+#   - id: kimi-k2.5
+#     name: Kimi K2.5
 # system_prompt: |
 #   You are a versatile assistant capable of handling code, documentation, operations, research, and various tasks.
 

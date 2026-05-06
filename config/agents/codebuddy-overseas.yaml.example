@@ -1,0 +1,59 @@
+# =============================================================================
+# ClawBench Agent Configuration Example — CodeBuddy Overseas Backend
+# ClawBench 智能体配置示例 — CodeBuddy 海外版后端
+# =============================================================================
+#
+# CodeBuddy Overseas — dual-account instance pointing to a second CLI binary.
+# Uses a separate `command` to access overseas/international models.
+# 海外版 — 双账号实例，指向第二个 CLI 二进制文件，访问海外/国际模型。
+#
+# This file is NOT loaded (the .yaml.example extension is ignored by LoadAgents).
+# 本文件不会被加载（.yaml.example 后缀会被 LoadAgents 忽略）。
+# To use, copy as e.g. my-overseas-agent.yaml and modify the config.
+# 实际使用时请复制为如 my-overseas-agent.yaml 并修改配置。
+# =============================================================================
+
+id: codebuddy-overseas
+name: 海外版
+icon: 🔵
+specialty: CodeBuddy 海外版并行实例
+backend: codebuddy
+command: /home/user/codebuddy2
+models:
+  - id: gpt-5.5
+    name: GPT 5.5
+    default: true
+  - id: gpt-5.4
+    name: GPT 5.4
+  - id: gpt-5.3-codex
+    name: GPT 5.3 Codex
+  - id: gpt-5.2
+    name: GPT 5.2
+  - id: gpt-5.2-codex
+    name: GPT 5.2 Codex
+  - id: gpt-5.1
+    name: GPT 5.1
+  - id: gpt-5.1-codex
+    name: GPT 5.1 Codex
+  - id: gpt-5.1-codex-max
+    name: GPT 5.1 Codex Max
+  - id: gpt-5.1-codex-mini
+    name: GPT 5.1 Codex Mini
+  - id: gemini-3.1-pro
+    name: Gemini 3.1 Pro
+  - id: gemini-3.0-flash
+    name: Gemini 3.0 Flash
+  - id: gemini-2.5-pro
+    name: Gemini 2.5 Pro
+  - id: gemini-2.5-flash
+    name: Gemini 2.5 Flash
+  - id: gemini-3.1-flash-lite
+    name: Gemini 3.1 Flash Lite
+  - id: deepseek-v3-2-volc
+    name: DeepSeek V3
+  - id: glm-5.0
+    name: GLM 5.0
+  - id: kimi-k2.5
+    name: Kimi K2.5
+system_prompt: |
+  You are a versatile assistant capable of handling code, documentation, operations, research, and various tasks.

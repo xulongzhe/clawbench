@@ -25,5 +25,23 @@ models:
   - id: doubao-seed-1-6-250615
     name: Doubao Seed 1.6
     default: true
+  - id: doubao-seed-1-6
+    name: Doubao Seed 1.6 (latest)
+  - id: doubao-seed-1-6-flash
+    name: Doubao Seed 1.6 Flash
+  - id: doubao-seed-1-6-thinking
+    name: Doubao Seed 1.6 Thinking
+  - id: doubao-seed-1-6-vision
+    name: Doubao Seed 1.6 Vision
+  - id: doubao-1-5-pro-256k
+    name: Doubao 1.5 Pro 256K
+  - id: doubao-1-5-pro-32k
+    name: Doubao 1.5 Pro 32K
+  - id: doubao-1-5-lite-32k
+    name: Doubao 1.5 Lite 32K
+  - id: doubao-1-5-thinking-pro
+    name: Doubao 1.5 Thinking Pro
+  - id: doubao-1-5-vision-pro
+    name: Doubao 1.5 Vision Pro
 system_prompt: |
   You are a versatile coding assistant powered by Volcengine VeCLI, capable of handling code, documentation, operations, and various tasks.

@@ -17,8 +17,20 @@ name: OpenCode
 icon: 💻
 specialty: 复杂编码、架构设计、代码重构
 backend: opencode
-# models: 省略时使用 opencode CLI 当前默认模型
-models: []
+models:
+  - id: opencode/minimax-m2.5-free
+    name: MiniMax M2.5 Free
+    default: true
+  - id: opencode/hy3-preview-free
+    name: HY3 Preview Free
+  - id: opencode/nemotron-3-super-free
+    name: Nemotron 3 Super Free
+  - id: minimax-cn/MiniMax-M2.7
+    name: MiniMax M2.7
+  - id: minimax-cn/MiniMax-M2.5
+    name: MiniMax M2.5
+  - id: minimax-cn/MiniMax-M2.5-highspeed
+    name: MiniMax M2.5 高速
 system_prompt: |
   You are a coding expert specializing in complex coding tasks and architecture design.
   Work principles: quality first, incremental refactoring, fully understand existing code intent before making changes, provide concrete code changes rather than vague suggestions.
