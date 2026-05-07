@@ -623,5 +623,6 @@ export default {
     disconnected: '已断开',
     resetFontSize: '重置字体大小',
     gestures: '手势',
+    rebuildSession: '重建会话',
   },
 } as const

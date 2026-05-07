@@ -53,6 +53,9 @@
           <button class="toolbar-btn" @click="handleCopyOutput" :title="t('terminal.copyOutput')">
             <CopyIcon :size="14" />
           </button>
+          <button class="toolbar-btn" @click="handleRebuild" :title="t('terminal.rebuildSession')">
+            <RefreshCwIcon :size="14" />
+          </button>
           <button class="toolbar-btn danger" @click="handleClose" :title="t('terminal.closeProcess')">
             <XIcon :size="14" />
           </button>
@@ -86,7 +89,7 @@ import { useTerminalGestures } from '@/composables/useTerminalGestures'
 import { useToast } from '@/composables/useToast'
 import { store } from '@/stores/app'
 
-import { Terminal as TerminalIcon, Copy as CopyIcon, X as XIcon, List as ListIcon, Hand as HandIcon } from 'lucide-vue-next'
+import { Terminal as TerminalIcon, Copy as CopyIcon, X as XIcon, List as ListIcon, Hand as HandIcon, RefreshCw as RefreshCwIcon } from 'lucide-vue-next'
 
 const props = defineProps<{
   open: boolean
@@ -419,6 +422,26 @@ function handleClose() {
   session.sendClose()
   terminalKeys.reset()
   showCommands.value = false
+}
+
+async function handleRebuild() {
+  // Close current session (kills PTY process on backend)
+  session.sendClose()
+  terminalKeys.reset()
+  showCommands.value = false
+
+  // Clear terminal display
+  if (xterm.value) {
+    xterm.value.clear()
+  }
+
+  // Reconnect with current cwd — backend will create a new session
+  try {
+    await session.connect()
+    focusTerminal()
+  } catch {
+    // Error will be shown via overlay
+  }
 }
 
 function handleCopyOutput() {
