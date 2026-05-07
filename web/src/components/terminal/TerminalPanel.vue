@@ -148,7 +148,12 @@ const showErrorOverlay = computed(() => {
 })
 
 const canReconnect = computed(() => {
-  return errorCode.value !== 'session_in_use'
+  // Don't allow reconnect for session_in_use (another client is connected)
+  if (errorCode.value === 'session_in_use') return false
+  // terminal_disabled means the feature is turned off — no point reconnecting
+  if (errorCode.value === 'terminal_disabled') return false
+  // All other errors (shell_start_failed, websocket_failed, etc.) are retryable
+  return true
 })
 
 const errorDisplayMessage = computed(() => {
@@ -377,9 +382,9 @@ function executeCommand(cmd: { label: string; command: string }) {
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--color-border, #e0e0e0);
+  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
-  background: var(--color-bg, #fff);
+  background: var(--bg-secondary);
   gap: 8px;
 }
 
@@ -394,11 +399,12 @@ function executeCommand(cmd: { label: string; command: string }) {
   font-weight: 600;
   font-size: 14px;
   white-space: nowrap;
+  color: var(--text-primary);
 }
 
 .terminal-cwd {
   font-size: 11px;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -418,15 +424,15 @@ function executeCommand(cmd: { label: string; command: string }) {
 }
 
 .terminal-status.connected {
-  color: #4caf50;
+  color: var(--color-green);
 }
 
 .terminal-status.connecting {
-  color: #ff9800;
+  color: var(--color-yellow);
 }
 
 .terminal-status.disconnected {
-  color: #9e9e9e;
+  color: var(--text-muted);
 }
 
 .terminal-container {
@@ -435,6 +441,14 @@ function executeCommand(cmd: { label: string; command: string }) {
   overflow: hidden;
   position: relative;
   background: #1e1e2e;
+}
+
+[data-theme="dark"] .terminal-container {
+  background: #1e1e2e;
+}
+
+:root:not([data-theme="dark"]) .terminal-container {
+  background: #eff1f5;
 }
 
 .terminal-error-overlay {
@@ -454,7 +468,7 @@ function executeCommand(cmd: { label: string; command: string }) {
 .terminal-reconnect-btn {
   margin-top: 12px;
   padding: 6px 16px;
-  border: 1px solid #888;
+  border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 6px;
   background: transparent;
   color: #fff;
@@ -471,9 +485,9 @@ function executeCommand(cmd: { label: string; command: string }) {
   align-items: center;
   padding: 4px 6px;
   gap: 3px;
-  border-top: 1px solid var(--color-border, #e0e0e0);
+  border-top: 1px solid var(--border-color);
   flex-shrink: 0;
-  background: var(--color-bg, #fff);
+  background: var(--bg-secondary);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -485,10 +499,10 @@ function executeCommand(cmd: { label: string; command: string }) {
   min-width: 32px;
   height: 32px;
   padding: 0 6px;
-  border: 1px solid var(--color-border, #ddd);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
-  background: transparent;
-  color: var(--color-text, #333);
+  background: var(--bg-key);
+  color: var(--text-primary);
   font-size: 12px;
   cursor: pointer;
   flex-shrink: 0;
@@ -498,42 +512,44 @@ function executeCommand(cmd: { label: string; command: string }) {
 }
 
 .toolbar-btn:hover {
-  background: var(--color-bg-hover, #f0f0f0);
+  background: var(--bg-tertiary);
 }
 
 .toolbar-btn:active {
-  background: var(--color-bg-active, #e0e0e0);
+  background: var(--bg-key-active);
 }
 
 .toolbar-btn.modifier.active {
-  background: #e3f2fd;
-  border-color: #2196f3;
-  color: #1976d2;
+  background: var(--accent-color);
+  border-color: var(--accent-color);
+  color: #fff;
 }
 
 .toolbar-btn.modifier.locked {
-  background: #bbdefb;
-  border-color: #1565c0;
-  color: #0d47a1;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
 }
 
 .toolbar-btn.danger {
-  color: #e53935;
-  border-color: #ef9a9a;
+  color: var(--color-red);
+  border-color: var(--color-red);
+  opacity: 0.7;
 }
 
 .toolbar-btn.danger:hover {
-  background: #ffebee;
+  opacity: 1;
+  background: var(--bg-tertiary);
 }
 
 .terminal-commands-popup {
   position: absolute;
   bottom: 44px;
   right: 6px;
-  background: var(--color-bg, #fff);
-  border: 1px solid var(--color-border, #ddd);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-md);
   z-index: 20;
   min-width: 160px;
   max-height: 200px;
@@ -545,15 +561,16 @@ function executeCommand(cmd: { label: string; command: string }) {
   cursor: pointer;
   font-size: 13px;
   white-space: nowrap;
+  color: var(--text-primary);
 }
 
 .command-item:hover {
-  background: var(--color-bg-hover, #f0f0f0);
+  background: var(--bg-tertiary);
 }
 
 .command-empty {
   padding: 12px;
-  color: var(--color-text-secondary, #888);
+  color: var(--text-muted);
   font-size: 13px;
   text-align: center;
 }
@@ -568,10 +585,10 @@ function executeCommand(cmd: { label: string; command: string }) {
 /* Touch device: prevent sticky hover */
 @media (hover: none) {
   .toolbar-btn:hover {
-    background: transparent;
+    background: var(--bg-key);
   }
   .toolbar-btn:active {
-    background: var(--color-bg-active, #e0e0e0);
+    background: var(--bg-key-active);
   }
 }
 </style>

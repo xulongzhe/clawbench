@@ -8,6 +8,13 @@ export interface TerminalStatus {
   cwd: string
 }
 
+// Error codes that should NOT trigger automatic reconnection
+const NO_RECONNECT_CODES = new Set([
+  'terminal_disabled',
+  'shell_start_failed',
+  'session_in_use',
+])
+
 export function useTerminalSession(getWsUrl: () => string) {
   const { t } = useI18n()
   const connectionState: Ref<ConnectionState> = ref('disconnected')
@@ -18,6 +25,8 @@ export function useTerminalSession(getWsUrl: () => string) {
   let reconnectAttempts = 0
   const maxReconnectAttempts = 3
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  // Track whether the current error is fatal (should not auto-reconnect)
+  let fatalError = false
 
   function connect(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -29,6 +38,7 @@ export function useTerminalSession(getWsUrl: () => string) {
       connectionState.value = 'connecting'
       errorMessage.value = ''
       errorCode.value = ''
+      fatalError = false
 
       const url = getWsUrl()
       const socket = new WebSocket(url)
@@ -49,22 +59,43 @@ export function useTerminalSession(getWsUrl: () => string) {
         }
       }
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
+        ws.value = null
+
+        // If already in error state (from onerror or fatal error message),
+        // don't override — keep the error visible
+        if (connectionState.value === 'error') {
+          return
+        }
+
         if (connectionState.value === 'connected') {
-          // Unexpected disconnect — try reconnecting
+          // Unexpected disconnect after successful connection — try reconnecting
           connectionState.value = 'disconnected'
-          ws.value = null
           tryReconnect()
         } else {
-          connectionState.value = 'disconnected'
-          ws.value = null
+          // Failed during connecting/reconnecting
+          // WebSocket close code 1006 = abnormal closure (server rejected upgrade)
+          // This typically means the backend returned HTTP 500 (e.g. PTY start failed)
+          if (event.code === 1006 && !fatalError) {
+            // Likely a server-side error (PTY start failure, etc.)
+            errorMessage.value = t('terminal.shellStartFailed')
+            errorCode.value = 'shell_start_failed'
+            connectionState.value = 'error'
+            fatalError = true
+          } else {
+            connectionState.value = 'disconnected'
+          }
         }
       }
 
       socket.onerror = () => {
-        errorMessage.value = t('terminal.websocketFailed')
-        connectionState.value = 'error'
         ws.value = null
+        // Don't set error state here — onclose will fire next and handle it
+        // Just remember this was a connection failure
+        if (connectionState.value !== 'error') {
+          errorMessage.value = t('terminal.websocketFailed')
+          connectionState.value = 'error'
+        }
         reject(new Error(errorMessage.value))
       }
     })
@@ -76,6 +107,7 @@ export function useTerminalSession(getWsUrl: () => string) {
       reconnectTimer = null
     }
     reconnectAttempts = maxReconnectAttempts // prevent reconnect
+    fatalError = false
     if (ws.value) {
       ws.value.close()
       ws.value = null
@@ -84,9 +116,9 @@ export function useTerminalSession(getWsUrl: () => string) {
   }
 
   function tryReconnect() {
-    if (reconnectAttempts >= maxReconnectAttempts) {
+    if (reconnectAttempts >= maxReconnectAttempts || fatalError) {
       connectionState.value = 'error'
-      errorMessage.value = t('terminal.websocketFailed')
+      errorMessage.value = errorMessage.value || t('terminal.websocketFailed')
       return
     }
 
@@ -94,7 +126,7 @@ export function useTerminalSession(getWsUrl: () => string) {
     connectionState.value = 'reconnecting'
     reconnectTimer = setTimeout(() => {
       connect().catch(() => {
-        // tryReconnect will be called again from onclose
+        // tryReconnect will be called again from onclose if appropriate
       })
     }, 2000 * reconnectAttempts)
   }
@@ -139,8 +171,10 @@ export function useTerminalSession(getWsUrl: () => string) {
       case 'error':
         errorMessage.value = msg.message ?? ''
         errorCode.value = msg.errcode ?? ''
-        if (msg.errcode === 'session_in_use') {
-          connectionState.value = 'error'
+        connectionState.value = 'error'
+        // Fatal errors should not auto-reconnect
+        if (msg.errcode && NO_RECONNECT_CODES.has(msg.errcode)) {
+          fatalError = true
         }
         onError?.(msg.message ?? '', msg.errcode ?? '')
         break

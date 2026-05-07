@@ -42,12 +42,19 @@ func startPTY(cwd string) (*os.File, *exec.Cmd, error) {
 		slog.String("cwd", cwd),
 	)
 
+	// Verify shell exists and is executable
+	if _, err := exec.LookPath(shell); err != nil {
+		return nil, nil, fmt.Errorf("shell not found: %w", err)
+	}
+
 	cmd := exec.Command(shell)
 	cmd.Dir = cwd
 	cmd.Env = os.Environ()
 
-	// Platform-specific process group setup
-	setupProcessGroup(cmd)
+	// NOTE: Do NOT set Setpgid here. pty.Start -> StartWithSize sets
+	// Setsid=true + Setctty=true, and Setpgid conflicts with Setsid
+	// on Linux (returns EPERM: "operation not permitted").
+	// Setsid already creates a new session and process group.
 
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
