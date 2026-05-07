@@ -139,16 +139,8 @@ const fitAddon = ref<FitAddon | null>(null)
 const showCommands = ref(false)
 const quickCommands = ref<{ label: string; command: string }[]>([])
 
-// Compute the initial cwd from current file context
+// Compute cwd from file manager's current directory (not the opened file)
 function computeCwd(): string {
-  const currentFile = store.state.currentFile
-  if (currentFile?.path) {
-    // Use the directory of the current file
-    const parts = currentFile.path.split('/')
-    parts.pop()
-    return parts.join('/')
-  }
-  // Fallback: use currentDir or project root
   return store.state.currentDir || ''
 }
 

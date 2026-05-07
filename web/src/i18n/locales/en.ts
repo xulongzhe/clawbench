@@ -314,6 +314,7 @@ export default {
       newFile: 'New file',
       newFolder: 'New folder',
       openAsProject: 'Open as project',
+      openTerminal: 'Open terminal here',
     },
     toast: {
       copied: 'Copied',

@@ -142,6 +142,10 @@
             <FolderOpen :size="14" />
             {{ t('file.context.openAsProject') }}
           </div>
+          <div class="context-menu-item" @click.stop="doOpenTerminal">
+            <TerminalIcon :size="14" />
+            {{ t('file.context.openTerminal') }}
+          </div>
         </template>
       </div>
       <div v-if="ctxMenu.visible" class="ctx-overlay" @click="ctxMenu.visible = false" @touchstart="ctxMenu.visible = false" />
@@ -152,7 +156,7 @@
 <script setup>
 import { ref, computed, reactive, inject, nextTick, Teleport, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Folder, ArrowDownAz, ArrowUpDown, ChevronDown, ChevronUp, Clock, FileText, Eye, EyeOff, ArrowRightLeft, Loader, FileImage, FileMusic, ChevronRight, Copy, Scissors, ClipboardPaste, FilePlus, FolderPlus, Pencil, Download, Trash2, FolderOpen, RotateCw, Search } from 'lucide-vue-next'
+import { Folder, ArrowDownAz, ArrowUpDown, ChevronDown, ChevronUp, Clock, FileText, Eye, EyeOff, ArrowRightLeft, Loader, FileImage, FileMusic, ChevronRight, Copy, Scissors, ClipboardPaste, FilePlus, FolderPlus, Pencil, Download, Trash2, FolderOpen, RotateCw, Search, Terminal as TerminalIcon } from 'lucide-vue-next'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { getFileType } from '@/utils/fileType.ts'
 import { dirName } from '@/utils/path.ts'
@@ -178,7 +182,7 @@ const props = defineProps({
     dirLoading: Boolean,
 })
 
-const emit = defineEmits(['close', 'navigateDir', 'selectFile', 'toggleSort', 'toggleHidden', 'rename', 'delete', 'refresh'])
+const emit = defineEmits(['close', 'navigateDir', 'selectFile', 'toggleSort', 'toggleHidden', 'rename', 'delete', 'refresh', 'openTerminal'])
 
 
 const searchQuery = ref('')
@@ -479,6 +483,14 @@ function doOpenAsProject() {
     }).catch(() => {
         if (toast) toast.show(t('file.toast.switchProjectFailedShort'), { icon: '❌', type: 'error', duration: 2000 })
     })
+}
+
+function doOpenTerminal() {
+    if (!ctxMenu.entry || ctxMenu.entry.type !== 'dir') return
+    ctxMenu.visible = false
+    // Navigate to the directory first so computeCwd() picks it up
+    store.state.currentDir = ctxMenu.entry.path
+    emit('openTerminal', ctxMenu.entry.path)
 }
 
 async function doRename() {

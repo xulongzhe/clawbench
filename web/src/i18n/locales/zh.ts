@@ -314,6 +314,7 @@ export default {
       newFile: '新建文件',
       newFolder: '新建文件夹',
       openAsProject: '打开为项目',
+      openTerminal: '在此打开终端',
     },
     toast: {
       copied: '已复制',

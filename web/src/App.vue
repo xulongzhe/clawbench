@@ -32,6 +32,7 @@
         @rename="handleRename"
         @delete="handleDelete"
         @refresh="handleRefresh"
+        @open-terminal="handleOpenTerminal"
       />
 
       <main class="main-content">
@@ -466,6 +467,11 @@ function handleChatMessage() {
 
 async function handleRefresh() {
     await refreshCurrentFile({ loadDir: true, clearOnError: true })
+}
+
+function handleOpenTerminal(cwd) {
+    // currentDir already set by FileManager's doOpenTerminal
+    openDrawer('terminal')
 }
 
 function scrollToLine(line) {
