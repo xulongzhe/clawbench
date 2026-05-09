@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { shouldPreventTerminalContextMenu, useTerminalGestures } from '@/composables/useTerminalGestures'
 
@@ -29,6 +29,12 @@ function dispatchTouch(
   return event
 }
 
+afterEach(() => {
+  vi.clearAllTimers()
+  vi.useRealTimers()
+  document.body.innerHTML = ''
+})
+
 function setupGestures() {
   const el = document.createElement('div')
   document.body.appendChild(el)
@@ -41,6 +47,9 @@ function setupGestures() {
     sendArrowDown: () => sent.push('down'),
     sendArrowLeft: () => sent.push('left'),
     sendArrowRight: () => sent.push('right'),
+    sendPageUp: () => sent.push('pageup'),
+    sendPageDown: () => sent.push('pagedown'),
+    sendEscape: () => sent.push('escape'),
     sendTab: () => sent.push('tab'),
     onPinchZoom: (delta) => zoomDeltas.push(delta),
     onGestureHint: (symbol) => hints.push(symbol),
@@ -64,7 +73,7 @@ describe('useTerminalGestures', () => {
     expect(secondTapEnd.preventDefault).toHaveBeenCalled()
   })
 
-  it('does not prevent default touch handling for a stationary long press', () => {
+  it('does not prevent default touch handling for a short stationary tap', () => {
     const { el, sent, zoomDeltas } = setupGestures()
 
     dispatchTouch(el, 'touchstart', [makeTouch(60, 60)])
@@ -73,6 +82,44 @@ describe('useTerminalGestures', () => {
     expect(sent).toEqual([])
     expect(zoomDeltas).toEqual([])
     expect(touchEnd.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('maps a stationary long press to Escape in gesture mode', () => {
+    vi.useFakeTimers()
+    const { el, sent, hints } = setupGestures()
+
+    const touchStart = dispatchTouch(el, 'touchstart', [makeTouch(60, 60)])
+    vi.advanceTimersByTime(550)
+    const touchEnd = dispatchTouch(el, 'touchend', [], [makeTouch(60, 60)])
+
+    expect(sent).toEqual(['escape'])
+    expect(hints).toEqual(['Esc'])
+    expect(touchStart.preventDefault).not.toHaveBeenCalled()
+    expect(touchEnd.preventDefault).toHaveBeenCalled()
+  })
+
+  it('does not send arrows if the finger moves after long press already sent Escape', () => {
+    vi.useFakeTimers()
+    const { el, sent } = setupGestures()
+
+    dispatchTouch(el, 'touchstart', [makeTouch(60, 60)])
+    vi.advanceTimersByTime(550)
+    const touchMove = dispatchTouch(el, 'touchmove', [makeTouch(110, 60)])
+    dispatchTouch(el, 'touchend', [], [makeTouch(110, 60)])
+
+    expect(sent).toEqual(['escape'])
+    expect(touchMove.preventDefault).toHaveBeenCalled()
+  })
+
+  it('cancels pending long press when the browser cancels the touch sequence', () => {
+    vi.useFakeTimers()
+    const { el, sent } = setupGestures()
+
+    dispatchTouch(el, 'touchstart', [makeTouch(60, 60)])
+    dispatchTouch(el, 'touchcancel', [], [makeTouch(60, 60)])
+    vi.advanceTimersByTime(550)
+
+    expect(sent).toEqual([])
   })
 
   it('prevents native selection/scroll only after a swipe gesture is recognized', () => {
@@ -96,6 +143,45 @@ describe('useTerminalGestures', () => {
     expect(zoomDeltas).toEqual([2])
     expect(pinchStart.preventDefault).toHaveBeenCalled()
     expect(pinchMove.preventDefault).toHaveBeenCalled()
+  })
+
+  it('maps two-finger upward and downward swipes to Page Up and Page Down', () => {
+    const { el, sent, hints, zoomDeltas } = setupGestures()
+
+    const upStart = dispatchTouch(el, 'touchstart', [makeTouch(50, 100), makeTouch(80, 100)])
+    const upMove = dispatchTouch(el, 'touchmove', [makeTouch(50, 50), makeTouch(80, 50)])
+    dispatchTouch(el, 'touchend', [], [makeTouch(50, 50), makeTouch(80, 50)])
+
+    const downStart = dispatchTouch(el, 'touchstart', [makeTouch(50, 50), makeTouch(80, 50)])
+    const downMove = dispatchTouch(el, 'touchmove', [makeTouch(50, 100), makeTouch(80, 100)])
+
+    expect(sent).toEqual(['pageup', 'pagedown'])
+    expect(hints).toEqual(['⇞', '⇟'])
+    expect(zoomDeltas).toEqual([])
+    expect(upStart.preventDefault).toHaveBeenCalled()
+    expect(upMove.preventDefault).toHaveBeenCalled()
+    expect(downStart.preventDefault).toHaveBeenCalled()
+    expect(downMove.preventDefault).toHaveBeenCalled()
+  })
+
+  it('keeps a drifting pinch gesture in zoom mode instead of sending Page Up or Page Down', () => {
+    const { el, sent, zoomDeltas } = setupGestures()
+
+    dispatchTouch(el, 'touchstart', [makeTouch(50, 100), makeTouch(80, 100)])
+    dispatchTouch(el, 'touchmove', [makeTouch(40, 65), makeTouch(100, 65)])
+    dispatchTouch(el, 'touchmove', [makeTouch(40, 25), makeTouch(100, 25)])
+
+    expect(sent).toEqual([])
+    expect(zoomDeltas).toEqual([3])
+  })
+
+  it('does not treat one mostly stationary finger as a two-finger page swipe', () => {
+    const { el, sent } = setupGestures()
+
+    dispatchTouch(el, 'touchstart', [makeTouch(50, 100), makeTouch(80, 100)])
+    dispatchTouch(el, 'touchmove', [makeTouch(50, 100), makeTouch(80, 30)])
+
+    expect(sent).toEqual([])
   })
 
   it('restores fully native touch handling when gestures are disabled', () => {

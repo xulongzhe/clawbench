@@ -53,8 +53,8 @@
         <div class="toolbar-scroll">
           <!-- Group: Modifiers -->
           <div class="key-group">
-            <button class="toolbar-btn" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
-            <button class="toolbar-btn" @click="terminalKeys.sendTab(); focusTerminal()" title="Tab">Tab</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn" @click="terminalKeys.sendTab(); focusTerminal()" title="Tab">Tab</button>
             <button class="toolbar-btn modifier" :class="{ active: terminalKeys.activeModifiers.value.ctrl !== 'inactive', locked: terminalKeys.activeModifiers.value.ctrl === 'locked' }" @click="handleModifier('ctrl')" @contextmenu.prevent title="Ctrl">Ctl</button>
             <button class="toolbar-btn modifier" :class="{ active: terminalKeys.activeModifiers.value.alt !== 'inactive', locked: terminalKeys.activeModifiers.value.alt === 'locked' }" @click="handleModifier('alt')" @contextmenu.prevent title="Alt">Alt</button>
             <button class="toolbar-btn modifier" :class="{ active: terminalKeys.activeModifiers.value.shift !== 'inactive', locked: terminalKeys.activeModifiers.value.shift === 'locked' }" @click="handleModifier('shift')" @contextmenu.prevent title="Shift">⇧</button>
@@ -66,16 +66,16 @@
           <div class="key-group">
             <button class="toolbar-btn" @click="terminalKeys.sendHome(); focusTerminal()" title="Home">Home</button>
             <button class="toolbar-btn" @click="terminalKeys.sendEnd(); focusTerminal()" title="End">End</button>
-            <button class="toolbar-btn" @click="terminalKeys.sendPageUp(); focusTerminal()" title="Page Up">PgUp</button>
-            <button class="toolbar-btn" @click="terminalKeys.sendPageDown(); focusTerminal()" title="Page Down">PgDn</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn" @click="terminalKeys.sendPageUp(); focusTerminal()" title="Page Up">PgUp</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn" @click="terminalKeys.sendPageDown(); focusTerminal()" title="Page Down">PgDn</button>
           </div>
           <div class="key-divider"></div>
           <!-- Group: Arrow keys -->
           <div class="key-group">
-            <button class="toolbar-btn" @click="terminalKeys.sendArrowUp(); focusTerminal()" title="↑">↑</button>
-            <button class="toolbar-btn" @click="terminalKeys.sendArrowDown(); focusTerminal()" title="↓">↓</button>
-            <button class="toolbar-btn" @click="terminalKeys.sendArrowLeft(); focusTerminal()" title="←">←</button>
-            <button class="toolbar-btn" @click="terminalKeys.sendArrowRight(); focusTerminal()" title="→">→</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn" @click="terminalKeys.sendArrowUp(); focusTerminal()" title="↑">↑</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn" @click="terminalKeys.sendArrowDown(); focusTerminal()" title="↓">↓</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn" @click="terminalKeys.sendArrowLeft(); focusTerminal()" title="←">←</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn" @click="terminalKeys.sendArrowRight(); focusTerminal()" title="→">→</button>
           </div>
           <div class="key-divider"></div>
           <!-- Group: Symbols -->
@@ -232,12 +232,15 @@ const viewport = useTerminalViewport(xterm, terminalContainer)
 // Terminal keys
 const terminalKeys = useTerminalKeys(session.sendInput)
 
-// Terminal gestures (Termius-style: swipe arrows, double-tap Tab, pinch zoom)
+// Terminal gestures (Termius-style: swipe arrows, long-press Esc, double-tap Tab, pinch zoom)
 const gestures = useTerminalGestures(terminalContainer, {
   sendArrowUp: terminalKeys.sendArrowUp,
   sendArrowDown: terminalKeys.sendArrowDown,
   sendArrowLeft: terminalKeys.sendArrowLeft,
   sendArrowRight: terminalKeys.sendArrowRight,
+  sendPageUp: terminalKeys.sendPageUp,
+  sendPageDown: terminalKeys.sendPageDown,
+  sendEscape: terminalKeys.sendEscape,
   sendTab: terminalKeys.sendTab,
   onPinchZoom: (delta: number) => applyFontSize(fontSize.value + delta),
   onGestureHint: (symbol: string) => {
