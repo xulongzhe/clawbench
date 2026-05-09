@@ -77,14 +77,6 @@
 #   initial_messages: 20    # Number of messages loaded initially (default: 20) / 初始加载的消息条数（默认: 20）
 #   page_size: 20           # Number of messages per lazy-load batch (default: 20) / 每次懒加载追加的消息条数（默认: 20）
 #   collapsed_height: 150   # Collapsed height for historical messages in pixels (default: 150) / 历史消息折叠高度（默认: 150）
-#   # Quick-send presets — shown as a menu when the input bar is empty and the send button is tapped.
-#   # 快捷发送预设（输入框为空时，点击发送按钮弹出菜单选择）
-#   # Key: short label displayed in the menu (emoji allowed) / Key: 显示在菜单上的短标签（可带 emoji）
-#   # Value: the actual message text sent / Value: 实际发送的消息文本
-#   quick_send:
-#     "▶️ 继续": "继续"
-#     "🔧 调试": "我要做一下开发调试，帮我重启当前项目的开发版服务，优先使用项目中已有的脚本。如果有必要，请帮我重新编译项目。"
-#     "📦 提交": "提交"
 #   system_prompt_interval: 10  # Re-inject system prompt every N assistant turns for CLI backends without --system-prompt (0=never, default: 10) / 每N轮助手回复重新注入系统提示词（0=不重注入，默认: 10）
 
 # Session limit / 会话数量限制

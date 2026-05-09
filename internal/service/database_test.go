@@ -71,6 +71,43 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 	return db, teardown
 }
 
+// setupTestDBForQuickSend creates an in-memory SQLite database with the chat_quick_send table
+// for testing ChatQuickSend CRUD functions.
+func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) {
+	t.Helper()
+	origDB := DB
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory db: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS chat_quick_send (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			label TEXT NOT NULL,
+			command TEXT NOT NULL,
+			hidden INTEGER NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	if err != nil {
+		t.Fatalf("failed to create tables: %v", err)
+	}
+
+	DB = db
+	teardown := func() {
+		DB = origDB
+		db.Close()
+	}
+	return db, teardown
+}
+
 // ---------- Table creation ----------
 
 func TestInitDB_CreatesTables(t *testing.T) {
@@ -362,4 +399,189 @@ func TestSaveTTSSummary_Upsert(t *testing.T) {
 	summary, found := GetTTSSummary("key-upsert")
 	assert.True(t, found)
 	assert.Equal(t, "version 2", summary)
+}
+
+// ---------- ChatQuickSend CRUD ----------
+
+func TestGetChatQuickSend_Empty(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	items, err := GetChatQuickSend()
+	assert.NoError(t, err)
+	assert.Nil(t, items)
+}
+
+func TestAddChatQuickSend_Single(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	id, err := AddChatQuickSend("▶️ 继续", "继续", false)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1), id)
+
+	items, err := GetChatQuickSend()
+	assert.NoError(t, err)
+	assert.Len(t, items, 1)
+	assert.Equal(t, int64(1), items[0].ID)
+	assert.Equal(t, "▶️ 继续", items[0].Label)
+	assert.Equal(t, "继续", items[0].Command)
+	assert.False(t, items[0].Hidden)
+	assert.Equal(t, 0, items[0].SortOrder)
+}
+
+func TestAddChatQuickSend_MultipleAutoIncrement(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	id1, _ := AddChatQuickSend("继续", "继续", false)
+	id2, _ := AddChatQuickSend("提交", "提交", false)
+	id3, _ := AddChatQuickSend("调试", "调试", true)
+
+	assert.Equal(t, int64(1), id1)
+	assert.Equal(t, int64(2), id2)
+	assert.Equal(t, int64(3), id3)
+
+	items, _ := GetChatQuickSend()
+	assert.Len(t, items, 3)
+	// sort_order auto-increments
+	assert.Equal(t, 0, items[0].SortOrder)
+	assert.Equal(t, 1, items[1].SortOrder)
+	assert.Equal(t, 2, items[2].SortOrder)
+	// Third item is hidden
+	assert.False(t, items[0].Hidden)
+	assert.False(t, items[1].Hidden)
+	assert.True(t, items[2].Hidden)
+}
+
+func TestAddChatQuickSend_Hidden(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	AddChatQuickSend("hidden item", "secret", true)
+
+	items, _ := GetChatQuickSend()
+	assert.Len(t, items, 1)
+	assert.True(t, items[0].Hidden)
+}
+
+func TestUpdateChatQuickSend(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	AddChatQuickSend("继续", "继续", false)
+
+	err := UpdateChatQuickSend(1, "▶️ 继续", "请继续", true)
+	assert.NoError(t, err)
+
+	items, _ := GetChatQuickSend()
+	assert.Len(t, items, 1)
+	assert.Equal(t, "▶️ 继续", items[0].Label)
+	assert.Equal(t, "请继续", items[0].Command)
+	assert.True(t, items[0].Hidden)
+}
+
+func TestUpdateChatQuickSend_Nonexistent(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	// Update on non-existent ID should not error (SQL UPDATE matches 0 rows)
+	err := UpdateChatQuickSend(999, "x", "y", false)
+	assert.NoError(t, err)
+}
+
+func TestDeleteChatQuickSend(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	AddChatQuickSend("继续", "继续", false)
+	AddChatQuickSend("提交", "提交", false)
+
+	err := DeleteChatQuickSend(1)
+	assert.NoError(t, err)
+
+	items, _ := GetChatQuickSend()
+	assert.Len(t, items, 1)
+	assert.Equal(t, "提交", items[0].Label)
+}
+
+func TestDeleteChatQuickSend_Nonexistent(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	err := DeleteChatQuickSend(999)
+	assert.NoError(t, err)
+}
+
+func TestReorderChatQuickSend(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	AddChatQuickSend("继续", "继续", false) // id=1, sort_order=0
+	AddChatQuickSend("提交", "提交", false) // id=2, sort_order=1
+	AddChatQuickSend("调试", "调试", false) // id=3, sort_order=2
+
+	// Reverse order: 3, 2, 1
+	err := ReorderChatQuickSend([]int64{3, 2, 1})
+	assert.NoError(t, err)
+
+	items, _ := GetChatQuickSend()
+	assert.Len(t, items, 3)
+	// Now ordered: 调试(3)→sort=0, 提交(2)→sort=1, 继续(1)→sort=2
+	assert.Equal(t, "调试", items[0].Label)
+	assert.Equal(t, 0, items[0].SortOrder)
+	assert.Equal(t, "提交", items[1].Label)
+	assert.Equal(t, 1, items[1].SortOrder)
+	assert.Equal(t, "继续", items[2].Label)
+	assert.Equal(t, 2, items[2].SortOrder)
+}
+
+func TestReorderChatQuickSend_EmptyIDs(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	AddChatQuickSend("继续", "继续", false)
+
+	err := ReorderChatQuickSend([]int64{})
+	assert.NoError(t, err)
+
+	items, _ := GetChatQuickSend()
+	assert.Len(t, items, 1)
+}
+
+func TestReorderChatQuickSend_PartialIDs(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	AddChatQuickSend("继续", "继续", false) // id=1
+	AddChatQuickSend("提交", "提交", false) // id=2
+	AddChatQuickSend("调试", "调试", false) // id=3
+
+	// Only reorder the first two
+	err := ReorderChatQuickSend([]int64{2, 1})
+	assert.NoError(t, err)
+
+	items, _ := GetChatQuickSend()
+	assert.Len(t, items, 3)
+	// 提交(2)→sort=0, 继续(1)→sort=1, 调试(3) still has sort=2 from original
+	assert.Equal(t, "提交", items[0].Label)
+	assert.Equal(t, "继续", items[1].Label)
+	assert.Equal(t, "调试", items[2].Label)
+}
+
+func TestGetChatQuickSend_OrderedBySortOrder(t *testing.T) {
+	_, teardown := setupTestDBForQuickSend(t)
+	defer teardown()
+
+	AddChatQuickSend("A", "a", false) // sort=0
+	AddChatQuickSend("B", "b", false) // sort=1
+	AddChatQuickSend("C", "c", false) // sort=2
+
+	// Reorder to C, A, B
+	ReorderChatQuickSend([]int64{3, 1, 2})
+
+	items, _ := GetChatQuickSend()
+	assert.Equal(t, "C", items[0].Label)
+	assert.Equal(t, "A", items[1].Label)
+	assert.Equal(t, "B", items[2].Label)
 }

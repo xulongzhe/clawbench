@@ -135,10 +135,14 @@
         </button>
       </PopupMenu>
       <!-- Teleported quick-send menu -->
-      <PopupMenu v-model:show="showQuickMenu" :target-element="sendBtnRef" anchor="right" :max-width="260" :max-height="280" :menu-items-count="Object.keys(quickSend).length">
+      <PopupMenu v-model:show="showQuickMenu" :target-element="sendBtnRef" anchor="right" :max-width="260" :max-height="280" :menu-items-count="visibleItems.length + 1">
         <div class="quick-send-title">{{ t('chat.quickSend.title') }}</div>
-        <button v-for="(value, key) in quickSend" :key="key" class="quick-send-item" @click="handleQuickSend(value)">
-          {{ key }}
+        <button v-for="item in visibleItems" :key="item.id" class="quick-send-item" @click="handleQuickSend(item.command)">
+          {{ item.label }}
+        </button>
+        <div class="quick-send-divider" />
+        <button class="quick-send-item" @click="showQuickMenu = false; quickSendStore.showEditDialog.value = true">
+          ⚙️ {{ t('chat.quickSend.edit') }}
         </button>
       </PopupMenu>
       <!-- Teleported model switcher menu -->
@@ -150,20 +154,25 @@
           <span>{{ m.name }}</span>
         </button>
       </PopupMenu>
+      <QuickSendDialog :open="quickSendStore.showEditDialog.value" @close="quickSendStore.showEditDialog.value = false" />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { MessageSquare, List, Plus, Trash2, Calendar, Volume2, Upload, Paperclip, FileImage, FileText, XCircle, Inbox, Send, Square, Cpu, ChevronDown, Check } from 'lucide-vue-next'
 import { baseName } from '@/utils/path.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
+import QuickSendDialog from '@/components/chat/QuickSendDialog.vue'
 import { useDialog } from '@/composables/useDialog.ts'
+import { useQuickSend } from '@/composables/useQuickSend'
 
 const { t } = useI18n()
 const dialog = useDialog()
+const quickSendStore = useQuickSend()
+const { visibleItems, fetchItems } = quickSendStore
 
 const props = defineProps({
   inputDisabled: Boolean,
@@ -177,7 +186,6 @@ const props = defineProps({
   chatUnread: Boolean,
   chatRunning: Boolean,
   taskUnread: Boolean,
-  quickSend: { type: Object, default: () => ({}) },
   currentModelId: String,
   currentModelName: String,
   agentModels: { type: Array, default: () => [] },
@@ -254,7 +262,7 @@ const uploadingFiles = computed(() => props.pendingFiles.filter(f => f.uploading
 
 const hasInputContent = computed(() => inputText.value.trim() || props.pendingFiles.length > 0 || props.attachedFiles.length > 0)
 
-const hasQuickSend = computed(() => Object.keys(props.quickSend).length > 0)
+const hasQuickSend = computed(() => visibleItems.value.length > 0)
 
 // Extract recently referenced files from message history
 const recentReferencedFiles = computed(() => {
@@ -444,7 +452,7 @@ function handleSendClick() {
     emit('send', inputText.value.trim())
   } else if (props.pendingFiles.length > 0 || props.attachedFiles.length > 0) {
     emit('send', '')
-  } else if (Object.keys(props.quickSend).length > 0) {
+  } else if (visibleItems.value.length > 0) {
     toggleQuickMenu()
   }
 }
@@ -470,6 +478,10 @@ function selectModel(model) {
 watch(showAttachMenu, (v) => { if (v) { showQuickMenu.value = false; showModelMenu.value = false } })
 watch(showQuickMenu, (v) => { if (v) { showAttachMenu.value = false; showModelMenu.value = false } })
 watch(showModelMenu, (v) => { if (v) { showAttachMenu.value = false; showQuickMenu.value = false } })
+
+onMounted(() => {
+  fetchItems()
+})
 
 onBeforeUnmount(() => {
   clearTimeout(stopPrimeTimer)
@@ -1114,6 +1126,12 @@ defineExpose({
 .quick-send-item:hover {
   background: var(--accent-color, #0066cc);
   color: #fff;
+}
+
+.quick-send-divider {
+  height: 1px;
+  background: var(--border-color, #e5e5e5);
+  margin: 3px 6px;
 }
 
 /* Model switcher menu content styles */

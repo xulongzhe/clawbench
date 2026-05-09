@@ -78,7 +78,6 @@
       :chatUnread="store.state.chatUnread"
       :chatRunning="store.state.chatRunning"
       :taskUnread="store.state.taskUnread"
-      :quickSend="store.state.chatQuickSend"
       :currentModelId="identity.currentModelId.value"
       :currentModelName="identity.currentModelName.value"
       :agentModels="agents.getAgentModels(identity.currentAgentId.value)"

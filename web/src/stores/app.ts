@@ -41,7 +41,6 @@ interface AppState {
     chatInitialMessages: number
     chatPageSize: number
     chatCollapsedHeight: number
-    chatQuickSend: Record<string, string>
     sessionMaxCount: number
 
     // Chat unread badge
@@ -89,7 +88,6 @@ const state = reactive<AppState>({
     chatInitialMessages: 20,
     chatPageSize: 20,
     chatCollapsedHeight: 150,
-    chatQuickSend: {},
     sessionMaxCount: 10,
     chatUnread: false,
     chatRunning: false,
@@ -122,14 +120,13 @@ const state = reactive<AppState>({
 async function loadProject(): Promise<void> {
     try {
         try {
-            const wd = await apiGet<{ watchDir: string; uploadMaxSizeMB: number; uploadMaxFiles: number; chatInitialMessages?: number; chatPageSize?: number; chatCollapsedHeight?: number; chatQuickSend?: Record<string, string>; sessionMaxCount?: number }>('/api/watch-dir')
+            const wd = await apiGet<{ watchDir: string; uploadMaxSizeMB: number; uploadMaxFiles: number; chatInitialMessages?: number; chatPageSize?: number; chatCollapsedHeight?: number; sessionMaxCount?: number }>('/api/watch-dir')
             state.watchDir = wd.watchDir || ''
             if (wd.uploadMaxSizeMB > 0) state.uploadMaxSizeMB = wd.uploadMaxSizeMB
             if (wd.uploadMaxFiles > 0) state.uploadMaxFiles = wd.uploadMaxFiles
             if (wd.chatInitialMessages > 0) state.chatInitialMessages = wd.chatInitialMessages
             if (wd.chatPageSize > 0) state.chatPageSize = wd.chatPageSize
             if (wd.chatCollapsedHeight > 0) state.chatCollapsedHeight = wd.chatCollapsedHeight
-            if (wd.chatQuickSend && Object.keys(wd.chatQuickSend).length > 0) state.chatQuickSend = wd.chatQuickSend
             if (wd.sessionMaxCount > 0) state.sessionMaxCount = wd.sessionMaxCount
         } catch (error) {
             console.error('[loadProject] watchDir failed:', error)

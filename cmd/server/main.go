@@ -169,7 +169,6 @@ func main() {
 	model.ChatInitialMessages = cfg.Chat.InitialMessages
 	model.ChatPageSize = cfg.Chat.PageSize
 	model.ChatCollapsedHeight = cfg.Chat.CollapsedHeight
-	model.ChatQuickSend = cfg.Chat.QuickSend
 	model.ChatSystemPromptInterval = cfg.Chat.SystemPromptInterval
 	model.SessionMaxCount = cfg.Session.MaxCount
 

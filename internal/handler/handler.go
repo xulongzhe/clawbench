@@ -217,6 +217,10 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/terminal/quick-commands", middleware.Auth(ServeQuickCommands))
 	register("/api/terminal/quick-commands/", middleware.Auth(ServeQuickCommandByID))
 
+	// Chat quick-send (CRUD for quick-send presets stored in database)
+	register("/api/chat/quick-send", middleware.Auth(ServeChatQuickSend))
+	register("/api/chat/quick-send/", middleware.Auth(ServeChatQuickSendByID))
+
 	if _, err := os.Stat("public"); err == nil {
 		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.Dir("public"))))
 	} else {
