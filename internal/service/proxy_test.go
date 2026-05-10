@@ -417,3 +417,54 @@ func TestProxyRegistry_PortPersistence_NoDB(t *testing.T) {
 	assert.NoError(t, err)
 	assert.False(t, r.IsPortRegistered(8080))
 }
+
+// ---------- Stop ----------
+
+func TestProxyRegistry_Stop_CancelsContext(t *testing.T) {
+	r := NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+
+	// Stop should not panic
+	r.Stop()
+
+	// Calling Stop again should be safe (cancel is nil or already called)
+	r.Stop()
+}
+
+func TestProxyRegistry_Stop_DisabledConfig(t *testing.T) {
+	// Disabled config has no cancel function
+	r := NewProxyRegistry(model.ProxyConfig{Enabled: false}, 0)
+	r.Stop() // should not panic even with nil cancel
+}
+
+// ---------- GetPortProtocol ----------
+
+func TestProxyRegistry_GetPortProtocol_Registered(t *testing.T) {
+	r := newTestRegistry(t)
+	defer r.Stop()
+
+	err := r.RegisterPort(8443, "secure", "https")
+	assert.NoError(t, err)
+
+	protocol := r.GetPortProtocol(8443)
+	assert.Equal(t, "https", protocol)
+}
+
+func TestProxyRegistry_GetPortProtocol_Unregistered(t *testing.T) {
+	r := newTestRegistry(t)
+	defer r.Stop()
+
+	protocol := r.GetPortProtocol(9999)
+	assert.Equal(t, "http", protocol, "unregistered port should default to http")
+}
+
+func TestProxyRegistry_GetPortProtocol_EmptyProtocol(t *testing.T) {
+	r := newTestRegistry(t)
+	defer r.Stop()
+
+	// Register with http (default protocol)
+	err := r.RegisterPort(8080, "web", "http")
+	assert.NoError(t, err)
+
+	protocol := r.GetPortProtocol(8080)
+	assert.Equal(t, "http", protocol)
+}

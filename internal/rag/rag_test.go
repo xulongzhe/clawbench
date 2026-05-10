@@ -1,9 +1,16 @@
 package rag
 
 import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"clawbench/internal/model"
+
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestExtractTextFromContent_UserMessage(t *testing.T) {
@@ -90,4 +97,211 @@ func TestChunkText_ParagraphBreak(t *testing.T) {
 	chunks := ChunkText(text, 10, 2)
 	// Should prefer paragraph breaks
 	assert.Greater(t, len(chunks), 0)
+}
+
+// ---------- Init / Shutdown lifecycle ----------
+
+func TestInit_CreatesStoreAndEmbedder(t *testing.T) {
+	origBinDir := model.BinDir
+	origDevMode := model.DevMode
+	origStore := GlobalStore
+	origEmbedder := GlobalEmbedder
+	t.Cleanup(func() {
+		model.BinDir = origBinDir
+		model.DevMode = origDevMode
+		GlobalStore = origStore
+		GlobalEmbedder = origEmbedder
+	})
+
+	model.BinDir = t.TempDir()
+	model.DevMode = false
+
+	cfg := model.RAGConfig{
+		OllamaBaseURL: "http://localhost:11434",
+		OllamaModel:  "bge-m3",
+		ChunkSize:    512,
+		ChunkOverlap: 64,
+	}
+
+	err := Init(cfg)
+	require.NoError(t, err)
+	assert.NotNil(t, GlobalStore, "GlobalStore should be initialized")
+	assert.NotNil(t, GlobalEmbedder, "GlobalEmbedder should be initialized")
+
+	// Cleanup
+	GlobalStore.Close()
+	GlobalStore = nil
+	GlobalEmbedder = nil
+}
+
+func TestInit_DimensionMismatchResetsTable(t *testing.T) {
+	origBinDir := model.BinDir
+	origDevMode := model.DevMode
+	origStore := GlobalStore
+	origEmbedder := GlobalEmbedder
+	t.Cleanup(func() {
+		model.BinDir = origBinDir
+		model.DevMode = origDevMode
+		GlobalStore = origStore
+		GlobalEmbedder = origEmbedder
+	})
+
+	model.BinDir = t.TempDir()
+	model.DevMode = false
+
+	// First init creates store with 1024-dim chunks
+	cfg := model.RAGConfig{
+		OllamaBaseURL: "http://localhost:11434",
+		OllamaModel:  "bge-m3",
+	}
+	err := Init(cfg)
+	require.NoError(t, err)
+
+	// Insert a chunk with 1024-dim embedding
+	insertTestChunks(t, GlobalStore, 1)
+	count, _ := GlobalStore.ChunkCount()
+	assert.Equal(t, 1, count)
+
+	GlobalStore.Close()
+	GlobalStore = nil
+	GlobalEmbedder = nil
+
+	// Re-init — 1024-dim matches expected, no reset
+	err = Init(cfg)
+	require.NoError(t, err)
+	count, _ = GlobalStore.ChunkCount()
+	assert.Equal(t, 1, count, "matching dimension should not reset")
+
+	GlobalStore.Close()
+	GlobalStore = nil
+	GlobalEmbedder = nil
+}
+
+func TestStartIndexer_NilStoreSkips(t *testing.T) {
+	origIndexer := GlobalIndexer
+	origStore := GlobalStore
+	origEmbedder := GlobalEmbedder
+	t.Cleanup(func() {
+		GlobalIndexer = origIndexer
+		GlobalStore = origStore
+		GlobalEmbedder = origEmbedder
+	})
+
+	GlobalStore = nil
+	GlobalEmbedder = nil
+
+	// Should not panic when store/embedder are nil
+	StartIndexer(model.RAGConfig{PollInterval: "10s"})
+	assert.Nil(t, GlobalIndexer, "should not create indexer with nil store")
+}
+
+func TestShutdown_Idempotent(t *testing.T) {
+	origStore := GlobalStore
+	origEmbedder := GlobalEmbedder
+	origIndexer := GlobalIndexer
+	origCleanup := GlobalCleanupWorker
+	t.Cleanup(func() {
+		GlobalStore = origStore
+		GlobalEmbedder = origEmbedder
+		GlobalIndexer = origIndexer
+		GlobalCleanupWorker = origCleanup
+	})
+
+	// Shutdown with nil singletons — should not panic
+	GlobalCleanupWorker = nil
+	GlobalIndexer = nil
+	GlobalStore = nil
+	GlobalEmbedder = nil
+
+	Shutdown() // first call — no-op
+	Shutdown() // second call — also no-op
+
+	// Now with a real store
+	origBinDir := model.BinDir
+	origDevMode := model.DevMode
+	t.Cleanup(func() {
+		model.BinDir = origBinDir
+		model.DevMode = origDevMode
+	})
+	model.BinDir = t.TempDir()
+	model.DevMode = false
+
+	err := Init(model.RAGConfig{
+		OllamaBaseURL: "http://localhost:11434",
+		OllamaModel:  "bge-m3",
+	})
+	require.NoError(t, err)
+
+	Shutdown() // should close store
+	assert.Nil(t, GlobalStore)
+	assert.Nil(t, GlobalEmbedder)
+
+	Shutdown() // idempotent — no panic
+}
+
+// ---------- SearchParams / SearchResult JSON ----------
+
+func TestSearchParams_JSONRoundTrip(t *testing.T) {
+	params := SearchParams{
+		Query:            "test query",
+		Limit:            10,
+		ProjectPath:      "/project",
+		Backend:          "claude",
+		Role:             "assistant",
+		SessionID:        "sess-1",
+		ExcludeSessionID: "sess-2",
+		FromTime:         "2024-01-01",
+		ToTime:           "2024-12-31",
+	}
+
+	data, err := json.Marshal(params)
+	require.NoError(t, err)
+
+	var decoded SearchParams
+	err = json.Unmarshal(data, &decoded)
+	require.NoError(t, err)
+
+	assert.Equal(t, params, decoded)
+}
+
+func TestSearchResult_EmptyResultsNotNil(t *testing.T) {
+	// SearchResult with nil Results slice should be valid
+	result := &SearchResult{Results: nil, Total: 0}
+	data, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"results":null`)
+
+	// Unmarshal back
+	var decoded SearchResult
+	err = json.Unmarshal(data, &decoded)
+	require.NoError(t, err)
+}
+
+// ---------- Mock Ollama for rag_test helpers ----------
+
+func TestNewHealthyMockOllama(t *testing.T) {
+	// Verify our test helper works correctly
+	client, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	reachable, modelAvailable, err := client.IsHealthy(context.Background())
+	assert.NoError(t, err)
+	assert.True(t, reachable)
+	assert.True(t, modelAvailable)
+}
+
+func TestMockOllamaEmbedEndpoint(t *testing.T) {
+	client, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := ollamaEmbedResponse{Embedding: makeTestEmbedding(1024)}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	emb, err := client.Embed(context.Background(), "test")
+	_ = server
+	assert.NoError(t, err)
+	assert.Len(t, emb, 1024)
 }

@@ -33,6 +33,10 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 		return &SearchResult{}, nil
 	}
 
+	if store == nil || embedder == nil {
+		return nil, fmt.Errorf("RAG not initialized: store and embedder must not be nil")
+	}
+
 	limit := params.Limit
 	if limit <= 0 {
 		limit = defaultLimit

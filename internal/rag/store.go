@@ -223,11 +223,11 @@ func (s *Store) SearchSimple(queryEmbedding []float64, limit int, projectPath, b
 		args = append(args, excludeSessionID)
 	}
 	if fromTime != "" {
-		query += " AND created_at >= ?"
+		query += " AND created_at >= ?::TIMESTAMP"
 		args = append(args, fromTime)
 	}
 	if toTime != "" {
-		query += " AND created_at <= ?"
+		query += " AND created_at <= ?::TIMESTAMP"
 		args = append(args, toTime)
 	}
 

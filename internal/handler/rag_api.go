@@ -54,7 +54,7 @@ func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
 
 	result, err := rag.RAGSearch(r.Context(), rag.GlobalStore, rag.GlobalEmbedder, params, defaultLimit)
 	if err != nil {
-		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "RAGSearchFailed")
+		writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "RAGSearchFailed")
 		return
 	}
 
