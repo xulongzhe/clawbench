@@ -347,7 +347,7 @@ function zoomOut() {
 
 function fitWidth() {
   if (!scrollRef.value || pageViewports.value.length === 0) return
-  const containerWidth = scrollRef.value.clientWidth - 32
+  const containerWidth = scrollRef.value.clientWidth
   const vp = pageViewports.value[0]
   if (vp) {
     scale.value = Math.max(MIN_SCALE, Math.min(containerWidth / vp.width, MAX_SCALE))
@@ -597,7 +597,7 @@ defineExpose({
 .pdf-pages-scroll {
   flex: 1;
   overflow: auto;
-  padding: 16px;
+  padding: 8px 0;
   background: #525659;
   touch-action: pan-x pan-y;
   overscroll-behavior: contain;
