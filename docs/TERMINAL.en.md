@@ -42,13 +42,22 @@ Each terminal client gets an independent PTY session with no interference.
 
 ## Virtual Key Toolbar
 
-A scrollable virtual key toolbar sits below the terminal viewport, optimized for mobile input. Keys are grouped by function with vertical dividers between groups:
+The terminal provides a two-layer toolbar below the viewport: the main toolbar (always visible) and the symbol bar (expandable on demand), optimized for mobile input.
 
-### Gesture Toggle
+### Main Toolbar
 
-The hand icon button on the far left (outside the scroll area) toggles touch gesture mode on/off.
+The main toolbar contains toggle buttons on the left and a horizontally scrollable key area. Keys are grouped by function with vertical dividers between groups.
 
-### Modifier Group
+#### Toggle Buttons
+
+Two toggle buttons on the left (outside the scroll area):
+
+| Button | Description |
+|--------|-------------|
+| 🖐 Gesture Toggle | Toggle touch gesture mode on/off |
+| # Symbol Toggle | Expand/collapse the symbol bar |
+
+#### Modifier Group
 
 | Key | Description |
 |-----|-------------|
@@ -95,11 +104,31 @@ Visual: Active background for once/locked states; locked state adds an inset bot
 |-----|-------------|
 | ↑ ↓ ← → | Four arrow keys (entire group hidden when gestures enabled) |
 
-### Symbols Group
+### Symbol Bar
 
-| Key | Description |
-|-----|-------------|
-| / - \| _ ~ | Common special characters, direct input |
+Tap the **# Symbol Toggle** button in the main toolbar to expand the symbol bar above the main toolbar. The symbol bar is horizontally scrollable and contains 19 high-frequency terminal symbols:
+
+```
+. / - $ " ' & ; | = > _ ~ * : < ` ! #
+```
+
+**Smart Sorting**: Symbols are automatically sorted by usage frequency, balancing count and recency. The sorting uses an exponential decay model:
+
+- Each click applies time-based decay to the symbol's existing score, then adds 1, and updates the timestamp
+- Every time the symbol bar is opened, all symbols are sorted by their current decayed score in descending order
+- Decay half-life is approximately 4.6 hours (λ = 0.15/h) — recently and frequently used symbols appear first; formerly popular but recently unused symbols gradually move back
+- Scores are persisted to `localStorage` and preserved across sessions
+
+**Default Order** (by terminal usage frequency, high to low):
+
+| Category | Symbols | Typical Usage |
+|----------|---------|---------------|
+| Path/Command | `.` `/` `-` | `./script`, `../`, flags `-f`, `cd -` |
+| Variable/Quote | `$` `"` `'` | `$VAR`, `"$HOME"`, `'literal'` |
+| Command Combo | `&` `;` `\|` | Background `&`, `&&`, separator `;`, pipe `\|` |
+| Assign/Redirect | `=` `>` | `VAR=val`, `cmd > file` |
+| Path/Glob | `_` `~` `*` | `ENV_VAR`, `~/`, `*.txt` |
+| Less Common | `:` `<` `` ` `` `!` `#` | PATH separator, input redirect, command substitution, `!!`, comment |
 
 ### Actions Group
 
