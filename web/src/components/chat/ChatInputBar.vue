@@ -13,11 +13,7 @@
         </button>
         <button class="chat-action-btn"
           @click="handleCreateClick"
-          @touchstart="onCreateTouchStart"
-          @touchmove="onCreateTouchMove"
-          @touchend="onCreateTouchEnd"
-          @touchcancel="onCreateTouchCancel"
-          @contextmenu.prevent="onCreateContextMenu"
+          @contextmenu.prevent="emit('create-session')"
           :title="t('chat.create.selectAgentOrLongPress')">
           <Plus :size="14" />
         </button>
@@ -310,91 +306,7 @@ const attachMenuItemCount = computed(() => {
   return count
 })
 
-// Long-press detection for create-session button
-// Short tap → show agent selector, Long press → create default session directly
-let createPressTimer = null
-let createPressStartX = 0
-let createPressStartY = 0
-let longPressFired = false
-const LONG_PRESS_MS = 500
-const MOVE_THRESHOLD = 10
-
-function onCreateTouchStart(e) {
-  const btn = e.currentTarget
-  btn.classList.add('pressing')
-  longPressFired = false
-  const touch = e.touches[0]
-  createPressStartX = touch.clientX
-  createPressStartY = touch.clientY
-  createPressTimer = setTimeout(() => {
-    createPressTimer = null
-    longPressFired = true
-    btn.classList.remove('pressing')
-    lastCreateEmitTime = Date.now()
-    emit('create-session')
-  }, LONG_PRESS_MS)
-}
-
-function onCreateTouchMove(e) {
-  if (!createPressTimer) return
-  const touch = e.touches[0]
-  const dx = Math.abs(touch.clientX - createPressStartX)
-  const dy = Math.abs(touch.clientY - createPressStartY)
-  if (dx > MOVE_THRESHOLD || dy > MOVE_THRESHOLD) {
-    clearTimeout(createPressTimer)
-    createPressTimer = null
-  }
-}
-
-// Prevent double-fire: touch devices fire both touchend → click
-let lastCreateEmitTime = 0
-
-function onCreateTouchEnd(e) {
-  const btn = e.currentTarget
-  btn.classList.remove('pressing')
-  if (createPressTimer) {
-    clearTimeout(createPressTimer)
-    createPressTimer = null
-    // Short tap: show agent selector
-    // Prevent synthesized click event to avoid it landing on the
-    // agent selector dialog that appears at the same screen position
-    e.preventDefault()
-    lastCreateEmitTime = Date.now()
-    emit('show-agent-selector')
-  } else if (longPressFired) {
-    // Long-press already emitted create-session; prevent synthesized click
-    e.preventDefault()
-    longPressFired = false
-  }
-}
-
-function onCreateTouchCancel(e) {
-  const btn = e.currentTarget
-  btn.classList.remove('pressing')
-  longPressFired = false
-  if (createPressTimer) {
-    clearTimeout(createPressTimer)
-    createPressTimer = null
-  }
-}
-
-function onCreateContextMenu(e) {
-  e.preventDefault()
-  // Skip if long-press timer already emitted (mobile browsers also fire
-  // contextmenu after a long-press; the timer handles that intent already)
-  if (longPressFired) return
-  // Desktop: right-click = create default session directly (same as long press)
-  emit('create-session')
-}
-
 function handleCreateClick(e) {
-  // Skip if long-press timer already fired (prevents synthesized click after long-press)
-  if (longPressFired) {
-    longPressFired = false
-    return
-  }
-  // Skip if touchend already emitted within 300ms (avoid double-fire on touch devices)
-  if (Date.now() - lastCreateEmitTime < 300) return
   // On desktop, click = show agent selector (short tap equivalent)
   if (e.detail === 0) return
   emit('show-agent-selector')
@@ -622,8 +534,7 @@ defineExpose({
   }
 }
 
-.chat-action-btn:active,
-.chat-action-btn.pressing {
+.chat-action-btn:active {
   color: var(--accent-color, #0066cc);
   background: color-mix(in srgb, var(--accent-color, #0066cc) 15%, transparent);
   transform: scale(0.92);
