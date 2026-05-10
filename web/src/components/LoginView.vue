@@ -154,7 +154,7 @@ async function handleLogin() {
 .login-logo {
     width: 96px;
     height: 96px;
-    border-radius: 22px;
+    border-radius: 50%;
     display: block;
     position: relative;
     z-index: 1;
@@ -164,7 +164,7 @@ async function handleLogin() {
 .login-logo-ring {
     position: absolute;
     inset: -4px;
-    border-radius: 26px;
+    border-radius: 50%;
     border: 2px solid color-mix(in srgb, var(--accent-color) 30%, transparent);
     animation: ring-pulse 3s ease-in-out infinite;
 }

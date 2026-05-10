@@ -202,7 +202,7 @@ onUnmounted(() => {
 .header-logo {
     width: 28px;
     height: 28px;
-    border-radius: 6px;
+    border-radius: 50%;
     flex-shrink: 0;
 }
 
