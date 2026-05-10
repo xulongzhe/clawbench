@@ -1,5 +1,5 @@
 <template>
-  <ModalDialog :open="open" :title="t('projectDialog.title')" :z-index="2500" @close="$emit('close')">
+  <ModalDialog :open="open" :title="t('projectDialog.title')" :z-index="2500" full-height @close="$emit('close')">
     <template #header>
       <Projector :size="16" class="modal-header-icon" />
       <span class="modal-title">{{ t('projectDialog.title') }}</span>

@@ -8,7 +8,7 @@
       :style="{ zIndex }"
       @click.self="handleClose"
     >
-      <div class="modal-dialog" :class="{ 'modal-leaving': leaving }" @click.stop>
+      <div class="modal-dialog" :class="{ 'modal-leaving': leaving, 'modal-full-height': fullHeight }" @click.stop>
         <div class="modal-header">
           <slot name="header">
             <span class="modal-title">{{ title }}</span>
@@ -36,6 +36,7 @@ const props = defineProps({
   open: Boolean,
   title: { type: String, default: '' },
   zIndex: { type: Number, default: 2100 },
+  fullHeight: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['close'])
@@ -91,11 +92,16 @@ defineExpose({
   background: var(--bg-secondary, #fff);
   border-radius: 12px;
   width: 100%;
-  height: 100%;
+  max-height: 100%;
+  height: auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   animation: modal-scaleIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modal-dialog.modal-full-height {
+  height: 100%;
 }
 
 .modal-dialog.modal-leaving {
@@ -186,7 +192,9 @@ defineExpose({
 
 .modal-body {
   flex: 1;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
 }

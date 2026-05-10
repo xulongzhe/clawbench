@@ -1,5 +1,5 @@
 <template>
-  <ModalDialog :open="open" :title="view === 'detail' ? '' : t('task.exec.title')" @close="handleClose">
+  <ModalDialog :open="open" :title="view === 'detail' ? '' : t('task.exec.title')" full-height @close="handleClose">
     <template #header>
       <!-- Detail view: back arrow + time -->
       <template v-if="view === 'detail' && selectedExec">
