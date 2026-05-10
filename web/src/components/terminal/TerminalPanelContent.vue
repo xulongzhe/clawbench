@@ -112,8 +112,8 @@
       </button>
     </PopupMenu>
 
-    <!-- Quick command edit dialog -->
-    <QuickCommandDialog :open="showEditDialog" @close="showEditDialog = false" />
+    <!-- Quick command edit dialog — only open when terminal tab is active -->
+    <QuickCommandDialog :open="props.active && showEditDialog" @close="showEditDialog = false" />
   </div>
 </template>
 
@@ -141,6 +141,7 @@ import { Terminal as TerminalIcon, Copy as CopyIcon, Zap as ZapIcon, Hand as Han
 
 const props = defineProps<{
   requestedCwd?: string | null
+  active?: boolean
 }>()
 
 const emit = defineEmits<{

@@ -154,7 +154,7 @@
           <span>{{ m.name }}</span>
         </button>
       </PopupMenu>
-      <QuickSendDialog :open="quickSendStore.showEditDialog.value" @close="quickSendStore.showEditDialog.value = false" />
+      <QuickSendDialog :open="props.active && quickSendStore.showEditDialog.value" @close="quickSendStore.showEditDialog.value = false" />
     </div>
   </div>
 </template>
@@ -191,6 +191,7 @@ const props = defineProps({
   agentModels: { type: Array, default: () => [] },
   isMultiModel: { type: Function, default: () => false },
   currentAgentId: String,
+  active: Boolean,
 })
 
 const emit = defineEmits([

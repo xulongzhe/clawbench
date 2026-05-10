@@ -115,6 +115,7 @@ export default {
       saveFailed: '保存失败',
       deleteItem: '删除',
       deleteConfirm: '确认删除此项目？',
+      emptyHint: '暂无快捷发送，点击 + 添加',
     },
     message: {
       expandFull: '展开全文',
@@ -657,6 +658,7 @@ export default {
     saveFailed: '保存失败',
     deleteCommand: '删除',
     deleteConfirm: '确认删除此命令？',
+    quickCommandsEmpty: '暂无快捷指令，点击 + 添加',
     sessionInUse: '终端会话已有活跃连接。',
     directoryMismatch: '终端正在其他目录运行。',
     reopenHere: '在此目录重新打开',

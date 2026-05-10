@@ -115,6 +115,7 @@ export default {
       saveFailed: 'Save failed',
       deleteItem: 'Delete',
       deleteConfirm: 'Delete this item?',
+      emptyHint: 'No quick sends yet, tap + to add',
     },
     message: {
       expandFull: 'Show more',
@@ -657,6 +658,7 @@ export default {
     saveFailed: 'Save failed',
     deleteCommand: 'Delete',
     deleteConfirm: 'Delete this command?',
+    quickCommandsEmpty: 'No quick commands yet, tap + to add',
     sessionInUse: 'Terminal session already has an active connection.',
     directoryMismatch: 'Terminal is running in a different directory.',
     reopenHere: 'Reopen here',

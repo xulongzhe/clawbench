@@ -1,15 +1,14 @@
 <template>
-  <ModalDialog :open="open" :title="currentPage === 'list' ? t('chat.quickSend.title') : (editingItem ? t('chat.quickSend.editItem') : t('chat.quickSend.addItem'))" @close="handleClose">
+  <BottomSheet :open="open" compact :title="t('chat.quickSend.title')" @close="$emit('close')">
     <template #header>
-      <span class="modal-header-icon" @click="goBackIfEdit">
-        <ChevronLeftIcon v-if="currentPage === 'edit'" :size="16" />
-        <SendIcon v-else :size="16" />
-      </span>
-      <span class="modal-title">{{ currentPage === 'list' ? t('chat.quickSend.title') : (editingItem ? t('chat.quickSend.editItem') : t('chat.quickSend.addItem')) }}</span>
+      <SendIcon :size="16" class="bs-header-icon" />
+      <span class="bs-header-title">{{ t('chat.quickSend.title') }}</span>
+      <button class="create-btn" @click.stop="addNewItem" :title="t('chat.quickSend.addItem')">
+        <PlusIcon :size="16" />
+      </button>
     </template>
 
-    <!-- Page: Item list -->
-    <div v-if="currentPage === 'list'" class="qs-content">
+    <div class="qs-content">
       <div v-if="items.length > 0" class="qs-list">
         <draggable
           v-model="localItems"
@@ -40,44 +39,29 @@
           </template>
         </draggable>
       </div>
-
-      <button class="qs-add" @click="addNewItem">
-        <PlusIcon :size="16" />
-        {{ t('chat.quickSend.addItem') }}
-      </button>
+      <div v-else class="qs-empty">
+        <SendIcon :size="32" class="qs-empty-icon" />
+        <span>{{ t('chat.quickSend.emptyHint') }}</span>
+      </div>
     </div>
 
-    <!-- Page: Edit form (drill-down) -->
-    <div v-else class="qs-edit-content">
-      <div class="form-group">
-        <label class="form-label">{{ t('chat.quickSend.itemLabel') }} <span class="required">*</span></label>
-        <input type="text" class="form-input" v-model="form.label" :placeholder="t('chat.quickSend.itemLabel')" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">{{ t('chat.quickSend.itemCommand') }} <span class="required">*</span></label>
-        <input type="text" class="form-input" v-model="form.command" :placeholder="t('chat.quickSend.itemCommand')" />
-      </div>
-      <div v-if="formError" class="form-error">{{ formError }}</div>
-    </div>
-
-    <template #footer>
-      <template v-if="currentPage === 'list'">
-        <button class="modal-btn" @click="$emit('close')">{{ t('common.close') }}</button>
-      </template>
-      <template v-else>
-        <button class="modal-btn" @click="currentPage = 'list'">{{ t('common.cancel') }}</button>
-        <button class="modal-btn primary" :disabled="saving" @click="saveItem">{{ saving ? '...' : t('common.save') }}</button>
-      </template>
-    </template>
-  </ModalDialog>
+    <!-- Edit modal (separate, not drill-down) -->
+    <QuickSendEditModal
+      :open="editOpen"
+      :editing-item="editingItem"
+      @close="editOpen = false"
+      @saved="onItemSaved"
+    />
+  </BottomSheet>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import ModalDialog from '@/components/common/ModalDialog.vue'
-import { Send as SendIcon, PencilIcon, Trash2Icon, PlusIcon, ChevronLeftIcon } from 'lucide-vue-next'
+import BottomSheet from '@/components/common/BottomSheet.vue'
+import QuickSendEditModal from './QuickSendEditModal.vue'
+import { Send as SendIcon, PencilIcon, Trash2Icon, PlusIcon } from 'lucide-vue-next'
 import { useQuickSend, type QuickSendItem } from '@/composables/useQuickSend'
 import { useToast } from '@/composables/useToast'
 
@@ -89,84 +73,38 @@ const emit = defineEmits(['close'])
 
 const { t } = useI18n()
 const toast = useToast()
-const { items, reorderItems, addItem, updateItem, deleteItem } = useQuickSend()
+const { items, reorderItems, deleteItem } = useQuickSend()
 
 const localItems = ref<QuickSendItem[]>([...items.value])
-const currentPage = ref<'list' | 'edit'>('list')
-const editingItem = ref<QuickSendItem | null>(null)
-const form = ref({ label: '', command: '' })
-const formError = ref('')
-const saving = ref(false)
 const deleteConfirmId = ref<number | null>(null)
+const editOpen = ref(false)
+const editingItem = ref<QuickSendItem | null>(null)
 
 // Sync local list when items change
 watch(items, (val) => {
   localItems.value = [...val]
 }, { deep: true })
 
-// Reset state when dialog opens/closes
+// Reset state when drawer opens/closes
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
-    currentPage.value = 'list'
     deleteConfirmId.value = null
-    formError.value = ''
-    editingItem.value = null
   }
 })
 
-function handleClose() {
-  currentPage.value = 'list'
-  deleteConfirmId.value = null
-  emit('close')
-}
-
-function goBackIfEdit() {
-  if (currentPage.value === 'edit') {
-    currentPage.value = 'list'
-  }
-}
-
 function editItem(item: QuickSendItem) {
   editingItem.value = item
-  form.value = { label: item.label, command: item.command }
-  formError.value = ''
-  currentPage.value = 'edit'
+  editOpen.value = true
 }
 
 function addNewItem() {
   editingItem.value = null
-  form.value = { label: '', command: '' }
-  formError.value = ''
-  currentPage.value = 'edit'
+  editOpen.value = true
 }
 
-async function saveItem() {
-  const label = form.value.label.trim()
-  const command = form.value.command.trim()
-  if (!label || !command) {
-    formError.value = t('chat.quickSend.itemRequired')
-    return
-  }
-  formError.value = ''
-  saving.value = true
-
-  try {
-    let ok: boolean
-    if (editingItem.value) {
-      ok = await updateItem(editingItem.value.id, { label, command })
-    } else {
-      ok = await addItem({ label, command })
-    }
-
-    if (ok) {
-      toast.show(t('chat.quickSend.itemSaved'), { type: 'success' })
-      currentPage.value = 'list'
-    } else {
-      formError.value = t('chat.quickSend.saveFailed')
-    }
-  } finally {
-    saving.value = false
-  }
+function onItemSaved() {
+  editOpen.value = false
+  editingItem.value = null
 }
 
 function toggleDeleteConfirm(id: number) {
@@ -311,96 +249,38 @@ async function onDragEnd() {
   color: var(--text-muted, #999);
 }
 
-.qs-add {
+.create-btn {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--accent-color, #0066cc);
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px;
-  margin: 4px 10px 10px;
-  border: 1px dashed var(--border-color, #ddd);
-  border-radius: 8px;
-  background: none;
-  color: var(--accent-color, #0066cc);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.12s;
+  border-radius: 4px;
+  transition: background 0.15s;
 }
 
-.qs-add:hover {
-  background: color-mix(in srgb, var(--accent-color, #0066cc) 8%, transparent);
+.create-btn:hover {
+  background: rgba(0, 102, 204, 0.1);
 }
 
-.qs-edit-content {
-  padding: 12px;
+.qs-empty {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-}
-
-.form-label .required {
-  color: #e53e3e;
-}
-
-.form-input {
-  padding: 8px 10px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--text-muted, #999);
   font-size: 13px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color 0.15s;
 }
 
-.form-input:focus {
-  border-color: var(--accent-color, #0066cc);
-}
-
-.form-error {
-  font-size: 12px;
-  color: #e53e3e;
-}
-
-.modal-btn {
-  padding: 6px 16px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-
-.modal-btn:hover {
-  background: var(--bg-tertiary, #f5f5f5);
-}
-
-.modal-btn.primary {
-  background: var(--accent-color, #0066cc);
-  color: #fff;
-  border-color: var(--accent-color, #0066cc);
-}
-
-.modal-btn.primary:hover {
-  opacity: 0.9;
-}
-
-.modal-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.qs-empty-icon {
+  opacity: 0.3;
 }
 </style>

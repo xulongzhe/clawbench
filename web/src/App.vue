@@ -79,24 +79,24 @@
                 @refresh="handleRefresh"
               />
             </div>
-            <!-- Auxiliary overlays for viewer tab -->
+            <!-- Auxiliary overlays for viewer tab — open only when viewer tab is active -->
             <TocDrawer
               :file="tocFile"
               :pdf-outline="pdfOutline"
-              :open="tocOpen"
+              :open="activeTab === 'viewer' && tocOpen"
               @close="tocOpen = false"
               @jump="scrollToLine"
               @jump-page="handleJumpPdfPage"
             />
             <SearchDrawer
               :file="currentFile"
-              :open="searchOpen"
+              :open="activeTab === 'viewer' && searchOpen"
               :view-mode="currentFileIsMarkdown ? markdownViewMode : undefined"
               @close="searchOpen = false"
               @jump="scrollToLine"
             />
             <GitHistoryDrawer
-              :open="fileHistoryOpen"
+              :open="activeTab === 'viewer' && fileHistoryOpen"
               mode="file"
               :file="currentFile"
               @close="fileHistoryOpen = false"
@@ -129,6 +129,7 @@
           <TabPanel tabId="terminal" :activeTab="activeTab" :noHeader="true">
             <TerminalPanelContent
               :requested-cwd="terminalRequestedCwd"
+              :active="activeTab === 'terminal'"
             />
           </TabPanel>
         </div>
@@ -143,7 +144,7 @@
 
       <FileDetailsDialog
         :file="currentFile"
-        :open="detailsOpen"
+        :open="activeTab === 'viewer' && detailsOpen"
         @close="detailsOpen = false"
       />
 

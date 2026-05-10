@@ -8,7 +8,7 @@
             {{ t('git.commitList.loadingAll') }}
           </template>
           <template v-else>
-            {{ filteredCommits.length + (hasMore && !commitSearch ? '+' : '') + t('git.commitList.countUnit') + countLabel }}
+            {{ filteredCommits.filter(c => !c.isWT).length + (hasMore && !commitSearch ? '+' : '') + t('git.commitList.countUnit') + countLabel }}
           </template>
         </span>
         <span v-else-if="!isGit" class="drilldown-count">{{ t('git.commitList.notInitialized') }}</span>
@@ -77,7 +77,7 @@
             </div>
             <ChevronRight :size="14" class="drilldown-chevron" />
           </div>
-          <div ref="listRef">
+          <div ref="listRef" class="git-load-more-sentinel">
             <div v-if="hasMore && loadingMore" class="git-load-more">
               <div class="spinner" style="width:20px;height:20px;border-width:2px;" />
             </div>
@@ -118,6 +118,7 @@ const emit = defineEmits(['select', 'search', 'load-more', 'init-git'])
 const commitSearch = ref('')
 const listRef = ref(null)
 const contentRef = ref(null)
+const bodyRef = ref(null)
 const observer = ref(null)
 const graphCollapsed = ref(false)
 
@@ -176,17 +177,22 @@ watch(commitSearch, (q) => {
 })
 
 function setupObserver() {
+  // No-op: observer is now created lazily in observeList() so we can pass
+  // bodyRef as the root at construction time (root cannot be changed later).
+}
+
+function observeList() {
+  if (!listRef.value) return
+  // Disconnect any previous observer
+  if (observer.value) observer.value.disconnect()
+  // Create observer with the actual scroll container as root
+  // so that scrolling inside .drilldown-body triggers intersection.
   observer.value = new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting && props.hasMore && !props.loadingMore) {
       emit('load-more')
     }
-  }, { threshold: 0.1, rootMargin: '100px' })
-}
-
-function observeList() {
-  if (observer.value && listRef.value) {
-    observer.value.observe(listRef.value)
-  }
+  }, { threshold: 0.1, rootMargin: '100px', root: bodyRef.value || undefined })
+  observer.value.observe(listRef.value)
 }
 
 function unobserveList() {
@@ -317,6 +323,10 @@ defineExpose({ observeList, unobserveList, commitSearch })
   font-size: 11px;
   color: var(--text-muted, #999);
   margin-top: 2px;
+}
+
+.git-load-more-sentinel {
+  min-height: 1px;
 }
 
 .git-load-more {

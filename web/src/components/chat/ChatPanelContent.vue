@@ -76,6 +76,7 @@
       :agentModels="agents.getAgentModels(identity.currentAgentId.value)"
       :isMultiModel="(id) => agents.isMultiModel(id)"
       :currentAgentId="identity.currentAgentId.value"
+      :active="props.active"
       @send="sendMessage"
       @cancel="stream.cancelStream"
       @file-select="handleFileSelect"
@@ -94,9 +95,9 @@
 
   </div>
 
-  <!-- Metadata Modal -->
+  <!-- Metadata Modal — only open when chat tab is active -->
   <ChatMetadataModal
-    :show="metadataModal.show"
+    :show="props.active && metadataModal.show"
     :data="metadataModal.data"
     :backend="metadataModal.backend"
     :createdAt="metadataModal.createdAt"
@@ -122,10 +123,10 @@
     @send-message="handleToolSendMessage"
   />
 
-  <!-- Session Drawer -->
+  <!-- Session Drawer — only open when chat tab is active -->
   <SessionDrawer
     ref="sessionDrawerRef"
-    :open="session.sessionDrawerOpen.value"
+    :open="props.active && session.sessionDrawerOpen.value"
     :currentSessionId="identity.currentSessionId.value"
     :runningSessionIds="identity.runningSessions.value"
     @close="session.sessionDrawerOpen.value = false"
@@ -134,23 +135,23 @@
     @delete="(sessionId, backend) => manager.deleteSession(sessionId, backend).then(() => inputBarRef.value?.deleteDraft(sessionId))"
   />
 
-  <!-- Task Drawer -->
+  <!-- Task Drawer — only open when chat tab is active -->
   <TaskDrawer
     ref="taskDrawerRef"
-    :open="session.taskDrawerOpen.value"
+    :open="props.active && session.taskDrawerOpen.value"
     @close="session.taskDrawerOpen.value = false"
   />
 
-  <!-- Task Edit Dialog (opened from schedule-proposal card) -->
+  <!-- Task Edit Dialog — only open when chat tab is active -->
   <TaskFormDialog
-    :open="taskEditOpen"
+    :open="props.active && taskEditOpen"
     mode="edit"
     :task="taskEditData"
     @close="taskEditOpen = false"
     @saved="handleTaskEditSaved"
   />
   <TaskExecDialog
-    :open="taskHistoryOpen"
+    :open="props.active && taskHistoryOpen"
     :task="taskHistoryData"
     @close="taskHistoryOpen = false"
   />

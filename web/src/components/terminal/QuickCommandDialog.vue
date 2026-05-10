@@ -1,15 +1,14 @@
 <template>
-  <ModalDialog :open="open" :title="currentPage === 'list' ? t('terminal.quickCommands') : (editingCommand ? t('terminal.editCommand') : t('terminal.addCommand'))" @close="handleClose">
+  <BottomSheet :open="open" compact :title="t('terminal.quickCommands')" @close="$emit('close')">
     <template #header>
-      <span class="modal-header-icon" @click="goBackIfEdit">
-        <ChevronLeftIcon v-if="currentPage === 'edit'" :size="16" />
-        <ZapIcon v-else :size="16" />
-      </span>
-      <span class="modal-title">{{ currentPage === 'list' ? t('terminal.quickCommands') : (editingCommand ? t('terminal.editCommand') : t('terminal.addCommand')) }}</span>
+      <ZapIcon :size="16" class="bs-header-icon" />
+      <span class="bs-header-title">{{ t('terminal.quickCommands') }}</span>
+      <button class="create-btn" @click.stop="addNewCommand" :title="t('terminal.addCommand')">
+        <PlusIcon :size="16" />
+      </button>
     </template>
 
-    <!-- Page: Command list -->
-    <div v-if="currentPage === 'list'" class="qc-content">
+    <div class="qc-content">
       <div v-if="commands.length > 0" class="qc-list">
         <draggable
           v-model="localCommands"
@@ -44,54 +43,29 @@
           </template>
         </draggable>
       </div>
-
-      <button class="qc-add" @click="addNewCommand">
-        <PlusIcon :size="16" />
-        {{ t('terminal.addCommand') }}
-      </button>
+      <div v-else class="qc-empty">
+        <ZapIcon :size="32" class="qc-empty-icon" />
+        <span>{{ t('terminal.quickCommandsEmpty') }}</span>
+      </div>
     </div>
 
-    <!-- Page: Edit form (drill-down) -->
-    <div v-else class="qc-edit-content">
-      <div class="form-group">
-        <label class="form-label">{{ t('terminal.commandLabel') }} <span class="required">*</span></label>
-        <input type="text" class="form-input" v-model="form.label" :placeholder="t('terminal.commandLabel')" />
-      </div>
-      <div class="form-group">
-        <label class="form-label">{{ t('terminal.commandText') }} <span class="required">*</span></label>
-        <input type="text" class="form-input" v-model="form.command" :placeholder="t('terminal.commandText')" />
-      </div>
-      <div v-if="formError" class="form-error">{{ formError }}</div>
-
-      <label class="form-checkbox">
-        <input type="checkbox" v-model="form.hidden" />
-        <span>{{ t('terminal.commandHidden') }}</span>
-      </label>
-      <label class="form-checkbox">
-        <input type="checkbox" v-model="form.auto_execute" />
-        <span>{{ t('terminal.commandAutoExecute') }}</span>
-      </label>
-      <div v-if="form.auto_execute && hasExistingAutoExec" class="form-hint">{{ t('terminal.autoExecuteWarning') }}</div>
-    </div>
-
-    <template #footer>
-      <template v-if="currentPage === 'list'">
-        <button class="modal-btn" @click="$emit('close')">{{ t('common.close') }}</button>
-      </template>
-      <template v-else>
-        <button class="modal-btn" @click="currentPage = 'list'">{{ t('common.cancel') }}</button>
-        <button class="modal-btn primary" :disabled="saving" @click="saveCommand">{{ saving ? '...' : t('common.save') }}</button>
-      </template>
-    </template>
-  </ModalDialog>
+    <!-- Edit modal (separate, not drill-down) -->
+    <QuickCommandEditModal
+      :open="editOpen"
+      :editing-command="editingCommand"
+      @close="editOpen = false"
+      @saved="onCommandSaved"
+    />
+  </BottomSheet>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import ModalDialog from '@/components/common/ModalDialog.vue'
-import { ZapIcon, PencilIcon, Trash2Icon, PlusIcon, ChevronLeftIcon, EyeOffIcon } from 'lucide-vue-next'
+import BottomSheet from '@/components/common/BottomSheet.vue'
+import QuickCommandEditModal from './QuickCommandEditModal.vue'
+import { ZapIcon, PencilIcon, Trash2Icon, PlusIcon, EyeOffIcon } from 'lucide-vue-next'
 import { useQuickCommands, type QuickCommand } from '@/composables/useQuickCommands'
 import { useToast } from '@/composables/useToast'
 
@@ -103,92 +77,38 @@ const emit = defineEmits(['close'])
 
 const { t } = useI18n()
 const toast = useToast()
-const { commands, reorderCommands, addCommand, updateCommand, deleteCommand } = useQuickCommands()
+const { commands, reorderCommands, deleteCommand } = useQuickCommands()
 
 const localCommands = ref<QuickCommand[]>([...commands.value])
-const currentPage = ref<'list' | 'edit'>('list')
-const editingCommand = ref<QuickCommand | null>(null)
-const form = ref({ label: '', command: '', hidden: false, auto_execute: false })
-const formError = ref('')
-const saving = ref(false)
 const deleteConfirmId = ref<number | null>(null)
-
-// Whether another command already has auto_execute (for warning)
-const hasExistingAutoExec = computed(() => {
-  if (!editingCommand.value) {
-    return commands.value.some(c => c.auto_execute)
-  }
-  return commands.value.some(c => c.auto_execute && c.id !== editingCommand.value!.id)
-})
+const editOpen = ref(false)
+const editingCommand = ref<QuickCommand | null>(null)
 
 // Sync local list when commands change
 watch(commands, (val) => {
   localCommands.value = [...val]
 }, { deep: true })
 
-// Reset state when dialog opens/closes
+// Reset state when drawer opens/closes
 watch(() => props.open, (isOpen) => {
   if (isOpen) {
-    currentPage.value = 'list'
     deleteConfirmId.value = null
-    formError.value = ''
-    editingCommand.value = null
   }
 })
 
-function handleClose() {
-  currentPage.value = 'list'
-  deleteConfirmId.value = null
-  emit('close')
-}
-
-function goBackIfEdit() {
-  if (currentPage.value === 'edit') {
-    currentPage.value = 'list'
-  }
-}
-
 function editCommand(cmd: QuickCommand) {
   editingCommand.value = cmd
-  form.value = { label: cmd.label, command: cmd.command, hidden: cmd.hidden, auto_execute: cmd.auto_execute }
-  formError.value = ''
-  currentPage.value = 'edit'
+  editOpen.value = true
 }
 
 function addNewCommand() {
   editingCommand.value = null
-  form.value = { label: '', command: '', hidden: false, auto_execute: false }
-  formError.value = ''
-  currentPage.value = 'edit'
+  editOpen.value = true
 }
 
-async function saveCommand() {
-  const label = form.value.label.trim()
-  const command = form.value.command.trim()
-  if (!label || !command) {
-    formError.value = t('terminal.commandRequired')
-    return
-  }
-  formError.value = ''
-  saving.value = true
-
-  try {
-    let ok: boolean
-    if (editingCommand.value) {
-      ok = await updateCommand(editingCommand.value.id, { label, command, hidden: form.value.hidden, auto_execute: form.value.auto_execute })
-    } else {
-      ok = await addCommand({ label, command, hidden: form.value.hidden, auto_execute: form.value.auto_execute })
-    }
-
-    if (ok) {
-      toast.show(t('terminal.commandSaved'), { type: 'success' })
-      currentPage.value = 'list'
-    } else {
-      formError.value = t('terminal.saveFailed')
-    }
-  } finally {
-    saving.value = false
-  }
+function onCommandSaved() {
+  editOpen.value = false
+  editingCommand.value = null
 }
 
 function toggleDeleteConfirm(id: number) {
@@ -350,124 +270,38 @@ async function onDragEnd() {
   color: var(--text-muted, #999);
 }
 
-.qc-empty {
-  padding: 24px;
-  text-align: center;
-  color: var(--text-muted, #999);
-  font-size: 13px;
-}
-
-.qc-add {
+.create-btn {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: var(--accent-color, #0066cc);
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 10px;
-  margin: 4px 10px 10px;
-  border: 1px dashed var(--border-color, #ddd);
-  border-radius: 8px;
-  background: none;
-  color: var(--accent-color, #0066cc);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.12s;
+  border-radius: 4px;
+  transition: background 0.15s;
 }
 
-.qc-add:hover {
-  background: color-mix(in srgb, var(--accent-color, #0066cc) 8%, transparent);
+.create-btn:hover {
+  background: rgba(0, 102, 204, 0.1);
 }
 
-.qc-edit-content {
-  padding: 12px;
+.qc-empty {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.form-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-}
-
-.form-label .required {
-  color: #e53e3e;
-}
-
-.form-input {
-  padding: 8px 10px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
-  font-size: 13px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.form-input:focus {
-  border-color: var(--accent-color, #0066cc);
-}
-
-.form-error {
-  font-size: 12px;
-  color: #e53e3e;
-}
-
-.form-checkbox {
-  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  font-size: 13px;
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.form-checkbox input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--accent-color, #0066cc);
-}
-
-.form-hint {
-  font-size: 11px;
+  padding: 20px;
   color: var(--text-muted, #999);
-  padding-left: 24px;
-}
-
-.modal-btn {
-  padding: 6px 16px;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 6px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary);
   font-size: 13px;
-  cursor: pointer;
-  transition: background 0.12s;
 }
 
-.modal-btn:hover {
-  background: var(--bg-tertiary, #f5f5f5);
-}
-
-.modal-btn.primary {
-  background: var(--accent-color, #0066cc);
-  color: #fff;
-  border-color: var(--accent-color, #0066cc);
-}
-
-.modal-btn.primary:hover {
-  opacity: 0.9;
-}
-
-.modal-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.qc-empty-icon {
+  opacity: 0.3;
 }
 </style>
