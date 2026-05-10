@@ -668,6 +668,7 @@ export default {
     disconnected: '已断开',
     resetFontSize: '重置字体大小',
     gestures: '手势',
+    symbols: '符号',
     rebuildSession: '重建会话',
     rebuilding: '正在切换目录...',
   },

@@ -46,56 +46,61 @@
 
     <!-- Virtual key toolbar -->
     <div class="terminal-toolbar">
-      <button class="toolbar-btn modifier gesture-toggle" :class="{ active: gestures.enabled.value }" @click="gestures.toggle(); focusTerminal()" @contextmenu.prevent :title="t('terminal.gestures')">
-        <HandIcon :size="14" />
-      </button>
-      <div class="toolbar-scroll">
-        <!-- Group: Modifiers -->
-        <div class="key-group">
-          <button v-if="!gestures.enabled.value" class="toolbar-btn btn-modifier" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
-          <button v-if="!gestures.enabled.value" class="toolbar-btn btn-modifier" @click="terminalKeys.sendTab(); focusTerminal()" title="Tab">Tab</button>
-          <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.ctrl !== 'inactive', locked: terminalKeys.activeModifiers.value.ctrl === 'locked' }" @click="handleModifier('ctrl')" @contextmenu.prevent title="Ctrl">Ctl</button>
-          <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.alt !== 'inactive', locked: terminalKeys.activeModifiers.value.alt === 'locked' }" @click="handleModifier('alt')" @contextmenu.prevent title="Alt">Alt</button>
-          <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.shift !== 'inactive', locked: terminalKeys.activeModifiers.value.shift === 'locked' }" @click="handleModifier('shift')" @contextmenu.prevent title="Shift"><ShiftIcon :size="14" /></button>
+      <!-- Symbol bar (toggleable, above main toolbar) -->
+      <div v-if="showSymbolBar" class="symbol-bar">
+        <div class="symbol-bar-scroll">
+          <button v-for="sym in symbolKeys" :key="sym" class="toolbar-btn btn-symbol" @click="handleSymbolClick(sym)">{{ sym }}</button>
         </div>
-        <!-- Group: Shortcuts (Ctrl+C / Ctrl+Z) -->
-        <div class="key-group">
-          <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlC(); focusTerminal()" title="Ctrl+C">⌃C</button>
-          <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlZ(); focusTerminal()" title="Ctrl+Z">⌃Z</button>
-        </div>
-        <!-- Group: Symbols -->
-        <div class="key-group">
-          <button class="toolbar-btn btn-symbol" @click="session.sendInput('/'); focusTerminal()">/</button>
-          <button class="toolbar-btn btn-symbol" @click="session.sendInput('-'); focusTerminal()">-</button>
-          <button class="toolbar-btn btn-symbol" @click="session.sendInput('|'); focusTerminal()">|</button>
-          <button class="toolbar-btn btn-symbol" @click="session.sendInput('_'); focusTerminal()">_</button>
-          <button class="toolbar-btn btn-symbol" @click="session.sendInput('~'); focusTerminal()">~</button>
-        </div>
-        <!-- Group: Navigation -->
-        <div class="key-group">
-          <button class="toolbar-btn btn-nav" @click="terminalKeys.sendHome(); focusTerminal()" title="Home">Home</button>
-          <button class="toolbar-btn btn-nav" @click="terminalKeys.sendEnd(); focusTerminal()" title="End">End</button>
-          <button v-if="!gestures.enabled.value" class="toolbar-btn btn-nav" @click="terminalKeys.sendPageUp(); focusTerminal()" title="Page Up">PgUp</button>
-          <button v-if="!gestures.enabled.value" class="toolbar-btn btn-nav" @click="terminalKeys.sendPageDown(); focusTerminal()" title="Page Down">PgDn</button>
-        </div>
-        <!-- Group: Arrow keys -->
-        <div v-show="!gestures.enabled.value" class="key-group">
-          <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowUp(); focusTerminal()" title="↑">↑</button>
-          <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowDown(); focusTerminal()" title="↓">↓</button>
-          <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowLeft(); focusTerminal()" title="←">←</button>
-          <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowRight(); focusTerminal()" title="→">→</button>
-        </div>
-        <!-- Group: Actions -->
-        <div class="key-group">
-          <button ref="cmdBtnRef" class="toolbar-btn btn-action" @click="showCommands = !showCommands" :title="t('terminal.quickCommands')">
-            <ZapIcon :size="14" />
-          </button>
-          <button class="toolbar-btn btn-action" @click="handleCopyOutput" :title="t('terminal.copyOutput')">
-            <CopyIcon :size="14" />
-          </button>
-          <button class="toolbar-btn btn-action" @click="handleRebuild" :title="t('terminal.rebuildSession')">
-            <RefreshCwIcon :size="14" />
-          </button>
+      </div>
+
+      <!-- Main toolbar row -->
+      <div class="main-toolbar-row">
+        <button class="toolbar-btn modifier gesture-toggle" :class="{ active: gestures.enabled.value }" @click="gestures.toggle(); focusTerminal()" @contextmenu.prevent :title="t('terminal.gestures')">
+          <HandIcon :size="14" />
+        </button>
+        <button class="toolbar-btn modifier gesture-toggle" :class="{ active: showSymbolBar }" @click="toggleSymbolBar()" @contextmenu.prevent :title="t('terminal.symbols')">
+          <HashIcon :size="14" />
+        </button>
+        <div class="toolbar-scroll">
+          <!-- Group: Modifiers -->
+          <div class="key-group">
+            <button v-if="!gestures.enabled.value" class="toolbar-btn btn-modifier" @click="terminalKeys.sendEscape(); focusTerminal()" title="Esc">Esc</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn btn-modifier" @click="terminalKeys.sendTab(); focusTerminal()" title="Tab">Tab</button>
+            <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.ctrl !== 'inactive', locked: terminalKeys.activeModifiers.value.ctrl === 'locked' }" @click="handleModifier('ctrl')" @contextmenu.prevent title="Ctrl">Ctl</button>
+            <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.alt !== 'inactive', locked: terminalKeys.activeModifiers.value.alt === 'locked' }" @click="handleModifier('alt')" @contextmenu.prevent title="Alt">Alt</button>
+            <button class="toolbar-btn btn-modifier modifier" :class="{ active: terminalKeys.activeModifiers.value.shift !== 'inactive', locked: terminalKeys.activeModifiers.value.shift === 'locked' }" @click="handleModifier('shift')" @contextmenu.prevent title="Shift"><ShiftIcon :size="14" /></button>
+          </div>
+          <!-- Group: Shortcuts (Ctrl+C / Ctrl+Z) -->
+          <div class="key-group">
+            <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlC(); focusTerminal()" title="Ctrl+C">⌃C</button>
+            <button class="toolbar-btn btn-modifier shortcut" @click="terminalKeys.sendCtrlZ(); focusTerminal()" title="Ctrl+Z">⌃Z</button>
+          </div>
+          <!-- Group: Navigation -->
+          <div class="key-group">
+            <button class="toolbar-btn btn-nav" @click="terminalKeys.sendHome(); focusTerminal()" title="Home">Home</button>
+            <button class="toolbar-btn btn-nav" @click="terminalKeys.sendEnd(); focusTerminal()" title="End">End</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn btn-nav" @click="terminalKeys.sendPageUp(); focusTerminal()" title="Page Up">PgUp</button>
+            <button v-if="!gestures.enabled.value" class="toolbar-btn btn-nav" @click="terminalKeys.sendPageDown(); focusTerminal()" title="Page Down">PgDn</button>
+          </div>
+          <!-- Group: Arrow keys -->
+          <div v-show="!gestures.enabled.value" class="key-group">
+            <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowUp(); focusTerminal()" title="↑">↑</button>
+            <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowDown(); focusTerminal()" title="↓">↓</button>
+            <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowLeft(); focusTerminal()" title="←">←</button>
+            <button class="toolbar-btn btn-arrow" @click="terminalKeys.sendArrowRight(); focusTerminal()" title="→">→</button>
+          </div>
+          <!-- Group: Actions -->
+          <div class="key-group">
+            <button ref="cmdBtnRef" class="toolbar-btn btn-action" @click="showCommands = !showCommands" :title="t('terminal.quickCommands')">
+              <ZapIcon :size="14" />
+            </button>
+            <button class="toolbar-btn btn-action" @click="handleCopyOutput" :title="t('terminal.copyOutput')">
+              <CopyIcon :size="14" />
+            </button>
+            <button class="toolbar-btn btn-action" @click="handleRebuild" :title="t('terminal.rebuildSession')">
+              <RefreshCwIcon :size="14" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -137,7 +142,7 @@ import { useAppMode } from '@/composables/useAppMode'
 import { store } from '@/stores/app'
 import { resolveTerminalCwd, shouldPromptForTerminalReopen } from './terminalCwd'
 
-import { Terminal as TerminalIcon, Copy as CopyIcon, Zap as ZapIcon, Hand as HandIcon, RefreshCw as RefreshCwIcon, ArrowUpFromLine as ShiftIcon } from 'lucide-vue-next'
+import { Terminal as TerminalIcon, Copy as CopyIcon, Zap as ZapIcon, Hand as HandIcon, RefreshCw as RefreshCwIcon, ArrowUpFromLine as ShiftIcon, Hash as HashIcon } from 'lucide-vue-next'
 
 const props = defineProps<{
   requestedCwd?: string | null
@@ -187,6 +192,77 @@ const showCommands = ref(false)
 const cmdBtnRef = ref<HTMLElement | null>(null)
 const rebuilding = ref(false)
 const showReopenPrompt = ref(false)
+const showSymbolBar = ref(false)
+
+// Symbol bar with recency-weighted frequency sorting (exponential decay)
+// Each symbol stores { s: score, t: lastUpdateTimestamp }.
+// On click: score = old_score * decay(hours_since_last) + 1, then update timestamp.
+// On sort:  score * decay(hours_since_last) — rewards both frequency and recency.
+const ALL_SYMBOLS = ['.', '/', '-', '$', '"', "'", '&', ';', '|', '=', '>', '_', '~', '*', ':', '<', '`', '!', '#']
+const SYMBOL_FREQ_KEY = 'clawbench-terminal-symbol-freq'
+const DECAY_LAMBDA = 0.15 // decay rate per hour — half-life ≈ 4.6h
+
+interface SymbolScore { s: number; t: number }
+type SymbolFreqs = Record<string, SymbolScore>
+
+const symbolKeys = ref<string[]>([...ALL_SYMBOLS])
+
+function loadSymbolFreqs(): SymbolFreqs {
+  try {
+    const raw = localStorage.getItem(SYMBOL_FREQ_KEY)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+function saveSymbolFreqs(freqs: SymbolFreqs) {
+  localStorage.setItem(SYMBOL_FREQ_KEY, JSON.stringify(freqs))
+}
+
+// Exponential decay factor for a given elapsed hours
+function decayFactor(hoursElapsed: number): number {
+  return Math.exp(-DECAY_LAMBDA * hoursElapsed)
+}
+
+// Compute current decayed score for a symbol
+function currentScore(entry: SymbolScore | undefined, now: number): number {
+  if (!entry) return 0
+  const hours = (now - entry.t) / 3_600_000
+  return entry.s * decayFactor(hours)
+}
+
+// Sort symbols by decayed score (descending)
+function sortSymbolsByFreq() {
+  const freqs = loadSymbolFreqs()
+  const now = Date.now()
+  const sorted = [...ALL_SYMBOLS].sort((a, b) => currentScore(freqs[b], now) - currentScore(freqs[a], now))
+  symbolKeys.value = sorted
+}
+
+// Increment symbol: apply decay to old score, add 1, update timestamp
+function handleSymbolClick(sym: string) {
+  const freqs = loadSymbolFreqs()
+  const now = Date.now()
+  const entry = freqs[sym]
+  if (entry) {
+    const hours = (now - entry.t) / 3_600_000
+    entry.s = entry.s * decayFactor(hours) + 1
+    entry.t = now
+  } else {
+    freqs[sym] = { s: 1, t: now }
+  }
+  saveSymbolFreqs(freqs)
+  session.sendInput(sym)
+  focusTerminal()
+}
+
+// Toggle symbol bar — re-sort on open
+function toggleSymbolBar() {
+  showSymbolBar.value = !showSymbolBar.value
+  if (showSymbolBar.value) {
+    sortSymbolsByFreq()
+  }
+  focusTerminal()
+}
 
 function computeCwd(): string {
   return resolveTerminalCwd({
@@ -862,12 +938,10 @@ defineExpose({ activate, deactivate })
 
 .terminal-toolbar {
   display: flex;
-  align-items: center;
-  padding: 4px 6px;
-  gap: 2px;
-  border-top: 1px solid color-mix(in srgb, var(--border-color) 40%, transparent);
+  flex-direction: column;
   flex-shrink: 0;
   background: var(--bg-secondary);
+  border-top: 1px solid color-mix(in srgb, var(--border-color) 40%, transparent);
   --toolbar-key-hover: color-mix(in srgb, var(--text-primary) 7%, transparent);
   --toolbar-key-active: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --toolbar-key-text: color-mix(in srgb, var(--text-primary) 72%, transparent);
@@ -892,6 +966,42 @@ defineExpose({ activate, deactivate })
   --toolbar-scrollbar-track: color-mix(in srgb, var(--border-color) 30%, transparent);
   --toolbar-scrollbar-thumb: color-mix(in srgb, var(--text-muted) 54%, transparent);
   --toolbar-scrollbar-thumb-hover: color-mix(in srgb, var(--text-primary) 68%, transparent);
+}
+
+/* Symbol bar: full-width scrollable row above the main toolbar */
+.symbol-bar {
+  padding: 3px 6px 0;
+}
+
+.symbol-bar-scroll {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--toolbar-scrollbar-thumb) transparent;
+}
+.symbol-bar-scroll::-webkit-scrollbar {
+  height: 2px;
+}
+.symbol-bar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.symbol-bar-scroll::-webkit-scrollbar-thumb {
+  background: var(--toolbar-scrollbar-thumb);
+  border-radius: 999px;
+}
+.symbol-bar-scroll:hover::-webkit-scrollbar-thumb {
+  background: var(--toolbar-scrollbar-thumb-hover);
+}
+
+/* Main toolbar row: gesture toggles + scrollable key groups */
+.main-toolbar-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  gap: 2px;
 }
 
 .gesture-toggle {
@@ -1030,8 +1140,8 @@ defineExpose({ activate, deactivate })
 
 /* Mobile: adjust toolbar for soft keyboard */
 @media (max-width: 768px) {
-  .terminal-toolbar {
-    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  .main-toolbar-row {
+    padding-bottom: max(4px, env(safe-area-inset-bottom));
   }
 }
 

@@ -668,6 +668,7 @@ export default {
     disconnected: 'Disconnected',
     resetFontSize: 'Reset font size',
     gestures: 'Gestures',
+    symbols: 'Symbols',
     rebuildSession: 'Rebuild Session',
     rebuilding: 'Switching directory...',
   },
