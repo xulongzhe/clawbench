@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"clawbench/internal/model"
@@ -125,4 +126,84 @@ func TestCreateTask_InvalidRepeat(t *testing.T) {
 		"--repeat", "invalid",
 	})
 	assert.Equal(t, 1, exitCode)
+}
+
+func TestReorderFlagsFirst_AllFlagsFirst(t *testing.T) {
+	// Flags already before positional — no change needed
+	args := []string{"--project", "/path", "--prompt", "hello", "task-abc"}
+	result := reorderFlagsFirst(args)
+	assert.Equal(t, []string{"--project", "/path", "--prompt", "hello", "task-abc"}, result)
+}
+
+func TestReorderFlagsFirst_PositionalBetweenFlags(t *testing.T) {
+	// The exact bug: task-ID before --prompt causes Go flag to skip --prompt
+	args := []string{"task-abc", "--prompt", "hello", "--project", "/path"}
+	result := reorderFlagsFirst(args)
+	assert.Equal(t, []string{"--prompt", "hello", "--project", "/path", "task-abc"}, result)
+}
+
+func TestReorderFlagsFirst_MixedOrder(t *testing.T) {
+	args := []string{"--project", "/path", "task-abc", "--prompt", "hello"}
+	result := reorderFlagsFirst(args)
+	assert.Equal(t, []string{"--project", "/path", "--prompt", "hello", "task-abc"}, result)
+}
+
+func TestReorderFlagsFirst_FlagWithEquals(t *testing.T) {
+	args := []string{"task-abc", "--project=/path", "--prompt=hello"}
+	result := reorderFlagsFirst(args)
+	assert.Equal(t, []string{"--project=/path", "--prompt=hello", "task-abc"}, result)
+}
+
+func TestReorderFlagsFirst_NoFlags(t *testing.T) {
+	args := []string{"task-abc"}
+	result := reorderFlagsFirst(args)
+	assert.Equal(t, []string{"task-abc"}, result)
+}
+
+func TestReorderFlagsFirst_NoPositional(t *testing.T) {
+	args := []string{"--project", "/path"}
+	result := reorderFlagsFirst(args)
+	assert.Equal(t, []string{"--project", "/path"}, result)
+}
+
+func TestReadFlagOrFile_PlainValue(t *testing.T) {
+	val, err := readFlagOrFile("hello world")
+	assert.NoError(t, err)
+	assert.Equal(t, "hello world", val)
+}
+
+func TestReadFlagOrFile_FileReference(t *testing.T) {
+	// Create a temp file with content
+	tmpDir := t.TempDir()
+	promptFile := filepath.Join(tmpDir, "prompt.txt")
+	content := "This is a test prompt with $VARIABLE"
+	err := os.WriteFile(promptFile, []byte(content), 0644)
+	assert.NoError(t, err)
+
+	val, err := readFlagOrFile("@" + promptFile)
+	assert.NoError(t, err)
+	assert.Equal(t, content, val)
+}
+
+func TestReadFlagOrFile_FileNotFound(t *testing.T) {
+	_, err := readFlagOrFile("@/nonexistent/path/file.txt")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "read file")
+}
+
+func TestReadFlagOrFile_EmptyFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	promptFile := filepath.Join(tmpDir, "empty.txt")
+	err := os.WriteFile(promptFile, []byte(""), 0644)
+	assert.NoError(t, err)
+
+	val, err := readFlagOrFile("@" + promptFile)
+	assert.NoError(t, err)
+	assert.Equal(t, "", val)
+}
+
+func TestReadFlagOrFile_AtSignAlone(t *testing.T) {
+	// "@" alone means read from a file named "" — should error
+	_, err := readFlagOrFile("@")
+	assert.Error(t, err)
 }

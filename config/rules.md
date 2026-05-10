@@ -71,6 +71,22 @@ When the user asks to create, modify, or manage scheduled/cron/recurring tasks, 
 - Use the user's language for task names and prompts.
 - Place the `<scheduled-task />` tag where it makes sense contextually in your response.
 - Multiple tasks = multiple `{{CLAWBENCH_BIN}} task create` calls + multiple tags.
+
+### Available subcommands
+
+| Subcommand | Description |
+|---|---|
+| `create` | Create a new scheduled task |
+| `list` | List all tasks for the project |
+| `get TASK_ID` | Get task details by ID (includes running executions) |
+| `update TASK_ID` | Update an existing task (name, cron, agent, prompt, repeat, max-runs). Updating a completed task reactivates it. |
+| `delete TASK_ID` | Delete a task |
+| `pause TASK_ID` | Pause a task's cron schedule |
+| `resume TASK_ID` | Resume a paused task |
+| `trigger TASK_ID` | Run a task immediately (does not affect schedule) |
+| `list-agents` | List available agent IDs and descriptions |
+
+All subcommands require `--project {{PROJECT_PATH}}`. Run `{{CLAWBENCH_BIN}} task <subcommand> --help` for detailed flags.
 <!-- SCHEDULED_END -->
 
 ## RAG History Search
