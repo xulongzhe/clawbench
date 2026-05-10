@@ -15,6 +15,7 @@ __pycache__/
 clawbench-dev
 dev-clawbench
 coverage.out
+coverage/
 
 # Runtime
 nohup.out
