@@ -229,6 +229,7 @@ Once deployed, access `http://server-ip:20000` from your phone app or mobile bro
 - **Touch Gestures**: Termius-style gestures (swipe→arrow keys, hold-to-repeat, double-tap→Tab, pinch-to-zoom), touch scroll when gestures disabled
 - **Quick Commands**: CRUD management of common commands with drag reorder, hidden flag, auto-execute (auto-run on every connect/reconnect)
 - **Android Volume Keys**: Volume up/down remapped to arrow keys when terminal is open in the app
+- See [Web Terminal User Guide](docs/TERMINAL.en.md)
 
 ### 🌐 Internationalization
 - Chinese / English bilingual UI, auto-detect system language

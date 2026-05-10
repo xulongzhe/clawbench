@@ -230,6 +230,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - **触摸手势**：Termius 风格手势（滑动→方向键、长按重复、双击→Tab、捏合缩放），手势关闭时支持触摸滚动
 - **快捷命令**：CRUD 管理常用命令，支持拖拽排序、隐藏、自动执行（每次连接自动运行）
 - **Android 音量键**：App 内终端打开时，音量键映射为方向键上下
+- 详见 [Web 终端使用指南](docs/TERMINAL.md)
 
 ### 🌐 国际化
 - 中文 / 英文双语界面，自动检测系统语言
