@@ -1,9 +1,8 @@
 <template>
   <div class="exec-detail-page">
-    <!-- Header: breadcrumb + info button -->
+    <!-- Header: breadcrumb -->
     <div class="exec-detail-header">
       <TaskBreadcrumb />
-      <button class="info-btn" @click="showMetadata"><Info :size="16" /></button>
     </div>
 
     <!-- Scrollable message content -->
@@ -56,7 +55,6 @@
 <script setup>
 import { ref, computed, watch, nextTick, provide, onUnmounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Info } from 'lucide-vue-next'
 import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import ChatMessageItem from '@/components/chat/ChatMessageItem.vue'
 import ToolDetailOverlay from '@/components/chat/ToolDetailOverlay.vue'
@@ -235,25 +233,6 @@ onUnmounted(() => {
   padding: 6px 12px;
   border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
-}
-
-.exec-detail-header .info-btn {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.exec-detail-header .info-btn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
 .exec-detail-content {
