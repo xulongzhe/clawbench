@@ -112,7 +112,7 @@ function navigate(target) {
   border-radius: 4px 0 0 4px;
 }
 
-/* Right arrow — slightly darker than bg to show chevron edge */
+/* Right arrow — same color as crumb bg, with light edge seam */
 .crumb::after {
   content: '';
   position: absolute;
@@ -122,9 +122,11 @@ function navigate(target) {
   height: 0;
   border-style: solid;
   border-width: 11px 0 11px 8px;
-  border-color: transparent transparent transparent color-mix(in srgb, var(--bg-tertiary, #e9ecef) 85%, #000);
+  border-color: transparent transparent transparent var(--bg-tertiary, #e9ecef);
   transition: border-color 0.15s;
   z-index: 1;
+  /* Thin light line along the diagonal edge of the arrow */
+  filter: drop-shadow(1px 0 0 rgba(255, 255, 255, 0.4));
 }
 
 /* ── Clickable crumb ── */
@@ -139,7 +141,7 @@ function navigate(target) {
   }
 
   .crumb.clickable:hover::after {
-    border-left-color: color-mix(in srgb, var(--bg-secondary, #dde1e6) 80%, #000);
+    border-left-color: var(--bg-secondary, #dde1e6);
   }
 }
 
@@ -148,7 +150,7 @@ function navigate(target) {
 }
 
 .crumb.clickable:active::after {
-  border-left-color: color-mix(in srgb, var(--bg-secondary, #d0d5da) 80%, #000);
+  border-left-color: var(--bg-secondary, #d0d5da);
 }
 
 /* ── Current (active) crumb — accent color darkened ── */
@@ -159,7 +161,7 @@ function navigate(target) {
 }
 
 .crumb.current::after {
-  border-left-color: color-mix(in srgb, var(--accent-color, #0066cc) 65%, #000);
+  border-left-color: color-mix(in srgb, var(--accent-color, #0066cc) 75%, #000);
 }
 
 /* Last crumb: no arrow */
@@ -174,7 +176,7 @@ function navigate(target) {
   }
 
   .crumb.current:hover::after {
-    border-left-color: color-mix(in srgb, var(--accent-color, #0066cc) 65%, #000);
+    border-left-color: color-mix(in srgb, var(--accent-color, #0066cc) 75%, #000);
   }
 }
 </style>
