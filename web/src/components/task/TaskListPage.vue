@@ -8,9 +8,8 @@
         :key="task.id"
         class="task-item"
         :class="[task.status, { 'has-unread': task.unreadCount > 0 }]"
-        @click="$emit('select', task.id)"
       >
-        <div class="task-item-main">
+        <div class="task-item-main" @click="$emit('select', task.id)">
           <div class="task-item-info">
             <div class="task-item-header">
               <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
@@ -30,6 +29,16 @@
           </div>
           <ChevronRight :size="16" class="task-item-chevron" />
         </div>
+        <!-- History button — separate drill-down to execution history -->
+        <button
+          v-if="task.runCount > 0 || task.runningCount > 0"
+          class="task-item-history-btn"
+          @click.stop="$emit('select-history', task.id)"
+          :title="t('task.exec.title')"
+        >
+          <Clock :size="14" />
+          <span class="history-count">{{ task.runCount }}</span>
+        </button>
       </div>
     </div>
     <!-- Fixed FAB -->
@@ -40,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { Plus, ChevronRight } from 'lucide-vue-next'
+import { Plus, ChevronRight, Clock } from 'lucide-vue-next'
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTaskTab } from '@/composables/useTaskTab'
@@ -58,6 +67,7 @@ const loading = ref(false)
 defineEmits<{
   create: []
   select: [taskId: string]
+  'select-history': [taskId: string]
 }>()
 
 async function refresh() {
@@ -300,5 +310,38 @@ onMounted(refresh)
 .task-item-chevron {
   color: var(--text-muted, #999);
   flex-shrink: 0;
+}
+
+/* History button — right side, separate click target */
+.task-item-history-btn {
+  position: absolute;
+  right: 16px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted, #999);
+  font-size: 10px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+@media (hover: hover) {
+  .task-item-history-btn:hover {
+    background: var(--bg-tertiary, rgba(0, 0, 0, 0.05));
+    color: var(--accent-color, #0066cc);
+  }
+}
+
+.task-item-history-btn:active {
+  background: var(--bg-tertiary, rgba(0, 0, 0, 0.08));
+}
+
+.history-count {
+  font-weight: 500;
 }
 </style>

@@ -12,9 +12,15 @@
       <span class="task-crumb-sep">›</span>
       <span
         class="task-crumb"
-        :class="{ current: currentView === 'detail' && !execDetailOpen && !formOpen, clickable: currentView === 'exec' || formOpen }"
-        @click="(currentView === 'exec' || formOpen) && $emit('navigate', 'detail')"
+        :class="{ current: (currentView === 'settings') && !execDetailOpen && !formOpen, clickable: (currentView === 'history' || currentView === 'exec') || formOpen }"
+        @click="((currentView === 'history' || currentView === 'exec') || formOpen) && $emit('navigate', 'settings')"
       >{{ taskName }}</span>
+    </template>
+
+    <!-- History crumb -->
+    <template v-if="currentView === 'history' && !execDetailOpen && !formOpen">
+      <span class="task-crumb-sep">›</span>
+      <span class="task-crumb current">{{ t('task.exec.title') }}</span>
     </template>
 
     <!-- Exec crumb (shown when viewing execution detail) -->

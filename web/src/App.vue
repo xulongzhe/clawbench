@@ -306,7 +306,7 @@ useFileWatch({
 
 const { isAppMode } = useAppMode()
 const { syncToNative } = usePortForward()
-const { startTaskPolling, stopTaskPolling, navigateToTask } = useTaskTab()
+const { startTaskPolling, stopTaskPolling, navigateToTaskSettings } = useTaskTab()
 const terminalRequestedCwd = ref(null)
 
 const quoteQuestion = useQuoteQuestion()
@@ -421,7 +421,7 @@ async function handleTaskOpenFile(filePath) {
 }
 
 function onTaskCardClick(taskId) {
-    navigateToTask(taskId)
+    navigateToTaskSettings(taskId)
     switchTab('tasks')
 }
 

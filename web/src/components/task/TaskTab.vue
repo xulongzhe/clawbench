@@ -1,8 +1,9 @@
 <template>
   <div class="task-tab" v-show="active">
     <Transition name="slide-view" mode="out-in">
-      <TaskListPage v-if="currentView === 'list' && !formViewOpen" key="list" ref="listPageRef" @create="onCreate" @select="onTaskSelect" />
-      <TaskDetailPage v-else-if="currentView === 'detail' && !execDetailOpen && !formViewOpen" key="detail" :task="selectedTaskData" @back="goBack" @edit="onEdit" @deleted="onTaskDeleted" @open-file="onOpenFile" />
+      <TaskListPage v-if="currentView === 'list' && !formViewOpen" key="list" ref="listPageRef" @create="onCreate" @select="onTaskSelect" @select-history="onTaskHistorySelect" />
+      <TaskDetailPage v-else-if="currentView === 'settings' && !execDetailOpen && !formViewOpen" key="settings" :task="selectedTaskData" @back="goBack" @edit="onEdit" @deleted="onTaskDeleted" />
+      <TaskHistoryTab v-else-if="currentView === 'history' && !execDetailOpen && !formViewOpen" key="history" :task="selectedTaskData" @open-file="onOpenFile" />
       <TaskExecDetail v-else-if="execDetailOpen && !formViewOpen" key="exec" :execDetail="selectedExecData" :taskName="selectedTaskData?.name" @close="closeExecDetail" @navigate="onExecNavigate" @open-file="onOpenFile" />
       <TaskFormPage v-else-if="formViewOpen" key="form" :mode="formMode" :task="formMode === 'edit' ? selectedTaskData : null" @close="closeForm" @saved="onFormSaved" />
     </Transition>
@@ -13,6 +14,7 @@
 import { ref, computed } from 'vue'
 import TaskListPage from '@/components/task/TaskListPage.vue'
 import TaskDetailPage from '@/components/task/TaskDetailPage.vue'
+import TaskHistoryTab from '@/components/task/TaskHistoryTab.vue'
 import TaskExecDetail from '@/components/task/TaskExecDetail.vue'
 import TaskFormPage from '@/components/task/TaskFormPage.vue'
 import { useTaskTab } from '@/composables/useTaskTab'
@@ -26,7 +28,7 @@ const emit = defineEmits<{
   'open-file': [filePath: string]
 }>()
 
-const { currentView, selectedTaskId, selectedExecData, execDetailOpen, formViewOpen, formMode, navigateToTask, goBack, closeExecDetail, openCreateForm, openEditForm, closeForm, loadTasks } = useTaskTab()
+const { currentView, selectedTaskId, selectedExecData, execDetailOpen, formViewOpen, formMode, navigateToTaskSettings, navigateToTaskHistory, goBack, closeExecDetail, openCreateForm, openEditForm, closeForm, loadTasks } = useTaskTab()
 
 // Read from store directly — NOT from listPageRef (Vue refs don't expose internal computed)
 const selectedTaskData = computed(() =>
@@ -47,7 +49,7 @@ async function onFormSaved(newTaskId: string) {
   await loadTasks()
   closeForm()
   if (formMode.value === 'create' && newTaskId) {
-    navigateToTask(newTaskId)
+    navigateToTaskSettings(newTaskId)
   }
   listPageRef.value?.refresh?.()
 }
@@ -63,7 +65,11 @@ function onOpenFile(filePath: string) {
 }
 
 function onTaskSelect(taskId: string) {
-  navigateToTask(taskId)
+  navigateToTaskSettings(taskId)
+}
+
+function onTaskHistorySelect(taskId: string) {
+  navigateToTaskHistory(taskId)
 }
 
 function onExecNavigate(view: string) {
@@ -71,7 +77,6 @@ function onExecNavigate(view: string) {
   if (view === 'list') {
     goBack()
   }
-  // view === 'detail': just closing exec detail is enough, it goes back to detail page
 }
 </script>
 

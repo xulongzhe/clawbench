@@ -2,11 +2,10 @@ import { ref, type Ref } from 'vue'
 import { store } from '@/stores/app'
 
 // Module-level singleton refs (shared across all consumers)
-const currentView = ref<'list' | 'detail'>('list')
+const currentView = ref<'list' | 'settings' | 'history'>('list')
 const selectedTaskId = ref<string | null>(null)
 const selectedExecId = ref<string | null>(null)
 const selectedExecData = ref<any>(null)
-const detailSubTab = ref<'overview' | 'history'>('overview')
 const execDetailOpen = ref(false)
 const formViewOpen = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
@@ -17,10 +16,16 @@ let pollingTimer: ReturnType<typeof setInterval> | null = null
 export function useTaskTab() {
     // --- Navigation methods ---
 
-    function navigateToTask(taskId: string) {
+    function navigateToTaskSettings(taskId: string) {
         selectedTaskId.value = taskId
-        currentView.value = 'detail'
-        detailSubTab.value = 'overview'
+        currentView.value = 'settings'
+        execDetailOpen.value = false
+        formViewOpen.value = false
+    }
+
+    function navigateToTaskHistory(taskId: string) {
+        selectedTaskId.value = taskId
+        currentView.value = 'history'
         execDetailOpen.value = false
         formViewOpen.value = false
     }
@@ -121,17 +126,17 @@ export function useTaskTab() {
 
     return {
         // Navigation state
-        currentView: currentView as Ref<'list' | 'detail'>,
+        currentView: currentView as Ref<'list' | 'settings' | 'history'>,
         selectedTaskId,
         selectedExecId,
         selectedExecData,
-        detailSubTab: detailSubTab as Ref<'overview' | 'history'>,
         execDetailOpen,
         formViewOpen,
         formMode: formMode as Ref<'create' | 'edit'>,
 
         // Navigation methods
-        navigateToTask,
+        navigateToTaskSettings,
+        navigateToTaskHistory,
         goBack,
         openExecDetail,
         closeExecDetail,

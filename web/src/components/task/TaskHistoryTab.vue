@@ -1,5 +1,15 @@
 <template>
-  <div class="task-history-tab">
+  <div class="task-history-page">
+    <!-- Header with breadcrumb -->
+    <div class="history-header">
+      <TaskBreadcrumb
+        currentView="history"
+        :taskName="task?.name"
+        @navigate="onBreadcrumbNavigate"
+      />
+    </div>
+    <!-- History content -->
+    <div class="task-history-tab">
     <div v-if="loading" class="history-empty">{{ t('common.loading') }}</div>
     <div v-else-if="executions.length === 0 && runningExecutions.length === 0" class="history-empty">{{ t('task.exec.noExecutions') }}</div>
     <template v-else>
@@ -46,6 +56,7 @@
         </div>
       </div>
     </template>
+    </div>
   </div>
 </template>
 
@@ -53,6 +64,7 @@
 import { ref, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ChevronRight, Square } from 'lucide-vue-next'
+import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import { useChatRender } from '@/composables/useChatRender.ts'
 import { useToast } from '@/composables/useToast.ts'
 import { useDialog } from '@/composables/useDialog.ts'
@@ -68,7 +80,7 @@ const emit = defineEmits(['open-file'])
 const { t } = useI18n()
 const dialog = useDialog()
 const toast = useToast()
-const { openExecDetail } = useTaskTab()
+const { openExecDetail, goBack } = useTaskTab()
 
 const chatRender = useChatRender({ messages: ref([]), theme: ref('light'), currentSessionId: ref('') })
 
@@ -188,6 +200,12 @@ async function markExecRead(execId) {
   }
 }
 
+function onBreadcrumbNavigate(view) {
+  if (view === 'list') {
+    goBack()
+  }
+}
+
 function openDetail(exec) {
   if (exec.isUnread) {
     exec.isUnread = false
@@ -218,6 +236,20 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.task-history-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.history-header {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  flex-shrink: 0;
+}
+
 .task-history-tab {
   flex: 1;
   overflow-y: auto;
