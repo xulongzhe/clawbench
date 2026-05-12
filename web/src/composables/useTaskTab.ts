@@ -95,6 +95,9 @@ export function useTaskTab() {
                 store.state.taskUnread = !!data.hasUnread
             }
             const newTasks = data.tasks || []
+            // Derive running state from runningCount
+            const hasRunning = newTasks.some((t: any) => t.runningCount > 0)
+            store.state.taskRunning = hasRunning
             // Diff-check to avoid unnecessary watcher triggers
             if (
                 store.state.tasks.length !== newTasks.length ||
@@ -103,7 +106,8 @@ export function useTaskTab() {
                         t.id !== store.state.tasks[i]?.id ||
                         t.status !== store.state.tasks[i]?.status ||
                         t.runCount !== store.state.tasks[i]?.runCount ||
-                        t.unreadCount !== store.state.tasks[i]?.unreadCount
+                        t.unreadCount !== store.state.tasks[i]?.unreadCount ||
+                        t.runningCount !== store.state.tasks[i]?.runningCount
                 )
             ) {
                 store.state.tasks = newTasks

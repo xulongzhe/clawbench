@@ -181,7 +181,7 @@
             <button class="dock-btn" :class="{ active: activeTab === 'viewer' }" @click.stop="switchTab('viewer')" :title="t('nav.fileViewer')">
               <FileText />
             </button>
-            <button class="dock-btn" :class="{ active: activeTab === 'tasks', 'has-unread': store.state.taskUnread && activeTab !== 'tasks' }" @click.stop="switchTab('tasks')" :title="t('nav.tasks')">
+            <button class="dock-btn" :class="{ active: activeTab === 'tasks', 'has-unread': store.state.taskUnread && activeTab !== 'tasks', 'has-running': store.state.taskRunning && activeTab !== 'tasks' && !store.state.taskUnread }" @click.stop="switchTab('tasks')" :title="t('nav.tasks')">
               <CalendarDays />
             </button>
             <div class="dock-overflow-wrapper">

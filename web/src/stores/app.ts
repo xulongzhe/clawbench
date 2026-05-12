@@ -52,6 +52,9 @@ interface AppState {
     // Task unread badge (unread task executions)
     taskUnread: boolean
 
+    // Task running indicator (scheduled task is executing)
+    taskRunning: boolean
+
     // Task list (kept in sync by global polling)
     tasks: any[]
 
@@ -92,6 +95,7 @@ const state = reactive<AppState>({
     chatUnread: false,
     chatRunning: false,
     taskUnread: false,
+    taskRunning: false,
     tasks: [],
 
     // File browser
