@@ -49,6 +49,23 @@ const tunnelChecking = ref(false)
 // Auto-refresh interval when tunnel is unhealthy
 let tunnelPollTimer: ReturnType<typeof setInterval> | null = null
 
+/** Returns true if any registered port has an active backend */
+function hasActivePorts(): boolean {
+  return ports.value.some(p => p.active)
+}
+
+/**
+ * Determines tunnel status from port state.
+ * `hasPorts` indicates whether there are any registered ports.
+ * When there are ports but none are active, the tunnel is degraded.
+ * When there are no ports, or at least one is active, the tunnel is OK.
+ */
+function tunnelStatusFromPorts(hasPorts: boolean): 'ok' | 'degraded' {
+  const anyActive = hasActivePorts()
+  if (hasPorts && !anyActive) return 'degraded'
+  return 'ok'
+}
+
 /**
  * Manages port forwarding state: list of forwarded ports, CRUD operations,
  * auto-detection, and registration with Android native layer.
@@ -136,8 +153,8 @@ export function usePortForward() {
       if (nativeConnected === true) {
         // Native says connected — trust it regardless of server-side connCount
         const hasPorts = ports.value.length > 0
-        const anyActive = ports.value.some(p => p.active)
-        if (hasPorts && !anyActive) {
+        const status = tunnelStatusFromPorts(hasPorts)
+        if (status === 'degraded') {
           tunnelStatus.value = 'degraded'
           tunnelMessage.value = gt('portForward.tunnelDegraded')
           tunnelChecking.value = false
@@ -167,8 +184,7 @@ export function usePortForward() {
     if (!stats.connected) {
       // Server says disconnected, but check if any ports are actually active
       // (health check passes = tunnel is working despite connCount=0)
-      const anyActive = ports.value.some(p => p.active)
-      if (anyActive) {
+      if (hasActivePorts()) {
         tunnelStatus.value = 'ok'
         tunnelChecking.value = false
         stopTunnelPoll()
@@ -183,9 +199,7 @@ export function usePortForward() {
 
     // SSH is connected — check if any ports have active backends
     const hasPorts = ports.value.length > 0
-    const anyActive = ports.value.some(p => p.active)
-
-    if (hasPorts && !anyActive) {
+    if (tunnelStatusFromPorts(hasPorts) === 'degraded') {
       tunnelStatus.value = 'degraded'
       tunnelMessage.value = gt('portForward.tunnelDegraded')
       tunnelChecking.value = false
@@ -224,8 +238,7 @@ export function usePortForward() {
       if (nativeConnected === true) {
         await loadPorts()
         const hasPorts = ports.value.length > 0
-        const anyActive = ports.value.some(p => p.active)
-        if (!hasPorts || anyActive) {
+        if (tunnelStatusFromPorts(hasPorts) === 'ok') {
           tunnelStatus.value = 'ok'
           tunnelMessage.value = ''
           stopTunnelPoll()
@@ -244,8 +257,7 @@ export function usePortForward() {
         // Re-check full health (ports + ssh)
         await loadPorts()
         const hasPorts = ports.value.length > 0
-        const anyActive = ports.value.some(p => p.active)
-        if (!hasPorts || anyActive) {
+        if (tunnelStatusFromPorts(hasPorts) === 'ok') {
           tunnelStatus.value = 'ok'
           tunnelMessage.value = ''
           stopTunnelPoll()
@@ -256,8 +268,7 @@ export function usePortForward() {
       } else {
         // Server says disconnected — still check if ports are actually active
         await loadPorts()
-        const anyActive = ports.value.some(p => p.active)
-        if (anyActive) {
+        if (hasActivePorts()) {
           tunnelStatus.value = 'ok'
           tunnelMessage.value = ''
           stopTunnelPoll()
