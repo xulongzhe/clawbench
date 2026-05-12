@@ -571,7 +571,7 @@ onMounted(() => {
   gap: 3px;
   padding: 0 8px;
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 500;
   white-space: nowrap;
 }

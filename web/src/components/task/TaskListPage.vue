@@ -1,35 +1,37 @@
 <template>
   <div class="task-list-page">
     <div class="task-list-body">
-      <div v-if="loading" class="task-loading">{{ t('common.loading') }}</div>
+      <div v-if="loading && tasks.length === 0" class="task-loading">{{ t('common.loading') }}</div>
       <div v-else-if="tasks.length === 0" class="task-empty">{{ t('task.noTasks') }}</div>
-      <div
-        v-for="task in tasks"
-        :key="task.id"
-        class="task-item"
-        :class="[task.status, { 'has-unread': task.unreadCount > 0 }]"
-      >
-        <div class="task-item-main" @click="$emit('select', task.id)">
-          <div class="task-item-info">
-            <div class="task-item-header">
-              <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
-              <span class="task-item-name">{{ task.name }}</span>
-              <span v-if="task.runningCount > 0" class="task-item-running-dot" :title="t('task.exec.running')"></span>
-              <span v-if="task.unreadCount > 0" class="task-item-unread">{{ task.unreadCount }}</span>
-              <span class="task-item-status" :class="task.status">{{ statusLabel(task.status) }}</span>
+      <template v-else>
+        <div
+          v-for="task in tasks"
+          :key="task.id"
+          class="task-item"
+          :class="[task.status, { 'has-unread': task.unreadCount > 0 }]"
+        >
+          <div class="task-item-main" @click="$emit('select', task.id)">
+            <div class="task-item-info">
+              <div class="task-item-header">
+                <span class="task-item-icon">{{ getAgentIcon(task.agentId) }}</span>
+                <span class="task-item-name">{{ task.name }}</span>
+                <span v-if="task.runningCount > 0" class="task-item-running-dot" :title="t('task.exec.running')"></span>
+                <span v-if="task.unreadCount > 0" class="task-item-unread">{{ task.unreadCount }}</span>
+                <span class="task-item-status" :class="task.status">{{ statusLabel(task.status) }}</span>
+              </div>
+              <div class="task-item-meta">
+                <span class="task-item-cron">{{ humanizeCron(task.cronExpr) }}</span>
+                <span class="task-item-repeat">{{ repeatLabel(task.repeatMode, task.maxRuns) }}</span>
+                <span v-if="task.repeatMode !== 'unlimited'" class="task-item-progress">{{ task.runCount }}/{{ task.maxRuns || 1 }}</span>
+              </div>
+              <div v-if="task.nextRunAt" class="task-item-next">
+                {{ t('task.nextRun', { time: formatDateTime(task.nextRunAt) }) }}
+              </div>
             </div>
-            <div class="task-item-meta">
-              <span class="task-item-cron">{{ humanizeCron(task.cronExpr) }}</span>
-              <span class="task-item-repeat">{{ repeatLabel(task.repeatMode, task.maxRuns) }}</span>
-              <span v-if="task.repeatMode !== 'unlimited'" class="task-item-progress">{{ task.runCount }}/{{ task.maxRuns || 1 }}</span>
-            </div>
-            <div v-if="task.nextRunAt" class="task-item-next">
-              {{ t('task.nextRun', { time: formatDateTime(task.nextRunAt) }) }}
-            </div>
+            <ChevronRight :size="16" class="task-item-chevron" />
           </div>
-          <ChevronRight :size="16" class="task-item-chevron" />
         </div>
-      </div>
+      </template>
     </div>
     <!-- Fixed FAB -->
     <button class="create-fab" @click="$emit('create')" :title="t('task.form.createTitle')">
