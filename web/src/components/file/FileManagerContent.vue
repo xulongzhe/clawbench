@@ -3,36 +3,44 @@
     <!-- Dir nav -->
     <div id="dirNav" class="dir-nav">
       <div class="dir-toolbar">
-        <button class="toolbar-btn" :class="{ 'sort-active': sortField === 'name' }" @click="$emit('toggleSort', 'name')" :title="sortField === 'name' ? t('file.sortByName') + ' (' + (sortDir === 'asc' ? t('file.sortAsc') : t('file.sortDesc') + ' · ' + t('file.sortClickToClear')) + ')' : t('file.sortByName') + ' (' + t('file.sortDefault') + ')'">
-          <ArrowDownAz :size="14" />
-          <ChevronDown v-if="sortField === 'name' && sortDir === 'desc'" :size="8" :stroke-width="3" class="sort-arrow" />
-          <ChevronUp v-else-if="sortField === 'name'" :size="8" :stroke-width="3" class="sort-arrow" />
-          <ArrowUpDown v-else-if="!sortField" :size="8" :stroke-width="3" class="sort-arrow sort-arrow-default" />
-        </button>
-        <button class="toolbar-btn" :class="{ 'sort-active': sortField === 'time' }" @click="$emit('toggleSort', 'time')" :title="sortField === 'time' ? t('file.sortByTime') + ' (' + (sortDir === 'asc' ? t('file.sortAsc') : t('file.sortDesc') + ' · ' + t('file.sortClickToClear')) + ')' : t('file.sortByTime') + ' (' + t('file.sortDefault') + ')'">
-          <Clock :size="14" />
-          <ChevronDown v-if="sortField === 'time' && sortDir === 'desc'" :size="8" :stroke-width="3" class="sort-arrow" />
-          <ChevronUp v-else-if="sortField === 'time'" :size="8" :stroke-width="3" class="sort-arrow" />
-          <ArrowUpDown v-else-if="!sortField" :size="8" :stroke-width="3" class="sort-arrow sort-arrow-default" />
-        </button>
-        <button class="toolbar-btn" :class="{ 'sort-active': sortField === 'type' }" @click="$emit('toggleSort', 'type')" :title="sortField === 'type' ? t('file.sortByType') + ' (' + (sortDir === 'asc' ? t('file.sortAsc') : t('file.sortDesc') + ' · ' + t('file.sortClickToClear')) + ')' : t('file.sortByType') + ' (' + t('file.sortDefault') + ')'">
-          <FileText :size="14" />
-          <ChevronDown v-if="sortField === 'type' && sortDir === 'desc'" :size="8" :stroke-width="3" class="sort-arrow" />
-          <ChevronUp v-else-if="sortField === 'type'" :size="8" :stroke-width="3" class="sort-arrow" />
-          <ArrowUpDown v-else-if="!sortField" :size="8" :stroke-width="3" class="sort-arrow sort-arrow-default" />
-        </button>
+        <div class="sort-dropdown-wrap">
+          <button class="toolbar-btn" :class="{ 'sort-active': sortField }" @click="sortMenuOpen = !sortMenuOpen" :title="t('file.sortDefault')">
+            <ArrowDownAz v-if="!sortField || sortDir === 'asc'" :size="16" />
+            <ArrowUpZa v-else :size="16" />
+          </button>
+          <div v-if="sortMenuOpen" class="sort-dropdown" @click.stop>
+            <button class="sort-dropdown-item" :class="{ active: sortField === 'name' }" @click="onSortSelect('name')">
+              <ArrowDownAz :size="14" />
+              <span>{{ t('file.sortByName') }}</span>
+              <ChevronUp v-if="sortField === 'name' && sortDir === 'asc'" :size="12" class="sort-dir-icon" />
+              <ChevronDown v-else-if="sortField === 'name' && sortDir === 'desc'" :size="12" class="sort-dir-icon" />
+            </button>
+            <button class="sort-dropdown-item" :class="{ active: sortField === 'time' }" @click="onSortSelect('time')">
+              <Clock :size="14" />
+              <span>{{ t('file.sortByTime') }}</span>
+              <ChevronUp v-if="sortField === 'time' && sortDir === 'asc'" :size="12" class="sort-dir-icon" />
+              <ChevronDown v-else-if="sortField === 'time' && sortDir === 'desc'" :size="12" class="sort-dir-icon" />
+            </button>
+            <button class="sort-dropdown-item" :class="{ active: sortField === 'type' }" @click="onSortSelect('type')">
+              <FileText :size="14" />
+              <span>{{ t('file.sortByType') }}</span>
+              <ChevronUp v-if="sortField === 'type' && sortDir === 'asc'" :size="12" class="sort-dir-icon" />
+              <ChevronDown v-else-if="sortField === 'type' && sortDir === 'desc'" :size="12" class="sort-dir-icon" />
+            </button>
+          </div>
+        </div>
         <button class="toolbar-btn" @click="$emit('toggleHidden')" :title="showHidden ? t('file.hideHiddenFiles') : t('file.showHiddenFiles')">
-          <EyeOff v-if="!showHidden" :size="14" />
-          <Eye v-else :size="14" />
+          <EyeOff v-if="!showHidden" :size="16" />
+          <Eye v-else :size="16" />
         </button>
         <button class="toolbar-btn" :disabled="!currentFile?.path" @click="syncToCurrentFile" :title="t('file.syncToCurrentDir')">
-          <ArrowRightLeft :size="14" />
+          <ArrowRightLeft :size="16" />
         </button>
         <button class="toolbar-btn" @click="$emit('refresh')" :title="t('nav.refresh')">
-          <RotateCw :size="14" />
+          <RotateCw :size="16" />
         </button>
         <button class="toolbar-btn" :class="{ active: multiSelect.active }" @click="multiSelect.active ? exitMultiSelect() : enterMultiSelect()" :title="multiSelect.active ? t('file.multiSelect.exit') : t('file.multiSelect.enter')">
-          <CheckSquare :size="14" />
+          <CheckSquare :size="16" />
         </button>
         <SearchInput v-model="searchQuery" :placeholder="t('search.defaultPlaceholder')" @dblclick="searchQuery = ''" />
       </div>
@@ -196,9 +204,9 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, inject, nextTick, Teleport, watch } from 'vue'
+import { ref, computed, reactive, inject, nextTick, onMounted, onUnmounted, Teleport, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Folder, ArrowDownAz, ArrowUpDown, ChevronDown, ChevronUp, Clock, FileText, Eye, EyeOff, ArrowRightLeft, Loader, FileImage, FileMusic, ChevronRight, Copy, Scissors, ClipboardPaste, FilePlus, FolderPlus, Pencil, Download, Trash2, FolderOpen, RotateCw, Terminal as TerminalIcon, CheckSquare, Check, X } from 'lucide-vue-next'
+import { Folder, ArrowDownAz, ArrowUpZa, ChevronDown, ChevronUp, Clock, FileText, Eye, EyeOff, ArrowRightLeft, Loader, FileImage, FileMusic, ChevronRight, Copy, Scissors, ClipboardPaste, FilePlus, FolderPlus, Pencil, Download, Trash2, FolderOpen, RotateCw, Terminal as TerminalIcon, CheckSquare, Check, X } from 'lucide-vue-next'
 import { getFileType } from '@/utils/fileType.ts'
 import { dirName } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
@@ -226,6 +234,21 @@ const emit = defineEmits(['navigateDir', 'selectFile', 'toggleSort', 'toggleHidd
 
 
 const searchQuery = ref('')
+const sortMenuOpen = ref(false)
+
+function onSortSelect(field) {
+  emit('toggleSort', field)
+  sortMenuOpen.value = false
+}
+
+function closeSortMenu(e) {
+  if (!e.target.closest('.sort-dropdown-wrap')) {
+    sortMenuOpen.value = false
+  }
+}
+
+onMounted(() => document.addEventListener('click', closeSortMenu))
+onUnmounted(() => document.removeEventListener('click', closeSortMenu))
 
 // Sync button: navigate to the directory of the currently opened file
 const isInSync = computed(() => {
@@ -725,6 +748,7 @@ function doDelete() {
 .dir-toolbar :deep(.search-pill) {
     flex: 1;
     min-width: 0;
+    transition: opacity 0.15s;
 }
 
 .dir-nav :deep(.dir-breadcrumb) {
@@ -864,8 +888,8 @@ function doDelete() {
     align-items: center;
     justify-content: center;
     gap: 3px;
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     padding: 0;
     border: none;
     border-radius: 50%;
@@ -886,6 +910,11 @@ function doDelete() {
     color: #fff;
 }
 
+.toolbar-btn.sort-active {
+    background: var(--accent-color, #4a90d9);
+    color: #fff;
+}
+
 .toolbar-btn:disabled {
     opacity: 0.35;
     cursor: not-allowed;
@@ -897,20 +926,60 @@ function doDelete() {
 }
 
 .toolbar-btn svg {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     flex-shrink: 0;
 }
 
-.toolbar-btn .sort-arrow {
-    width: 8px;
-    height: 8px;
-    opacity: 1;
-    color: var(--accent-color, #4a90d9);
+/* Sort dropdown */
+.sort-dropdown-wrap {
+    position: relative;
+    flex-shrink: 0;
 }
 
-.toolbar-btn .sort-arrow-default {
-    color: var(--text-tertiary, #999);
+.sort-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 100;
+    min-width: 140px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    padding: 4px;
+}
+
+.sort-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    background: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.sort-dropdown-item:hover {
+    background: var(--bg-tertiary, #f0f0f0);
+}
+
+.sort-dropdown-item.active {
+    color: var(--accent-color, #4a90d9);
+    font-weight: 500;
+}
+
+.sort-dropdown-item svg {
+    flex-shrink: 0;
+}
+
+.sort-dropdown-item .sort-dir-icon {
+    margin-left: auto;
 }
 
 /* ── File Items ── */
