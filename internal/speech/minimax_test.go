@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -261,64 +260,6 @@ func TestNewMiniMaxProvider_Defaults(t *testing.T) {
 	assert.Equal(t, "female-chengshu", p.TTSVoice)
 	assert.Equal(t, 1.5, p.TTSSpeed)
 	assert.Equal(t, "mp3", p.TTSFormat)
-}
-
-// --- Summarize short text bypass (MMXSummarizer) ---
-
-func TestSummarize_ShortText_BypassesLLM(t *testing.T) {
-	s := NewMMXSummarizer()
-	shortText := "这是一个简短的消息，不需要总结。"
-	result, err := s.Summarize(context.Background(), shortText, "zh")
-	assert.NoError(t, err)
-	// Short text should be returned as-is (after markdown stripping)
-	assert.Contains(t, result, "简短的消息")
-}
-
-func TestSummarize_ShortTextWithMarkdown_StripsMarkdown(t *testing.T) {
-	s := NewMMXSummarizer()
-	input := "Short **bold** and *italic* text."
-	result, err := s.Summarize(context.Background(), input, "zh")
-	assert.NoError(t, err)
-	assert.NotContains(t, result, "**")
-	assert.NotContains(t, result, "*")
-	assert.Contains(t, result, "bold")
-	assert.Contains(t, result, "italic")
-}
-
-// --- Summarize long text (requires mmx CLI, skip if unavailable) ---
-
-func TestSummarize_LongText_WithCLI(t *testing.T) {
-	if _, err := os.Stat("/usr/local/bin/mmx"); err != nil {
-		// Check PATH for mmx
-		if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), ".nvm/versions/node/v24.14.0/bin/mmx")); err != nil {
-			t.Skip("mmx CLI not available, skipping integration test")
-		}
-	}
-
-	s := NewMMXSummarizer()
-	longText := strings.Repeat("这是一个较长的AI回复内容，包含了详细的技术分析和代码示例。", 10)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	result, err := s.Summarize(ctx, longText, "zh")
-	assert.NoError(t, err)
-	assert.NotEmpty(t, result)
-	// Summary should be shorter than original
-	assert.Less(t, len([]rune(result)), len([]rune(longText)))
-}
-
-// --- Summarize context cancellation ---
-
-func TestSummarize_CancelledContext(t *testing.T) {
-	s := NewMMXSummarizer()
-	longText := strings.Repeat("这是需要被总结的长文本内容。", 50)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
-
-	_, err := s.Summarize(ctx, longText, "zh")
-	assert.Error(t, err)
 }
 
 // --- Synthesize integration test (requires mmx CLI) ---

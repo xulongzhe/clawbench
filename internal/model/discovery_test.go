@@ -16,7 +16,7 @@ import (
 // --- Test 1: BackendRegistry ---
 
 func TestBackendRegistry_ContainsAllBackends(t *testing.T) {
-	expectedIDs := []string{"claude", "codebuddy", "opencode", "gemini", "codex", "qoder", "vecli"}
+	expectedIDs := []string{"claude", "codebuddy", "opencode", "gemini", "codex", "qoder", "vecli", "deepseek"}
 	assert.Len(t, model.BackendRegistry, len(expectedIDs))
 
 	seen := make(map[string]bool)
@@ -52,6 +52,7 @@ func TestBackendRegistry_SpecificValues(t *testing.T) {
 	assert.Equal(t, "codex", specs["codex"].DefaultCmd)
 	assert.Equal(t, "qodercli", specs["qoder"].DefaultCmd)
 	assert.Equal(t, "vecli", specs["vecli"].DefaultCmd)
+	assert.Equal(t, "deepseek", specs["deepseek"].DefaultCmd)
 }
 
 // --- Test 2: generateAgentYAML ---
