@@ -138,6 +138,10 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	if !presence["ssh.enabled"] {
 		cfg.SSH.Enabled = true
 	}
+	// Persist host key to avoid SSH fingerprint mismatch after server restart
+	if cfg.SSH.HostKey == "" {
+		cfg.SSH.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
+	}
 
 	// --- TTS ---
 	if cfg.TTS.Engine == "" {

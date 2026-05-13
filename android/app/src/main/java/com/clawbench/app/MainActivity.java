@@ -577,6 +577,29 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /**
+         * Get the last SSH connection error message.
+         * Returns empty string if no error, or a descriptive error message.
+         * Used by the frontend to show specific failure reasons
+         * (auth failure, network unreachable, etc.) in the tunnel status banner.
+         */
+        @JavascriptInterface
+        public String getTunnelError() {
+            String err = PortForwardService.getLastError();
+            return err != null ? err : "";
+        }
+
+        /**
+         * Get the type of the last SSH connection error.
+         * Returns one of: "auth", "network", "hostkey", "unknown", or empty string if no error.
+         * Used by the frontend to show localized error messages.
+         */
+        @JavascriptInterface
+        public String getTunnelErrorType() {
+            String type = PortForwardService.getErrorType();
+            return type != null ? type : "";
+        }
+
+        /**
          * Add a port to be forwarded via SSH tunnel.
          * The PortForwardService creates a local port forward: localhost:{port} → server:{port}
          * WebView can then access http://localhost:{port} directly.

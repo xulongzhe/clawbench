@@ -220,8 +220,14 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/proxy/ports", middleware.Auth(ServeProxyPortAction))
 	register("/api/proxy/detect", middleware.Auth(ServeProxyDetect))
 
-	// SSH tunnel info
-	register("/api/ssh/info", middleware.Auth(ServeSSHInfo))
+	// SSH tunnel info — intentionally unauthenticated:
+	// 1. Android PortForwardService.fetchSSHPort() calls this from native Java
+	//    (no WebView cookies available) to discover the SSH port before connecting.
+	// 2. Without this, fetchSSHPort gets 401, falls back to httpPort+1 (wrong port),
+	//    and SSH tunnel silently fails with no error reported to the user.
+	// 3. This endpoint only exposes: SSH port number, username ("clawbench"),
+	//    host key fingerprint, and connection stats — no secrets or credentials.
+	register("/api/ssh/info", ServeSSHInfo)
 
 	// Terminal (interactive web terminal with PTY + WebSocket + xterm.js)
 	register("/api/terminal/ws", middleware.Auth(TerminalWebSocket))

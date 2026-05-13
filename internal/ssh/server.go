@@ -137,7 +137,8 @@ type Server struct {
 }
 
 // NewServer creates a new SSH tunnel server.
-// mainPort is the ClawBench HTTP port, used to auto-determine the SSH port.
+// When cfg.Port is 0 (unset), defaults to mainPort+1 so SSH runs on an
+// adjacent port without requiring explicit configuration.
 func NewServer(cfg model.SSHConfig, mainPort int, password string, portReg *service.ProxyRegistry) *Server {
 	sshPort := cfg.Port
 	if sshPort == 0 {

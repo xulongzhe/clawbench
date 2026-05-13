@@ -38,6 +38,8 @@ export interface SSHInfo {
 
 export type TunnelStatus = 'unknown' | 'ok' | 'disconnected' | 'degraded'
 
+export type TunnelErrorType = 'auth' | 'network' | 'hostkey' | 'unknown' | ''
+
 // Module-level shared state
 const ports = ref<ForwardedPort[]>([])
 const detectedPorts = ref<DetectedPort[]>([])
@@ -46,6 +48,8 @@ const sshInfo = ref<SSHInfo | null>(null)
 const tunnelStatus = ref<TunnelStatus>('unknown')
 const tunnelMessage = ref('')
 const tunnelChecking = ref(false)
+const tunnelError = ref('')
+const tunnelErrorType = ref<TunnelErrorType>('')
 
 // Auto-refresh interval when tunnel is unhealthy
 let tunnelPollTimer: ReturnType<typeof setInterval> | null = null
@@ -133,6 +137,8 @@ export function usePortForward() {
     tunnelChecking.value = true
     tunnelStatus.value = 'unknown'
     tunnelMessage.value = ''
+    tunnelError.value = ''
+    tunnelErrorType.value = ''
 
     await Promise.all([loadPorts(), loadSSHInfo()])
 
@@ -162,6 +168,9 @@ export function usePortForward() {
         stopTunnelPoll()
         return
       } else if (nativeConnected === false) {
+        // Query native layer for specific error details
+        tunnelError.value = getNativeTunnelError()
+        tunnelErrorType.value = getNativeTunnelErrorType()
         tunnelStatus.value = 'disconnected'
         tunnelMessage.value = gt('portForward.tunnelDisconnected')
         tunnelChecking.value = false
@@ -222,6 +231,41 @@ export function usePortForward() {
       return null
     } catch {
       return null
+    }
+  }
+
+  /**
+   * Query Android native layer for the last SSH tunnel error.
+   * Returns the error message string, or empty string if no error.
+   */
+  function getNativeTunnelError(): string {
+    if (!isAppMode.value) return ''
+    const native = (window as any).AndroidNative
+    if (!native || typeof native.getTunnelError !== 'function') return ''
+    try {
+      const result = native.getTunnelError()
+      return typeof result === 'string' ? result : ''
+    } catch {
+      return ''
+    }
+  }
+
+  /**
+   * Query Android native layer for the last SSH tunnel error type.
+   * Returns one of: 'auth', 'network', 'hostkey', 'unknown', or ''.
+   */
+  function getNativeTunnelErrorType(): TunnelErrorType {
+    if (!isAppMode.value) return ''
+    const native = (window as any).AndroidNative
+    if (!native || typeof native.getTunnelErrorType !== 'function') return ''
+    try {
+      const result = native.getTunnelErrorType()
+      if (typeof result === 'string' && ['auth', 'network', 'hostkey', 'unknown', ''].includes(result)) {
+        return result as TunnelErrorType
+      }
+      return ''
+    } catch {
+      return ''
     }
   }
 
@@ -317,6 +361,8 @@ export function usePortForward() {
     tunnelStatus,
     tunnelMessage,
     tunnelChecking,
+    tunnelError,
+    tunnelErrorType,
     loadPorts,
     registerPort,
     unregisterPort,

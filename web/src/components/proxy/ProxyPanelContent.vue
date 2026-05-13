@@ -7,7 +7,7 @@
           <XCircle :size="16" />
           <div class="tunnel-banner-content">
             <span class="tunnel-banner-title">{{ t('proxy.tunnelDisconnected') }}</span>
-            <span class="tunnel-banner-detail">{{ t('proxy.tunnelDisconnectedDetail') }}</span>
+            <span class="tunnel-banner-detail">{{ tunnelErrorDetail }}</span>
           </div>
           <button class="tunnel-retry-btn" :class="{ spinning: tunnelChecking }" :disabled="tunnelChecking" @click="handleRetryTunnel" :title="t('proxy.retryCheck')">
             <RotateCcw :size="14" />
@@ -188,10 +188,24 @@ const detecting = ref(false)
 const portInputRef = ref(null)
 const tunnelGuideExpanded = ref(false)
 
-const { ports, detectedPorts, loading, isAppMode, sshInfo, tunnelStatus, tunnelMessage, tunnelChecking, registerPort, unregisterPort, detectPorts, checkTunnelHealth, openPort, openInExternalBrowser } = usePortForward()
+const { ports, detectedPorts, loading, isAppMode, sshInfo, tunnelStatus, tunnelMessage, tunnelChecking, tunnelError, tunnelErrorType, registerPort, unregisterPort, detectPorts, checkTunnelHealth, openPort, openInExternalBrowser } = usePortForward()
 const toast = useToast()
 
 const sshCopied = ref(false)
+
+// Compute contextual error detail based on error type from native bridge
+const tunnelErrorDetail = computed(() => {
+  if (!tunnelError.value && !tunnelErrorType.value) {
+    return t('proxy.tunnelDisconnectedDetail')
+  }
+  const type = tunnelErrorType.value
+  if (type === 'auth') return t('proxy.tunnelErrorAuth')
+  if (type === 'network') return t('proxy.tunnelErrorNetwork')
+  if (type === 'hostkey') return t('proxy.tunnelErrorHostKey')
+  // Fallback: show the raw error message from native layer
+  if (tunnelError.value) return tunnelError.value
+  return t('proxy.tunnelDisconnectedDetail')
+})
 
 const isValidPort = computed(() => {
   const p = parseInt(newPort.value)

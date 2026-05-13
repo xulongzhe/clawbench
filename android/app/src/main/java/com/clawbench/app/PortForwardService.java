@@ -106,6 +106,9 @@ public class PortForwardService extends Service {
     private volatile boolean isReconnecting = false;
     private volatile int reconnectAttempt = 0;
 
+    // Last SSH error message (for JS bridge error reporting)
+    private static volatile String lastError = null;
+
     public static boolean isRunning() {
         return isRunning;
     }
@@ -119,7 +122,45 @@ public class PortForwardService extends Service {
         // Access via static reference is inherently racy, but sufficient for
         // a health-check ping — worst case we return a stale value that gets
         // corrected on the next poll.
-        return isRunning && instance != null && instance.sshSession != null && instance.sshSession.isConnected();
+        boolean connected = isRunning && instance != null && instance.sshSession != null && instance.sshSession.isConnected();
+        if (connected) {
+            lastError = null;
+        }
+        return connected;
+    }
+
+    /**
+     * Get the last SSH connection error message.
+     * Returns null if no error (tunnel connected or never attempted).
+     * Can be called from any thread (used by WebAppInterface for JS bridge).
+     */
+    public static String getLastError() {
+        return lastError;
+    }
+
+    /**
+     * Classify an SSH error into a short, user-friendly error code.
+     * Used by the JS bridge to provide localized error messages in the frontend.
+     * Returns one of: "auth", "network", "server", "unknown", or null.
+     */
+    public static String getErrorType() {
+        String err = lastError;
+        if (err == null) return null;
+        err = err.toLowerCase();
+        if (err.contains("auth") || err.contains("password") || err.contains("permission")
+                || err.contains("credential") || err.contains("denied")) {
+            return "auth";
+        }
+        if (err.contains("timeout") || err.contains("refused") || err.contains("unreachable")
+                || err.contains("no route") || err.contains("network")
+                || err.contains("connection reset") || err.contains("broken pipe")
+                || err.contains("eof") || err.contains("reset")) {
+            return "network";
+        }
+        if (err.contains("host key") || err.contains("fingerprint")) {
+            return "hostkey";
+        }
+        return "unknown";
     }
 
     /**
@@ -327,6 +368,7 @@ public class PortForwardService extends Service {
                 ensureConnection();
                 Log.i(TAG, "SSH: restored all port forwards after service restart");
             } catch (Exception e) {
+                lastError = e.getMessage();
                 Log.e(TAG, "SSH: failed to restore connection after service restart", e);
                 // Connection monitor will handle reconnect
             }
@@ -395,6 +437,7 @@ public class PortForwardService extends Service {
                         try {
                             Log.i(TAG, "SSH: auto-reconnect attempt #" + reconnectAttempt);
                             ensureConnection();
+                            lastError = null;
                             Log.i(TAG, "SSH: auto-reconnect succeeded on attempt #" + reconnectAttempt);
                             isReconnecting = false;
                             reconnectAttempt = 0;
@@ -410,6 +453,7 @@ public class PortForwardService extends Service {
                             }
                             break; // Reconnected successfully
                         } catch (Exception e) {
+                            lastError = e.getMessage();
                             Log.w(TAG, "SSH: auto-reconnect attempt #" + reconnectAttempt + " failed: " + e.getMessage());
                         }
                     }
@@ -506,7 +550,7 @@ public class PortForwardService extends Service {
         // Fetch SSH port from /api/ssh/info endpoint
         sshPort = fetchSSHPort(serverUrl, httpPort);
         if (sshPort <= 0) {
-            sshPort = httpPort + 1; // fallback: HTTP port + 1
+            throw new Exception("Failed to get SSH port from server. Please check that SSH tunnel is enabled in server config.");
         }
 
         // Get password from SharedPreferences (set by WebAppInterface on login)
@@ -527,6 +571,9 @@ public class PortForwardService extends Service {
         sshSession.setTimeout(15000); // 15s connection timeout
 
         sshSession.connect(15000); // 15s connection timeout
+
+        // Connection succeeded — clear any previous error
+        lastError = null;
 
         Log.i(TAG, "SSH: connected to " + serverHost + ":" + sshPort);
 
@@ -600,6 +647,7 @@ public class PortForwardService extends Service {
             Log.i(TAG, "SSH: port forward ready: localhost:" + port + " → server:" + port);
             updateNotification(forwardedPorts.size(), null);
         } catch (Exception e) {
+            lastError = e.getMessage();
             Log.e(TAG, "SSH: failed to add port forward for " + port + ", retrying...", e);
             // Disconnect and retry once (password may have been updated, or session stale)
             disconnectInternal();
@@ -613,6 +661,7 @@ public class PortForwardService extends Service {
                 Log.i(TAG, "SSH: port forward added on retry: localhost:" + port + " → server:" + port);
                 updateNotification(forwardedPorts.size(), null);
             } catch (Exception e2) {
+                lastError = e2.getMessage();
                 Log.e(TAG, "SSH: failed to add port forward for " + port + " on retry", e2);
             }
         }
