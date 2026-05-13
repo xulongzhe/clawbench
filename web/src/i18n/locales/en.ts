@@ -346,6 +346,11 @@ export default {
       statusCancelled: 'Cancelled',
       statusFailed: 'Failed',
       cancelledNotice: 'This execution was cancelled. No output available.',
+      confirmDeleteExecution: 'Delete this execution record?',
+      executionDeleted: 'Execution record deleted',
+      confirmDeleteAll: 'Clear all execution records? This cannot be undone.',
+      allExecutionsDeleted: 'All execution records cleared',
+      clearAll: 'Clear all',
     },
   },
   file: {

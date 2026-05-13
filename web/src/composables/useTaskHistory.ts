@@ -121,6 +121,37 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
     await loadRunningStatus()
   }
 
+  async function deleteExecution(execId: number): Promise<void> {
+    if (!task.value?.id) return
+    if (!await dialog.confirm(gt('task.exec.confirmDeleteExecution'))) return
+    try {
+      await apiPut(`/api/tasks/${task.value.id}`, {
+        action: 'deleteExecution',
+        executionId: String(execId),
+      })
+      toast.show(gt('task.exec.executionDeleted'), { type: 'success' })
+    } catch (err: any) {
+      toast.show(gt('task.exec.actionFailed'), { type: 'error' })
+      return
+    }
+    await loadExecutions()
+  }
+
+  async function deleteAllExecutions(): Promise<void> {
+    if (!task.value?.id) return
+    if (!await dialog.confirm(gt('task.exec.confirmDeleteAll'), { dangerous: true })) return
+    try {
+      await apiPut(`/api/tasks/${task.value.id}`, {
+        action: 'deleteAllExecutions',
+      })
+      toast.show(gt('task.exec.allExecutionsDeleted'), { type: 'success' })
+    } catch (err: any) {
+      toast.show(gt('task.exec.actionFailed'), { type: 'error' })
+      return
+    }
+    await loadExecutions()
+  }
+
   async function markExecRead(execId: string): Promise<void> {
     if (!task.value?.id || !execId) return
     try {
@@ -167,6 +198,8 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
     loadExecutions,
     loadRunningStatus,
     cancelExecution,
+    deleteExecution,
+    deleteAllExecutions,
     markExecRead,
     openDetail,
     isUnreadDisplay,

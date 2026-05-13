@@ -346,6 +346,11 @@ export default {
       statusCancelled: '已取消',
       statusFailed: '失败',
       cancelledNotice: '此执行已被取消，无输出内容',
+      confirmDeleteExecution: '确定删除此执行记录？',
+      executionDeleted: '执行记录已删除',
+      confirmDeleteAll: '确定清除所有执行记录？此操作不可撤销。',
+      allExecutionsDeleted: '执行记录已清除',
+      clearAll: '清除全部',
     },
   },
   file: {

@@ -99,6 +99,7 @@ import { useI18n } from 'vue-i18n'
 import { ChevronDown, ChevronUp, Clock, Pause, Volume2, Info } from 'lucide-vue-next'
 import { formatDuration } from '@/utils/format.ts'
 import { store } from '@/stores/app.ts'
+import { extractSpeakableText } from '@/composables/useAutoSpeech.ts'
 import ContentBlocks from './ContentBlocks.vue'
 import FileAttachmentList from './FileAttachmentList.vue'
 
@@ -136,11 +137,11 @@ watch(() => props.msg?.id, (newId, oldId) => {
   }
 })
 
-// Extract text content from message blocks for TTS
+// Extract text content from message blocks for TTS.
+// Uses extractSpeakableText to include AskUserQuestion blocks.
 const msgText = computed(() => {
   if (props.msg?.role !== 'assistant') return ''
-  const blocks = props.msg?.blocks || []
-  return blocks.filter(b => b.type === 'text').map(b => b.text || '').join('\n').trim()
+  return extractSpeakableText(props.msg?.blocks || [])
 })
 
 // Handle speak button click: play or stop (no popover)

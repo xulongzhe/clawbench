@@ -20,6 +20,37 @@ import i18n from '@/i18n'
 
 const STORAGE_KEY = 'clawbench-auto-speech'
 
+/**
+ * Extract speakable text from chat message blocks.
+ * Includes both text blocks and AskUserQuestion tool_use blocks
+ * (structured questions) so TTS can read the question and options.
+ */
+export function extractSpeakableText(blocks: any[]): string {
+  const parts: string[] = []
+  for (const b of blocks) {
+    if (b.type === 'text') {
+      const t = (b.text || '').trim()
+      if (t) parts.push(t)
+    } else if (b.type === 'tool_use' && b.name === 'AskUserQuestion' && b.input?.questions) {
+      const questions = b.input.questions
+      for (const q of questions) {
+        let s = q.question || ''
+        if (q.header) s += ` (${q.header})`
+        const opts = Array.isArray(q.options) ? q.options : []
+        if (opts.length > 0) {
+          s += ': ' + opts.map((o: any) => {
+            const label = typeof o === 'string' ? o : (o.label || '')
+            const desc = typeof o === 'object' ? (o.description || '') : ''
+            return desc && desc !== label ? `${label} — ${desc}` : label
+          }).join(', ')
+        }
+        if (s) parts.push(s)
+      }
+    }
+  }
+  return parts.join('\n').trim()
+}
+
 /** TTS lifecycle states — the single source of truth for UI rendering */
 type SpeechState = 'idle' | 'summarizing' | 'synthesizing' | 'playing'
 

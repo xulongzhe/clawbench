@@ -158,7 +158,7 @@ import { useNotification } from '@/composables/useNotification.ts'
 import { useFileUpload } from '@/composables/useFileUpload.ts'
 import { refreshCurrentFile } from '@/composables/useFileRefresh.ts'
 import { playNotificationSound } from '@/composables/useNotificationSound.ts'
-import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
+import { useAutoSpeech, extractSpeakableText } from '@/composables/useAutoSpeech.ts'
 import { useSwipeSession } from '@/composables/useSwipeSession.ts'
 import { store } from '@/stores/app.ts'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer.ts'
@@ -254,10 +254,9 @@ function onStreamEnd(reason) {
     if (autoSpeech.enabled.value) {
       const lastMsg = messages.value[messages.value.length - 1]
       if (lastMsg?.role === 'assistant') {
-        const textBlocks = (lastMsg.blocks || []).filter(b => b.type === 'text')
-        const fullText = textBlocks.map(b => b.text || '').join('\n')
-        if (fullText.trim() && lastMsg.id) {
-          autoSpeech.speakMessage(lastMsg.id, fullText.trim())
+        const fullText = extractSpeakableText(lastMsg.blocks || [])
+        if (fullText && lastMsg.id) {
+          autoSpeech.speakMessage(lastMsg.id, fullText)
         }
       }
     }

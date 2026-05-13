@@ -1,5 +1,12 @@
 <template>
   <div class="task-list-page">
+    <!-- Compact header: breadcrumb + create button -->
+    <div class="list-header">
+      <TaskBreadcrumb />
+      <button class="create-btn" @click="$emit('create')" :title="t('task.form.createTitle')">
+        <Plus :size="16" />
+      </button>
+    </div>
     <div class="task-list-body">
       <div v-if="loading && tasks.length === 0" class="task-loading">
         <Loader2 class="loading-icon" :size="20" />
@@ -45,10 +52,6 @@
         </div>
       </div>
     </div>
-    <!-- Fixed FAB -->
-    <button class="create-fab" @click="$emit('create')" :title="t('task.form.createTitle')">
-      <Plus :size="24" />
-    </button>
   </div>
 </template>
 
@@ -60,6 +63,7 @@ import { useTaskTab } from '@/composables/useTaskTab'
 import { useAgents } from '@/composables/useAgents'
 import { humanizeCron, repeatLabel, statusLabel, formatDateTime } from '@/utils/format'
 import { store } from '@/stores/app'
+import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 
 const { t } = useI18n()
 const { loadTasks } = useTaskTab()
@@ -93,8 +97,44 @@ onMounted(refresh)
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: relative;
   background: var(--bg-primary, #ffffff);
+}
+
+/* Compact header — matches detail/form/history pages */
+.list-header {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  gap: 8px;
+}
+
+/* Create button in header toolbar */
+.create-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 14px;
+  background: var(--accent-color, #0066cc);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+@media (hover: hover) {
+  .create-btn:hover {
+    background: color-mix(in srgb, var(--accent-color, #0066cc) 85%, black);
+    transform: translateY(-1px);
+  }
+}
+
+.create-btn:active {
+  transform: scale(0.9);
 }
 
 .task-list-body {
@@ -131,38 +171,6 @@ onMounted(refresh)
 
 .empty-icon {
   opacity: 0.5;
-}
-
-/* Floating Action Button */
-.create-fab {
-  position: absolute;
-  bottom: 24px;
-  right: 24px;
-  width: 52px;
-  height: 52px;
-  border: none;
-  border-radius: 50%;
-  background: var(--accent-color, #0066cc);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
-  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s;
-  z-index: 10;
-}
-
-.create-fab:active {
-  transform: scale(0.9);
-  box-shadow: 0 2px 6px rgba(0, 102, 204, 0.3);
-}
-
-@media (hover: hover) {
-  .create-fab:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0, 102, 204, 0.4);
-  }
 }
 
 .task-item {

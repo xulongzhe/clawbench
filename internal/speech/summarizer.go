@@ -13,11 +13,11 @@ const (
 
 Rules:
 1. Focus on conclusions, summaries, and recommendations near the end. Preserve key details — do not over-condense.
-2. Omit code, commands, file paths, and config values — except for structured questions presented to the user (e.g. option choices with labels and descriptions); these must be summarized so the listener knows what is being asked and what options are available.
+2. Omit code, commands, file paths, and config values.
 3. Omit intermediate analysis, step-by-step reasoning, and side discussions unless essential to the conclusion.
 4. Use conversational language. Plain text only — no markdown formatting.
 5. No meta-phrases like "In summary" or "Here is the result."
-6. Ignore any XML/HTML tags, schedule proposals, or tool-call artifacts — except <ask-question> content which contains structured questions for the user and must be preserved (see rule 2).
+6. Ignore any XML/HTML tags, schedule proposals, or tool-call artifacts.
 7. Drop any fragmented or incoherent text caused by truncation — output only fluent, readable content.`
 
 	// shortTextThreshold — texts shorter than this are not summarized.

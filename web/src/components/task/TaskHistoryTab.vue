@@ -15,6 +15,9 @@
       <span>{{ t('task.exec.noExecutions') }}</span>
     </div>
     <div v-else class="history-list">
+      <div v-if="executions.length > 0" class="clear-all-row">
+        <button class="clear-all-btn" @click="deleteAllExecutions">{{ t('task.exec.clearAll') }}</button>
+      </div>
       <div v-for="exec in allExecutions" :key="exec.id" class="execution-item" :class="{ running: isRunning(exec), unread: !isRunning(exec) && isUnreadDisplay(exec) }" @click="!isRunning(exec) && openDetail(exec)">
         <div class="execution-row">
           <div class="execution-info">
@@ -49,10 +52,17 @@
               </div>
             </template>
           </div>
-          <button v-if="isRunning(exec)" class="cancel-exec-btn" @click.stop="cancelExecution(exec.id)" :title="t('task.exec.cancel')">
-            <Square :size="12" />
-          </button>
-          <ChevronRight v-else :size="16" class="exec-chevron" />
+          <template v-if="isRunning(exec)">
+            <button class="cancel-exec-btn" @click.stop="cancelExecution(exec.id)" :title="t('task.exec.cancel')">
+              <Square :size="12" />
+            </button>
+          </template>
+          <template v-else>
+            <button class="delete-exec-btn" @click.stop="deleteExecution(exec.id)" :title="t('task.delete')">
+              <Trash2 :size="14" />
+            </button>
+            <ChevronRight :size="16" class="exec-chevron" />
+          </template>
         </div>
       </div>
     </div>
@@ -63,7 +73,7 @@
 <script setup>
 import { ref, watch, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ChevronRight, Square, Loader2, History } from 'lucide-vue-next'
+import { ChevronRight, Square, Loader2, History, Trash2 } from 'lucide-vue-next'
 import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import { useTaskHistory } from '@/composables/useTaskHistory.ts'
 import { formatDuration, formatRelativeTime } from '@/utils/format.ts'
@@ -80,11 +90,14 @@ const { t } = useI18n()
 const {
   loading,
   allExecutions,
+  executions,
   isRunning,
   locallyReadIds,
   loadExecutions,
   loadRunningStatus,
   cancelExecution,
+  deleteExecution,
+  deleteAllExecutions,
   openDetail,
   isUnreadDisplay,
   onTaskChange,
@@ -436,6 +449,73 @@ onUnmounted(() => {
 }
 
 .cancel-exec-btn:active {
+  transform: scale(0.95);
+}
+
+/* ── Delete button ── */
+.delete-exec-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #9ca3af);
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  opacity: 0;
+}
+
+@media (hover: hover) {
+  .execution-item:not(.running):hover .delete-exec-btn {
+    opacity: 1;
+  }
+  .delete-exec-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+  }
+}
+
+/* Touch devices: always visible but subtle */
+@media (hover: none) {
+  .delete-exec-btn {
+    opacity: 0.5;
+  }
+}
+
+.delete-exec-btn:active {
+  transform: scale(0.9);
+}
+
+/* ── Clear all row ── */
+.clear-all-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 2px;
+}
+
+.clear-all-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted, #9ca3af);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+@media (hover: hover) {
+  .clear-all-btn:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.06);
+  }
+}
+
+.clear-all-btn:active {
   transform: scale(0.95);
 }
 </style>
