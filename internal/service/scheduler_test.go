@@ -590,7 +590,7 @@ func TestAddTaskExecution(t *testing.T) {
 	assert.NoError(t, err)
 	taskID, _ := result.LastInsertId()
 
-	err = service.AddTaskExecution(taskID, "session-abc", "auto")
+	_, err = service.AddTaskExecution(taskID, "session-abc", "auto")
 	assert.NoError(t, err)
 
 	// Verify the execution was recorded
@@ -617,9 +617,9 @@ func TestAddTaskExecution_MultipleExecutions(t *testing.T) {
 	assert.NoError(t, err)
 	taskID, _ := result.LastInsertId()
 
-	err = service.AddTaskExecution(taskID, "session-1", "auto")
+	_, err = service.AddTaskExecution(taskID, "session-1", "auto")
 	assert.NoError(t, err)
-	err = service.AddTaskExecution(taskID, "session-2", "auto")
+	_, err = service.AddTaskExecution(taskID, "session-2", "auto")
 	assert.NoError(t, err)
 
 	var count int
@@ -640,7 +640,7 @@ func TestUpdateExecutionStatus(t *testing.T) {
 	assert.NoError(t, err)
 	taskID, _ := result.LastInsertId()
 
-	err = service.AddTaskExecution(taskID, "session-abc", "auto")
+	_, err = service.AddTaskExecution(taskID, "session-abc", "auto")
 	assert.NoError(t, err)
 
 	// Verify default status is 'completed'
@@ -817,7 +817,7 @@ func TestRemoveTask_CascadeDeletesSessions(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a task_execution linked to this session
-	err = service.AddTaskExecution(task.ID, sessionID, "auto")
+	_, err = service.AddTaskExecution(task.ID, sessionID, "auto")
 	assert.NoError(t, err)
 
 	// Verify the session exists
@@ -867,7 +867,7 @@ func TestPurgeDeletedData_CleansTaskExecutions(t *testing.T) {
 	assert.NoError(t, err)
 	taskID, _ := result.LastInsertId()
 
-	err = service.AddTaskExecution(taskID, sessionID, "auto")
+	_, err = service.AddTaskExecution(taskID, sessionID, "auto")
 	assert.NoError(t, err)
 
 	// Verify task_execution exists
@@ -924,7 +924,7 @@ func TestDeleteTaskExecution(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create an execution linked to this session
-	err = service.AddTaskExecution(taskID, sessionID, "auto")
+	_, err = service.AddTaskExecution(taskID, sessionID, "auto")
 	assert.NoError(t, err)
 
 	// Get the execution ID
@@ -979,7 +979,7 @@ func TestDeleteTaskExecution_RunningExecution(t *testing.T) {
 	sessionID, err := service.CreateSession("/proj", "claude", "Running Exec", "agent1", "", "default", "scheduled")
 	assert.NoError(t, err)
 
-	err = service.AddTaskExecution(taskID, sessionID, "auto")
+	_, err = service.AddTaskExecution(taskID, sessionID, "auto")
 	assert.NoError(t, err)
 
 	// Mark execution as running
@@ -1018,7 +1018,7 @@ func TestDeleteTaskExecution_RunCountClampToZero(t *testing.T) {
 	sessionID, err := service.CreateSession("/proj", "claude", "Zero Exec", "agent1", "", "default", "scheduled")
 	assert.NoError(t, err)
 
-	err = service.AddTaskExecution(taskID, sessionID, "auto")
+	_, err = service.AddTaskExecution(taskID, sessionID, "auto")
 	assert.NoError(t, err)
 
 	var execID int64
@@ -1054,7 +1054,7 @@ func TestDeleteAllTaskExecutions(t *testing.T) {
 		sessionID, err := service.CreateSession("/proj", "claude", fmt.Sprintf("Exec %d", i), "agent1", "", "default", "scheduled")
 		assert.NoError(t, err)
 		service.AddChatMessage("/proj", "claude", sessionID, "user", "prompt", nil, false, fmt.Sprintf("Exec %d", i))
-		err = service.AddTaskExecution(taskID, sessionID, "auto")
+		_, err = service.AddTaskExecution(taskID, sessionID, "auto")
 		assert.NoError(t, err)
 	}
 

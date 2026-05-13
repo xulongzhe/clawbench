@@ -22,7 +22,7 @@ func NewMMX() *MMXSummarizer {
 	s := &MMXSummarizer{
 		Model: "MiniMax-M2.7",
 	}
-	s.gs = NewTTSPipeline(s.doSummarizePass)
+	s.gs = NewTTSPipeline(s.DoSummarizePass)
 	return s
 }
 
@@ -31,8 +31,8 @@ func (s *MMXSummarizer) Summarize(ctx context.Context, text string, language str
 	return s.gs.Summarize(ctx, text, language)
 }
 
-// doSummarizePass performs a single summarization pass using mmx text chat.
-func (s *MMXSummarizer) doSummarizePass(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+// DoSummarizePass performs a single summarization pass using mmx text chat.
+func (s *MMXSummarizer) DoSummarizePass(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
 	messagesJSON := fmt.Sprintf(`[{"role":"user","content":%q}]`, text)
 
 	args := []string{

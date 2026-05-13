@@ -5,6 +5,7 @@ import { useDialog } from '@/composables/useDialog.ts'
 import { useTaskTab } from '@/composables/useTaskTab.ts'
 import { useChatRender } from '@/composables/useChatRender.ts'
 import { gt } from '@/composables/useLocale'
+import { stripMarkdownPreview } from '@/utils/format.ts'
 
 interface UseTaskHistoryOptions {
   task: Ref<any>
@@ -173,6 +174,11 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
   }
 
   function extractSummary(exec: any): string {
+    // Prefer backend-provided summary
+    if (exec.summary != null && exec.summary !== '') {
+      return stripMarkdownPreview(exec.summary, 120)
+    }
+    // Fallback: extract first text block from content
     const { blocks } = chatRender.parseAssistantContent(exec.content)
     for (const block of blocks) {
       if (block.type === 'text' && block.text) {

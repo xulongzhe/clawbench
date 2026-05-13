@@ -656,7 +656,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 
 	switch {
 	case backend == "simple":
-		// Simple summarizer doesn't preserve markdown — create pipeline-based wrapper
+		// Simple summarizer: truncate-only, no AI call. Wrap in pipeline with PreserveMarkdown.
 		pipeline := summarize.NewPipelineWithOpts(
 			func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
 				return summarize.NewSimple().Summarize(ctx, text, "")
@@ -670,32 +670,30 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 		if cfg.TTS.API.BaseURL == "" {
 			return nil, fmt.Errorf("tasks.summarize_backend is \"api\" but tts.api.base_url is not configured")
 		}
-		var s summarize.Summarizer
+		// For API backends, create OpenAI/Anthropic summarizer and wrap its pass function
+		// in a pipeline with PreserveMarkdown=true and task-specific prompt.
 		if cfg.TTS.API.Format == "anthropic" {
-			s = summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
+			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
 			if modelName != "" {
-				s.(*summarize.AnthropicSummarizer).Model = modelName
+				s.Model = modelName
 			}
-		} else {
-			s = summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-			if modelName != "" {
-				s.(*summarize.OpenAISummarizer).Model = modelName
-			}
+			pipeline := summarize.NewPipelineWithOpts(
+				s.DoSummarizePass,
+				summarize.TaskSummarizePrompt(),
+				summarize.SummarizeOption{PreserveMarkdown: true},
+			)
+			return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 		}
-		// Create pipeline with PreserveMarkdown and task-specific prompt
+		s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
+		if modelName != "" {
+			s.Model = modelName
+		}
 		pipeline := summarize.NewPipelineWithOpts(
-			func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
-				// Delegate to the summarizer's internal pass function
-				// We need to call the API summarizer directly — use a wrapper
-				return "", fmt.Errorf("api backend delegation not yet implemented for task summarization")
-			},
-			"", // use default prompt
+			s.DoSummarizePass,
+			summarize.TaskSummarizePrompt(),
 			summarize.SummarizeOption{PreserveMarkdown: true},
 		)
-		_ = pipeline
-		// For API backends, use TaskSummarizer directly with AI backend creation
-		// This is simpler and avoids the delegation complexity
-		return summarize.NewTaskSummarizer(backend, modelName)
+		return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 
 	default:
 		// AI CLI backends (claude/codebuddy/gemini/opencode/codex/qoder/vecli/deepseek)

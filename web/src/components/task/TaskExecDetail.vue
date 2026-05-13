@@ -7,9 +7,14 @@
 
     <!-- Scrollable message content -->
     <div class="exec-detail-content" ref="contentRef" @click="handleContentClick">
+      <!-- Summary / Original tab bar -->
+      <div v-if="hasSummary" class="exec-tab-bar">
+        <button class="exec-tab-btn" :class="{ active: activeTab === 'summary' }" @click="activeTab = 'summary'">📌 总结</button>
+        <button class="exec-tab-btn" :class="{ active: activeTab === 'original' }" @click="activeTab = 'original'">📄 原文</button>
+      </div>
       <ChatMessageItem
-        v-if="msgData"
-        :msg="msgData"
+        v-if="activeMsgData"
+        :msg="activeMsgData"
         :index="0"
         :expandedTools="expandedTools"
         :blockTasks="{}"
@@ -101,7 +106,11 @@ provide('chatUI', { closeSheet: () => emit('close') })
 provide('autoSpeech', useAutoSpeech())
 provide('layoutRefreshKey', ref(0))
 
-// ── Build a synthetic message object for ChatMessageItem ──
+// ── Summary / Original toggle ──
+const hasSummary = computed(() => props.execDetail?.summary != null && props.execDetail.summary !== '')
+const activeTab = ref<'summary' | 'original'>(hasSummary.value ? 'summary' : 'original')
+
+// ── Build a synthetic message object for ChatMessageItem (original content) ──
 const msgData = computed(() => {
   if (!props.execDetail?.content && props.execDetail?.status !== 'cancelled') return null
   const { blocks } = chatRender.parseAssistantContent(props.execDetail.content || '{}')
@@ -116,6 +125,30 @@ const msgData = computed(() => {
     streaming: false,
     cancelled: false,
   }
+})
+
+// ── Build a synthetic message object for ChatMessageItem (summary content) ──
+const summaryMsgData = computed(() => {
+  if (!props.execDetail?.summary) return null
+  const summaryJson = JSON.stringify({ blocks: [{ type: 'text', text: props.execDetail.summary }] })
+  const { blocks } = chatRender.parseAssistantContent(summaryJson)
+  if (!blocks || blocks.length === 0) return null
+  return {
+    id: (props.execDetail.id || 'exec') + '-summary',
+    role: 'assistant',
+    content: summaryJson,
+    blocks,
+    metadata: props.execDetail.metadata || null,
+    createdAt: props.execDetail.createdAt || '',
+    streaming: false,
+    cancelled: false,
+  }
+})
+
+// ── Active message data based on tab ──
+const activeMsgData = computed(() => {
+  if (activeTab.value === 'summary' && summaryMsgData.value) return summaryMsgData.value
+  return msgData.value
 })
 
 // ── Expanded tools state ──
@@ -199,6 +232,7 @@ watch(() => props.execDetail, () => {
   expandedTools.value = {}
   toolDetailOverlay.value.show = false
   metadataModal.value.show = false
+  activeTab.value = hasSummary.value ? 'summary' : 'original'
   // Verify file path annotations after content re-renders.
   // ChatRender.renderMarkdown calls verifyFilePaths targeting #aiChatMessages,
   // but this component renders outside that container, so non-existent file
@@ -240,6 +274,43 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 16px 12px;
+}
+
+.exec-tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  background: var(--bg-secondary, #f1f5f9);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.exec-tab-btn {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #6b7280);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.exec-tab-btn.active {
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #1a1a1a);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+@media (hover: hover) {
+  .exec-tab-btn:not(.active):hover {
+    color: var(--text-primary, #1a1a1a);
+    background: var(--bg-tertiary, #e2e8f0);
+  }
 }
 
 .exec-detail-empty {

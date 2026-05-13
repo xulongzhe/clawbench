@@ -835,7 +835,7 @@ func TestServeTaskByID_DeleteExecution(t *testing.T) {
 	// Create a scheduled session and execution
 	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Exec 1", "coder", "", "default", "scheduled")
 	assert.NoError(t, err)
-	err = service.AddTaskExecution(task.ID, sessionID, "auto")
+	_, err = service.AddTaskExecution(task.ID, sessionID, "auto")
 	assert.NoError(t, err)
 
 	// Get execution ID

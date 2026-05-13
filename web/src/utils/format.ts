@@ -76,6 +76,25 @@ export function formatDuration(ms: number): string {
     return `${min}m${rem}s`
 }
 
+/** Strip markdown formatting for list previews */
+export function stripMarkdownPreview(text: string, maxLen: number = 100): string {
+    if (!text) return ''
+    const clean = text
+        .replace(/```[\s\S]*?```/g, '')   // code blocks
+        .replace(/`([^`]+)`/g, '$1')       // inline code
+        .replace(/#{1,6}\s+/g, '')         // headings
+        .replace(/\*\*([^*]+)\*\*/g, '$1') // bold
+        .replace(/\*([^*]+)\*/g, '$1')     // italic
+        .replace(/__([^_]+)__/g, '$1')     // bold
+        .replace(/_([^_]+)_/g, '$1')       // italic
+        .replace(/~~([^~]+)~~/g, '$1')     // strikethrough
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+        .replace(/[#*`_~\[\]()>|]/g, '')   // remaining syntax chars
+        .replace(/\n+/g, ' ')             // newlines → space
+        .trim()
+    return clean.length > maxLen ? clean.substring(0, maxLen) + '...' : clean
+}
+
 /** Get a label for task repeat mode */
 export function repeatLabel(mode: string, maxRuns: number): string {
     if (mode === 'once') return i18n.global.t('task.repeat.once')

@@ -63,7 +63,7 @@ func TestAIBackendSummarizer_doSummarizePass_Success(t *testing.T) {
 		backend: mock,
 	}
 
-	result, err := s.doSummarizePass(context.Background(), "long text", "system prompt", 1)
+	result, err := s.DoSummarizePass(context.Background(), "long text", "system prompt", 1)
 	assert.NoError(t, err)
 	assert.Equal(t, "This is a summary.", result)
 	assert.True(t, mock.executeCalled)
@@ -78,7 +78,7 @@ func TestAIBackendSummarizer_doSummarizePass_ExecuteError(t *testing.T) {
 		backend: mock,
 	}
 
-	_, err := s.doSummarizePass(context.Background(), "long text", "system prompt", 1)
+	_, err := s.DoSummarizePass(context.Background(), "long text", "system prompt", 1)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to start")
 	assert.Contains(t, err.Error(), "CLI not available")
@@ -94,7 +94,7 @@ func TestAIBackendSummarizer_doSummarizePass_StreamError(t *testing.T) {
 		backend: mock,
 	}
 
-	_, err := s.doSummarizePass(context.Background(), "long text", "system prompt", 1)
+	_, err := s.DoSummarizePass(context.Background(), "long text", "system prompt", 1)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "out of tokens")
 }
@@ -109,7 +109,7 @@ func TestAIBackendSummarizer_doSummarizePass_EmptyOutput(t *testing.T) {
 		backend: mock,
 	}
 
-	_, err := s.doSummarizePass(context.Background(), "long text", "system prompt", 1)
+	_, err := s.DoSummarizePass(context.Background(), "long text", "system prompt", 1)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "empty output")
 }
@@ -125,7 +125,7 @@ func TestAIBackendSummarizer_doSummarizePass_WhitespaceOnlyOutput(t *testing.T) 
 		backend: mock,
 	}
 
-	_, err := s.doSummarizePass(context.Background(), "long text", "system prompt", 1)
+	_, err := s.DoSummarizePass(context.Background(), "long text", "system prompt", 1)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "empty output")
 }
@@ -144,7 +144,7 @@ func TestAIBackendSummarizer_doSummarizePass_MultipleContentEvents(t *testing.T)
 		backend: mock,
 	}
 
-	result, err := s.doSummarizePass(context.Background(), "long text", "system prompt", 1)
+	result, err := s.DoSummarizePass(context.Background(), "long text", "system prompt", 1)
 	assert.NoError(t, err)
 	assert.Equal(t, "First Second Third", result)
 }
@@ -161,7 +161,7 @@ func TestAIBackendSummarizer_doSummarizePass_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := s.doSummarizePass(ctx, "long text", "system prompt", 1)
+	_, err := s.DoSummarizePass(ctx, "long text", "system prompt", 1)
 	assert.Error(t, err)
 }
 
@@ -185,7 +185,7 @@ func TestAIBackendSummarizer_doSummarizePass_PassNumber(t *testing.T) {
 	}
 
 	// Pass 2
-	result, err := s.doSummarizePass(context.Background(), "text", "prompt", 2)
+	result, err := s.DoSummarizePass(context.Background(), "text", "prompt", 2)
 	assert.NoError(t, err)
 	assert.Equal(t, "pass result", result)
 }
@@ -201,11 +201,11 @@ func TestAIBackendSummarizer_Summarize_LongText_WithMockBackend(t *testing.T) {
 	mock := &mockAIBackend{name: "mock-backend", streamCh: ch}
 	s := &AIBackendSummarizer{
 		backend: mock,
-		gs:      NewTTSPipeline((&AIBackendSummarizer{backend: mock}).doSummarizePass),
+		gs:      NewTTSPipeline((&AIBackendSummarizer{backend: mock}).DoSummarizePass),
 	}
 
 	// Use ttsPipeline directly with a pass function
-	s.gs = NewTTSPipeline(s.doSummarizePass)
+	s.gs = NewTTSPipeline(s.DoSummarizePass)
 
 	longText := strings.Repeat("这是一段很长的AI回复内容，用于测试总结功能。", 20)
 	result, err := s.Summarize(context.Background(), longText, "zh")

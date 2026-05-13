@@ -29,7 +29,7 @@ func NewAIBackendSummarizer(backendType string) (*AIBackendSummarizer, error) {
 	s := &AIBackendSummarizer{
 		backend: backend,
 	}
-	s.gs = NewTTSPipeline(s.doSummarizePass)
+	s.gs = NewTTSPipeline(s.DoSummarizePass)
 	return s, nil
 }
 
@@ -39,8 +39,8 @@ func (s *AIBackendSummarizer) Summarize(ctx context.Context, text string, langua
 	return s.gs.Summarize(ctx, text, language)
 }
 
-// doSummarizePass performs a single summarization pass using an AI backend.
-func (s *AIBackendSummarizer) doSummarizePass(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
+// DoSummarizePass performs a single summarization pass using an AI backend.
+func (s *AIBackendSummarizer) DoSummarizePass(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
 	req := ai.ChatRequest{
 		Prompt:       text,
 		SessionID:    "", // single-turn, no session

@@ -41,7 +41,7 @@ func TestMMXSummarize_ShortTextWithMarkdown_NoCLI(t *testing.T) {
 	assert.NotContains(t, result, "*")
 }
 
-// --- MMXSummarizer.doSummarizePass ---
+// --- MMXSummarizer.DoSummarizePass ---
 
 func TestMMXSummarize_doSummarizePass_CLIUnavailable(t *testing.T) {
 	if _, err := exec.LookPath("mmx"); err == nil {
@@ -49,7 +49,7 @@ func TestMMXSummarize_doSummarizePass_CLIUnavailable(t *testing.T) {
 	}
 
 	s := NewMMX()
-	_, err := s.doSummarizePass(context.Background(), "some text", "system prompt", 1)
+	_, err := s.DoSummarizePass(context.Background(), "some text", "system prompt", 1)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "mmx text chat")
 }
@@ -59,7 +59,7 @@ func TestMMXSummarize_doSummarizePass_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := s.doSummarizePass(ctx, "some text", "system prompt", 1)
+	_, err := s.DoSummarizePass(ctx, "some text", "system prompt", 1)
 	assert.Error(t, err)
 }
 
@@ -82,7 +82,7 @@ func TestMMXSummarize_LongText_WithCLI(t *testing.T) {
 	assert.Less(t, len([]rune(result)), len([]rune(longText)))
 }
 
-// --- MMXSummarizer.doSummarizePass with custom model ---
+// --- MMXSummarizer.DoSummarizePass with custom model ---
 
 func TestMMXSummarize_doSummarizePass_CustomModel_WithCLI(t *testing.T) {
 	if _, err := exec.LookPath("mmx"); err != nil {
@@ -95,7 +95,7 @@ func TestMMXSummarize_doSummarizePass_CustomModel_WithCLI(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	result, err := s.doSummarizePass(ctx, "请简要总结这段文字。", "你是一个总结助手。", 1)
+	result, err := s.DoSummarizePass(ctx, "请简要总结这段文字。", "你是一个总结助手。", 1)
 	if err != nil {
 		// May fail for various reasons (rate limit, model unavailable), just log
 		t.Logf("doSummarizePass returned error (may be expected): %v", err)
