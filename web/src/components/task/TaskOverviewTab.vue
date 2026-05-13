@@ -75,7 +75,7 @@
       </button>
       <span class="actions-spacer"></span>
       <template v-if="task.status === 'active'">
-        <button class="action-btn accent" :disabled="actionLoading" @click="triggerTask" :title="t('task.run')">
+        <button class="action-btn accent" :disabled="actionLoading || task.runningCount > 0" @click="triggerTask" :title="task.runningCount > 0 ? t('chat.contentBlocks.statusRunning') : t('task.run')">
           <Zap :size="14" />
           <span class="action-text">{{ t('task.run') }}</span>
         </button>
@@ -87,7 +87,7 @@
         </button>
       </template>
       <template v-else-if="task.status === 'paused'">
-        <button class="action-btn accent" :disabled="actionLoading" @click="triggerTask" :title="t('task.run')">
+        <button class="action-btn accent" :disabled="actionLoading || task.runningCount > 0" @click="triggerTask" :title="task.runningCount > 0 ? t('chat.contentBlocks.statusRunning') : t('task.run')">
           <Zap :size="14" />
           <span class="action-text">{{ t('task.run') }}</span>
         </button>

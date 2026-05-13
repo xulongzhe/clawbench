@@ -109,7 +109,7 @@ func InitDB(runFromServer ...bool) error {
 			task_id INTEGER NOT NULL,
 			session_id TEXT NOT NULL,
 			trigger_type TEXT NOT NULL DEFAULT 'auto',
-			status TEXT NOT NULL DEFAULT 'completed',
+			status TEXT NOT NULL DEFAULT 'running',
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 

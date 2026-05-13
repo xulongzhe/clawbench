@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS task_executions (
 	task_id INTEGER NOT NULL,
 	session_id TEXT NOT NULL,
 	trigger_type TEXT NOT NULL DEFAULT 'auto',
-	status TEXT NOT NULL DEFAULT 'completed',
+	status TEXT NOT NULL DEFAULT 'running',
 	read_at DATETIME,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -643,11 +643,11 @@ func TestUpdateExecutionStatus(t *testing.T) {
 	_, err = service.AddTaskExecution(taskID, "session-abc", "auto")
 	assert.NoError(t, err)
 
-	// Verify default status is 'completed'
+	// Verify default status is 'running'
 	var status string
 	err = service.DB.QueryRow("SELECT status FROM task_executions WHERE session_id = ?", "session-abc").Scan(&status)
 	assert.NoError(t, err)
-	assert.Equal(t, "completed", status)
+	assert.Equal(t, "running", status)
 
 	// Update to cancelled
 	err = service.UpdateExecutionStatus("session-abc", "cancelled")
@@ -923,9 +923,10 @@ func TestDeleteTaskExecution(t *testing.T) {
 	_, err = service.AddChatMessage("/proj", "claude", sessionID, "assistant", "response", nil, false, "Del Exec")
 	assert.NoError(t, err)
 
-	// Create an execution linked to this session
+	// Create an execution linked to this session (mark as completed to allow deletion)
 	_, err = service.AddTaskExecution(taskID, sessionID, "auto")
 	assert.NoError(t, err)
+	service.UpdateExecutionStatus(sessionID, "completed")
 
 	// Get the execution ID
 	var execID int64
@@ -1020,6 +1021,7 @@ func TestDeleteTaskExecution_RunCountClampToZero(t *testing.T) {
 
 	_, err = service.AddTaskExecution(taskID, sessionID, "auto")
 	assert.NoError(t, err)
+	service.UpdateExecutionStatus(sessionID, "completed")
 
 	var execID int64
 	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
@@ -1049,13 +1051,14 @@ func TestDeleteAllTaskExecutions(t *testing.T) {
 	assert.NoError(t, err)
 	taskID, _ := result.LastInsertId()
 
-	// Create 3 sessions and executions
+	// Create 3 sessions and executions (mark as completed to allow deletion)
 	for i := 0; i < 3; i++ {
 		sessionID, err := service.CreateSession("/proj", "claude", fmt.Sprintf("Exec %d", i), "agent1", "", "default", "scheduled")
 		assert.NoError(t, err)
 		service.AddChatMessage("/proj", "claude", sessionID, "user", "prompt", nil, false, fmt.Sprintf("Exec %d", i))
 		_, err = service.AddTaskExecution(taskID, sessionID, "auto")
 		assert.NoError(t, err)
+		service.UpdateExecutionStatus(sessionID, "completed")
 	}
 
 	// Verify 3 executions exist
@@ -1094,10 +1097,11 @@ func TestDeleteAllTaskExecutions_PreservesRunning(t *testing.T) {
 	// One completed, one running
 	completedSession, _ := service.CreateSession("/proj", "claude", "Completed", "agent1", "", "default", "scheduled")
 	service.AddTaskExecution(taskID, completedSession, "auto")
+	service.UpdateExecutionStatus(completedSession, "completed")
 
 	runningSession, _ := service.CreateSession("/proj", "claude", "Running", "agent1", "", "default", "scheduled")
 	service.AddTaskExecution(taskID, runningSession, "auto")
-	service.UpdateExecutionStatus(runningSession, "running")
+	// Status is already 'running' from AddTaskExecution
 
 	// Delete all — should only delete the completed one
 	err = service.DeleteAllTaskExecutions(taskID)
@@ -1263,4 +1267,34 @@ func TestHasUnreadTasks_EmptyProjectPath(t *testing.T) {
 	hasUnread, err := service.HasUnreadTasks("")
 	assert.NoError(t, err)
 	assert.True(t, hasUnread, "empty project path should find unread across all projects")
+}
+
+func TestHasUnreadTasks_RunningExecutionNotUnread(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, status, repeat_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Task", "0 * * * *", "agent1", "p", "active", "unlimited", now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Add a running execution — should NOT be counted as unread
+	_, err = service.DB.Exec(
+		"INSERT INTO task_executions (task_id, session_id, trigger_type, status, created_at) VALUES (?, ?, ?, ?, ?)",
+		taskID, "session-running", "auto", "running", now,
+	)
+	assert.NoError(t, err)
+
+	hasUnread, err := service.HasUnreadTasks("/proj")
+	assert.NoError(t, err)
+	assert.False(t, hasUnread, "running execution should not count as unread")
+
+	// Now mark it as completed — should become unread
+	service.UpdateExecutionStatus("session-running", "completed")
+	hasUnread, err = service.HasUnreadTasks("/proj")
+	assert.NoError(t, err)
+	assert.True(t, hasUnread, "completed execution should count as unread")
 }

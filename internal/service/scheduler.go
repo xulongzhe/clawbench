@@ -555,6 +555,9 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		slog.Error("failed to write assistant message for task", slog.String("err", err.Error()))
 	}
 
+	// Mark execution as completed
+	UpdateExecutionStatus(sessionID, "completed")
+
 	// Update task execution stats
 	newStatus := task.Status
 
@@ -656,7 +659,7 @@ func GetTasks(projectPath string) ([]model.ScheduledTask, error) {
 			s.status, s.repeat_mode, s.max_runs, s.last_run_at, s.next_run_at, s.run_count,
 			s.last_read_at, s.created_at, s.updated_at,
 			(SELECT COUNT(*) FROM task_executions e
-			 WHERE e.task_id = s.id AND e.read_at IS NULL
+			 WHERE e.task_id = s.id AND e.read_at IS NULL AND e.status != 'running'
 			 AND (s.last_read_at IS NULL OR e.created_at > s.last_read_at)) AS unread_count
 			FROM scheduled_tasks s ORDER BY s.created_at DESC`
 	} else {
@@ -664,7 +667,7 @@ func GetTasks(projectPath string) ([]model.ScheduledTask, error) {
 			s.status, s.repeat_mode, s.max_runs, s.last_run_at, s.next_run_at, s.run_count,
 			s.last_read_at, s.created_at, s.updated_at,
 			(SELECT COUNT(*) FROM task_executions e
-			 WHERE e.task_id = s.id AND e.read_at IS NULL
+			 WHERE e.task_id = s.id AND e.read_at IS NULL AND e.status != 'running'
 			 AND (s.last_read_at IS NULL OR e.created_at > s.last_read_at)) AS unread_count
 			FROM scheduled_tasks s WHERE s.project_path = ? ORDER BY s.created_at DESC`
 		args = []interface{}{projectPath}
@@ -705,7 +708,7 @@ func GetTaskByID(id int64) (*model.ScheduledTask, error) {
 		s.status, s.repeat_mode, s.max_runs, s.last_run_at, s.next_run_at, s.run_count,
 		s.last_read_at, s.created_at, s.updated_at,
 		(SELECT COUNT(*) FROM task_executions e
-		 WHERE e.task_id = s.id
+		 WHERE e.task_id = s.id AND e.read_at IS NULL AND e.status != 'running'
 		 AND (s.last_read_at IS NULL OR e.created_at > s.last_read_at)) AS unread_count
 		FROM scheduled_tasks s WHERE s.id = ?`,
 		id,
@@ -756,7 +759,7 @@ func updateTask(task *model.ScheduledTask) error {
 // Returns the auto-generated execution ID.
 func AddTaskExecution(taskID int64, sessionID string, triggerType string) (int64, error) {
 	result, err := DB.Exec(
-		"INSERT INTO task_executions (task_id, session_id, trigger_type) VALUES (?, ?, ?)",
+		"INSERT INTO task_executions (task_id, session_id, trigger_type, status) VALUES (?, ?, ?, 'running')",
 		taskID, sessionID, triggerType,
 	)
 	if err != nil {
@@ -920,7 +923,7 @@ func HasUnreadTasks(projectPath string) (bool, error) {
 		err = DB.QueryRow(
 			`SELECT COUNT(*) FROM scheduled_tasks s
 			 WHERE (SELECT COUNT(*) FROM task_executions e
-			      WHERE e.task_id = s.id AND e.read_at IS NULL
+			      WHERE e.task_id = s.id AND e.read_at IS NULL AND e.status != 'running'
 			      AND (s.last_read_at IS NULL OR e.created_at > s.last_read_at)) > 0`,
 		).Scan(&count)
 	} else {
@@ -928,7 +931,7 @@ func HasUnreadTasks(projectPath string) (bool, error) {
 			`SELECT COUNT(*) FROM scheduled_tasks s
 			 WHERE s.project_path = ?
 			 AND (SELECT COUNT(*) FROM task_executions e
-			      WHERE e.task_id = s.id AND e.read_at IS NULL
+			      WHERE e.task_id = s.id AND e.read_at IS NULL AND e.status != 'running'
 			      AND (s.last_read_at IS NULL OR e.created_at > s.last_read_at)) > 0`,
 			projectPath,
 		).Scan(&count)

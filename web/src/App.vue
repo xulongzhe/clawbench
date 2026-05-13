@@ -250,7 +250,7 @@ import QuoteQuestionBar from './components/common/QuoteQuestionBar.vue'
 import HeaderMarquee from './components/common/HeaderMarquee.vue'
 import TaskTab from '@/components/task/TaskTab.vue'
 import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
-import { useTaskTab } from '@/composables/useTaskTab.ts'
+import { useTaskTab, registerSwitchTab } from '@/composables/useTaskTab.ts'
 import { useSessionIdentity } from './composables/useSessionIdentity.ts'
 import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'
@@ -314,6 +314,7 @@ useFileWatch({
 const { isAppMode } = useAppMode()
 const { syncToNative } = usePortForward()
 const { startTaskPolling, stopTaskPolling, markAllTasksRead, navigateToTaskSettings } = useTaskTab()
+registerSwitchTab(switchTab)
 const terminalRequestedCwd = ref(null)
 
 const quoteQuestion = useQuoteQuestion()

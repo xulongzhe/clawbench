@@ -487,7 +487,7 @@ func TestServeTaskByID_Executions(t *testing.T) {
 	exec := executions[0].(map[string]interface{})
 	assert.Equal(t, sessionID, exec["sessionId"])
 	assert.Equal(t, "manual", exec["triggerType"])
-	assert.Equal(t, "completed", exec["status"])
+	assert.Equal(t, "running", exec["status"])
 }
 
 func TestServeTaskByID_ExecutionsTaskNotFound(t *testing.T) {
@@ -838,10 +838,11 @@ func TestServeTaskByID_DeleteExecution(t *testing.T) {
 	_, err = service.AddTaskExecution(task.ID, sessionID, "auto")
 	assert.NoError(t, err)
 
-	// Get execution ID
+	// Get execution ID and mark it as completed (simulates finished execution)
 	var execID int64
 	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
 	assert.NoError(t, err)
+	service.UpdateExecutionStatus(sessionID, "completed")
 
 	// Delete the execution via API
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
@@ -949,6 +950,7 @@ func TestServeTaskByID_DeleteExecution_WrongProject(t *testing.T) {
 
 	sessionID, _ := service.CreateSession(env.ProjectDir, "claude", "Exec", "coder", "", "default", "scheduled")
 	service.AddTaskExecution(task.ID, sessionID, "auto")
+	service.UpdateExecutionStatus(sessionID, "completed")
 	var execID int64
 	service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
 
@@ -987,10 +989,11 @@ func TestServeTaskByID_DeleteAllExecutions(t *testing.T) {
 	}
 	s.AddTask(task)
 
-	// Create 2 executions
+	// Create 2 executions (mark as completed to simulate finished executions)
 	for i := 0; i < 2; i++ {
 		sessionID, _ := service.CreateSession(env.ProjectDir, "claude", fmt.Sprintf("Exec %d", i), "coder", "", "default", "scheduled")
 		service.AddTaskExecution(task.ID, sessionID, "auto")
+		service.UpdateExecutionStatus(sessionID, "completed")
 	}
 
 	// Verify 2 executions exist

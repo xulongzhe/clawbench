@@ -31,6 +31,14 @@ const notifiedTaskCompletions = new Set<string>()
 // Timer for clearing taskJustCompleted flag
 let justCompletedTimer: ReturnType<typeof setTimeout> | null = null
 
+// Callback registered by App.vue to switch the main tab
+let switchTabCallback: ((tab: string) => void) | null = null
+
+/** Register the switchTab callback from App.vue so notifications can navigate */
+export function registerSwitchTab(cb: (tab: string) => void) {
+    switchTabCallback = cb
+}
+
 export function useTaskTab() {
     // --- Navigation methods ---
 
@@ -167,21 +175,31 @@ export function useTaskTab() {
     function onTaskCompleted(task: any) {
         // Sound + haptic
         playNotificationSound()
+
+        // Navigate to task history on click
+        const navigateToHistory = () => {
+            navigateToTaskHistory(task.id)
+            if (switchTabCallback) switchTabCallback('tasks')
+        }
+
         // Browser push notification (only when page not focused)
         try {
             showBrowserNotification(task.name || gt('task.title'), {
                 body: gt('task.exec.completed'),
                 tag: `task-completed-${task.id}`,
+                onClick: navigateToHistory,
             })
         } catch {
             // Non-critical
         }
-        // Toast — include task name for clarity
+        // Toast — include task name, icon, and click-to-navigate
         try {
             const taskName = task.name || gt('task.title')
             useToast().show(`${taskName} — ${gt('task.exec.completed')}`, {
+                icon: '✅',
                 type: 'success',
                 duration: 5000,
+                onClick: navigateToHistory,
             })
         } catch {
             // Non-critical

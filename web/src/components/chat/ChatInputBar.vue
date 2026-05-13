@@ -166,6 +166,7 @@ import { MessageSquare, List, Plus, Trash2, Volume2, Upload, Paperclip, FileImag
 import { baseName } from '@/utils/path.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
 import QuickSendDialog from '@/components/chat/QuickSendDialog.vue'
+import { createStopButtonMachine } from '@/utils/stopButtonMachine.ts'
 import { useDialog } from '@/composables/useDialog.ts'
 import { useQuickSend } from '@/composables/useQuickSend'
 
@@ -225,19 +226,16 @@ const modelChipRef = ref(null)
 
 // Stop button two-click confirmation state
 const stopPrimed = ref(false)
-let stopPrimeTimer = null
+const stopMachine = createStopButtonMachine({
+  onConfirm: () => emit('cancel'),
+  onPrimeReset: () => { stopPrimed.value = false },
+})
 
 function handleStopClick() {
-  if (!stopPrimed.value) {
-    // First click: enter confirmation state (solid ■ → hollow ✕)
-    stopPrimed.value = true
-    clearTimeout(stopPrimeTimer)
-    stopPrimeTimer = setTimeout(() => { stopPrimed.value = false }, 1500)
-  } else {
-    // Second click: confirmed — execute stop
+  const result = stopMachine.click()
+  stopPrimed.value = result.primed
+  if (result.confirmed) {
     stopPrimed.value = false
-    clearTimeout(stopPrimeTimer)
-    emit('cancel')
   }
 }
 
@@ -441,7 +439,7 @@ onBeforeUnmount(() => {
 watch(() => props.loading, (val) => {
   if (!val) {
     stopPrimed.value = false
-    clearTimeout(stopPrimeTimer)
+    stopMachine.reset()
   }
 })
 

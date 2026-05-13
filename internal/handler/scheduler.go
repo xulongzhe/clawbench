@@ -367,8 +367,9 @@ func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID int64, p
 		if summary.Valid {
 			exec.Summary = &summary.String
 		}
-		// An execution is unread if it has no read_at AND (task has never been read OR execution is newer than last_read_at)
-		if readAt.Valid {
+		// An execution is unread if it has no read_at AND is not running AND
+		// (task has never been read OR execution is newer than last_read_at)
+		if readAt.Valid || exec.Status == "running" {
 			exec.IsUnread = false
 		} else if task.LastReadAt == nil {
 			exec.IsUnread = true
