@@ -30,6 +30,10 @@ func buildDeepSeekStreamArgs(req ChatRequest) []string {
 	// Resume previous session
 	if req.Resume && req.SessionID != "" {
 		args = append(args, "--resume", req.SessionID)
+	} else if req.Resume {
+		// Session capture event was missed — fall back to --continue
+		// which resumes the most recent session without needing an ID.
+		args = append(args, "--continue")
 	}
 
 	// System prompt — DeepSeek TUI supports --system-prompt natively
