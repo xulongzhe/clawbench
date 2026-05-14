@@ -48,7 +48,6 @@
                 <span v-if="exec.metadata.wallMs" class="exec-meta-tag exec-meta-duration">{{ formatDuration(exec.metadata.wallMs) }}</span>
                 <span v-if="exec.metadata.model" class="exec-meta-tag">{{ exec.metadata.model }}</span>
                 <span v-if="exec.metadata.inputTokens || exec.metadata.outputTokens" class="exec-meta-tag">{{ formatTokens(exec.metadata) }}</span>
-                <span v-if="exec.metadata.costUsd" class="exec-meta-tag">${{ exec.metadata.costUsd.toFixed(4) }}</span>
               </div>
             </template>
           </div>
