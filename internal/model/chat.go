@@ -4,15 +4,16 @@ import "time"
 
 // ChatMessage represents a single message in the chat history
 type ChatMessage struct {
-	ID        int64     `json:"id,omitempty"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	Files     []string  `json:"files,omitempty"`
-	SessionID string    `json:"sessionId,omitempty"`
-	Backend   string    `json:"backend,omitempty"`
-	Streaming bool      `json:"streaming,omitempty"`
-	Indexed   bool      `json:"indexed,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          int64     `json:"id,omitempty"`
+	Role        string    `json:"role"`
+	Content     string    `json:"content"`
+	Files       []string  `json:"files,omitempty"`
+	SessionID   string    `json:"sessionId,omitempty"`
+	Backend     string    `json:"backend,omitempty"`
+	ProjectPath string    `json:"projectPath,omitempty"`
+	Streaming   bool      `json:"streaming,omitempty"`
+	Indexed     bool      `json:"indexed,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 // ChatSession represents a chat session

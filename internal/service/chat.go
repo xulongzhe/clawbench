@@ -98,18 +98,16 @@ func GetMessageByID(id int64) (*model.ChatMessage, error) {
 	var filesJSON sql.NullString
 	var streaming int
 	var indexed int
-	var sessionID string
 
 	err := DB.QueryRow(
-		"SELECT id, role, content, files, backend, streaming, created_at, indexed, session_id FROM chat_history WHERE id = ?",
+		"SELECT id, role, content, files, backend, streaming, created_at, indexed, session_id, project_path FROM chat_history WHERE id = ?",
 		id,
-	).Scan(&msg.ID, &msg.Role, &msg.Content, &filesJSON, &msg.Backend, &streaming, &msg.CreatedAt, &indexed, &sessionID)
+	).Scan(&msg.ID, &msg.Role, &msg.Content, &filesJSON, &msg.Backend, &streaming, &msg.CreatedAt, &indexed, &msg.SessionID, &msg.ProjectPath)
 	if err != nil {
 		return nil, err
 	}
 	msg.Streaming = streaming != 0
 	msg.Indexed = indexed != 0
-	msg.SessionID = sessionID
 	if filesJSON.Valid && filesJSON.String != "" {
 		json.Unmarshal([]byte(filesJSON.String), &msg.Files)
 	}

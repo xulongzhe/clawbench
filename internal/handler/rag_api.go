@@ -11,8 +11,14 @@ import (
 
 // ServeRAGSearch handles POST /api/rag/search — vector similarity search.
 // Auth: localhost bypasses auth (CLI); remote requires cookie.
+// Project isolation: uses cookie-derived project path, ignoring client-supplied project field.
 func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	projectPath, ok := requireProject(w, r)
+	if !ok {
 		return
 	}
 
@@ -40,10 +46,12 @@ func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
 		defaultLimit = req.Limit
 	}
 
+	// Enforce project isolation: always use cookie-derived project path,
+	// ignoring any client-supplied project field to prevent cross-project data access.
 	params := rag.SearchParams{
 		Query:            req.Query,
 		Limit:            req.Limit,
-		ProjectPath:      req.ProjectPath,
+		ProjectPath:      projectPath,
 		Backend:          req.Backend,
 		Role:             req.Role,
 		SessionID:        req.SessionID,
@@ -65,8 +73,14 @@ func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeRAGMessage handles GET /api/rag/message?id=<id> — get full message by ID.
+// Project isolation: verifies the message's session belongs to the authenticated project.
 func ServeRAGMessage(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+
+	projectPath, ok := requireProject(w, r)
+	if !ok {
 		return
 	}
 
@@ -87,18 +101,36 @@ func ServeRAGMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify the message belongs to the authenticated project
+	if msg.ProjectPath != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+		return
+	}
+
 	writeJSON(w, http.StatusOK, msg)
 }
 
 // ServeRAGSession handles GET /api/rag/session?id=<id> — get all messages in a session.
+// Project isolation: verifies the session belongs to the authenticated project.
 func ServeRAGSession(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+
+	projectPath, ok := requireProject(w, r)
+	if !ok {
 		return
 	}
 
 	sessionID := r.URL.Query().Get("id")
 	if sessionID == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "SessionIdRequired")
+		return
+	}
+
+	// Verify the session belongs to the authenticated project
+	if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 
