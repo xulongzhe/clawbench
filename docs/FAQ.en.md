@@ -20,11 +20,22 @@ A: No. ClawBench implements AI functionality by calling local CLIs (CodeBuddy, C
 
 **Q: Can TTS speech synthesis use local models?**
 
-A: Yes. Set `summarize_backend` to `"ollama"` to use a local Ollama service for text summarization without any cloud API. Just install Ollama and pull a model (e.g., `ollama pull gemma3:270m`), then set `summarize_backend: "ollama"` in the config file. The TTS engine itself also supports local offline solutions (piper / kokoro / moss-nano). Combining both enables fully offline speech playback. Among these, moss-nano supports multiple languages and voice cloning with 48kHz high-quality output.
+A: Yes. Set `summarize_backend` to `"api"` and configure the Ollama OpenAI-compatible endpoint to use a local Ollama service for text summarization without any cloud API. Just install Ollama and pull a model (e.g., `ollama pull gemma3:270m`), then configure:
+
+```yaml
+tts:
+  summarize_backend: "api"
+  api:
+    base_url: "http://localhost:11434/v1/chat/completions"
+    format: "openai"
+    model: "gemma3:270m"
+```
+
+The TTS engine itself also supports local offline solutions (piper / kokoro / moss-nano). Combining both enables fully offline speech playback. Among these, moss-nano supports multiple languages and voice cloning with 48kHz high-quality output.
 
 **Q: Can I run multiple ClawBench instances simultaneously?**
 
-A: Yes. The release and dev versions use independent ports and databases, so they can run simultaneously. You can also run multiple instances by specifying different ports with the `--port` parameter.
+A: Yes. Copy the entire release directory to a different location — each copy gets its own `BinDir`, config, and `.clawbench/` data directory for complete isolation. Just configure different ports in each copy's `config/config.yaml`.
 
 **Q: Do I need a config file to start?**
 

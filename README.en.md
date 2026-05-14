@@ -85,6 +85,7 @@ graph LR
     Server -->|CLI Invocation · Stream Output| QR["🤖 Qoder CLI"]
     Server -->|CLI Invocation · Stream Output| VC["🤖 VeCLI"]
     Server -->|CLI Invocation · Stream Output| DS["🔍 DeepSeek TUI"]
+    Server -->|CLI Invocation · Stream Output| PI["🥧 Pi"]
     Server -->|Read/Write| DB[("💾 SQLite\nSessions · History · Scheduled Tasks")]
     CB -->|Native Support| Tools["🔧 Tool Calls"]
     CB -->|Native Support| Think["🧠 Extended Thinking"]
@@ -100,6 +101,9 @@ graph LR
     CX -->|Native Support| Tools
     QR -->|Native Support| Tools
     VC -->|Native Support| Tools
+    DS -->|Native Support| Tools
+    PI -->|Native Support| Tools
+    PI -->|Native Support| Think
 ```
 
 ---
@@ -176,10 +180,10 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Streaming Response**: Real-time SSE push, thinking process and tool calls fully visible
 - **Multi-Agent Support**: General assistant, coding expert, handyman, etc. — YAML config, plug-and-play
 - **AI Backend Switching**: CodeBuddy, Claude Code, OpenCode, Gemini CLI, Codex, Qoder CLI, VeCLI, DeepSeek TUI, Pi — session-level isolation
-- **Scheduled Tasks**: AI creates Cron schedules via CLI subcommands, executes automatically; independent tab with 4-level breadcrumb navigation; task cards embedded in chat messages; frequency presets (hourly/daily/weekly/monthly) + custom cron expressions; per-execution read tracking + TTS playback
+- **Scheduled Tasks**: AI creates Cron schedules via CLI subcommands, executes automatically; independent tab with 4-level breadcrumb navigation; task cards embedded in chat messages; frequency presets (hourly/daily/weekly/monthly) + custom cron expressions; per-execution read tracking + TTS playback; execution auto-summary + completion notification (sound/haptic/toast)
 - **Multi-Session Management**: Create, switch, delete independent sessions, swipe to switch
 - **Image Upload**: Upload images for AI conversation (multimodal)
-- **Disconnect Protection**: Messages persist immediately, no data loss on disconnect, 60s timeout auto-reconnect (3 attempts then fallback to polling)
+- **Disconnect Protection**: Messages persist immediately, no data loss on disconnect, 15s heartbeat keep-alive + 30s timeout auto-reconnect (live content updates during polling fallback)
 - **Auto Resume**: Automatically sends "continue" after Claude/CodeBuddy/Qoder/DeepSeek/Pi exits Plan Mode
 - **Message Queue**: Messages queue when AI is busy, sent sequentially
 
@@ -191,6 +195,8 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Task Cards**: Embedded chat message preview, at-a-glance task content and recent execution results
 - **Execution Tracking**: Per-execution read status tracking, unread message badge alerts
 - **TTS Playback**: Auto-summarize after task completion with voice playback, listen while reviewing
+- **Execution Summary**: Auto-generated summary for each completed execution (configurable summarization backend)
+- **Completion Notification**: Sound + haptic + toast alert when task execution completes
 - **Instant Trigger**: Support immediate manual execution without affecting next scheduled time
 - **Lifecycle Management**: Pause / Resume / Delete — flexibly control task state
 
@@ -210,7 +216,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 ### 🔊 TTS Speech Synthesis
 - Auto-summarize and read AI replies aloud, listen while reading
 - **5 TTS Engines**: Edge TTS (free), MiniMax (best quality), Piper / Kokoro / MOSS-Nano (local offline)
-- **12 Summarization Backends**: simple (text-only cleanup), mmx-cli, Claude, CodeBuddy, Gemini, OpenCode, Codex, Qoder, VeCLI, DeepSeek, Pi
+- **12 Summarization Backends**: simple (text-only cleanup), mmx-cli, api (OpenAI/Anthropic compatible), Claude, CodeBuddy, Gemini, OpenCode, Codex, Qoder, VeCLI, DeepSeek, Pi
 - See [TTS Deployment Guide](docs/TTS.en.md)
 
 ### 📂 Git Integration

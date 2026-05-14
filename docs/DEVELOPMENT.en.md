@@ -128,6 +128,8 @@ cd clawbench
 | `tts.speed` | 1.0 | Normal speech rate |
 | `tts.inline_code_max_len` | 100 | Max characters (runes) to keep for inline code; exceeded content is removed |
 | `tts.max_summarize_runes` | 10000 | Max input characters for summarization; tail is truncated if exceeded |
+| `tasks.summarize_backend` | (empty) | Task execution summary backend, empty = disabled; same values as `tts.summarize_backend` |
+| `tasks.summarize_model` | (empty) | Model for task summarization, empty = backend default |
 
 **Auto-password mechanism**: When `password` is not configured, the system auto-generates a random UUID as password, saved to `.clawbench/auto-password` (permissions 0600). On restart, the saved password is reused and not regenerated. Once `password` is configured, the file is auto-deleted. The startup script reads and displays the password from the file.
 
@@ -252,7 +254,7 @@ All nine backends can be switched in real time on the ClawBench Web UI, with iso
 
 ### TTS Speech Synthesis Configuration
 
-ClawBench supports TTS speech synthesis, automatically summarizing and reading aloud AI replies. Supports 5 TTS engines and 10 summarization backends.
+ClawBench supports TTS speech synthesis, automatically summarizing and reading aloud AI replies. Supports 5 TTS engines and 12 summarization backends.
 
 | TTS Engine | Description | Network Requirement |
 |------------|-------------|---------------------|
@@ -397,13 +399,18 @@ clawbench/
 │       ├── vecli.go / vecli_stream.go
 │       ├── deepseek.go / deepseek_stream.go
 │       └── pi.go / pi_stream.go
-│   └── speech/                  # TTS speech synthesis & summarization
+│   └── speech/                  # TTS speech synthesis
 │       ├── common_tts.go        # CLISpeechProvider shared base
-│       ├── summarizer.go        # Summarizer interface + genericSummarizer shared pipeline
-│       ├── mmx_summarizer.go    # MMXSummarizer (mmx-cli text chat)
-│       ├── ollama_summarizer.go # OllamaSummarizer (HTTP /api/chat)
-│       ├── ai_backend_summarizer.go # AIBackendSummarizer (CLI backend summarization)
 │       ├── minimax.go / edge.go / piper.go / kokoro.go / moss_tts_nano.go  # TTS engine implementations
+│   └── summarize/               # Text summarization (TTS + task execution summaries)
+│       ├── summarizer.go        # Summarizer interface + factory
+│       ├── simple.go            # Plain text cleanup
+│       ├── ai_backend_summarizer.go # AIBackendSummarizer (CLI backend summarization)
+│       ├── mmx.go               # MMXSummarizer (mmx-cli text chat)
+│       ├── openai.go            # OpenAI Chat Completions API summarization
+│       ├── anthropic.go         # Anthropic Messages API summarization
+│       ├── strip_markdown.go    # Markdown stripping
+│       ├── task.go              # Task execution summary generation
 ├── config/                      # Configuration files
 │   ├── rules.md                 # Agent shared rules and CLI reference
 │   ├── agents/                  # Agent configurations
@@ -447,6 +454,6 @@ clawbench/
 | Math Formulas | KaTeX |
 | HTML Sanitization | DOMPurify |
 | AI Backend | CodeBuddy CLI / Claude Code CLI / OpenCode CLI / Gemini CLI / Codex CLI / Qoder CLI / VeCLI (streaming output → SSE push) |
-| TTS Summarization | Ollama HTTP API (local inference, small models like gemma3:270m, zero external Go dependencies) |
+| TTS Summarization | OpenAI/Anthropic compatible API (local or cloud, e.g. Ollama with `format: "openai"`) |
 | SSH Tunnel | golang.org/x/crypto/ssh (embedded SSH server, direct-tcpip port forwarding) |
 | Scheduled Scheduling | robfig/cron |

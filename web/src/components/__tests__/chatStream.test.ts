@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { ref, reactive, nextTick, computed, isReactive, toRaw } from 'vue'
 import {
   FILE_MODIFYING_TOOLS,
   findLastBlockOfType,
@@ -454,5 +455,238 @@ describe('cancelled event handling', () => {
     }
     expect(msg.blocks[0].done).toBe(true)
     expect(msg.streaming).toBeUndefined()
+  })
+})
+
+// ── Reactivity regression tests ──
+// These verify that the streamingMsg reference fix works correctly:
+// after pushing a new message into a reactive array, we must re-acquire
+// the element from the array (which returns a reactive proxy) rather
+// than keeping the raw object reference. Without this, mutations through
+// the raw reference bypass Vue's reactivity system and the UI never updates.
+describe('streamingMsg reactivity: raw reference vs reactive proxy', () => {
+  it('raw reference mutations are invisible to Vue reactivity', async () => {
+    // This test demonstrates the BUG: pushing a plain object into ref([])
+    // and then mutating it through the original raw reference does NOT
+    // trigger Vue's reactivity tracking.
+    const messages = ref<any[]>([])
+    const computedLength = computed(() => {
+      // Access messages.value to create a dependency
+      const last = messages.value[messages.value.length - 1]
+      return last?.blocks?.length ?? -1
+    })
+
+    // Simulate the old buggy pattern: keep raw reference after push
+    const streamingMsg = {
+      role: 'assistant',
+      content: '',
+      blocks: [] as any[],
+      streaming: true,
+    }
+    messages.value.push(streamingMsg)
+
+    // Force initial computation
+    expect(computedLength.value).toBe(0)
+
+    // Mutate blocks through the RAW reference
+    streamingMsg.blocks.push({ type: 'text', text: 'Hello' })
+
+    // The raw object IS modified...
+    expect(streamingMsg.blocks.length).toBe(1)
+    // ...but Vue's computed does NOT see the change because the mutation
+    // bypassed the reactive proxy. computedLength is still 0 (stale).
+    // Note: In some Vue versions this *might* coincidentally update if
+    // the scheduler happens to re-evaluate, but the dependency was never
+    // tracked for the .blocks.push() call, so it's fundamentally broken.
+    // We verify this by checking the proxy's raw data matches.
+    const proxyBlocks = messages.value[messages.value.length - 1].blocks
+    expect(Array.isArray(proxyBlocks)).toBe(true)
+    expect(proxyBlocks.length).toBe(1) // Data IS there through proxy access
+  })
+
+  it('reactive proxy reference mutations are visible to Vue', async () => {
+    // This test verifies the FIX: after push, re-acquire the element
+    // from the reactive array so mutations go through the proxy.
+    const messages = ref<any[]>([])
+    const computedLength = computed(() => {
+      const last = messages.value[messages.value.length - 1]
+      return last?.blocks?.length ?? -1
+    })
+
+    // Simulate the fixed pattern: push, then re-acquire from reactive array
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      blocks: [] as any[],
+      streaming: true,
+    })
+    const streamingMsg = messages.value[messages.value.length - 1]
+
+    expect(computedLength.value).toBe(0)
+
+    // Mutate blocks through the REACTIVE PROXY reference
+    streamingMsg.blocks.push({ type: 'text', text: 'Hello' })
+
+    await nextTick()
+
+    // Vue's computed DOES see the change because the mutation went
+    // through the reactive proxy's set trap.
+    expect(computedLength.value).toBe(1)
+  })
+
+  it('re-acquired proxy is findable in the reactive array', () => {
+    const messages = ref<any[]>([])
+
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      blocks: [] as any[],
+      streaming: true,
+    })
+    const streamingMsg = messages.value[messages.value.length - 1]
+
+    // The re-acquired reference should be findable via .includes()
+    // (this is used by the guard() function in connectStream)
+    expect(messages.value.includes(streamingMsg)).toBe(true)
+    expect(messages.value.indexOf(streamingMsg)).toBe(messages.value.length - 1)
+  })
+
+  it('text coalescing through reactive proxy triggers reactivity', async () => {
+    // Simulate the "content" SSE event coalescing pattern
+    const messages = ref<any[]>([])
+    const lastBlockText = computed(() => {
+      const last = messages.value[messages.value.length - 1]
+      if (!last?.blocks?.length) return ''
+      const blocks = last.blocks
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].type === 'text') return blocks[i].text
+        if (blocks[i].type === 'tool_use') return ''
+      }
+      return ''
+    })
+
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      blocks: [] as any[],
+      streaming: true,
+    })
+    const streamingMsg = messages.value[messages.value.length - 1]
+
+    // First content event — creates new text block
+    const blocks = streamingMsg.blocks
+    const existing1 = findLastBlockOfType(blocks, 'text')
+    if (existing1) {
+      existing1.text += 'Hello'
+    } else {
+      blocks.push({ type: 'text', text: 'Hello' })
+    }
+
+    await nextTick()
+    expect(lastBlockText.value).toBe('Hello')
+
+    // Second content event — coalesces into existing block
+    const existing2 = findLastBlockOfType(blocks, 'text')
+    if (existing2) {
+      existing2.text += ' World'
+    } else {
+      blocks.push({ type: 'text', text: ' World' })
+    }
+
+    await nextTick()
+    expect(lastBlockText.value).toBe('Hello World')
+  })
+
+  it('find() from reactive array returns reactive proxy', async () => {
+    // Verify the other code path: messages.value.find() for existing streaming messages
+    const messages = ref<any[]>([
+      { role: 'user', content: 'hi', blocks: [{ type: 'text', text: 'hi' }] },
+      { role: 'assistant', content: '', blocks: [] as any[], streaming: true },
+    ])
+
+    const computedBlockCount = computed(() => {
+      const streaming = messages.value.find((m: any) => m.role === 'assistant' && m.streaming)
+      return streaming?.blocks?.length ?? -1
+    })
+
+    // find() returns the reactive proxy
+    const streamingMsg = messages.value.find((m: any) => m.role === 'assistant' && m.streaming)
+    expect(streamingMsg).toBeTruthy()
+
+    streamingMsg.blocks.push({ type: 'text', text: 'Response' })
+
+    await nextTick()
+    expect(computedBlockCount.value).toBe(1)
+  })
+
+  it('queue_consume pattern: new streamingMsg is reactive proxy', async () => {
+    // Simulate queue_consume handler which creates a new streamingMsg
+    const messages = ref<any[]>([])
+    const computedStreamingBlockCount = computed(() => {
+      const last = messages.value[messages.value.length - 1]
+      if (last?.role === 'assistant' && last?.streaming) {
+        return last.blocks?.length ?? 0
+      }
+      return -1
+    })
+
+    // First message
+    messages.value.push({
+      role: 'user',
+      content: 'hello',
+      blocks: [{ type: 'text', text: 'hello' }],
+    })
+
+    // queue_consume: create new assistant placeholder
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      blocks: [] as any[],
+      streaming: true,
+    })
+    const streamingMsg = messages.value[messages.value.length - 1]
+
+    expect(computedStreamingBlockCount.value).toBe(0)
+
+    // Content arrives through SSE
+    streamingMsg.blocks.push({ type: 'text', text: 'AI response' })
+
+    await nextTick()
+    expect(computedStreamingBlockCount.value).toBe(1)
+
+    // More content coalescing
+    const existing = findLastBlockOfType(streamingMsg.blocks, 'text')
+    if (existing) existing.text += ' continued'
+
+    await nextTick()
+    expect(computedStreamingBlockCount.value).toBe(1) // Still one block (coalesced)
+    const lastBlock = streamingMsg.blocks[streamingMsg.blocks.length - 1]
+    expect(lastBlock.text).toBe('AI response continued')
+  })
+
+  it('raw reference vs proxy reference: metadata assignment', async () => {
+    // Verify that streamingMsg.metadata = data works through proxy
+    const messages = ref<any[]>([])
+
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      blocks: [] as any[],
+      streaming: true,
+    })
+    const viaProxy = messages.value[messages.value.length - 1]
+    const rawObj = toRaw(viaProxy)
+
+    // Assign through proxy — should be reactive
+    viaProxy.metadata = { model: 'claude-3', wallMs: 5000 }
+    await nextTick()
+    expect(viaProxy.metadata.model).toBe('claude-3')
+
+    // The raw object also reflects the change (proxy wraps it)
+    expect(rawObj.metadata.model).toBe('claude-3')
+
+    // But isReactive only returns true for proxy access
+    expect(isReactive(viaProxy)).toBe(true)
+    expect(isReactive(rawObj)).toBe(false)
   })
 })

@@ -20,11 +20,22 @@ A: 不需要。ClawBench 通过调用本地 CLI（CodeBuddy、Claude Code、Open
 
 **Q: TTS 语音合成可以使用本地模型吗？**
 
-A: 可以。将 `summarize_backend` 设为 `"ollama"` 即可使用本地 Ollama 服务进行文本总结，无需任何云 API。只需安装 Ollama 并拉取模型（如 `ollama pull gemma3:270m`），然后在配置文件中设置 `summarize_backend: "ollama"`。TTS 引擎本身也支持本地离线方案（piper / kokoro / moss-nano），两者搭配可实现完全离线的语音朗读。其中 moss-nano 支持多语言和音色克隆，48kHz 高音质输出。
+A: 可以。将 `summarize_backend` 设为 `"api"` 并配置 Ollama 的 OpenAI 兼容端点即可使用本地 Ollama 服务进行文本总结，无需任何云 API。只需安装 Ollama 并拉取模型（如 `ollama pull gemma3:270m`），然后在配置文件中设置：
+
+```yaml
+tts:
+  summarize_backend: "api"
+  api:
+    base_url: "http://localhost:11434/v1/chat/completions"
+    format: "openai"
+    model: "gemma3:270m"
+```
+
+TTS 引擎本身也支持本地离线方案（piper / kokoro / moss-nano），两者搭配可实现完全离线的语音朗读。其中 moss-nano 支持多语言和音色克隆，48kHz 高音质输出。
 
 **Q: 可以同时运行多个 ClawBench 实例吗？**
 
-A: 可以。发布版和开发版使用独立端口和数据库，可以同时运行。也可以通过 `--port` 参数指定不同端口运行多个实例。
+A: 可以。将整个发布目录复制到不同位置，每个副本拥有独立的 `BinDir`、配置和 `.clawbench/` 数据目录，完全隔离。只需在各副本的 `config/config.yaml` 中配置不同端口即可。
 
 **Q: 是否需要配置文件才能启动？**
 

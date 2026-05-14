@@ -209,15 +209,19 @@ export function useChatStream(options: UseChatStreamOptions) {
     let streamingMsg = messages.value.find(m => m.role === 'assistant' && m.streaming)
     if (!streamingMsg) {
       // No streaming message from DB — create empty assistant message
-      streamingMsg = {
+      messages.value.push({
         role: 'assistant',
         content: '',
         blocks: [],
         streaming: true,
         createdAt: new Date().toISOString(),
         backend: currentBackend.value
-      }
-      messages.value.push(streamingMsg)
+      })
+      // Re-acquire from the reactive array so that all subsequent mutations
+      // (blocks.push, text +=, metadata assignment) go through Vue's reactive
+      // proxy and trigger UI re-renders. Without this, the local variable
+      // still points to the raw object — Vue never sees the changes.
+      streamingMsg = messages.value[messages.value.length - 1]
       // Keep renderedContents in sync with messages array
       onRenderNeeded()
     }
@@ -415,15 +419,17 @@ export function useChatStream(options: UseChatStreamOptions) {
       })
 
       // Create new streaming assistant placeholder
-      streamingMsg = {
+      messages.value.push({
         role: 'assistant',
         content: '',
         blocks: [],
         streaming: true,
         createdAt: new Date().toISOString(),
         backend: currentBackend.value,
-      }
-      messages.value.push(streamingMsg)
+      })
+      // Re-acquire from the reactive array so mutations go through
+      // Vue's reactive proxy (see connectStream for the same pattern)
+      streamingMsg = messages.value[messages.value.length - 1]
 
       onRenderNeeded()
       // Force scroll: queue_done removes the streaming indicator which shrinks layout,

@@ -86,6 +86,7 @@ graph LR
     Server -->|CLI 调用 · 流式输出| QR["🤖 Qoder CLI"]
     Server -->|CLI 调用 · 流式输出| VC["🤖 VeCLI"]
     Server -->|CLI 调用 · 流式输出| DS["🔍 DeepSeek TUI"]
+    Server -->|CLI 调用 · 流式输出| PI["🥧 Pi"]
     Server -->|读写| DB[("💾 SQLite\n会话 · 历史 · 定时任务")]
     CB -->|原生支持| Tools["🔧 工具调用"]
     CB -->|原生支持| Think["🧠 深度思考"]
@@ -101,6 +102,9 @@ graph LR
     CX -->|原生支持| Tools
     QR -->|原生支持| Tools
     VC -->|原生支持| Tools
+    DS -->|原生支持| Tools
+    PI -->|原生支持| Tools
+    PI -->|原生支持| Think
 ```
 
 ---
@@ -177,10 +181,10 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - **流式响应**：SSE 实时推送，思维过程、工具调用全程可见
 - **多 Agent 支持**：全能助手、编码专家、勤杂工等，YAML 配置即插即用
 - **AI 后端切换**：CodeBuddy、Claude Code、OpenCode、Gemini CLI、Codex、Qoder CLI、VeCLI、DeepSeek TUI、Pi，会话级隔离
-- **定时任务**：AI 通过 CLI 子命令创建 Cron 调度，定时自动执行；独立标签页管理，4 级面包屑导航；频率预设（每小时/每天/每周/每月）+ 自定义 Cron 表达式；任务卡片内嵌聊天消息；执行级别已读追踪 + TTS 朗读
+- **定时任务**：AI 通过 CLI 子命令创建 Cron 调度，定时自动执行；独立标签页管理，4 级面包屑导航；频率预设（每小时/每天/每周/每月）+ 自定义 Cron 表达式；任务卡片内嵌聊天消息；执行级别已读追踪 + TTS 朗读；执行完成后自动摘要 + 完成通知（音效/震动/Toast）
 - **多会话管理**：创建、切换、删除独立会话，滑动切换
 - **图片上传**：支持上传图片与 AI 对话（多模态）
-- **断连保护**：消息立即落库，网络断开不丢失，60 秒超时自动重连（3 次后降级轮询）
+- **断连保护**：消息立即落库，网络断开不丢失，15 秒心跳保活 + 30 秒超时自动重连（降级轮询时实时更新内容）
 - **自动恢复**：Claude / CodeBuddy / Qoder / DeepSeek / Pi 退出 Plan Mode 后自动发送"继续"
 - **消息队列**：AI 忙碌时消息排队，依次发送
 
@@ -200,7 +204,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 ### 🔊 TTS 语音朗读
 - AI 回复自动总结后朗读，边听边看
 - **5 种 TTS 引擎**：Edge TTS（免费）、MiniMax（音质最佳）、Piper / Kokoro / MOSS-Nano（本地离线）
-- **12 种总结后端**：simple 纯清洗、mmx-cli、Claude、CodeBuddy、Gemini、OpenCode、Codex、Qoder、VeCLI、DeepSeek、Pi、Ollama（本地推理）
+- **12 种总结后端**：simple 纯清洗、mmx-cli、api（OpenAI/Anthropic 兼容）、Claude、CodeBuddy、Gemini、OpenCode、Codex、Qoder、VeCLI、DeepSeek、Pi
 - 详见 [TTS 语音合成部署指南](docs/TTS.md)
 
 ### 📂 Git 集成
