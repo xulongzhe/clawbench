@@ -38,29 +38,37 @@
     <button ref="settingsBtnRef" class="settings-toggle" @click="toggleSettingsMenu" :title="t('appHeader.settings')">
       <Settings :size="20" />
     </button>
-    <PopupMenu v-model:show="settingsMenuOpen" :target-element="settingsBtnRef" anchor="right" :max-width="200" :max-height="280" :menu-items-count="4">
+    <PopupMenu v-model:show="settingsMenuOpen" :target-element="settingsBtnRef" anchor="right" :max-width="200" :max-height="280" :menu-items-count="settingsItemCount">
       <div class="settings-menu-title">{{ t('appHeader.settings') }}</div>
+      <!-- Reconfigure server — always available in app mode -->
+      <template v-if="isAppMode">
+        <button class="settings-menu-item reconfigure-item" @click="handleReconfigure">
+          <Server :size="14" />
+          <span>{{ t('appHeader.reconfigureServer') }}</span>
+        </button>
+        <div class="settings-menu-divider"></div>
+      </template>
       <button class="settings-menu-item" :class="{ active: currentLocale === 'zh' }" @click="handleLocaleSwitch('zh')">
-        <Check v-if="currentLocale === 'zh'" :size="14" />
-        <span v-else class="settings-menu-check-spacer"></span>
-        <span>中文</span>
-      </button>
-      <button class="settings-menu-item" :class="{ active: currentLocale === 'en' }" @click="handleLocaleSwitch('en')">
-        <Check v-if="currentLocale === 'en'" :size="14" />
-        <span v-else class="settings-menu-check-spacer"></span>
-        <span>English</span>
-      </button>
-      <div class="settings-menu-divider"></div>
-      <button class="settings-menu-item" :class="{ active: theme === 'dark' }" @click="handleThemeSwitch('dark')">
-        <Check v-if="theme === 'dark'" :size="14" />
-        <span v-else class="settings-menu-check-spacer"></span>
-        <Moon :size="14" />
-        <span>{{ t('appHeader.darkMode') }}</span>
-      </button>
-      <button class="settings-menu-item" :class="{ active: theme === 'light' }" @click="handleThemeSwitch('light')">
-        <Check v-if="theme === 'light'" :size="14" />
-        <span v-else class="settings-menu-check-spacer"></span>
-        <Sun :size="14" />
+          <Check v-if="currentLocale === 'zh'" :size="14" />
+          <span v-else class="settings-menu-check-spacer"></span>
+          <span>中文</span>
+        </button>
+        <button class="settings-menu-item" :class="{ active: currentLocale === 'en' }" @click="handleLocaleSwitch('en')">
+          <Check v-if="currentLocale === 'en'" :size="14" />
+          <span v-else class="settings-menu-check-spacer"></span>
+          <span>English</span>
+        </button>
+        <div class="settings-menu-divider"></div>
+        <button class="settings-menu-item" :class="{ active: theme === 'dark' }" @click="handleThemeSwitch('dark')">
+          <Check v-if="theme === 'dark'" :size="14" />
+          <span v-else class="settings-menu-check-spacer"></span>
+          <Moon :size="14" />
+          <span>{{ t('appHeader.darkMode') }}</span>
+        </button>
+        <button class="settings-menu-item" :class="{ active: theme === 'light' }" @click="handleThemeSwitch('light')">
+          <Check v-if="theme === 'light'" :size="14" />
+          <span v-else class="settings-menu-check-spacer"></span>
+          <Sun :size="14" />
         <span>{{ t('appHeader.lightMode') }}</span>
       </button>
     </PopupMenu>
@@ -69,21 +77,23 @@
 </template>
 
 <script setup>
-import { Projector, ChevronDown, Search, Moon, Sun, Settings, Check } from 'lucide-vue-next'
+import { Projector, ChevronDown, Search, Moon, Sun, Settings, Check, Server } from 'lucide-vue-next'
 import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useLocale } from '@/composables/useLocale'
+import { useAppMode } from '@/composables/useAppMode'
 import { baseName, toRelativePath } from '@/utils/path.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
 
 const { t } = useI18n()
 const { currentLocale, setLocale } = useLocale()
+const { isAppMode } = useAppMode()
 
 const props = defineProps({
     projectRoot: String,
     theme: String,
 })
-const emit = defineEmits(['toggleTheme', 'openProjectDialog'])
+const emit = defineEmits(['toggleTheme', 'openProjectDialog', 'reconfigureServer'])
 
 const toast = inject('toast')
 
@@ -108,6 +118,21 @@ function handleThemeSwitch(mode) {
     }
     settingsMenuOpen.value = false
 }
+
+function handleReconfigure() {
+    settingsMenuOpen.value = false
+    emit('reconfigureServer')
+}
+
+// Calculate menu item count for PopupMenu positioning
+const settingsItemCount = computed(() => {
+    // 4 interactive items: zh + en + dark + light (divider height negligible)
+    let count = 4
+    if (isAppMode.value) {
+        count += 2 // reconfigure item + divider
+    }
+    return count
+})
 
 const projectName = computed(() => {
     if (!props.projectRoot) return t('appHeader.selectProject')
@@ -469,6 +494,15 @@ onUnmounted(() => {
 
 .settings-menu-item.active:hover {
     color: #fff;
+}
+
+.settings-menu-item.reconfigure-item {
+    color: var(--color-red, #dc2626);
+}
+
+.settings-menu-item.reconfigure-item:hover {
+    background: color-mix(in srgb, var(--color-red, #dc2626) 10%, transparent);
+    color: var(--color-red, #dc2626);
 }
 
 .settings-menu-item svg {

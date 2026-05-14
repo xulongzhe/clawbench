@@ -513,14 +513,10 @@ public class MainActivity extends AppCompatActivity {
         if (webView.canGoBack()) {
             webView.goBack();
         } else {
-            // No more WebView history — offer to reconfigure server instead of exiting
-            new AlertDialog.Builder(this)
-                    .setTitle(R.string.dialog_back_title)
-                    .setMessage("当前没有更多页面可回退，是否重新配置服务器地址？")
-                    .setPositiveButton("重新配置", (dialog, which) -> showServerDialog())
-                    .setNegativeButton("退出应用", (dialog, which) -> super.onBackPressed())
-                    .setCancelable(true)
-                    .show();
+            // No more WebView history — just exit the app.
+            // Server reconfiguration is available via the gear menu in the web UI
+            // when the page fails to load, rather than through a back-gesture dialog.
+            super.onBackPressed();
         }
     }
 
@@ -601,19 +597,33 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             super.onReceivedError(view, request, error);
-            // Only show error toast for main frame errors.
+            // Only handle main frame errors — offer reconfigure when the page itself fails to load.
             // Defer the check: if the connection recovers before the deferred runnable fires,
-            // we avoid showing a stale "offline" toast after screen unlock.
+            // we avoid showing a stale dialog after screen unlock.
             if (request.isForMainFrame()) {
                 view.postDelayed(() -> {
                     if (!isFinishing() && !isDestroyed()) {
-                        // Only show if WebView still can't load (connection genuinely down)
-                        if (!isNetworkAvailable()) {
-                            Toast.makeText(MainActivity.this, R.string.error_connection_failed, Toast.LENGTH_SHORT).show();
-                        }
+                        showLoadErrorDialog();
                     }
                 }, 600);
             }
+        }
+
+        /**
+         * Show dialog when the configured server URL cannot be reached.
+         * Offers to reconfigure the server or retry.
+         */
+        private void showLoadErrorDialog() {
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle(R.string.error_connection_failed)
+                    .setMessage("无法连接到服务器，请检查服务器地址和网络连接。")
+                    .setPositiveButton("重新配置", (dialog, which) -> showServerDialog())
+                    .setNegativeButton("重试", (dialog, which) -> {
+                        String url = prefs.getString(KEY_SERVER_URL, "");
+                        if (!url.isEmpty()) loadUrl(url);
+                    })
+                    .setCancelable(true)
+                    .show();
         }
     }
 

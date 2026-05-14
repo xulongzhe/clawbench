@@ -33,7 +33,7 @@ export default {
   },
   toast: {
     portForwardAppOnly: 'Port forwarding is only available in the mobile app',
-    serverUnreachableApp: 'Cannot connect to server, tap to reconfigure',
+    serverUnreachableApp: 'Cannot connect to server, use Settings to reconfigure',
     serverUnreachableWeb: 'Cannot connect to server, please check if the backend service is running',
     serverError: 'Server error, backend service may not be running properly',
     projectLoadFailed: 'Project load failed, backend service may not be running properly',
@@ -66,6 +66,7 @@ export default {
     settings: 'Settings',
     darkMode: 'Dark Mode',
     lightMode: 'Light Mode',
+    reconfigureServer: 'Reconfigure Server',
   },
   chat: {
     title: 'AI Chat',

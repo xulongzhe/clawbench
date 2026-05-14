@@ -33,7 +33,7 @@ export default {
   },
   toast: {
     portForwardAppOnly: '端口转发仅在移动端APP支持',
-    serverUnreachableApp: '无法连接到服务器，点击重新配置',
+    serverUnreachableApp: '无法连接到服务器，可通过设置菜单重新配置',
     serverUnreachableWeb: '无法连接到服务器，请检查后端服务是否启动',
     serverError: '服务器响应异常，后端服务可能未正确启动',
     projectLoadFailed: '项目加载失败，后端服务可能未正确启动',
@@ -66,6 +66,7 @@ export default {
     settings: '设置',
     darkMode: '深色模式',
     lightMode: '浅色模式',
+    reconfigureServer: '重新配置服务器',
   },
   chat: {
     title: 'AI 对话',

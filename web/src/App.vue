@@ -13,6 +13,7 @@
         :theme="theme"
         @toggle-theme="toggleTheme"
         @open-project-dialog="handleOpenProjectDialog"
+        @reconfigure-server="handleReconfigureServer"
       />
 
       <main class="main-content">
@@ -355,6 +356,12 @@ function handleOpenProjectDialog() {
     projectDialogOpen.value = true
 }
 
+function handleReconfigureServer() {
+    if (window.AndroidNative?.showServerDialog) {
+        window.AndroidNative.showServerDialog()
+    }
+}
+
 const theme = ref(localStorage.getItem('theme') ||
     (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))
 
@@ -607,8 +614,9 @@ onMounted(async () => {
         resp = await fetch('/api/me')
     } catch (_) {
         isAuthenticated.value = false
-        if (isAppMode.value && window.AndroidNative?.showServerDialog) {
-            toast.show(t('toast.serverUnreachableApp'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => window.AndroidNative.showServerDialog() })
+        if (isAppMode.value) {
+            // Gear menu provides reconfigure option in app mode — show a brief hint
+            toast.show(t('toast.serverUnreachableApp'), { icon: '⚠️', type: 'error', duration: 5000 })
         } else {
             toast.show(t('toast.serverUnreachableWeb'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
         }
@@ -631,7 +639,11 @@ onMounted(async () => {
         } else { isAuthenticated.value = false; return }
     } else {
         isAuthenticated.value = false
-        toast.show(t('toast.serverError'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
+        if (isAppMode.value) {
+            toast.show(t('toast.serverError'), { icon: '⚠️', type: 'error', duration: 5000 })
+        } else {
+            toast.show(t('toast.serverError'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
+        }
         return
     }
     initMermaid()

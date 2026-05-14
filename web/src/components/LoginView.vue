@@ -41,6 +41,7 @@
               <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
             </svg>
             {{ error }}
+            <button v-if="isAppMode && networkError" class="reconfigure-link" @click="handleReconfigure">{{ t('appHeader.reconfigureServer') }}</button>
           </div>
         </form>
       </div>
@@ -49,20 +50,24 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useAppMode } from '@/composables/useAppMode'
 
 const { t } = useI18n()
+const { isAppMode } = useAppMode()
 const emit = defineEmits(['loginSuccess'])
 
 const password = ref('')
 const loading = ref(false)
 const error = ref('')
+const networkError = ref(false)
 
 async function handleLogin() {
     if (!password.value) return
     loading.value = true
     error.value = ''
+    networkError.value = false
     try {
         const res = await fetch('/login', {
             method: 'POST',
@@ -82,8 +87,15 @@ async function handleLogin() {
         }
     } catch (_) {
         error.value = t('login.networkError')
+        networkError.value = true
     } finally {
         loading.value = false
+    }
+}
+
+function handleReconfigure() {
+    if (window.AndroidNative?.showServerDialog) {
+        window.AndroidNative.showServerDialog()
     }
 }
 </script>
@@ -300,5 +312,24 @@ input[type="password"]:focus {
 
 .error svg {
     flex-shrink: 0;
+}
+
+.reconfigure-link {
+    margin-left: auto;
+    padding: 2px 8px;
+    border: 1px solid color-mix(in srgb, var(--color-red, #dc2626) 40%, transparent);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-red, #dc2626) 10%, transparent);
+    color: var(--color-red, #dc2626);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+
+.reconfigure-link:hover {
+    background: color-mix(in srgb, var(--color-red, #dc2626) 20%, transparent);
 }
 </style>
