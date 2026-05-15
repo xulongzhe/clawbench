@@ -95,7 +95,7 @@
           <div v-if="multiSelect.active" class="ms-check" :class="{ checked: multiSelect.selected.has(itemPath(entry.name)) }">
             <Check v-if="multiSelect.selected.has(itemPath(entry.name))" :size="12" />
           </div>
-          <Folder class="file-icon" :size="16" />
+          <Folder class="file-icon" :size="28" />
           <span class="file-name">{{ entry.name }}</span>
           <ChevronRight v-if="!multiSelect.active" :size="14" class="chevron" />
           <span class="file-meta">{{ formatDate(entry.modified) }}</span>
@@ -119,9 +119,9 @@
             <Check v-if="multiSelect.selected.has(itemPath(entry.name))" :size="12" />
           </div>
           <img v-if="isThumbLoaded(entry)" class="file-thumb" :src="thumbUrl(entry)" :alt="entry.name" loading="lazy" @error="onThumbError(entry)" />
-          <FileImage v-else-if="isImage(entry)" class="file-icon" :size="16" color="#a855f7" />
-          <FileMusic v-else-if="isAudio(entry)" class="file-icon" :size="16" color="#22c55e" />
-          <FileText v-else class="file-icon" :size="16" :color="getFileType(entry.name).color" />
+          <FileImage v-else-if="isImage(entry)" class="file-icon" :size="28" color="#a855f7" />
+          <FileMusic v-else-if="isAudio(entry)" class="file-icon" :size="28" color="#22c55e" />
+          <FileText v-else class="file-icon" :size="28" :color="getFileType(entry.name).color" />
           <span class="file-name">{{ entry.name }}</span>
           <span class="file-meta">{{ formatSize(entry.size) }} · {{ formatDate(entry.modified) }}</span>
         </div>
@@ -1148,9 +1148,9 @@ function doDelete() {
 .file-item {
     display: flex;
     align-items: center;
-    padding: 4px 16px;
+    padding: 6px 8px;
     border-radius: 0;
-    min-height: 36px;
+    min-height: 44px;
     cursor: pointer;
     transition: background 0.15s;
     gap: 8px;
@@ -1195,8 +1195,8 @@ function doDelete() {
 
 .file-icon {
     flex-shrink: 0;
-    width: 16px;
-    height: 16px;
+    width: 28px;
+    height: 28px;
 }
 
 .file-thumb {
