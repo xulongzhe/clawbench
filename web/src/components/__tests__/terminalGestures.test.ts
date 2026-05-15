@@ -401,4 +401,58 @@ describe('useTerminalGestures — uncovered branches', () => {
 
     expect(scrollDeltas).toEqual([])
   })
+
+  it('resets disabled scroll state on touchend after scrolling', () => {
+    const { el, scrollDeltas, gestures } = setupGestures()
+
+    gestures.toggle()
+    dispatchTouch(el, 'touchstart', [makeTouch(80, 100)])
+    dispatchTouch(el, 'touchmove', [makeTouch(84, 140)])
+    expect(scrollDeltas).toEqual([40])
+
+    // End the scroll gesture
+    const touchEnd = dispatchTouch(el, 'touchend', [], [makeTouch(84, 140)])
+    expect(touchEnd.preventDefault).toHaveBeenCalled()
+  })
+
+  it('resets disabled scroll state on touchcancel', () => {
+    const { el, scrollDeltas, gestures } = setupGestures()
+
+    gestures.toggle()
+    dispatchTouch(el, 'touchstart', [makeTouch(80, 100)])
+    dispatchTouch(el, 'touchmove', [makeTouch(84, 140)])
+    expect(scrollDeltas).toEqual([40])
+
+    // Cancel the scroll gesture
+    dispatchTouch(el, 'touchcancel', [], [makeTouch(84, 140)])
+
+    // Subsequent touch should start fresh
+    dispatchTouch(el, 'touchstart', [makeTouch(80, 100)])
+    dispatchTouch(el, 'touchmove', [makeTouch(84, 120)])
+    expect(scrollDeltas).toEqual([40, 20])
+  })
+
+  it('does not preventDefault on touchend when disabled scroll was not active', () => {
+    const { el, gestures } = setupGestures()
+
+    gestures.toggle()
+    const touchEnd = dispatchTouch(el, 'touchend', [], [makeTouch(80, 100)])
+    expect(touchEnd.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('allows second finger to disable scroll in disabled mode via touchstart', () => {
+    const { el, scrollDeltas, gestures } = setupGestures()
+
+    gestures.toggle()
+    dispatchTouch(el, 'touchstart', [makeTouch(80, 100)])
+    dispatchTouch(el, 'touchmove', [makeTouch(84, 140)])
+    expect(scrollDeltas).toEqual([40])
+
+    // Two-finger touchstart should reset scroll tracking
+    dispatchTouch(el, 'touchstart', [makeTouch(80, 100), makeTouch(120, 100)])
+
+    // Subsequent single-finger move should not scroll (tracking was reset)
+    dispatchTouch(el, 'touchmove', [makeTouch(84, 160)])
+    expect(scrollDeltas).toEqual([40]) // no new scroll delta
+  })
 })

@@ -139,6 +139,15 @@ import { useQuickCommands } from '@/composables/useQuickCommands'
 import { useAppMode } from '@/composables/useAppMode'
 import { store } from '@/stores/app'
 import { resolveTerminalCwd, shouldPromptForTerminalReopen } from './terminalCwd'
+import {
+  DEFAULT_FONT_SIZE,
+  loadFontSize as loadFontSizeUtil,
+  applyFontSize as applyFontSizeUtil,
+  shortCwd as shortCwdUtil,
+  canReconnect as canReconnectUtil,
+  errorDisplayMessage as errorDisplayMessageUtil,
+  showErrorOverlay as showErrorOverlayUtil,
+} from '@/utils/terminalFontUtils'
 
 import { Terminal as TerminalIcon, Copy as CopyIcon, Zap as ZapIcon, Hand as HandIcon, RefreshCw as RefreshCwIcon, ArrowUpFromLine as ShiftIcon } from 'lucide-vue-next'
 
@@ -156,25 +165,10 @@ const { t } = useI18n()
 const toast = useToast()
 
 // Font size with persistence
-const FONT_SIZE_KEY = 'clawbench-terminal-font-size'
-const DEFAULT_FONT_SIZE = 12
-const MIN_FONT_SIZE = 8
-const MAX_FONT_SIZE = 28
-
 const fontSize = ref(DEFAULT_FONT_SIZE)
 
-function loadFontSize(): number {
-  const saved = localStorage.getItem(FONT_SIZE_KEY)
-  if (saved) {
-    const n = parseInt(saved, 10)
-    if (n >= MIN_FONT_SIZE && n <= MAX_FONT_SIZE) return n
-  }
-  return DEFAULT_FONT_SIZE
-}
-
 function applyFontSize(size: number) {
-  fontSize.value = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, size))
-  localStorage.setItem(FONT_SIZE_KEY, String(fontSize.value))
+  fontSize.value = applyFontSizeUtil(size)
   if (xterm.value) {
     xterm.value.options.fontSize = fontSize.value
     viewport.fitTerminal()
@@ -299,29 +293,13 @@ function disableVolumeKeys() {
 }
 
 // Computed
-const shortCwd = computed(() => {
-  if (!currentCwd.value) return ''
-  const parts = currentCwd.value.split('/')
-  return parts.length > 2 ? '.../' + parts.slice(-2).join('/') : currentCwd.value
-})
+const shortCwd = computed(() => shortCwdUtil(currentCwd.value))
 
-const showErrorOverlay = computed(() => {
-  return connectionState.value === 'error' || connectionState.value === 'disconnected'
-})
+const showErrorOverlay = computed(() => showErrorOverlayUtil(connectionState.value))
 
-const canReconnect = computed(() => {
-  // terminal_disabled means the feature is turned off — no point reconnecting
-  if (errorCode.value === 'terminal_disabled') return false
-  // All other errors are retryable (session_in_use is no longer possible —
-  // backend now kicks the old client and lets the new one take over)
-  return true
-})
+const canReconnect = computed(() => canReconnectUtil(errorCode.value))
 
-const errorDisplayMessage = computed(() => {
-  if (errorCode.value === 'terminal_disabled') return t('terminal.disabled')
-  if (errorCode.value === 'shell_start_failed') return t('terminal.shellStartFailed')
-  return errorMessage.value || t('terminal.websocketFailed')
-})
+const errorDisplayMessage = computed(() => errorDisplayMessageUtil(errorCode.value, errorMessage.value, t('terminal.websocketFailed')))
 
 const panelStyle = computed(() => ({
   '--keyboard-height': `${viewport.keyboardHeight.value}px`,
@@ -365,7 +343,7 @@ function initTerminal() {
 
   const term = new Terminal({
     theme: getXtermTheme(),
-    fontSize: loadFontSize(),
+    fontSize: loadFontSizeUtil(),
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
     cursorBlink: true,
     convertEol: true,
