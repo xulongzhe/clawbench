@@ -165,9 +165,10 @@ watch(() => props.viewMode, async (mode) => {
 // When flashTextSnippets changes and we're in rendered mode,
 // search the rendered DOM for matching text and wrap it in flash spans.
 
-/** Remove all previously added flash spans from the DOM */
+/** Remove all previously added flash spans/classes from the DOM */
 function removeFlashSpans(container) {
     if (!container) return
+    // Remove flash spans (wrapping approach)
     const existing = container.querySelectorAll('.md-char-flash-delete, .md-char-flash-add')
     for (const span of existing) {
         const parent = span.parentNode
@@ -179,53 +180,140 @@ function removeFlashSpans(container) {
             parent.removeChild(span)
         }
     }
+    // Remove flash classes (fallback approach — class added directly to element)
+    const classBased = container.querySelectorAll('.md-flash-delete, .md-flash-add')
+    for (const el of classBased) {
+        el.classList.remove('md-flash-delete', 'md-flash-add')
+    }
     // Normalize merges adjacent text nodes that were split
     container.normalize()
 }
 
 /**
+ * Build a flat text + node-offset map from all text nodes in the container.
+ * This lets us search the concatenated text and map offsets back to DOM nodes.
+ */
+function buildTextNodeMap(container) {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null)
+    const nodes = []
+    const offsets = [] // cumulative text offset at the start of each node
+    let cumLen = 0
+    while (walker.nextNode()) {
+        const node = walker.currentNode
+        nodes.push(node)
+        offsets.push(cumLen)
+        cumLen += node.textContent.length
+    }
+    // Concatenate all text
+    const fullText = nodes.map(n => n.textContent).join('')
+    return { nodes, offsets, fullText }
+}
+
+/**
+ * Given a start/end offset in the concatenated text, wrap the corresponding
+ * DOM range in a flash span. Handles matches that span multiple text nodes.
+ */
+function wrapRangeInSpan(nodes, offsets, startOff, endOff, cls, container) {
+    // Find the text node containing startOff
+    let startNodeIdx = 0
+    for (let i = 0; i < offsets.length; i++) {
+        if (offsets[i] <= startOff) startNodeIdx = i
+        else break
+    }
+    // Find the text node containing endOff
+    let endNodeIdx = startNodeIdx
+    for (let i = startNodeIdx; i < offsets.length; i++) {
+        if (offsets[i] < endOff) endNodeIdx = i
+        else break
+    }
+
+    const startNode = nodes[startNodeIdx]
+    const endNode = nodes[endNodeIdx]
+    const localStart = startOff - offsets[startNodeIdx]
+    const localEnd = endOff - offsets[endNodeIdx]
+
+    if (startNode === endNode) {
+        // Match is within a single text node — best case
+        try {
+            const range = document.createRange()
+            range.setStart(startNode, localStart)
+            range.setEnd(endNode, localEnd)
+            const span = document.createElement('span')
+            span.className = cls
+            range.surroundContents(span)
+            return true
+        } catch {
+            // surroundContents can fail for edge cases
+        }
+    }
+
+    // Match spans multiple text nodes or surroundContents failed.
+    // Fallback: highlight the nearest common ancestor element.
+    try {
+        const range = document.createRange()
+        range.setStart(startNode, localStart)
+        range.setEnd(endNode, localEnd)
+        // Use extractContents + reinsert wrapped in span
+        const fragment = range.extractContents()
+        const span = document.createElement('span')
+        span.className = cls
+        span.appendChild(fragment)
+        range.insertNode(span)
+        return true
+    } catch {
+        // Last resort: highlight parent elements
+        const startParent = startNode.parentElement
+        if (startParent && container.contains(startParent) && !startParent.classList.contains('markdown-body')) {
+            startParent.classList.add(cls)
+            return true
+        }
+    }
+    return false
+}
+
+/**
  * Search for snippet text in the rendered DOM and wrap matches in flash spans.
- * Uses TreeWalker to find text nodes, then creates Ranges to wrap matches.
+ * Uses a concatenated text map to find matches that span multiple text nodes
+ * (e.g., code blocks, bold text with nested elements).
  */
 function applyFlashToRenderedDOM(container, snippets, type) {
     if (!container || !snippets || snippets.length === 0) return
 
     const cls = type === 'delete' ? 'md-char-flash-delete' : 'md-char-flash-add'
+    const matchedNodes = new Set() // avoid double-highlighting
 
     for (const snippet of snippets) {
         if (!snippet || snippet.length < 3) continue
 
-        // Walk all text nodes looking for the snippet
-        const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null)
-        const textNodes = []
-        while (walker.nextNode()) {
-            textNodes.push(walker.currentNode)
+        // Rebuild text map each time (DOM changes after wrapping)
+        const { nodes, offsets, fullText } = buildTextNodeMap(container)
+
+        // Search for snippet in the concatenated text
+        const idx = fullText.indexOf(snippet)
+        if (idx === -1) continue
+
+        // Check if any node in the range was already highlighted
+        const endIdx = idx + snippet.length
+        let alreadyMatched = false
+        for (let i = 0; i < nodes.length; i++) {
+            if (offsets[i] >= endIdx) break
+            if (offsets[i] + nodes[i].textContent.length > idx && matchedNodes.has(nodes[i])) {
+                alreadyMatched = true
+                break
+            }
         }
+        if (alreadyMatched) continue
 
-        for (const textNode of textNodes) {
-            const text = textNode.textContent
-            const idx = text.indexOf(snippet)
-            if (idx === -1) continue
-
-            // Found a match — split the text node and wrap the matched portion
-            try {
-                const range = document.createRange()
-                range.setStart(textNode, idx)
-                range.setEnd(textNode, idx + snippet.length)
-
-                const span = document.createElement('span')
-                span.className = cls
-                range.surroundContents(span)
-            } catch {
-                // surroundContents fails if the range crosses element boundaries
-                // Fallback: just highlight the whole parent element
-                const parent = textNode.parentElement
-                if (parent && container.contains(parent) && !parent.classList.contains('markdown-body')) {
-                    parent.classList.add(cls)
+        // Wrap the match
+        const ok = wrapRangeInSpan(nodes, offsets, idx, endIdx, cls, container)
+        if (ok) {
+            // Mark nodes as matched
+            for (let i = 0; i < nodes.length; i++) {
+                if (offsets[i] >= endIdx) break
+                if (offsets[i] + nodes[i].textContent.length > idx) {
+                    matchedNodes.add(nodes[i])
                 }
             }
-            // Only highlight first occurrence of each snippet to avoid over-flashing
-            break
         }
     }
 }

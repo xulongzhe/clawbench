@@ -18,6 +18,7 @@
  */
 import { ref, watch } from 'vue'
 import { store } from '@/stores/app.ts'
+import { renderMarkdown } from '@/composables/useMarkdownRenderer.ts'
 
 // ─── Flash state (consumed by CodePreview & MarkdownPreview) ───
 
@@ -274,56 +275,83 @@ function charIndicesToRanges(indices: Set<number>, text: string): { start: numbe
 
 // ─── Extract text snippets from diff result (for Markdown rendered mode) ───
 
+/** DOMParser singleton (reused across calls) */
+const domParser = new DOMParser()
+
+/**
+ * Convert markdown source text to plain text that matches the rendered DOM.
+ * Uses the same renderMarkdown pipeline as MarkdownPreview, then extracts
+ * textContent — so headings, bold, code blocks, lists etc. are all handled
+ * correctly without any fragile regex stripping.
+ */
+function markdownToPlainText(mdText) {
+    if (!mdText) return ''
+    const html = renderMarkdown(mdText, { sanitize: false })
+    const doc = domParser.parseFromString(html, 'text/html')
+    return doc.body.textContent || ''
+}
+
 /**
  * Extract changed text snippets from the diff result and source text.
- * These snippets can be searched for in the rendered DOM to flash-highlight them.
+ * Uses renderMarkdown + DOMParser to get rendered plain text, so snippets
+ * match what appears in the rendered DOM (not raw markdown source).
  * Filters out very short snippets (1-2 chars) to reduce false positives.
  */
-function extractSnippets(text: string, diff: LineDiff, mode: 'delete' | 'add'): string[] {
+function extractSnippets(text, diff, mode) {
+    // Convert the full source text to rendered plain text, line by line.
+    // We render each line individually so we can map line numbers.
     const lines = text.split('\n')
-    const snippets: string[] = []
+    const renderedLines = lines.map(line => markdownToPlainText(line))
+
+    const snippets = []
     const MIN_SNIPPET_LEN = 3
 
-    if (mode === 'delete') {
-        // Whole-line deletions: extract non-empty trimmed content
-        for (const lineNum of diff.deletedInOld) {
-            const line = lines[lineNum - 1]
-            if (line && line.trim().length >= MIN_SNIPPET_LEN) {
-                snippets.push(line.trim())
+    const collect = (lineNum, charStart, charEnd) => {
+        // Get the rendered plain text for this line
+        const renderedLine = renderedLines[lineNum - 1]
+        if (!renderedLine) return
+
+        // For char-level ranges, extract the corresponding portion from rendered text.
+        // The char offsets are in the raw markdown source, but after rendering
+        // the offsets shift. For whole-line changes we use the full rendered line.
+        // For char-level changes, we take the full rendered line (the char offsets
+        // from the raw source don't map 1:1 to rendered text).
+        const snippet = (charStart === 0 && charEnd === Infinity)
+            ? renderedLine.trim()
+            : renderedLine.trim()
+
+        if (snippet.length >= MIN_SNIPPET_LEN) {
+            snippets.push(snippet)
+            // Also add individual words as fallback for cross-element matching
+            const words = snippet.split(/[\s,;:]+/).filter(w => w.length >= MIN_SNIPPET_LEN)
+            for (const w of words) {
+                if (w !== snippet) snippets.push(w)
             }
         }
-        // Char-level deletions
+    }
+
+    if (mode === 'delete') {
+        for (const lineNum of diff.deletedInOld) {
+            collect(lineNum, 0, Infinity)
+        }
         for (const [lineNum, ranges] of diff.deletedChars) {
-            const line = lines[lineNum - 1] || ''
             for (const { start, end } of ranges) {
-                const s = line.slice(start, Math.min(end, line.length))
-                if (s.trim().length >= MIN_SNIPPET_LEN) {
-                    snippets.push(s.trim())
-                }
+                collect(lineNum, start, end)
             }
         }
     } else {
-        // Whole-line additions
         for (const lineNum of diff.addedInNew) {
-            const line = lines[lineNum - 1]
-            if (line && line.trim().length >= MIN_SNIPPET_LEN) {
-                snippets.push(line.trim())
-            }
+            collect(lineNum, 0, Infinity)
         }
-        // Char-level additions
         for (const [lineNum, ranges] of diff.addedChars) {
-            const line = lines[lineNum - 1] || ''
             for (const { start, end } of ranges) {
-                const s = line.slice(start, Math.min(end, line.length))
-                if (s.trim().length >= MIN_SNIPPET_LEN) {
-                    snippets.push(s.trim())
-                }
+                collect(lineNum, start, end)
             }
         }
     }
 
     // Deduplicate and limit count
-    return [...new Set(snippets)].slice(0, 20)
+    return [...new Set(snippets)].slice(0, 30)
 }
 
 // ─── Scroll helpers ───
