@@ -167,6 +167,12 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	if cfg.TTS.MaxSummarizeRunes <= 0 {
 		cfg.TTS.MaxSummarizeRunes = 10000
 	}
+	// MaxCacheFiles: -1 or 0 both mean unlimited; positive = cap
+	// We treat 0 as the default (100) for UX convenience,
+	// and -1 as explicitly unlimited.
+	if cfg.TTS.MaxCacheFiles == 0 {
+		cfg.TTS.MaxCacheFiles = 100
+	}
 
 	// --- RAG ---
 	// Bool zero-value: Go defaults to false, which IS the desired default for RAG.

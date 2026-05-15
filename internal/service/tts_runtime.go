@@ -2,6 +2,10 @@ package service
 
 import (
 	"context"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"sort"
 	"sync"
 )
 
@@ -105,4 +109,78 @@ func CancelTTSJob(id string) {
 		return
 	}
 	job.Cancel()
+}
+
+// cachedTTSFile records a cached TTS audio file with its modification time.
+type cachedTTSFile struct {
+	name  string
+	mtime int64 // Unix nano for sorting
+}
+
+// EvictTTSCache removes the oldest cached TTS audio files when the total
+// count exceeds the configured limit. It also cleans up the corresponding
+// .summary.txt companion files and tts_summaries DB rows.
+//
+// Call this after successfully generating a new TTS audio file.
+// maxFiles <= 0 means unlimited (no eviction).
+func EvictTTSCache(projectPath string, maxFiles int) {
+	if maxFiles <= 0 {
+		return
+	}
+
+	ttsDir := filepath.Join(projectPath, ".clawbench", "generated", "tts")
+	entries, err := os.ReadDir(ttsDir)
+	if err != nil {
+		return // directory may not exist yet
+	}
+
+	// Collect audio files only (.mp3, .wav), skip .summary.txt and other files
+	var files []cachedTTSFile
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		ext := filepath.Ext(name)
+		if ext != ".mp3" && ext != ".wav" {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, cachedTTSFile{
+			name:  name,
+			mtime: info.ModTime().UnixNano(),
+		})
+	}
+
+	if len(files) <= maxFiles {
+		return
+	}
+
+	// Sort oldest first (lowest mtime)
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].mtime < files[j].mtime
+	})
+
+	// Delete the oldest files to bring count down to maxFiles
+	deleteCount := len(files) - maxFiles
+	for i := 0; i < deleteCount; i++ {
+		absPath := filepath.Join(ttsDir, files[i].name)
+		if err := os.Remove(absPath); err != nil {
+			continue
+		}
+
+		// Remove companion .summary.txt if it exists (legacy file-based cache)
+		os.Remove(absPath + ".summary.txt")
+	}
+
+	if deleteCount > 0 {
+		slog.Info("tts cache eviction completed",
+			slog.Int("deleted", deleteCount),
+			slog.Int("remaining", len(files)-deleteCount),
+			slog.Int("max", maxFiles),
+		)
+	}
 }

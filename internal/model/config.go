@@ -39,6 +39,7 @@ type Config struct {
 		Format            string         `yaml:"format"`             // Audio output format (default: "mp3")
 		InlineCodeMaxLen  int            `yaml:"inline_code_max_len"` // Max inline code content length (runes) to preserve for TTS; longer code is removed (default: 100)
 		MaxSummarizeRunes int            `yaml:"max_summarize_runes"` // Max runes for summarization input; longer text is truncated (default: 10000, simple mode: 1000)
+		MaxCacheFiles     int            `yaml:"max_cache_files"`    // Max cached TTS audio files to keep; oldest are auto-deleted (0=unlimited, default: 100)
 		Piper             PiperConfig    `yaml:"piper"`              // Piper-specific configuration (only used when engine: "piper")
 		Kokoro            KokoroConfig   `yaml:"kokoro"`             // Kokoro-specific configuration (only used when engine: "kokoro")
 		MossNano          MossNanoConfig `yaml:"moss_nano"`          // MOSS-TTS-Nano-specific configuration (only used when engine: "moss-nano")
@@ -136,4 +137,7 @@ var (
 
 	// Session limits (set from config, with defaults)
 	SessionMaxCount int // Default: 10
+
+	// TTS cache limits (set from config, with defaults)
+	TTSMaxCacheFiles int // Default: 100; 0 = unlimited
 )

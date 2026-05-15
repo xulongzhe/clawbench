@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"clawbench/internal/model"
 	"clawbench/internal/service"
 	"clawbench/internal/speech"
 	"clawbench/internal/summarize"
@@ -207,6 +208,9 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 			slog.String("cache_key", cacheKey),
 			slog.String("path", relAudioPath),
 		)
+
+		// Evict oldest cached files if over the limit
+		service.EvictTTSCache(projectPath, model.TTSMaxCacheFiles)
 
 		service.SendTTSEvent(cacheKey, service.TTSEvent{
 			Type:      "result",

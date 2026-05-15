@@ -124,6 +124,8 @@ tts:
                                                        # 行内代码保留的最大字符数（rune）；超出则整段删除（默认: 100）
   # max_summarize_runes: 10000                          # Max runes for summarization input; longer text is truncated to the tail (default: 10000; simple mode: 1000)
                                                        # 总结输入的最大字符数；超出则截取尾部（默认: 10000；simple 模式: 1000）
+  # max_cache_files: 100                               # Max cached TTS audio files to keep; oldest auto-deleted (-1=unlimited, default: 100)
+                                                       # TTS 语音缓存文件最大数量；超出时自动删除最旧的（-1=不限，默认: 100）
 
   # ============================================================
   # TTS Engine + Summarization Backend Combination Examples

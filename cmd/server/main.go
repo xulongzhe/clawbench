@@ -162,6 +162,7 @@ func main() {
 	model.ChatCollapsedHeight = cfg.Chat.CollapsedHeight
 	model.ChatSystemPromptInterval = cfg.Chat.SystemPromptInterval
 	model.SessionMaxCount = cfg.Session.MaxCount
+	model.TTSMaxCacheFiles = cfg.TTS.MaxCacheFiles
 
 	// Apply TTS text processing config (defaults applied in ApplyDefaults)
 	summarize.InlineCodeMaxLen = cfg.TTS.InlineCodeMaxLen
