@@ -1,7 +1,7 @@
 <template>
   <ModalDialog :open="open" :title="t('projectDialog.title')" :z-index="2500" full-height @close="$emit('close')">
     <template #header>
-      <Projector :size="16" class="modal-header-icon" />
+      <Folder :size="16" class="modal-header-icon" />
       <span class="modal-title">{{ t('projectDialog.title') }}</span>
     </template>
     <!-- Browse nav -->
@@ -34,7 +34,7 @@
         :class="{ selected: selectedPath === item.path }"
         @click="enterDir(item)"
       >
-        <Projector :size="16" class="item-icon-svg" />
+        <Folder :size="28" class="item-icon-svg" />
         <span class="item-name">{{ item.name }}</span>
         <button class="item-action-btn" @click.stop="doRename(item)" :title="t('common.rename')">
           <Pencil :size="14" />
@@ -55,7 +55,7 @@
 </template>
 
 <script setup>
-import { Projector, FolderPlus, Eye, EyeOff, Pencil, Trash2, RotateCw } from 'lucide-vue-next'
+import { Folder, FolderPlus, Eye, EyeOff, Pencil, Trash2, RotateCw } from 'lucide-vue-next'
 import { ref, computed, watch, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ModalDialog from './common/ModalDialog.vue'
@@ -284,8 +284,8 @@ async function confirm() {
 .dialog-item {
   display: flex;
   align-items: center;
-  padding: 4px 16px;
-  min-height: 36px;
+  padding: 6px 8px;
+  min-height: 44px;
   cursor: pointer;
   gap: 8px;
   transition: background 0.1s;
@@ -297,7 +297,7 @@ async function confirm() {
 .dialog-item.selected { background: var(--accent-color, #0066cc); color: #fff; }
 .dialog-item.selected .item-name { color: #fff; }
 
-.item-icon-svg { flex-shrink: 0; color: var(--accent-color, #0066cc); }
+.item-icon-svg { flex-shrink: 0; width: 28px; height: 28px; color: var(--accent-color, #0066cc); }
 .dialog-item.selected .item-icon-svg { color: #fff; }
 .item-name { flex: 1; font-size: 13px; color: var(--text-primary, #1a1a1a); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
