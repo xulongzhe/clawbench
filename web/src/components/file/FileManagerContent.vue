@@ -803,14 +803,30 @@ async function doArchive(paths, zipName) {
             return
         }
         const blob = await resp.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = zipName || 'archive.zip'
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(url)
+        const native = window.AndroidNative
+        if (isAppMode.value && native && native.downloadBlob) {
+            // Android native: convert blob to base64 and pass to native bridge
+            const reader = new FileReader()
+            reader.onload = () => {
+                // reader.result is "data:application/zip;base64,XXXX..."
+                const base64 = reader.result.split(',')[1]
+                native.downloadBlob(base64, zipName || 'archive.zip')
+            }
+            reader.onerror = () => {
+                if (toast) toast.show(t('file.toast.archiveFailed'), { icon: '❌', type: 'error', duration: 2000 })
+            }
+            reader.readAsDataURL(blob)
+        } else {
+            // Web: standard blob download via <a> tag
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = zipName || 'archive.zip'
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            URL.revokeObjectURL(url)
+        }
         if (toast) toast.show(t('file.toast.archiveDone'), { icon: '✅', type: 'success', duration: 1500 })
     } catch (err) {
         if (toast) toast.show(t('file.toast.archiveFailed'), { icon: '❌', type: 'error', duration: 2000 })

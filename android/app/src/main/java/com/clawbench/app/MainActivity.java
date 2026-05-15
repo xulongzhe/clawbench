@@ -870,6 +870,39 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /**
+         * Download a blob of base64-encoded data to the Downloads directory.
+         * Used for archive (zip) downloads which require a POST request
+         * and cannot use the WebView loadUrl -> DownloadListener approach.
+         * @param base64Data Base64-encoded file content (no data: prefix)
+         * @param fileName File name for the download (e.g. "project.zip")
+         */
+        @JavascriptInterface
+        public void downloadBlob(String base64Data, String fileName) {
+            new Thread(() -> {
+                try {
+                    byte[] data = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+                    java.io.File outDir = new java.io.File(
+                            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "ClawBench");
+                    if (!outDir.exists()) outDir.mkdirs();
+                    java.io.File outFile = new java.io.File(outDir, fileName);
+                    java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile);
+                    fos.write(data);
+                    fos.close();
+                    // Notify MediaScanner so the file appears in Downloads app
+                    Intent scanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                    scanIntent.setData(Uri.fromFile(outFile));
+                    activity.sendBroadcast(scanIntent);
+                    activity.runOnUiThread(() ->
+                            Toast.makeText(activity, R.string.download_completed, Toast.LENGTH_SHORT).show());
+                } catch (Exception e) {
+                    Log.e(TAG, "downloadBlob failed", e);
+                    activity.runOnUiThread(() ->
+                            Toast.makeText(activity, R.string.download_failed, Toast.LENGTH_SHORT).show());
+                }
+            }).start();
+        }
+
+        /**
          * Enable or disable volume key interception mode.
          * When enabled, volume up/down keys are forwarded to the WebView JS layer
          * via __onVolumeKey() callback instead of adjusting system volume.
