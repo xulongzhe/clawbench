@@ -23,7 +23,7 @@
             >
               <Projector :size="14" class="item-icon" />
               <span class="item-label">{{ item.name }}</span>
-              <span class="item-path" @mousedown.prevent="onPathMouseDown" @click.stop>{{ item.displayPath }}</span>
+              <span class="item-path" @mousedown.prevent="onPathMouseDown" @click="onPathClick">{{ item.displayPath }}</span>
             </div>
             <div class="dropdown-divider"></div>
             <div class="dropdown-item other-item" @click="openBrowse">
@@ -233,28 +233,34 @@ function onClickOutside(e) {
     }
 }
 
+// Track whether the path element was dragged, so click can decide to bubble or not
+let pathDragged = false
+
 function onPathMouseDown(e) {
     const el = e.currentTarget
+    pathDragged = false
     if (el.scrollWidth <= el.clientWidth) return
     let startX = e.pageX
     let scrollLeft = el.scrollLeft
-    let moved = false
 
     function onMouseMove(ev) {
         const dx = ev.pageX - startX
-        if (Math.abs(dx) > 2) moved = true
+        if (Math.abs(dx) > 2) pathDragged = true
         el.scrollLeft = scrollLeft - dx
     }
-    function onMouseUp(ev) {
-        if (moved) {
-            ev.preventDefault()
-            ev.stopPropagation()
-        }
+    function onMouseUp() {
         document.removeEventListener('mousemove', onMouseMove)
         document.removeEventListener('mouseup', onMouseUp)
     }
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
+}
+
+function onPathClick(e) {
+    if (pathDragged) {
+        e.stopPropagation()
+    }
+    // If not dragged, let the click bubble up to the parent .dropdown-item's selectRecent
 }
 
 onMounted(() => {

@@ -10,7 +10,7 @@
 #
 # 原理:
 #   生产后端（server.sh）在 TLS 模式下会额外监听一个 localhost-only 的 HTTP 端口
-#   （dev_port，默认 Port+1，如 20001）。本脚本只启动 Vite HMR，代理到该端口，
+#   （dev_port，默认 Port+2，如 20002）。本脚本只启动 Vite HMR，代理到该端口，
 #   与生产服务共享同一套数据，无需独立的后端实例。
 #
 
@@ -20,10 +20,10 @@ NAME="clawbench-dev"
 VITE_PID_FILE="/tmp/${NAME}-vite.pid"
 VITE_LOG="/tmp/vite-dev.log"
 
-# Ports — dev_port defaults to production port + 1
+# Ports — dev_port defaults to production port + 2 (matches Go backend ApplyDefaults)
 PROD_PORT=${PROD_PORT:-20000}
-DEV_HTTP_PORT=${DEV_HTTP_PORT:-$((PROD_PORT + 1))}
-FRONTEND_PORT=${VITE_FRONTEND_PORT:-$((PROD_PORT + 2))}
+DEV_HTTP_PORT=${DEV_HTTP_PORT:-$((PROD_PORT + 2))}
+FRONTEND_PORT=${VITE_FRONTEND_PORT:-$((PROD_PORT + 3))}
 
 # Load shared shell utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +38,7 @@ check_dev_port() {
     if [[ -z "$listening" ]]; then
         echo "WARNING: Production dev HTTP port $DEV_HTTP_PORT not detected." >&2
         echo "  Make sure the production server is running: ./server.sh" >&2
-        echo "  (dev_port auto-enables when TLS is on, default: port+1)" >&2
+        echo "  (dev_port auto-enables when TLS is on, default: port+2)" >&2
         echo "" >&2
         read -p "  Start production server now? [y/N] " -r
         if [[ $REPLY =~ ^[Yy]$ ]]; then
