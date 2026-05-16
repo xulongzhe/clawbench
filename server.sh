@@ -169,7 +169,11 @@ start_release() {
             exec "$BIN"
         fi
     else
-        nohup $BIN >> "$LOG_FILE" 2>&1 &
+        if [[ -n "$PORT" ]]; then
+            PORT=$PORT nohup $BIN >> "$LOG_FILE" 2>&1 &
+        else
+            nohup $BIN >> "$LOG_FILE" 2>&1 &
+        fi
         echo $! > "$PID_FILE"
         disown $! 2>/dev/null
 
