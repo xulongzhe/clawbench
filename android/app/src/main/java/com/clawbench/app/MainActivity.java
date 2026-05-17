@@ -60,7 +60,8 @@ import java.util.Set;
  * Main Activity: hosts a fullscreen WebView that connects to the ClawBench server.
  *
  * Key features:
- * - Server URL configuration dialog on first launch
+ * - Static HTML login page on first launch (matches web UI style)
+ * - WebView hidden during connection attempts — no ugly error pages shown
  * - WebView with JS, DOM storage, and media autoplay enabled
  * - JavaScript interface for native bridge (port forwarding, SSH password)
  * - Port forwarding via SSH tunnels (PortForwardService) — transparent localhost access
@@ -73,10 +74,21 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_SERVER_URL = "server_url";
     private static final String KEY_SSH_PASSWORD = "ssh_password";
     private static final String TAG = "ClawBench";
+    private static final String LOGIN_HTML_URL = "file:///android_asset/login.html";
 
     private WebView webView;
     private ProgressBar progressBar;
     private SharedPreferences prefs;
+
+    // Tracks whether the WebView is showing a successfully loaded remote page.
+    // When false (login page or load error), the WebView is hidden behind the dark background.
+    private boolean webViewConnected = false;
+
+    // Set to true in onReceivedError() — prevents onPageFinished() from
+    // showing the WebView until the login page is displayed.
+    // Android WebView calls onPageFinished() even for failed loads, so
+    // without this guard the browser error page would flash briefly.
+    private boolean loadErrorPending = false;
 
     // File chooser state for WebView <input type="file"> support
     private ValueCallback<Uri[]> filePathCallback;
@@ -167,13 +179,9 @@ public class MainActivity extends AppCompatActivity {
 
         setupWebView();
 
-        // Load saved URL or show configuration dialog
-        String savedUrl = prefs.getString(KEY_SERVER_URL, null);
-        if (savedUrl != null) {
-            loadUrl(savedUrl);
-        } else {
-            showServerDialog();
-        }
+        // Show the static login page. It will pre-fill saved config and
+        // let the user connect via the JS bridge (AndroidNative.connectToServer).
+        webView.loadUrl(LOGIN_HTML_URL);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -406,6 +414,54 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * Show the static login page. Hides the WebView content area so the
+     * dark background shows through, and calls onConnectError() on the
+     * login page to display the error message inline.
+     * @param errorMessage error message to show, or null for a fresh login.
+     */
+    private void showLoginPage(String errorMessage) {
+        webViewConnected = false;
+        loadErrorPending = false;
+        // Note: don't set View.INVISIBLE here — onPageStarted will set VISIBLE
+        // for the login page URL, which is the correct time to show it.
+        webView.loadUrl(LOGIN_HTML_URL);
+        if (errorMessage != null) {
+            // The page needs a moment to load before we can call JS on it.
+            // We'll defer the error display via a delayed runnable.
+            webView.postDelayed(() -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    String escaped = errorMessage.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
+                    webView.evaluateJavascript("if(typeof onConnectError==='function'){onConnectError('" + escaped + "')}", null);
+                }
+            }, 300);
+        }
+    }
+
+    /**
+     * Attempt to connect to a server URL.
+     * Called from the static login page via AndroidNative.connectToServer().
+     * Hides WebView content during the connection attempt so error pages don't flash.
+     */
+    private void connectToServer(String url, String password) {
+        webViewConnected = false;
+        loadErrorPending = false;
+        webView.setVisibility(View.INVISIBLE);
+
+        // Save URL and password
+        prefs.edit().putString(KEY_SERVER_URL, url).apply();
+        if (password != null && !password.isEmpty()) {
+            PortForwardService.setPassword(this, password);
+        }
+
+        if (isNetworkAvailable()) {
+            webView.loadUrl(url);
+        } else {
+            // No network — go back to login page with error
+            showLoginPage("网络不可用，请检查网络连接。");
+        }
+    }
+
     private void loadUrl(String url) {
         if (isNetworkAvailable()) {
             webView.loadUrl(url);
@@ -436,79 +492,12 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Show dialog for user to input ClawBench server URL.
-     * Called on first launch or when user wants to change server.
+     * Show the login page for server configuration.
+     * Replaces the old AlertDialog-based server dialog with the
+     * static HTML login page that matches the web UI style.
      */
     private void showServerDialog() {
-        View dialogView = getLayoutInflater().inflate(R.layout.dialog_server_url, null);
-        RadioGroup protocolGroup = dialogView.findViewById(R.id.protocolGroup);
-        RadioButton protocolHttps = dialogView.findViewById(R.id.protocolHttps);
-        EditText hostInput = dialogView.findViewById(R.id.hostInput);
-        EditText portInput = dialogView.findViewById(R.id.portInput);
-        EditText passwordInput = dialogView.findViewById(R.id.passwordInput);
-
-        // Pre-fill with saved URL if exists
-        String savedUrl = prefs.getString(KEY_SERVER_URL, "");
-        if (!savedUrl.isEmpty()) {
-            Uri parsed = Uri.parse(savedUrl);
-            String scheme = parsed.getScheme();
-            String host = parsed.getHost();
-            int port = parsed.getPort();
-
-            if ("http".equals(scheme)) {
-                protocolGroup.check(R.id.protocolHttp);
-            } else {
-                protocolGroup.check(R.id.protocolHttps);
-            }
-            if (host != null) hostInput.setText(host);
-            if (port > 0) portInput.setText(String.valueOf(port));
-        }
-
-        // Pre-fill with saved password if exists
-        String savedPassword = prefs.getString(KEY_SSH_PASSWORD, "");
-        passwordInput.setText(savedPassword);
-
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.dialog_title)
-                .setView(dialogView)
-                .setPositiveButton(R.string.dialog_positive, (dialog, which) -> {
-                    String host = hostInput.getText().toString().trim();
-                    String portStr = portInput.getText().toString().trim();
-
-                    if (host.isEmpty()) {
-                        Toast.makeText(this, R.string.error_no_url, Toast.LENGTH_SHORT).show();
-                        showServerDialog();
-                        return;
-                    }
-
-                    // Build URL from components
-                    boolean isHttps = protocolGroup.getCheckedRadioButtonId() == R.id.protocolHttps;
-                    String scheme = isHttps ? "https" : "http";
-
-                    // Default port based on scheme
-                    if (portStr.isEmpty()) {
-                        portStr = isHttps ? "443" : "80";
-                    }
-
-                    String url = scheme + "://" + host + ":" + portStr;
-
-                    // Remove trailing slash
-                    if (url.endsWith("/")) {
-                        url = url.substring(0, url.length() - 1);
-                    }
-                    prefs.edit().putString(KEY_SERVER_URL, url).apply();
-
-                    // Save password for SSH tunnel
-                    String pwd = passwordInput.getText().toString();
-                    if (!pwd.isEmpty()) {
-                        PortForwardService.setPassword(this, pwd);
-                    }
-
-                    loadUrl(url);
-                })
-                .setNegativeButton(R.string.dialog_negative, null)
-                .setCancelable(false)
-                .show();
+        showLoginPage(null);
     }
 
     /**
@@ -534,6 +523,13 @@ public class MainActivity extends AppCompatActivity {
             if (client != null) {
                 client.onHideCustomView();
             }
+            return;
+        }
+        // If currently on the login page, don't navigate back in WebView history.
+        // The login page is the "root" state — pressing back should exit the app.
+        String currentUrl = webView.getUrl();
+        if (currentUrl != null && currentUrl.equals(LOGIN_HTML_URL)) {
+            super.onBackPressed();
             return;
         }
         if (webView.canGoBack()) {
@@ -580,6 +576,40 @@ public class MainActivity extends AppCompatActivity {
     private class ClawBenchWebViewClient extends WebViewClient {
 
         @Override
+        public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+            super.onPageStarted(view, url, favicon);
+            if (LOGIN_HTML_URL.equals(url)) {
+                // Navigating to the login page — show it immediately.
+                // The login page IS the UI, not a transitional state.
+                webViewConnected = false;
+                loadErrorPending = false;
+                view.setVisibility(View.VISIBLE);
+            } else {
+                // Navigating to a remote page — hide WebView until it loads
+                // to prevent flashing ugly browser error pages.
+                webViewConnected = false;
+                loadErrorPending = false;
+                view.setVisibility(View.INVISIBLE);
+            }
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            super.onPageFinished(view, url);
+            if (LOGIN_HTML_URL.equals(url)) {
+                // Login page — already visible from onPageStarted.
+            } else if (loadErrorPending) {
+                // Error was received during this page load — don't show the WebView.
+                // The delayed showLoginPage() will handle the transition.
+                // This prevents the browser's built-in error page from flashing.
+            } else {
+                // Remote page finished loading successfully — show the WebView.
+                webViewConnected = true;
+                view.setVisibility(View.VISIBLE);
+            }
+        }
+
+        @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri url = request.getUrl();
             String host = url.getHost();
@@ -623,33 +653,25 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             super.onReceivedError(view, request, error);
-            // Only handle main frame errors — offer reconfigure when the page itself fails to load.
-            // Defer the check: if the connection recovers before the deferred runnable fires,
-            // we avoid showing a stale dialog after screen unlock.
+            // Only handle main frame errors — show login page when the remote page fails to load.
             if (request.isForMainFrame()) {
+                // Set flag immediately to block onPageFinished() from showing the WebView.
+                // Android WebView calls onPageFinished() even for failed loads, and without
+                // this flag the browser's built-in error page would flash before we can
+                // navigate back to the login page.
+                loadErrorPending = true;
+                view.setVisibility(View.INVISIBLE);
+
+                // Defer the navigation to login page: if the connection recovers before
+                // the deferred runnable fires (e.g. screen unlock), we avoid showing a
+                // stale error. But since loadErrorPending is already set, onPageFinished
+                // won't flash the error page even if it fires in the meantime.
                 view.postDelayed(() -> {
-                    if (!isFinishing() && !isDestroyed()) {
-                        showLoadErrorDialog();
+                    if (!isFinishing() && !isDestroyed() && !webViewConnected && loadErrorPending) {
+                        showLoginPage("无法连接到服务器，请检查地址和网络连接。");
                     }
                 }, 600);
             }
-        }
-
-        /**
-         * Show dialog when the configured server URL cannot be reached.
-         * Offers to reconfigure the server or retry.
-         */
-        private void showLoadErrorDialog() {
-            new AlertDialog.Builder(MainActivity.this)
-                    .setTitle(R.string.error_connection_failed)
-                    .setMessage("无法连接到服务器，请检查服务器地址和网络连接。")
-                    .setPositiveButton("重新配置", (dialog, which) -> showServerDialog())
-                    .setNegativeButton("重试", (dialog, which) -> {
-                        String url = prefs.getString(KEY_SERVER_URL, "");
-                        if (!url.isEmpty()) loadUrl(url);
-                    })
-                    .setCancelable(true)
-                    .show();
         }
     }
 
@@ -792,6 +814,44 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public String getServerUrl() {
             return activity.prefs.getString(KEY_SERVER_URL, "");
+        }
+
+        /**
+         * Connect to a server URL with the given password.
+         * Called from the static login page's "连接" button.
+         * Hides the WebView during the connection attempt so error pages don't flash.
+         */
+        @JavascriptInterface
+        public void connectToServer(String url, String password) {
+            activity.runOnUiThread(() -> activity.connectToServer(url, password));
+        }
+
+        /**
+         * Get the saved server configuration as JSON.
+         * Used by the static login page to pre-fill the form fields.
+         * Returns: {"protocol":"https|http", "host":"...", "port":"...", "password":"..."}
+         */
+        @JavascriptInterface
+        public String getSavedServerConfig() {
+            try {
+                String savedUrl = activity.prefs.getString(KEY_SERVER_URL, "");
+                String savedPassword = activity.prefs.getString(KEY_SSH_PASSWORD, "");
+                org.json.JSONObject config = new org.json.JSONObject();
+                if (!savedUrl.isEmpty()) {
+                    Uri parsed = Uri.parse(savedUrl);
+                    config.put("protocol", parsed.getScheme() != null ? parsed.getScheme() : "https");
+                    config.put("host", parsed.getHost() != null ? parsed.getHost() : "");
+                    config.put("port", parsed.getPort() > 0 ? String.valueOf(parsed.getPort()) : "");
+                } else {
+                    config.put("protocol", "https");
+                    config.put("host", "");
+                    config.put("port", "");
+                }
+                config.put("password", savedPassword);
+                return config.toString();
+            } catch (Exception e) {
+                return "{}";
+            }
         }
 
         /**
