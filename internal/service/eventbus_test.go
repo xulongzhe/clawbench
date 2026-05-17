@@ -416,3 +416,65 @@ func TestEventBus_ClientCountConsistency(t *testing.T) {
 		t.Errorf("expected 4 clients, got %d", count)
 	}
 }
+
+func TestEventBus_PublishAfterUnsubscribeOfAnotherClient(t *testing.T) {
+	bus := &EventBus{
+		clients:    make(map[string]chan SystemEvent),
+		maxClients: eventBusMaxClients,
+	}
+
+	chA, _ := bus.Subscribe("client-a")
+	defer bus.Unsubscribe("client-a")
+	chB, _ := bus.Subscribe("client-b")
+	defer bus.Unsubscribe("client-b")
+
+	// Unsubscribe client A
+	bus.Unsubscribe("client-a")
+
+	// Publish — client B should still receive the event
+	bus.Publish(SystemEvent{Type: "after_a_gone", Payload: map[string]any{"key": "val"}})
+
+	select {
+	case got := <-chB:
+		if got.Type != "after_a_gone" {
+			t.Errorf("expected type after_a_gone, got %s", got.Type)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("client B should receive event after client A unsubscribed")
+	}
+
+	// Client A's channel should be closed (Unsubscribe closes it)
+	_, ok := <-chA
+	if ok {
+		t.Error("client A's channel should be closed after unsubscribe")
+	}
+}
+
+func TestEventBus_PublishDoesNotBlockOnSlowConsumer(t *testing.T) {
+	bus := &EventBus{
+		clients:    make(map[string]chan SystemEvent),
+		maxClients: eventBusMaxClients,
+	}
+
+	// Subscribe but don't drain — channel will fill up
+	bus.Subscribe("slow-consumer")
+
+	// Publish more events than the buffer can hold
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < eventBusChannelBuf+50; i++ {
+			// Publish should return immediately even when channel is full
+			bus.Publish(SystemEvent{Type: "flood", Payload: map[string]any{"i": i}})
+		}
+	}()
+
+	select {
+	case <-done:
+		// OK — Publish returned without blocking
+	case <-time.After(5 * time.Second):
+		t.Fatal("Publish should not block when consumer channel is full")
+	}
+
+	bus.Unsubscribe("slow-consumer")
+}

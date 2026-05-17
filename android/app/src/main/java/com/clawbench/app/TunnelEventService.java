@@ -1,5 +1,6 @@
 package com.clawbench.app;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -93,7 +94,7 @@ public class TunnelEventService extends Service {
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
 
     // SSE client: receives system events for background notifications
-    private com.launchdarkly.eventsource.EventSource eventSource;
+    private com.launchdarkly.eventsource.background.BackgroundEventSource eventSource;
 
     // Whether the app is in the foreground (suppresses notifications)
     // Defaults to false — if service restarts before Activity.onCreate, notifications
@@ -1151,9 +1152,22 @@ public class TunnelEventService extends Service {
             clientBuilder.hostnameVerifier((hostname, session) -> true);
         }
 
-        // Build EventSource with automatic reconnection
+        // Build connect strategy with custom OkHttpClient for trust-all SSL
+        okhttp3.HttpUrl httpUrl = okhttp3.HttpUrl.parse(sseUrl);
+        com.launchdarkly.eventsource.HttpConnectStrategy connectStrategy =
+                com.launchdarkly.eventsource.ConnectStrategy.http(httpUrl);
+        if (scheme.equals("https") && trustAllSSLContext != null) {
+            connectStrategy = connectStrategy.httpClient(clientBuilder.build());
+        }
+
+        // Build EventSource with automatic reconnection (5s retry delay)
         com.launchdarkly.eventsource.EventSource.Builder esBuilder = new com.launchdarkly.eventsource.EventSource.Builder(
-                new com.launchdarkly.eventsource.EventHandler() {
+                connectStrategy
+        ).retryDelay(5, java.util.concurrent.TimeUnit.SECONDS);
+
+        // Wrap with BackgroundEventSource for thread-safe event dispatch
+        eventSource = new com.launchdarkly.eventsource.background.BackgroundEventSource.Builder(
+                new com.launchdarkly.eventsource.background.BackgroundEventHandler() {
                     @Override
                     public void onOpen() {
                         Log.i(TAG, "SSE: connected to /api/events");
@@ -1170,7 +1184,7 @@ public class TunnelEventService extends Service {
                     }
 
                     @Override
-                    public void onError(com.launchdarkly.eventsource.EventSourceException t) {
+                    public void onError(java.lang.Throwable t) {
                         Log.w(TAG, "SSE: error: " + t.getMessage());
                     }
 
@@ -1182,11 +1196,9 @@ public class TunnelEventService extends Service {
                         handleSSEEvent(event, data);
                     }
                 },
-                okhttp3.HttpUrl.parse(sseUrl)
-        ).client(clientBuilder.build())
-         .reconnectTimeMs(5000); // Reconnect after 5s on disconnect
+                esBuilder
+        ).build();
 
-        eventSource = esBuilder.build();
         eventSource.start();
     }
 
@@ -1204,7 +1216,7 @@ public class TunnelEventService extends Service {
      * Handle a received SSE event.
      * Only shows system notifications when the app is in the background.
      */
-    private void handleSSEEvent(String eventType, String data) {
+    void handleSSEEvent(String eventType, String data) {
         Log.d(TAG, "SSE: event=" + eventType + " data=" + data);
 
         try {

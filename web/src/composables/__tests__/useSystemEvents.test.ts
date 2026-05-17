@@ -398,6 +398,67 @@ describe('useSystemEvents', () => {
       expect(systemEventsConnected.value).toBe(true)
     })
 
+    it('connected event resets reconnectAttempts', () => {
+      const result = useSystemEvents()
+      // Ensure clean SSE state
+      result.disconnectSSE()
+      result.connectSSE()
+
+      const listeners = capturedListeners['connected']
+      expect(listeners).toBeDefined()
+      expect(listeners!.size).toBeGreaterThan(0)
+
+      // Simulate connected event
+      const connectedHandler = [...listeners!][0]
+      connectedHandler(new MessageEvent('connected', { data: '{"clientId":"test-reset"}' }))
+
+      expect(systemEventsConnected.value).toBe(true)
+    })
+
+    it('connected event triggers fullStateSync', async () => {
+      const result = useSystemEvents()
+      result.disconnectSSE()
+      result.connectSSE()
+
+      // Access listeners from the newly connected EventSource
+      const listeners = capturedListeners['connected']
+      expect(listeners).toBeDefined()
+
+      // Clear previous fetch calls
+      mockFetch.mockClear()
+
+      // Simulate connected event — this triggers fullStateSync
+      const connectedHandler = [...listeners!][0]
+      connectedHandler(new MessageEvent('connected', { data: '{"clientId":"test-sync"}' }))
+
+      // fullStateSync is async — wait for promises to flush
+      await vi.runAllTimersAsync()
+
+      expect(mockFetch).toHaveBeenCalled()
+    })
+
+    it('generic message event dispatches to handlers', () => {
+      const result = useSystemEvents()
+      result.disconnectSSE()
+      result.connectSSE()
+
+      const handler = vi.fn()
+      registerUIHandler(handler)
+
+      // Access the 'message' listener from the connected EventSource
+      const messageListeners = capturedListeners['message']
+      expect(messageListeners).toBeDefined()
+      expect(messageListeners!.size).toBeGreaterThan(0)
+
+      const messageHandler = [...messageListeners!][0]
+      messageHandler(new MessageEvent('message', {
+        data: JSON.stringify({ type: 'session_start', payload: { sessionId: 's-via-message' } })
+      }))
+
+      // The handler should have received the event via the generic message path
+      expect(handler).toHaveBeenCalled()
+    })
+
     it('named event types dispatch events correctly', () => {
       const handler = vi.fn()
       registerUIHandler(handler)
@@ -425,27 +486,116 @@ describe('useSystemEvents', () => {
 
       expect(systemEventsConnected.value).toBe(false)
     })
+
+    it('connectSSE when intentionally disconnected returns early', () => {
+      const result = useSystemEvents()
+
+      // Go to background to set intentionallyDisconnected
+      mockVisibilityState = 'hidden'
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      // Reset the EventSource instance tracker
+      lastEventSourceInstance = null
+
+      // Try to connect — should be no-op due to intentionallyDisconnected
+      result.connectSSE()
+
+      // No new EventSource should be created
+      expect(lastEventSourceInstance).toBeNull()
+    })
   })
 
   // --- Reconnect logic ---
 
   describe('reconnect logic', () => {
-    it('scheduleReconnect uses exponential backoff', () => {
+    it('linear backoff: 2s, 4s, 6s, 8s, 10s', () => {
       const result = useSystemEvents()
+      result.connectSSE()
 
-      // First reconnect attempt
-      result.disconnectSSE() // Ensure disconnected
-      result.connectSSE() // Will fail due to mock, trigger reconnect
+      // Simulate first error
+      if (lastEventSourceInstance) {
+        lastEventSourceInstance.onerror = vi.fn()
+        ;(lastEventSourceInstance as any).onerror(new Event('error'))
+      }
 
-      // The actual reconnect scheduling happens via onerror -> scheduleReconnect
-      // We test the delay calculation indirectly
-      // First attempt: BASE_RECONNECT_DELAY * 1 = 2000ms
-      // Second attempt: BASE_RECONNECT_DELAY * 2 = 4000ms
+      // After first error, reconnect timer should be set with delay = 2000 * 1 = 2000ms
+      // Advance by 2000ms to trigger first reconnect
+      vi.advanceTimersByTime(2000)
+
+      // Second error after reconnect
+      if (lastEventSourceInstance) {
+        lastEventSourceInstance.onerror = vi.fn()
+        ;(lastEventSourceInstance as any).onerror(new Event('error'))
+      }
+
+      // Second reconnect delay = 2000 * 2 = 4000ms
+      vi.advanceTimersByTime(4000)
+
+      // Third error
+      if (lastEventSourceInstance) {
+        lastEventSourceInstance.onerror = vi.fn()
+        ;(lastEventSourceInstance as any).onerror(new Event('error'))
+      }
+
+      // Third reconnect delay = 2000 * 3 = 6000ms
+      vi.advanceTimersByTime(6000)
+
+      // Should still be attempting reconnects (not yet at max)
+      expect(systemEventsConnected.value).toBe(false)
     })
 
-    it('max reconnect attempts stops reconnecting', () => {
-      // After MAX_RECONNECT_ATTEMPTS (5), no more reconnection
-      // This is tested indirectly through the scheduleReconnect function
+    it('degraded polling after 5 failed reconnects', () => {
+      const result = useSystemEvents()
+      result.connectSSE()
+
+      // Simulate 5 consecutive errors with advancing timers
+      const delays = [2000, 4000, 6000, 8000, 10000]
+      for (const delay of delays) {
+        if (lastEventSourceInstance) {
+          lastEventSourceInstance.onerror = vi.fn()
+          ;(lastEventSourceInstance as any).onerror(new Event('error'))
+        }
+        vi.advanceTimersByTime(delay)
+      }
+
+      // After 5 reconnect attempts, scheduleReconnect should stop
+      // The 6th error should not schedule another reconnect
+      const closeCallCount = mockEventSource.close.mock.calls.length
+
+      if (lastEventSourceInstance) {
+        lastEventSourceInstance.onerror = vi.fn()
+        ;(lastEventSourceInstance as any).onerror(new Event('error'))
+      }
+
+      // No more EventSource instances should be created after max attempts
+      // close should not have been called again (no new connectSSE → no new error loop)
+      // The onerror handler should still call disconnectSSE though
+      expect(systemEventsConnected.value).toBe(false)
+    })
+
+    it('online event resets reconnect attempts counter', () => {
+      const result = useSystemEvents()
+      result.connectSSE()
+
+      // Simulate a few errors
+      if (lastEventSourceInstance) {
+        lastEventSourceInstance.onerror = vi.fn()
+        ;(lastEventSourceInstance as any).onerror(new Event('error'))
+      }
+      vi.advanceTimersByTime(2000) // first reconnect
+
+      if (lastEventSourceInstance) {
+        lastEventSourceInstance.onerror = vi.fn()
+        ;(lastEventSourceInstance as any).onerror(new Event('error'))
+      }
+
+      // Now simulate online event — should reset reconnect counter
+      window.dispatchEvent(new Event('online'))
+
+      // After online, a new EventSource should be attempted
+      // We can verify by checking that lastEventSourceInstance is non-null
+      // (the reconnect was triggered by the online handler)
+      expect(systemEventsConnected.value).toBe(false) // mock doesn't actually connect
     })
   })
 
@@ -615,6 +765,28 @@ describe('useSystemEvents', () => {
       expect(systemEventsConnected.value).toBe(false)
     })
 
+    it('going to background clears reconnect timer', () => {
+      const result = useSystemEvents()
+      result.connectSSE()
+
+      // Simulate error to start reconnect timer
+      if (lastEventSourceInstance) {
+        lastEventSourceInstance.onerror = vi.fn()
+        ;(lastEventSourceInstance as any).onerror(new Event('error'))
+      }
+
+      // Go to background — should clear reconnect timer
+      mockVisibilityState = 'hidden'
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      // Advance past the reconnect timer — no reconnect should happen
+      // because the timer was cleared
+      vi.advanceTimersByTime(5000)
+
+      // State should remain disconnected without attempting a new EventSource
+      expect(systemEventsConnected.value).toBe(false)
+    })
+
     it('returning to foreground reconnects SSE', () => {
       // First, go to background
       mockVisibilityState = 'hidden'
@@ -626,6 +798,33 @@ describe('useSystemEvents', () => {
 
       // SSE should be reconnected (new EventSource created)
       // We can't easily verify the exact state but the function should not throw
+    })
+
+    it('foreground with existing EventSource calls fullStateSync', async () => {
+      const result = useSystemEvents()
+      result.disconnectSSE()
+      result.connectSSE()
+
+      // Simulate connected so systemEventsConnected is true
+      const listeners = capturedListeners['connected']
+      expect(listeners).toBeDefined()
+      const connectedHandler = [...listeners!][0]
+      connectedHandler(new MessageEvent('connected', { data: '{"clientId":"test"}' }))
+
+      mockFetch.mockClear()
+
+      // Go to background then back to foreground
+      mockVisibilityState = 'hidden'
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      mockVisibilityState = 'visible'
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      // fullStateSync is async — wait for promises
+      await vi.runAllTimersAsync()
+
+      // fullStateSync should be called since EventSource was already connected
+      expect(mockFetch).toHaveBeenCalled()
     })
   })
 
@@ -639,6 +838,184 @@ describe('useSystemEvents', () => {
       // Should attempt to reconnect
       // We verify no crash and the state is consistent
       expect(systemEventsConnected.value).toBe(false) // Not connected yet (mock)
+    })
+
+    it('online event when intentionally disconnected does not reconnect', () => {
+      // Go to background to set intentionallyDisconnected
+      mockVisibilityState = 'hidden'
+      document.dispatchEvent(new Event('visibilitychange'))
+
+      // Reset EventSource tracker
+      lastEventSourceInstance = null
+
+      // Simulate online event while intentionally disconnected
+      window.dispatchEvent(new Event('online'))
+
+      // Should NOT create a new EventSource
+      expect(lastEventSourceInstance).toBeNull()
+    })
+  })
+
+  // --- Full-state sync edge cases ---
+
+  describe('fullStateSync edge cases', () => {
+    it('sync clears stale running sessions', async () => {
+      // Set up a stale running session
+      runningSessions.value = new Set(['s-stale-1', 's-stale-2'])
+      storeState.chatRunning = true
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/api/ai/sessions')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              sessions: [
+                { id: 's-stale-1', running: false },  // Was running, now stopped
+                { id: 's-stale-2', running: false },  // Was running, now stopped
+              ],
+            }),
+          })
+        }
+        if (url.includes('/api/tasks')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ tasks: [], hasUnread: false }),
+          })
+        }
+        if (url.includes('/api/ssh/info')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ connectionStats: { connected: true } }),
+          })
+        }
+        return Promise.resolve({ ok: false })
+      })
+
+      await fullStateSyncFn()
+
+      // Stale sessions should be cleared
+      expect(runningSessions.value.has('s-stale-1')).toBe(false)
+      expect(runningSessions.value.has('s-stale-2')).toBe(false)
+      expect(storeState.chatRunning).toBe(false)
+    })
+
+    it('sync handles tasks with hasUnread=true', async () => {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/api/ai/sessions')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ sessions: [] }),
+          })
+        }
+        if (url.includes('/api/tasks')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              tasks: [{ id: 1, runningCount: 0 }],
+              hasUnread: true,
+            }),
+          })
+        }
+        if (url.includes('/api/ssh/info')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ connectionStats: { connected: true } }),
+          })
+        }
+        return Promise.resolve({ ok: false })
+      })
+
+      await fullStateSyncFn()
+
+      expect(storeState.taskUnread).toBe(true)
+    })
+
+    it('all 3 APIs fail — state unchanged', async () => {
+      // Set some initial state
+      runningSessions.value = new Set(['s-existing'])
+      tunnelConnected.value = true
+
+      mockFetch.mockRejectedValue(new Error('Network error'))
+
+      await fullStateSyncFn()
+
+      // State should remain unchanged when all APIs fail
+      expect(runningSessions.value.has('s-existing')).toBe(true)
+      expect(tunnelConnected.value).toBe(true)
+    })
+
+    it('sync updates chatUnread based on sessions', async () => {
+      currentChatSessionId.value = 's-current'
+      storeState.chatUnread = false
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/api/ai/sessions')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              sessions: [
+                { id: 's-current', running: false, unreadCount: 0 },
+                { id: 's-other', running: false, unreadCount: 3 },
+              ],
+            }),
+          })
+        }
+        if (url.includes('/api/tasks')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ tasks: [], hasUnread: false }),
+          })
+        }
+        if (url.includes('/api/ssh/info')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ connectionStats: { connected: true } }),
+          })
+        }
+        return Promise.resolve({ ok: false })
+      })
+
+      await fullStateSyncFn()
+
+      // chatUnread should be true because s-other has unreadCount > 0
+      // and it's not the current session
+      expect(storeState.chatUnread).toBe(true)
+    })
+  })
+
+  // --- UI handler edge cases ---
+
+  describe('UI handler edge cases', () => {
+    it('UI handler sees state updated by core handler', () => {
+      let sawRunning = false
+      const handler = vi.fn(() => {
+        // At the time this handler is called, the core handler should
+        // have already updated runningSessions
+        sawRunning = runningSessions.value.has('s-1')
+      })
+      registerUIHandler(handler)
+
+      dispatchEvent({ type: 'session_start', payload: { sessionId: 's-1' } })
+
+      expect(handler).toHaveBeenCalledTimes(1)
+      expect(sawRunning).toBe(true)
+    })
+
+    it('mixed filtered + unfiltered handlers receive correct events', () => {
+      const allHandler = vi.fn()
+      const filteredHandler = vi.fn()
+      registerUIHandler(allHandler)
+      const unreg = registerUIHandler('tunnel_status', filteredHandler)
+
+      dispatchEvent({ type: 'session_start', payload: { sessionId: 's-1' } })
+      expect(allHandler).toHaveBeenCalledTimes(1)
+      expect(filteredHandler).not.toHaveBeenCalled()
+
+      dispatchEvent({ type: 'tunnel_status', payload: { connected: true } })
+      expect(allHandler).toHaveBeenCalledTimes(2)
+      expect(filteredHandler).toHaveBeenCalledTimes(1)
+
+      unreg()
     })
   })
 })

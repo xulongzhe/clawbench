@@ -299,3 +299,90 @@ func TestSystemEventsSSE_ConnectedEventContainsClientId(t *testing.T) {
 		}
 	}
 }
+
+func TestSystemEventsSSE_HeartbeatSent(t *testing.T) {
+	cleanup := setupTestEventBus(20)
+	defer cleanup()
+
+	// Speed up heartbeat for testing
+	origHeartbeat := eventsHeartbeatSec
+	eventsHeartbeatSec = 1 // 1 second
+	defer func() { eventsHeartbeatSec = origHeartbeat }()
+
+	req := newEventsRequest()
+	w := httptest.NewRecorder()
+
+	go SystemEventsSSE(w, req)
+	time.Sleep(1500 * time.Millisecond)
+
+	body := w.Body.String()
+	if !strings.Contains(body, ": heartbeat") {
+		t.Errorf("expected heartbeat comment in SSE body, got:\n%s", body)
+	}
+}
+
+func TestSystemEventsSSE_MultipleEventsReceived(t *testing.T) {
+	cleanup := setupTestEventBus(20)
+	defer cleanup()
+
+	req := newEventsRequest()
+	w := httptest.NewRecorder()
+
+	go SystemEventsSSE(w, req)
+	time.Sleep(50 * time.Millisecond)
+
+	// Publish 3 different events
+	service.GlobalEventBus.Publish(service.SystemEvent{
+		Type:    "session_start",
+		Payload: map[string]any{"sessionId": "s1"},
+	})
+	service.GlobalEventBus.Publish(service.SystemEvent{
+		Type:    "task_update",
+		Payload: map[string]any{"taskId": 42, "action": "create"},
+	})
+	service.GlobalEventBus.Publish(service.SystemEvent{
+		Type:    "tunnel_status",
+		Payload: map[string]any{"connected": true},
+	})
+	time.Sleep(100 * time.Millisecond)
+
+	body := w.Body.String()
+	if !strings.Contains(body, "event: session_start") {
+		t.Errorf("expected session_start event, got:\n%s", body)
+	}
+	if !strings.Contains(body, "event: task_update") {
+		t.Errorf("expected task_update event, got:\n%s", body)
+	}
+	if !strings.Contains(body, "event: tunnel_status") {
+		t.Errorf("expected tunnel_status event, got:\n%s", body)
+	}
+}
+
+func TestSystemEventsSSE_NestedPayload(t *testing.T) {
+	cleanup := setupTestEventBus(20)
+	defer cleanup()
+
+	req := newEventsRequest()
+	w := httptest.NewRecorder()
+
+	go SystemEventsSSE(w, req)
+	time.Sleep(50 * time.Millisecond)
+
+	service.GlobalEventBus.Publish(service.SystemEvent{
+		Type: "tunnel_status",
+		Payload: map[string]any{
+			"connected":     true,
+			"clientCount":   2,
+			"activeChannels": []any{"3000", "8080"},
+		},
+	})
+	time.Sleep(50 * time.Millisecond)
+
+	body := w.Body.String()
+	if !strings.Contains(body, "event: tunnel_status") {
+		t.Errorf("expected tunnel_status event, got:\n%s", body)
+	}
+	if !strings.Contains(body, `"activeChannels"`) {
+		t.Errorf("expected activeChannels in payload, got:\n%s", body)
+	}
+}

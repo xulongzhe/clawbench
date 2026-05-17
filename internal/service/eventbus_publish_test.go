@@ -695,3 +695,90 @@ drain:
 		t.Error("should have received at least some events under stress")
 	}
 }
+
+// --- Edge case: session_complete with error reason ---
+
+func TestPublish_SessionCompleteError(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	// session_complete with reason=error (published when AddChatMessage fails in handler)
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "session_complete",
+		Payload: map[string]any{"sessionId": "s-err", "agentId": "codebuddy", "reason": "error"},
+	})
+
+	event, found := waitForEvent(ch, "session_complete")
+	if !found {
+		t.Fatal("session_complete event not received")
+	}
+	if event.Payload["reason"] != "error" {
+		t.Errorf("expected reason=error, got %v", event.Payload["reason"])
+	}
+}
+
+// --- Edge case: task_update delete without status field ---
+
+func TestPublish_TaskUpdateDeleteNoStatus(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	// Delete action in scheduler.go does not include a status field
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "task_update",
+		Payload: map[string]any{"taskId": int64(99), "action": "delete"},
+	})
+
+	event, found := waitForEvent(ch, "task_update")
+	if !found {
+		t.Fatal("task_update event not received")
+	}
+	if event.Payload["action"] != "delete" {
+		t.Errorf("expected action=delete, got %v", event.Payload["action"])
+	}
+	// status field should not be present (or nil) for delete action
+	if _, exists := event.Payload["status"]; exists {
+		t.Errorf("delete action should not have status field, got %v", event.Payload["status"])
+	}
+}
+
+// --- Edge case: tunnel_status with active channels array ---
+
+func TestPublish_TunnelStatusWithActiveChannelsList(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	// tunnel_status with activeChannels as a list (from ssh/server.go)
+	GlobalEventBus.Publish(SystemEvent{
+		Type: "tunnel_status",
+		Payload: map[string]any{
+			"connected":      true,
+			"clientCount":    1,
+			"activeChannels": []any{"3000:localhost:3000", "8080:localhost:8080"},
+		},
+	})
+
+	event, found := waitForEvent(ch, "tunnel_status")
+	if !found {
+		t.Fatal("tunnel_status event not received")
+	}
+	if event.Payload["connected"] != true {
+		t.Errorf("expected connected=true, got %v", event.Payload["connected"])
+	}
+	channels, ok := event.Payload["activeChannels"].([]any)
+	if !ok {
+		t.Errorf("expected activeChannels to be a slice, got %T", event.Payload["activeChannels"])
+	}
+	if len(channels) != 2 {
+		t.Errorf("expected 2 active channels, got %d", len(channels))
+	}
+}

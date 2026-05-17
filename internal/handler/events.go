@@ -11,7 +11,7 @@ import (
 	"clawbench/internal/service"
 )
 
-const eventsHeartbeatSec = 15
+var eventsHeartbeatSec = 15
 
 // newEventsClientID generates a random client ID for system events SSE connections.
 func newEventsClientID() string {
@@ -64,7 +64,7 @@ func SystemEventsSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Heartbeat ticker — keeps connection alive through proxies/mobile networks
-	heartbeat := time.NewTicker(eventsHeartbeatSec * time.Second)
+	heartbeat := time.NewTicker(time.Duration(eventsHeartbeatSec) * time.Second)
 	defer heartbeat.Stop()
 
 	slog.Debug("system events SSE connected", slog.String("clientId", clientID))
