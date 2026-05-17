@@ -4,6 +4,10 @@ import { playNotificationSound } from '@/composables/useNotificationSound'
 import { showBrowserNotification } from '@/composables/useNotification'
 import { useToast } from '@/composables/useToast'
 import { gt } from '@/composables/useLocale'
+import {
+  systemEventsConnected,
+  registerUIHandler,
+} from '@/composables/useSystemEvents.ts'
 
 // Module-level singleton refs (shared across all consumers)
 const currentView = ref<'list' | 'settings' | 'history'>('list')
@@ -248,7 +252,10 @@ export function useTaskTab() {
     function startTaskPolling() {
         if (pollingTimer !== null) return // guard against double-start
         loadTasks()
-        pollingTimer = setInterval(loadTasks, 2000)
+        // When SSE is connected, use a longer interval (30s) since events
+        // provide real-time updates. Otherwise use 2s for reliability.
+        const interval = systemEventsConnected.value ? 30000 : 2000
+        pollingTimer = setInterval(loadTasks, interval)
     }
 
     function stopTaskPolling() {
@@ -257,6 +264,41 @@ export function useTaskTab() {
             pollingTimer = null
         }
     }
+
+    // --- Event-driven instant refresh from useSystemEvents ---
+    // When SSE is connected, events provide instant task updates.
+    registerUIHandler((event) => {
+        switch (event.type) {
+            case 'task_update': {
+                // Task list changed (create/pause/resume/update/delete) — refresh
+                loadTasks()
+                break
+            }
+            case 'task_exec_update': {
+                const status = event.payload?.status as string
+                const taskId = event.payload?.taskId as number
+
+                if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+                    // Task execution completed — refresh and notify
+                    loadTasks()
+
+                    // Fire completion notification if we haven't already
+                    const task = store.state.tasks?.find((t: any) => t.id === taskId)
+                    if (task) {
+                        const key = `${taskId}-${task.runCount}`
+                        if (!notifiedTaskCompletions.has(key)) {
+                            notifiedTaskCompletions.add(key)
+                            onTaskCompleted(task)
+                        }
+                    }
+                } else if (status === 'running') {
+                    // Task started running — refresh to show running state
+                    loadTasks()
+                }
+                break
+            }
+        }
+    })
 
     return {
         // Navigation state
