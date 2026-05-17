@@ -10,6 +10,7 @@
       <div class="bs-panel" :class="{ 'bs-leaving': leaving, 'bs-instant': instant, 'bs-compact': compact, 'bs-auto': auto }">
         <!-- Header -->
         <div v-if="!noHeader" class="bs-header" @click="handleClose">
+          <div class="bs-handle" />
           <slot name="header">
             <span class="bs-title">{{ title }}</span>
           </slot>
@@ -171,12 +172,27 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 8px;
-  height: 28px;
-  border-bottom: 1px solid var(--border-color, #e5e5e5);
+  padding: 0 16px;
+  height: 36px;
+  border-bottom: none;
+  box-shadow: 0 1px 0 var(--border-color, #e5e5e5);
   background: var(--bg-secondary, #f8f9fa);
   flex-shrink: 0;
   cursor: pointer;
+  position: relative;
+}
+
+/* Android-style drag handle */
+.bs-handle {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-muted, #bbb);
+  opacity: 0.5;
 }
 
 .bs-header-icon {
@@ -188,7 +204,7 @@ defineExpose({
 
 .bs-header-title {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-primary, #1a1a1a);
   flex-shrink: 0;
   white-space: nowrap;
