@@ -381,7 +381,8 @@ public class TunnelEventService extends Service {
                 PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
         AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
         if (alarmManager != null) {
-            alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            // Use setAndAllowWhileIdle() so the alarm fires even in Doze mode (Android 6+)
+            alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
                     SystemClock.elapsedRealtime() + 1000, pendingIntent);
         }
         super.onTaskRemoved(rootIntent);
@@ -467,6 +468,9 @@ public class TunnelEventService extends Service {
                 }
 
                 if (!monitorActive || intentionalDisconnect) break;
+
+                // Re-acquire WakeLock periodically (it has a 1h timeout safety net)
+                acquireWakeLock();
 
                 // Check if session is dead
                 if (sshSession == null || !sshSession.isConnected()) {
@@ -948,6 +952,8 @@ public class TunnelEventService extends Service {
      * Acquire a partial WakeLock to prevent CPU from sleeping.
      * This ensures SSH keep-alive packets are sent even when the screen is off
      * and the device enters Doze mode.
+     * Uses a 1-hour timeout as a safety net — the connection monitor re-acquires
+     * periodically, and onDestroy releases explicitly.
      */
     private void acquireWakeLock() {
         if (wakeLock != null && wakeLock.isHeld()) return;
@@ -956,8 +962,8 @@ public class TunnelEventService extends Service {
             if (pm != null) {
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ClawBench:SSH-Tunnel");
                 wakeLock.setReferenceCounted(false);
-                wakeLock.acquire();
-                Log.i(TAG, "SSH: WakeLock acquired");
+                wakeLock.acquire(3600_000L); // 1-hour timeout safety net
+                Log.i(TAG, "SSH: WakeLock acquired (1h timeout)");
             }
         } catch (Exception e) {
             Log.w(TAG, "SSH: failed to acquire WakeLock", e);
@@ -1002,7 +1008,11 @@ public class TunnelEventService extends Service {
         Intent intent = new Intent(context, TunnelEventService.class);
         intent.setAction("REMOVE_PORT");
         intent.putExtra("port", port);
-        context.startService(intent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
+        }
     }
 
     /**
