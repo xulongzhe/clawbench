@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -218,7 +219,10 @@ func (m *Manager) CleanupStale() {
 	}
 }
 
-// GenerateEventID creates a unique event ID.
+// eventSeq is an atomic counter to ensure unique event IDs even within the same millisecond.
+var eventSeq atomic.Int64
+
+// GenerateEventID creates a unique event ID using millisecond timestamp + atomic counter.
 func GenerateEventID() string {
-	return fmt.Sprintf("evt_%d_%d", time.Now().UnixMilli(), time.Now().Nanosecond()%1000)
+	return fmt.Sprintf("evt_%d_%d", time.Now().UnixMilli(), eventSeq.Add(1))
 }
