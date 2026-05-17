@@ -17,6 +17,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.util.Log;
 
@@ -1257,8 +1258,18 @@ public class TunnelEventService extends Service {
 
     /**
      * Show a system notification (only when app is in the background).
+     * Checks POST_NOTIFICATIONS permission on Android 13+ before posting.
      */
     private void showSystemNotification(String title, String text, String tag) {
+        // Check notification permission on Android 13+ (API 33)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "SSE: POST_NOTIFICATIONS permission not granted, skipping notification");
+                return;
+            }
+        }
+
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
         // Create a separate channel for event notifications

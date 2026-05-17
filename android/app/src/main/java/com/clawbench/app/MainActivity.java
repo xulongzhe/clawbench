@@ -522,8 +522,11 @@ public class MainActivity extends AppCompatActivity {
     private void restoreTunnelEventServiceIfNeeded() {
         Set<String> savedPorts = prefs.getStringSet("forwarded_ports", null);
         String token = TunnelEventService.getSessionToken(this);
-        if ((savedPorts != null && !savedPorts.isEmpty()) && token != null && !token.isEmpty()) {
-            Log.i(TAG, "Cold start: restoring TunnelEventService with " + savedPorts.size() + " saved ports");
+        // Start service if there are ports OR if user is logged in (SSE notifications)
+        boolean hasPorts = savedPorts != null && !savedPorts.isEmpty();
+        boolean hasToken = token != null && !token.isEmpty();
+        if (hasPorts || hasToken) {
+            Log.i(TAG, "Cold start: restoring TunnelEventService (ports=" + hasPorts + ", token=" + hasToken + ")");
             TunnelEventService.start(this);
         }
     }
