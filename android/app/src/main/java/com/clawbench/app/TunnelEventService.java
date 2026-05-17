@@ -92,9 +92,8 @@ public class TunnelEventService extends Service {
     // Background thread for all network I/O (SSH connect, HTTP fetch, port forward)
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
 
-    // SSE thread: receives system events for background notifications
-    private Thread sseThread;
-    private volatile boolean sseActive = false;
+    // SSE client: receives system events for background notifications
+    private com.launchdarkly.eventsource.EventSource eventSource;
 
     // Whether the app is in the foreground (suppresses notifications)
     // Defaults to false — if service restarts before Activity.onCreate, notifications
@@ -929,19 +928,29 @@ public class TunnelEventService extends Service {
     }
 
     /**
-     * Create the notification channel (called once in onCreate).
+     * Create the notification channels (called once in onCreate).
      */
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            android.app.NotificationChannel channel = new android.app.NotificationChannel(
-                    CHANNEL_ID,
-                    "SSH 端口转发",
-                    android.app.NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("SSH 隧道端口转发服务");
             android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
             if (nm != null) {
-                nm.createNotificationChannel(channel);
+                // Foreground service channel
+                android.app.NotificationChannel serviceChannel = new android.app.NotificationChannel(
+                        CHANNEL_ID,
+                        "SSH 端口转发",
+                        android.app.NotificationManager.IMPORTANCE_LOW
+                );
+                serviceChannel.setDescription("SSH 隧道端口转发服务");
+                nm.createNotificationChannel(serviceChannel);
+
+                // Event notification channel
+                android.app.NotificationChannel eventChannel = new android.app.NotificationChannel(
+                        "clawbench_events",
+                        "Event Notifications",
+                        android.app.NotificationManager.IMPORTANCE_DEFAULT
+                );
+                eventChannel.setDescription("AI completion and task notifications");
+                nm.createNotificationChannel(eventChannel);
             }
         }
     }
@@ -1090,125 +1099,104 @@ public class TunnelEventService extends Service {
     // ───────────────────────────────────────────────────────────────────────
 
     /**
-     * Start the SSE listener thread that connects to /api/events.
+     * Start the SSE listener that connects to /api/events.
      * Connects directly via HTTPS (not through SSH tunnel) so that SSE
      * works independently of the tunnel state. This allows the SSH tunnel
      * to be shut down when the app goes to background, saving battery,
      * while SSE stays alive on its own HTTPS connection.
+     * Uses OkHttp EventSource library for robust SSE parsing with automatic
+     * reconnection and proper event handling.
      * Receives session_complete and task_exec_update events to show system
      * notifications when the app is in the background.
      */
     private void startSSEListener() {
-        if (sseActive) return; // Already running
+        if (eventSource != null) return; // Already running
         String token = sessionToken;
         if (token == null || token.isEmpty()) {
             Log.d(TAG, "SSE: no session token, skipping SSE listener");
             return;
         }
 
-        sseActive = true;
-        sseThread = new Thread(() -> {
-            Log.i(TAG, "SSE: listener thread started");
-            while (sseActive && !Thread.interrupted()) {
-                HttpURLConnection conn = null;
-                try {
-                    String serverUrl = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                            .getString(KEY_SERVER_URL, null);
-                    if (serverUrl == null) {
-                        Log.w(TAG, "SSE: no server URL, retrying in 30s");
-                        Thread.sleep(30000);
-                        continue;
+        String serverUrl = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_SERVER_URL, null);
+        if (serverUrl == null) {
+            Log.w(TAG, "SSE: no server URL, cannot start SSE listener");
+            return;
+        }
+
+        Uri uri = Uri.parse(serverUrl);
+        String scheme = uri.getScheme();
+        if (scheme == null) scheme = "https";
+        String host = uri.getHost();
+        int httpPort = uri.getPort();
+        if (httpPort == -1) {
+            httpPort = scheme.equals("https") ? 443 : 80;
+        }
+
+        String sseUrl = scheme + "://" + host + ":" + httpPort + "/api/events?token=" + Uri.encode(token);
+        Log.i(TAG, "SSE: connecting directly to " + sseUrl);
+
+        // Build OkHttp client with trust-all SSL for self-signed certs
+        okhttp3.OkHttpClient.Builder clientBuilder = new okhttp3.OkHttpClient.Builder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS);
+
+        if (scheme.equals("https") && trustAllSSLContext != null) {
+            clientBuilder.sslSocketFactory(trustAllSSLContext.getSocketFactory(), (javax.net.ssl.X509TrustManager) new javax.net.ssl.X509TrustManager() {
+                public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+                public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+            });
+            clientBuilder.hostnameVerifier((hostname, session) -> true);
+        }
+
+        // Build EventSource with automatic reconnection
+        com.launchdarkly.eventsource.EventSource.Builder esBuilder = new com.launchdarkly.eventsource.EventSource.Builder(
+                new com.launchdarkly.eventsource.EventHandler() {
+                    @Override
+                    public void onOpen() {
+                        Log.i(TAG, "SSE: connected to /api/events");
                     }
 
-                    Uri uri = Uri.parse(serverUrl);
-                    String scheme = uri.getScheme();
-                    if (scheme == null) scheme = "https";
-                    String host = uri.getHost();
-                    int httpPort = uri.getPort();
-                    if (httpPort == -1) {
-                        httpPort = scheme.equals("https") ? 443 : 80;
+                    @Override
+                    public void onClosed() {
+                        Log.w(TAG, "SSE: connection closed");
                     }
 
-                    // Connect directly via HTTPS — SSE is independent of the SSH tunnel.
-                    // This allows the tunnel to be shut down in background while SSE stays alive.
-                    String sseUrl = scheme + "://" + host + ":" + httpPort + "/api/events?token=" + Uri.encode(sessionToken != null ? sessionToken : "");
-                    Log.d(TAG, "SSE: connecting directly to " + sseUrl);
-                    URL url = new URL(sseUrl);
-                    conn = (HttpURLConnection) url.openConnection();
-
-                    // Handle self-signed HTTPS certificates (ClawBench often uses self-signed certs)
-                    if (conn instanceof HttpsURLConnection && trustAllSSLContext != null) {
-                        ((HttpsURLConnection) conn).setSSLSocketFactory(trustAllSSLContext.getSocketFactory());
-                        ((HttpsURLConnection) conn).setHostnameVerifier((hostname, session) -> true);
+                    @Override
+                    public void onComment(String comment) {
+                        // Heartbeat comments from server — ignore
                     }
 
-                    conn.setRequestMethod("GET");
-                    conn.setRequestProperty("Accept", "text/event-stream");
-                    conn.setConnectTimeout(10000);
-                    conn.setReadTimeout(60000); // Long timeout for SSE
-                    conn.setDoInput(true);
-
-                    int code = conn.getResponseCode();
-                    if (code != 200) {
-                        Log.w(TAG, "SSE: connection failed with HTTP " + code);
-                        conn.disconnect();
-                        Thread.sleep(10000);
-                        continue;
+                    @Override
+                    public void onError(com.launchdarkly.eventsource.EventSourceException t) {
+                        Log.w(TAG, "SSE: error: " + t.getMessage());
                     }
 
-                    Log.i(TAG, "SSE: connected to /api/events");
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                    String currentEventType = null;
+                    @Override
+                    public void onMessage(String event, com.launchdarkly.eventsource.MessageEvent messageEvent) {
+                        if (event == null || event.isEmpty()) return;
+                        String data = messageEvent.getData();
+                        if (data == null || data.isEmpty()) return;
+                        handleSSEEvent(event, data);
+                    }
+                },
+                okhttp3.HttpUrl.parse(sseUrl)
+        ).client(clientBuilder.build())
+         .reconnectTimeMs(5000); // Reconnect after 5s on disconnect
 
-                    String line;
-                    while (sseActive && (line = reader.readLine()) != null) {
-                        if (line.startsWith("event:")) {
-                            currentEventType = line.substring(6).trim();
-                        } else if (line.startsWith("data:") && currentEventType != null) {
-                            String data = line.substring(5).trim();
-                            handleSSEEvent(currentEventType, data);
-                            currentEventType = null;
-                        } else if (line.isEmpty()) {
-                            // End of SSE event — reset
-                            currentEventType = null;
-                        }
-                    }
-                    // Stream ended — will reconnect
-                    reader.close();
-                    conn.disconnect();
-                    Log.w(TAG, "SSE: stream ended, reconnecting in 5s");
-                    Thread.sleep(5000);
-                } catch (InterruptedException e) {
-                    if (!sseActive) {
-                        Log.i(TAG, "SSE: listener thread interrupted, stopping");
-                        break;
-                    }
-                    Log.i(TAG, "SSE: listener thread interrupted, retrying");
-                    continue;
-                } catch (Exception e) {
-                    Log.w(TAG, "SSE: connection error: " + e.getMessage());
-                    if (conn != null) conn.disconnect();
-                    try { Thread.sleep(10000); } catch (InterruptedException ie) {
-                        if (!sseActive) break;
-                        continue;
-                    }
-                }
-            }
-            sseActive = false;
-            Log.i(TAG, "SSE: listener thread exited");
-        }, "SSE-Listener");
-        sseThread.setDaemon(true);
-        sseThread.start();
+        eventSource = esBuilder.build();
+        eventSource.start();
     }
 
     /**
-     * Stop the SSE listener thread.
+     * Stop the SSE listener.
      */
     private void stopSSEListener() {
-        sseActive = false;
-        if (sseThread != null) {
-            sseThread.interrupt();
-            sseThread = null;
+        if (eventSource != null) {
+            eventSource.close();
+            eventSource = null;
         }
     }
 
@@ -1272,14 +1260,8 @@ public class TunnelEventService extends Service {
 
         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
 
-        // Create a separate channel for event notifications
+        // Event notification channel is created in createNotificationChannel() (called from onCreate)
         String eventChannelId = "clawbench_events";
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                    eventChannelId, "Event Notifications", NotificationManager.IMPORTANCE_DEFAULT);
-            channel.setDescription("AI completion and task notifications");
-            nm.createNotificationChannel(channel);
-        }
 
         Intent intent = new Intent(this, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
