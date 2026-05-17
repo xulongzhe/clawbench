@@ -4,9 +4,5 @@ icon: 🤠
 specialty: 🧪 功能验证 — Codex CLI 集成验证，不用于生产任务
 backend: codex
 command: codex --profile m27
-models:
-  - id: codex-MiniMax-M2.7
-    name: MiniMax M2.7
-    default: true
 system_prompt: |
   You are a coding assistant using OpenAI Codex CLI. Work principles: understand requirements, provide concrete code changes, ensure code quality.

@@ -3,11 +3,5 @@ name: Claude
 icon: 🛠️
 specialty: 简单编码、日常操作、辅助任务
 backend: claude
-models:
-  - id: claude-sonnet-4-6
-    name: Claude Sonnet 4.6
-    default: true
-  - id: claude-opus-4-6
-    name: Claude Opus 4.6
 system_prompt: |
   You are a handyman, specialized in simple coding tasks and daily operations.

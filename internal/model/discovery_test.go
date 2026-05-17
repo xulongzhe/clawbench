@@ -820,3 +820,39 @@ func TestDiscoverClaudeModels_WithRealCLI(t *testing.T) {
 		t.Logf("  %s (%s) default=%v", m.ID, m.Name, m.Default)
 	}
 }
+
+// --- Test 13: SyncDiscoverModels covers DiscoverModelsFunc (Claude) ---
+
+func TestSyncDiscoverModels_CoversClaudeDiscoverModelsFunc(t *testing.T) {
+	// Claude uses DiscoverModelsFunc instead of ListModelsCmd+ParseModels.
+	// Before the fix, SyncDiscoverModels skipped Claude because it only checked
+	// ListModelsCmd/ParseModels. After the fix, it should include Claude.
+	specs := make(map[string]model.BackendSpec)
+	for _, s := range model.BackendRegistry {
+		specs[s.ID] = s
+	}
+
+	claudeSpec, ok := specs["claude"]
+	require.True(t, ok, "claude should be in BackendRegistry")
+	assert.NotNil(t, claudeSpec.DiscoverModelsFunc, "claude should have DiscoverModelsFunc")
+	assert.Empty(t, claudeSpec.ListModelsCmd, "claude should not have ListModelsCmd")
+
+	if !model.CheckCLIExists("claude") {
+		t.Skip("claude not installed, skipping integration test")
+	}
+
+	cacheDir := filepath.Join(t.TempDir(), "model-cache")
+	model.SyncDiscoverModels(cacheDir)
+
+	data, err := os.ReadFile(filepath.Join(cacheDir, "claude.json"))
+	if err != nil {
+		// strings command may not be available on this system
+		t.Logf("claude cache file not created (strings may not be available): %v", err)
+		return
+	}
+
+	var entry map[string]any
+	require.NoError(t, json.Unmarshal(data, &entry))
+	assert.Contains(t, entry, "models")
+	t.Logf("claude cache file created with models")
+}

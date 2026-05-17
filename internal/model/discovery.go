@@ -251,12 +251,18 @@ func SyncDiscoverAgents(dir string) map[string]bool {
 	return present
 }
 
+// canDiscoverModels returns true if the spec supports model discovery
+// via either DiscoverModelsFunc or ListModelsCmd+ParseModels.
+func canDiscoverModels(spec BackendSpec) bool {
+	return spec.DiscoverModelsFunc != nil || (len(spec.ListModelsCmd) > 0 && spec.ParseModels != nil)
+}
+
 // SyncDiscoverModels runs DiscoverModels for all backends that support it
 // and writes results to the model cache. This is called synchronously
 // on first startup (when cache is empty).
 func SyncDiscoverModels(cacheDir string) {
 	for _, spec := range BackendRegistry {
-		if len(spec.ListModelsCmd) == 0 || spec.ParseModels == nil {
+		if !canDiscoverModels(spec) {
 			continue
 		}
 		models := DiscoverModels(spec)
@@ -277,7 +283,7 @@ func SyncDiscoverModels(cacheDir string) {
 func AsyncRefreshModelCache(cacheDir string) {
 	go func() {
 		for _, spec := range BackendRegistry {
-			if len(spec.ListModelsCmd) == 0 || spec.ParseModels == nil {
+			if !canDiscoverModels(spec) {
 				continue
 			}
 			models := DiscoverModels(spec)
