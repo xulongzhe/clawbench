@@ -312,3 +312,70 @@ func TestAuth_LocalhostWithTokenQueryParam_PassThrough(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 	})
 }
+
+// --- Auth: URL-encoded and special-character tokens ---
+
+func TestAuth_URLEncodedTokenQueryParam_PassThrough(t *testing.T) {
+	withSavedToken(func() {
+		// Token with special characters that must be URL-encoded
+		model.SessionToken = "tok+en=123/abc"
+
+		rec := httptest.NewRecorder()
+		// URL-encode the token in the query parameter
+		req := httptest.NewRequest(http.MethodGet, "/api/events?token=tok%2Ben%3D123%2Fabc", nil)
+		req.RemoteAddr = "192.168.1.100:12345"
+
+		middleware.Auth(okHandler).ServeHTTP(rec, req)
+
+		// r.URL.Query().Get("token") auto-decodes, so this should match
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+}
+
+func TestAuth_LocalhostHostname_BypassesAuth(t *testing.T) {
+	withSavedToken(func() {
+		model.SessionToken = "valid-token"
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = "localhost:12345"
+
+		middleware.Auth(okHandler).ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+}
+
+func TestAuth_OtherQueryParamsButNoToken_Returns401(t *testing.T) {
+	withSavedToken(func() {
+		model.SessionToken = "valid-token"
+
+		rec := httptest.NewRecorder()
+		// URL has query parameters but no "token" key
+		req := httptest.NewRequest(http.MethodGet, "/api/events?foo=bar&baz=qux", nil)
+		req.RemoteAddr = "192.168.1.100:12345"
+
+		middleware.Auth(okHandler).ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	})
+}
+
+func TestAuth_CookieEmptyValueButTokenValid_PassThrough(t *testing.T) {
+	withSavedToken(func() {
+		model.SessionToken = "valid-token"
+
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/api/events?token=valid-token", nil)
+		req.RemoteAddr = "192.168.1.100:12345"
+		// Cookie exists with empty value — should fall through to token check
+		req.AddCookie(&http.Cookie{
+			Name:  model.SessionCookie,
+			Value: "",
+		})
+
+		middleware.Auth(okHandler).ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+}

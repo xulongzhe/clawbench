@@ -318,6 +318,11 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := service.AddChatMessage(projectPath, backendName, sessionID, "user", req.Message, allFiles, false, T(r, "FileMessage")); err != nil {
 		service.SetSessionRunning(sessionID, false)
+		// session_start was already published above; emit matching session_complete
+		service.GlobalEventBus.Publish(service.SystemEvent{
+			Type:    "session_complete",
+			Payload: map[string]any{"sessionId": sessionID, "agentId": effectiveAgentID, "reason": "error"},
+		})
 		model.WriteError(w, model.Internal(fmt.Errorf("failed to save message")))
 		return
 	}
@@ -359,11 +364,18 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		defer service.UnregisterSessionCancel(sessionID)
 
 		// Defer session_complete event: must be after ctx is created so we can check cancellation.
-		// Also must be before SetSessionRunning(false) so the event fires while session is still "running".
+		// Defer order matters (LIFO): session_complete must fire BEFORE SetSessionRunning(false)
+		// so subscribers see the session as still "running" when they receive the event.
+		// By registering AFTER SetSessionRunning/UnregisterSessionStream, session_complete
+		// pops first (LIFO) and fires before those cleanups.
+		defer service.UnregisterSessionStream(sessionID)
+		defer service.SetSessionRunning(sessionID, false)
 		defer func() {
 			reason := "done"
 			if cancelReason := service.GetAndClearCancelReason(sessionID); cancelReason == "user" {
 				reason = "user_cancel"
+			} else if cancelReason == "disconnect" {
+				reason = "disconnect"
 			} else if ctx.Err() == context.Canceled {
 				reason = "cancelled"
 			}
@@ -372,8 +384,6 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				Payload: map[string]any{"sessionId": sessionID, "agentId": effectiveAgentID, "reason": reason},
 			})
 		}()
-		defer service.SetSessionRunning(sessionID, false)
-		defer service.UnregisterSessionStream(sessionID)
 
 		// Build the first chat request
 		firstChatReq := buildChatRequest(prompt, sessionID, projectPath, backendName, effectiveAgentID, req.ModelID, req.ThinkingEffort, fileDir)

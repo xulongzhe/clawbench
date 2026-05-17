@@ -443,6 +443,180 @@ func TestPublish_SessionCompleteUserCancel(t *testing.T) {
 	}
 }
 
+func TestPublish_SessionCompleteDisconnect(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	// Simulate session_complete with reason=disconnect (from ForceCancelSession)
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "session_complete",
+		Payload: map[string]any{"sessionId": "s-789", "agentId": "codebuddy", "reason": "disconnect"},
+	})
+
+	event, found := waitForEvent(ch, "session_complete")
+	if !found {
+		t.Fatal("session_complete event not received")
+	}
+	if event.Payload["reason"] != "disconnect" {
+		t.Errorf("expected reason=disconnect, got %v", event.Payload["reason"])
+	}
+}
+
+func TestPublish_SessionCompleteCancelled(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	// Simulate session_complete with reason=cancelled (context cancelled, non-user)
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "session_complete",
+		Payload: map[string]any{"sessionId": "s-abc", "agentId": "claude", "reason": "cancelled"},
+	})
+
+	event, found := waitForEvent(ch, "session_complete")
+	if !found {
+		t.Fatal("session_complete event not received")
+	}
+	if event.Payload["reason"] != "cancelled" {
+		t.Errorf("expected reason=cancelled, got %v", event.Payload["reason"])
+	}
+}
+
+func TestPublish_TaskUpdateResume(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "task_update",
+		Payload: map[string]any{"taskId": int64(1), "action": "resume", "status": "active"},
+	})
+
+	event, found := waitForEvent(ch, "task_update")
+	if !found {
+		t.Fatal("task_update event not received")
+	}
+	if event.Payload["action"] != "resume" {
+		t.Errorf("expected action=resume, got %v", event.Payload["action"])
+	}
+	if event.Payload["status"] != "active" {
+		t.Errorf("expected status=active, got %v", event.Payload["status"])
+	}
+}
+
+func TestPublish_TaskUpdateUpdate(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "task_update",
+		Payload: map[string]any{"taskId": int64(2), "action": "update", "status": "active"},
+	})
+
+	event, found := waitForEvent(ch, "task_update")
+	if !found {
+		t.Fatal("task_update event not received")
+	}
+	if event.Payload["action"] != "update" {
+		t.Errorf("expected action=update, got %v", event.Payload["action"])
+	}
+}
+
+func TestPublish_TaskExecUpdateManualTrigger(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	// Manual trigger from handler — includes triggerType
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "task_exec_update",
+		Payload: map[string]any{"taskId": int64(5), "execId": "exec-5", "status": "running", "triggerType": "manual"},
+	})
+
+	event, found := waitForEvent(ch, "task_exec_update")
+	if !found {
+		t.Fatal("task_exec_update event not received")
+	}
+	if event.Payload["triggerType"] != "manual" {
+		t.Errorf("expected triggerType=manual, got %v", event.Payload["triggerType"])
+	}
+	if event.Payload["execId"] != "exec-5" {
+		t.Errorf("expected execId=exec-5, got %v", event.Payload["execId"])
+	}
+}
+
+func TestPublish_MessageNewOnAssistantMessage(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+	setupPublishTestDB(t)
+
+	sessionID, err := CreateSession("/tmp/test-publish", "codebuddy", "Test", "codebuddy", "", "default", "chat")
+	if err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	// AddChatMessage with streaming=false for assistant role should publish message_new
+	_, err = AddChatMessage("/tmp/test-publish", "codebuddy", sessionID, "assistant", "result text", nil, false, "")
+	if err != nil {
+		t.Fatalf("AddChatMessage failed: %v", err)
+	}
+
+	event, found := waitForEvent(ch, "message_new")
+	if !found {
+		t.Fatal("message_new event not received for assistant message")
+	}
+	if event.Payload["role"] != "assistant" {
+		t.Errorf("expected role=assistant, got %v", event.Payload["role"])
+	}
+	if event.Payload["sessionId"] != sessionID {
+		t.Errorf("expected sessionId=%s, got %v", sessionID, event.Payload["sessionId"])
+	}
+}
+
+func TestPublish_TunnelStatusActiveChannels(t *testing.T) {
+	bus, cleanup := setupIsolatedEventBus()
+	defer cleanup()
+
+	ch, unsub := subscribeForTest(bus, t)
+	defer unsub()
+
+	// Test tunnel_status with non-zero activeChannels
+	GlobalEventBus.Publish(SystemEvent{
+		Type: "tunnel_status",
+		Payload: map[string]any{
+			"connected":      true,
+			"clientCount":   2,
+			"activeChannels": 3,
+		},
+	})
+
+	event, found := waitForEvent(ch, "tunnel_status")
+	if !found {
+		t.Fatal("tunnel_status event not received")
+	}
+	if event.Payload["activeChannels"] != 3 {
+		t.Errorf("expected activeChannels=3, got %v", event.Payload["activeChannels"])
+	}
+	if event.Payload["clientCount"] != 2 {
+		t.Errorf("expected clientCount=2, got %v", event.Payload["clientCount"])
+	}
+}
+
 // --- Integration: multiple events in sequence ---
 
 func TestPublish_MultipleEventsInSequence(t *testing.T) {

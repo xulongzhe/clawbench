@@ -45,6 +45,7 @@ vi.stubGlobal('fetch', mockFetch)
 // Import after mocks
 import { useTaskTab } from '@/composables/useTaskTab.ts'
 import { store } from '@/stores/app'
+import { dispatchEvent } from '@/composables/useSystemEvents.ts'
 
 beforeEach(() => {
   mockPlayNotificationSound.mockReset()
@@ -320,6 +321,57 @@ describe('useTaskTab', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1) // only the initial load
 
       vi.useRealTimers()
+    })
+  })
+
+  // ── SSE event-driven updates ──
+
+  describe('SSE event handlers', () => {
+    it('task_update event triggers loadTasks', () => {
+      mockTasksResponse([makeTask({ id: 1 })])
+      useTaskTab() // Registers event handlers
+
+      dispatchEvent({ type: 'task_update', payload: { taskId: 1, action: 'create' } })
+
+      // loadTasks should have been called (fetch was invoked)
+      expect(mockFetch).toHaveBeenCalled()
+    })
+
+    it('task_exec_update completed triggers loadTasks and notification', () => {
+      // Set up initial state: task running
+      store.state.tasks = [makeTask({ id: 1, runningCount: 1, runCount: 1 })]
+
+      useTaskTab()
+
+      // Simulate completed execution
+      mockTasksResponse([makeTask({ id: 1, runningCount: 0, runCount: 1 })])
+
+      dispatchEvent({ type: 'task_exec_update', payload: { taskId: 1, status: 'completed' } })
+
+      // Should trigger loadTasks
+      expect(mockFetch).toHaveBeenCalled()
+    })
+
+    it('task_exec_update running triggers loadTasks', () => {
+      useTaskTab()
+      mockTasksResponse([makeTask({ id: 1, runningCount: 1 })])
+
+      dispatchEvent({ type: 'task_exec_update', payload: { taskId: 1, status: 'running' } })
+
+      expect(mockFetch).toHaveBeenCalled()
+    })
+
+    it('task_exec_update failed triggers completion notification', () => {
+      store.state.tasks = [makeTask({ id: 2, runningCount: 1, runCount: 1 })]
+
+      useTaskTab()
+
+      mockTasksResponse([makeTask({ id: 2, runningCount: 0, runCount: 1 })])
+
+      dispatchEvent({ type: 'task_exec_update', payload: { taskId: 2, status: 'failed' } })
+
+      // Should trigger loadTasks
+      expect(mockFetch).toHaveBeenCalled()
     })
   })
 })

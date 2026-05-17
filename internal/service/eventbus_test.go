@@ -226,3 +226,193 @@ func TestEventBus_GlobalEventBusInitialized(t *testing.T) {
 		t.Errorf("expected maxClients=%d, got %d", eventBusMaxClients, GlobalEventBus.maxClients)
 	}
 }
+
+func TestEventBus_DuplicateClientIDOverwrites(t *testing.T) {
+	bus := &EventBus{
+		clients:    make(map[string]chan SystemEvent),
+		maxClients: eventBusMaxClients,
+	}
+
+	oldCh, ok1 := bus.Subscribe("dup")
+	if !ok1 {
+		t.Fatal("first subscribe should succeed")
+	}
+
+	// Subscribe with same clientID — overwrites the previous channel
+	ch2, ok2 := bus.Subscribe("dup")
+	if !ok2 {
+		t.Fatal("second subscribe should succeed")
+	}
+
+	// ClientCount should be 1 (not 2) — replacement doesn't increment
+	if count := bus.ClientCount(); count != 1 {
+		t.Errorf("expected 1 client after duplicate subscribe, got %d", count)
+	}
+
+	// Old channel should be closed (signals old subscriber to stop)
+	_, ok3 := <-oldCh
+	if ok3 {
+		t.Error("old channel should be closed after duplicate subscribe")
+	}
+
+	// New channel should receive events
+	bus.Publish(SystemEvent{Type: "test", Payload: nil})
+
+	select {
+	case <-ch2:
+		// OK
+	case <-time.After(time.Second):
+		t.Error("new channel should receive event")
+	}
+
+	// Clean up
+	bus.Unsubscribe("dup")
+}
+
+func TestEventBus_PublishNilPayload(t *testing.T) {
+	bus := &EventBus{
+		clients:    make(map[string]chan SystemEvent),
+		maxClients: eventBusMaxClients,
+	}
+
+	ch, _ := bus.Subscribe("nil-payload")
+	defer bus.Unsubscribe("nil-payload")
+
+	bus.Publish(SystemEvent{Type: "nil_test", Payload: nil})
+
+	select {
+	case got := <-ch:
+		if got.Type != "nil_test" {
+			t.Errorf("expected type nil_test, got %s", got.Type)
+		}
+		if got.Payload != nil {
+			t.Errorf("expected nil payload, got %v", got.Payload)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for event with nil payload")
+	}
+}
+
+func TestEventBus_EmptyClientID(t *testing.T) {
+	bus := &EventBus{
+		clients:    make(map[string]chan SystemEvent),
+		maxClients: eventBusMaxClients,
+	}
+
+	ch, ok := bus.Subscribe("")
+	if !ok {
+		t.Fatal("subscribe with empty clientID should succeed")
+	}
+	defer bus.Unsubscribe("")
+
+	bus.Publish(SystemEvent{Type: "empty_id_test", Payload: nil})
+
+	select {
+	case <-ch:
+		// OK
+	case <-time.After(time.Second):
+		t.Error("empty clientID subscriber should receive event")
+	}
+}
+
+func TestEventBus_NewEventBusZeroMaxClients(t *testing.T) {
+	bus := NewEventBus(0)
+
+	_, ok := bus.Subscribe("any")
+	if ok {
+		t.Error("subscribe should fail when maxClients=0")
+	}
+	if count := bus.ClientCount(); count != 0 {
+		t.Errorf("expected 0 clients, got %d", count)
+	}
+}
+
+func TestEventBus_UnsubscribeNonExistentWithOtherClients(t *testing.T) {
+	bus := &EventBus{
+		clients:    make(map[string]chan SystemEvent),
+		maxClients: eventBusMaxClients,
+	}
+
+	bus.Subscribe("real")
+	defer bus.Unsubscribe("real")
+
+	// Unsubscribe a non-existent clientID
+	bus.Unsubscribe("ghost")
+
+	// Existing client should still be there
+	if count := bus.ClientCount(); count != 1 {
+		t.Errorf("expected 1 client after unsubscribing ghost, got %d", count)
+	}
+}
+
+func TestEventBus_ConcurrentSubscribeUnsubscribe(t *testing.T) {
+	bus := NewEventBus(eventBusMaxClients)
+
+	var wg sync.WaitGroup
+	const goroutines = 20
+
+	// Concurrently subscribe and unsubscribe
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			clientID := string(rune('a' + id))
+			ch, ok := bus.Subscribe(clientID)
+			if ok {
+				// Read at least one event if possible
+				time.Sleep(time.Millisecond)
+				bus.Unsubscribe(clientID)
+				_ = ch
+			}
+		}(i)
+	}
+
+	// Concurrent publishers
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				bus.Publish(SystemEvent{Type: "concurrent_sub", Payload: map[string]any{"pub": id}})
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// After all goroutines finish, client count should be 0
+	if count := bus.ClientCount(); count != 0 {
+		t.Errorf("expected 0 clients after all unsubscribes, got %d", count)
+	}
+}
+
+func TestEventBus_ClientCountConsistency(t *testing.T) {
+	bus := &EventBus{
+		clients:    make(map[string]chan SystemEvent),
+		maxClients: eventBusMaxClients,
+	}
+
+	// Subscribe 5 clients
+	for i := 0; i < 5; i++ {
+		bus.Subscribe(string(rune('a' + i)))
+	}
+
+	if count := bus.ClientCount(); count != 5 {
+		t.Errorf("expected 5 clients, got %d", count)
+	}
+
+	// Unsubscribe 2
+	bus.Unsubscribe("a")
+	bus.Unsubscribe("b")
+
+	if count := bus.ClientCount(); count != 3 {
+		t.Errorf("expected 3 clients, got %d", count)
+	}
+
+	// Subscribe one more
+	bus.Subscribe("z")
+
+	if count := bus.ClientCount(); count != 4 {
+		t.Errorf("expected 4 clients, got %d", count)
+	}
+}

@@ -217,10 +217,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 				writeLocalizedError(w, r, model.NotFound(err, "TaskNotFound"))
 				return
 			}
-			service.GlobalEventBus.Publish(service.SystemEvent{
-				Type:    "task_exec_update",
-				Payload: map[string]any{"taskId": taskID, "status": "running", "triggerType": "manual"},
-			})
+			// Note: task_exec_update with status=running is published by executeTask() in service/scheduler.go
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}

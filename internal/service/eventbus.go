@@ -38,18 +38,29 @@ func NewEventBus(maxClients int) *EventBus {
 }
 
 // Subscribe registers a client and returns a buffered channel for receiving events.
-// Returns an error if the maximum number of subscribers has been reached.
+// Returns false if the maximum number of subscribers has been reached.
+// If the clientID already exists, the old channel is closed and replaced (no count increment).
 func (b *EventBus) Subscribe(clientID string) (<-chan SystemEvent, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	if len(b.clients) >= b.maxClients {
-		return nil, false
+		// Allow re-subscribe with same ID (doesn't increase count)
+		if _, exists := b.clients[clientID]; !exists {
+			return nil, false
+		}
+	}
+
+	if oldCh, exists := b.clients[clientID]; exists {
+		// Close old channel to signal the old subscriber to stop reading
+		close(oldCh)
+		// Don't increment count — we're replacing, not adding
+	} else {
+		b.clientCount.Add(1)
 	}
 
 	ch := make(chan SystemEvent, eventBusChannelBuf)
 	b.clients[clientID] = ch
-	b.clientCount.Add(1)
 	return ch, true
 }
 

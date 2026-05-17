@@ -526,6 +526,10 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to create backend for task", slog.String("err", err.Error()))
 		UpdateExecutionStatus(sessionID, "failed")
+		GlobalEventBus.Publish(SystemEvent{
+			Type:    "task_exec_update",
+			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "failed"},
+		})
 		return
 	}
 
@@ -533,6 +537,10 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to execute stream for task", slog.String("err", err.Error()))
 		UpdateExecutionStatus(sessionID, "failed")
+		GlobalEventBus.Publish(SystemEvent{
+			Type:    "task_exec_update",
+			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "failed"},
+		})
 		return
 	}
 
