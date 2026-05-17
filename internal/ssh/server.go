@@ -310,11 +310,33 @@ func (s *Server) handleConn(conn net.Conn, config *gossh.ServerConfig) {
 	s.lastConnected = time.Now()
 	s.mu.Unlock()
 
+	// Notify system event bus: tunnel connected
+	service.GlobalEventBus.Publish(service.SystemEvent{
+		Type: "tunnel_status",
+		Payload: map[string]any{
+			"connected":      true,
+			"clientCount":   s.connCount,
+			"activeChannels": s.activeChannels,
+		},
+	})
+
 	defer func() {
 		s.mu.Lock()
 		s.connCount--
+		remainingCount := s.connCount
+		remainingChannels := s.activeChannels
 		s.mu.Unlock()
 		slog.Info("ssh: client disconnected", slog.String("remote", sshConn.RemoteAddr().String()))
+
+		// Notify system event bus: tunnel status changed
+		service.GlobalEventBus.Publish(service.SystemEvent{
+			Type: "tunnel_status",
+			Payload: map[string]any{
+				"connected":      remainingCount > 0,
+				"clientCount":   remainingCount,
+				"activeChannels": remainingChannels,
+			},
+		})
 	}()
 
 	// Discard global requests (keep-alive, etc.)

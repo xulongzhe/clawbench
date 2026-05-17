@@ -310,6 +310,12 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Notify system event bus: session started
+	service.GlobalEventBus.Publish(service.SystemEvent{
+		Type:    "session_start",
+		Payload: map[string]any{"sessionId": sessionID, "agentId": effectiveAgentID},
+	})
+
 	if _, err := service.AddChatMessage(projectPath, backendName, sessionID, "user", req.Message, allFiles, false, T(r, "FileMessage")); err != nil {
 		service.SetSessionRunning(sessionID, false)
 		model.WriteError(w, model.Internal(fmt.Errorf("failed to save message")))
@@ -343,8 +349,6 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		slog.Info("ai goroutine started", slog.String("project", projectPath))
-		defer service.SetSessionRunning(sessionID, false)
-		defer service.UnregisterSessionStream(sessionID)
 
 		// Use independent context with cancel to prevent goroutine leaks
 		// and support user-initiated cancellation (no timeout - let AI run indefinitely)
@@ -353,6 +357,23 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 		service.RegisterSessionCancel(sessionID, cancel)
 		defer service.UnregisterSessionCancel(sessionID)
+
+		// Defer session_complete event: must be after ctx is created so we can check cancellation.
+		// Also must be before SetSessionRunning(false) so the event fires while session is still "running".
+		defer func() {
+			reason := "done"
+			if cancelReason := service.GetAndClearCancelReason(sessionID); cancelReason == "user" {
+				reason = "user_cancel"
+			} else if ctx.Err() == context.Canceled {
+				reason = "cancelled"
+			}
+			service.GlobalEventBus.Publish(service.SystemEvent{
+				Type:    "session_complete",
+				Payload: map[string]any{"sessionId": sessionID, "agentId": effectiveAgentID, "reason": reason},
+			})
+		}()
+		defer service.SetSessionRunning(sessionID, false)
+		defer service.UnregisterSessionStream(sessionID)
 
 		// Build the first chat request
 		firstChatReq := buildChatRequest(prompt, sessionID, projectPath, backendName, effectiveAgentID, req.ModelID, req.ThinkingEffort, fileDir)

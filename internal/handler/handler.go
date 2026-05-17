@@ -267,6 +267,9 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/file/watch", middleware.Auth(FileWatchSSE))
 	register("/api/file/watch/update", middleware.Auth(FileWatchUpdate))
 
+	// System events SSE (session/task/tunnel state changes — replaces polling)
+	register("/api/events", middleware.Auth(SystemEventsSSE))
+
 	// Port forwarding (registration & detection only; actual forwarding uses SSH tunnels)
 	register("/api/proxy/ports", middleware.Auth(ServeProxyPortAction))
 	register("/api/proxy/detect", middleware.Auth(ServeProxyDetect))
