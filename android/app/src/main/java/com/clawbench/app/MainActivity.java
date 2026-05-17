@@ -512,15 +512,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * If there are previously saved forwarded ports in SharedPreferences,
+     * If there are previously saved forwarded ports or a session token in SharedPreferences,
      * start the PortForwardService immediately so the SSH tunnel and its
      * notification are active on cold start.
      * This avoids the gap where no notification shows until the WebView
      * finishes loading and syncToNative() fires.
+     * Condition: saved ports exist AND session token is available (user was logged in).
      */
     private void restorePortForwardServiceIfNeeded() {
         Set<String> savedPorts = prefs.getStringSet("forwarded_ports", null);
-        if (savedPorts != null && !savedPorts.isEmpty()) {
+        String token = PortForwardService.getSessionToken(this);
+        if ((savedPorts != null && !savedPorts.isEmpty()) && token != null && !token.isEmpty()) {
             Log.i(TAG, "Cold start: restoring PortForwardService with " + savedPorts.size() + " saved ports");
             PortForwardService.start(this);
         }
@@ -544,6 +546,20 @@ public class MainActivity extends AppCompatActivity {
             // when the page fails to load, rather than through a back-gesture dialog.
             super.onBackPressed();
         }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // App is in the foreground — suppress native SSE notifications
+        PortForwardService.setAppForeground(true);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // App is going to the background — allow native SSE notifications
+        PortForwardService.setAppForeground(false);
     }
 
     @Override
@@ -850,6 +866,18 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void setSSHPassword(String pwd) {
             PortForwardService.setPassword(activity, pwd);
+        }
+
+        /**
+         * Pass session token from WebView to native layer.
+         * Called after login when the server sets the clawbench_session cookie.
+         * The token enables authenticated native SSE and HTTP requests via ?token= parameter.
+         */
+        @JavascriptInterface
+        public void setSessionToken(String token) {
+            PortForwardService.setSessionToken(activity, token);
+            // Token available → ensure service is running for SSE notifications
+            PortForwardService.ensureRunning(activity);
         }
 
         /**

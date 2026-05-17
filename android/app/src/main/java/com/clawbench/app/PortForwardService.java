@@ -1,6 +1,7 @@
 package com.clawbench.app;
 
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -67,6 +68,7 @@ public class PortForwardService extends Service {
     private static final String PREFS_NAME = "clawbench_prefs";
     private static final String KEY_SERVER_URL = "server_url";
     private static final String KEY_SSH_PASSWORD = "ssh_password";
+    private static final String KEY_SESSION_TOKEN = "session_token";
     private static final String KEY_FORWARDED_PORTS = "forwarded_ports";
     private static final String KEY_BATTERY_OPT_REQUESTED = "battery_opt_requested";
 
@@ -84,9 +86,17 @@ public class PortForwardService extends Service {
     private String serverHost;
     private int sshPort;
     private String password;
+    private volatile String sessionToken; // Session token for ?token= auth (SSE, HTTP)
 
     // Background thread for all network I/O (SSH connect, HTTP fetch, port forward)
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
+
+    // SSE thread: receives system events for background notifications
+    private Thread sseThread;
+    private volatile boolean sseActive = false;
+
+    // Whether the app is in the foreground (suppresses notifications)
+    private static volatile boolean appInForeground = true;
 
     // Lazily initialized SSL context that trusts all certs (for self-signed ClawBench servers)
     private static SSLContext trustAllSSLContext;
@@ -197,6 +207,50 @@ public class PortForwardService extends Service {
     }
 
     /**
+     * Save the session token for ?token= authentication.
+     * Called from WebAppInterface.setSessionToken() after login.
+     * The token is used for native SSE and HTTP requests (e.g. /api/ssh/info?token=xxx).
+     */
+    public static void setSessionToken(Context context, String token) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_SESSION_TOKEN, token)
+                .apply();
+        // Update the running instance immediately
+        if (instance != null) {
+            instance.sessionToken = token;
+            // Start SSE listener if not already running
+            instance.startSSEListener();
+        }
+    }
+
+    /**
+     * Get the saved session token.
+     */
+    public static String getSessionToken(Context context) {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_SESSION_TOKEN, null);
+    }
+
+    /**
+     * Set whether the app is in the foreground.
+     * When in foreground, system notifications are suppressed (the WebView handles UI).
+     * Called from MainActivity.onResume/onPause.
+     */
+    public static void setAppForeground(boolean foreground) {
+        appInForeground = foreground;
+    }
+
+    /**
+     * Ensure the service is running. Called after setSessionToken.
+     */
+    public static void ensureRunning(Context context) {
+        if (!isRunning) {
+            start(context);
+        }
+    }
+
+    /**
      * Check whether battery optimization has already been requested.
      */
     public static boolean isBatteryOptRequested(Context context) {
@@ -227,12 +281,15 @@ public class PortForwardService extends Service {
         // Restore previously saved ports (from before Service was killed)
         restoreForwardedPorts();
 
-        // If no ports were restored, there's nothing to forward — stop immediately.
-        // This prevents an idle foreground service with no work to do (wastes battery).
-        if (forwardedPorts.isEmpty()) {
-            Log.i(TAG, "SSH: no saved ports to forward, stopping service");
-            stopSelf();
-        }
+        // Load session token for SSE and authenticated HTTP requests
+        sessionToken = getSessionToken(this);
+
+        // Start SSE listener for system event notifications
+        startSSEListener();
+
+        // Note: We no longer stopSelf() when there are no forwarded ports.
+        // The service stays alive for SSE notifications even without port forwards.
+        // Service lifecycle is tied to login state, not port state.
     }
 
     @Override
@@ -276,6 +333,7 @@ public class PortForwardService extends Service {
     @Override
     public void onDestroy() {
         intentionalDisconnect = true;
+        stopSSEListener();
         stopConnectionMonitor();
         releaseWifiLock();
         releaseWakeLock();
@@ -688,10 +746,8 @@ public class PortForwardService extends Service {
         saveForwardedPorts();
         updateNotification(forwardedPorts.size(), null);
 
-        // If no more forwarded ports, stop the service
-        if (forwardedPorts.isEmpty()) {
-            stopSelf();
-        }
+        // Note: We no longer stopSelf() when forwardedPorts is empty.
+        // The service stays alive for SSE notifications even without port forwards.
     }
 
     /**
@@ -707,6 +763,12 @@ public class PortForwardService extends Service {
             if (scheme == null) scheme = "https";
             String host = uri.getHost();
             String path = scheme + "://" + host + ":" + httpPort + "/api/ssh/info";
+
+            // Append ?token= for authentication (native HTTP client cannot use cookies)
+            String token = sessionToken;
+            if (token != null && !token.isEmpty()) {
+                path += "?token=" + Uri.encode(token);
+            }
 
             URL url = new URL(path);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -942,5 +1004,193 @@ public class PortForwardService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "SSH: failed to init trust-all SSL context", e);
         }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // SSE listener for system event notifications
+    // ───────────────────────────────────────────────────────────────────────
+
+    /**
+     * Start the SSE listener thread that connects to /api/events.
+     * Receives session_complete and task_exec_update events to show system notifications
+     * when the app is in the background.
+     */
+    private void startSSEListener() {
+        if (sseActive) return; // Already running
+        String token = sessionToken;
+        if (token == null || token.isEmpty()) {
+            Log.d(TAG, "SSE: no session token, skipping SSE listener");
+            return;
+        }
+
+        sseActive = true;
+        sseThread = new Thread(() -> {
+            Log.i(TAG, "SSE: listener thread started");
+            while (sseActive && !Thread.interrupted()) {
+                HttpURLConnection conn = null;
+                try {
+                    String serverUrl = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                            .getString(KEY_SERVER_URL, null);
+                    if (serverUrl == null) {
+                        Log.w(TAG, "SSE: no server URL, retrying in 30s");
+                        Thread.sleep(30000);
+                        continue;
+                    }
+
+                    Uri uri = Uri.parse(serverUrl);
+                    String scheme = uri.getScheme();
+                    if (scheme == null) scheme = "https";
+                    String host = uri.getHost();
+                    int httpPort = uri.getPort();
+                    if (httpPort == -1) httpPort = scheme.equals("https") ? 443 : 80;
+
+                    String sseUrl = scheme + "://" + host + ":" + httpPort + "/api/events?token=" + Uri.encode(sessionToken != null ? sessionToken : "");
+                    URL url = new URL(sseUrl);
+                    conn = (HttpURLConnection) url.openConnection();
+
+                    if (conn instanceof HttpsURLConnection && trustAllSSLContext != null) {
+                        ((HttpsURLConnection) conn).setSSLSocketFactory(trustAllSSLContext.getSocketFactory());
+                        ((HttpsURLConnection) conn).setHostnameVerifier((hostname, session) -> true);
+                    }
+
+                    conn.setRequestMethod("GET");
+                    conn.setRequestProperty("Accept", "text/event-stream");
+                    conn.setConnectTimeout(10000);
+                    conn.setReadTimeout(60000); // Long timeout for SSE
+                    conn.setDoInput(true);
+
+                    int code = conn.getResponseCode();
+                    if (code != 200) {
+                        Log.w(TAG, "SSE: connection failed with HTTP " + code);
+                        conn.disconnect();
+                        Thread.sleep(10000);
+                        continue;
+                    }
+
+                    Log.i(TAG, "SSE: connected to /api/events");
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                    String currentEventType = null;
+
+                    String line;
+                    while (sseActive && (line = reader.readLine()) != null) {
+                        if (line.startsWith("event:")) {
+                            currentEventType = line.substring(6).trim();
+                        } else if (line.startsWith("data:") && currentEventType != null) {
+                            String data = line.substring(5).trim();
+                            handleSSEEvent(currentEventType, data);
+                            currentEventType = null;
+                        } else if (line.isEmpty()) {
+                            // End of SSE event — reset
+                            currentEventType = null;
+                        }
+                    }
+                    // Stream ended — will reconnect
+                    reader.close();
+                    conn.disconnect();
+                    Log.w(TAG, "SSE: stream ended, reconnecting in 5s");
+                    Thread.sleep(5000);
+                } catch (InterruptedException e) {
+                    Log.i(TAG, "SSE: listener thread interrupted, stopping");
+                    break;
+                } catch (Exception e) {
+                    Log.w(TAG, "SSE: connection error: " + e.getMessage());
+                    if (conn != null) conn.disconnect();
+                    try { Thread.sleep(10000); } catch (InterruptedException ie) { break; }
+                }
+            }
+            sseActive = false;
+            Log.i(TAG, "SSE: listener thread exited");
+        }, "SSE-Listener");
+        sseThread.setDaemon(true);
+        sseThread.start();
+    }
+
+    /**
+     * Stop the SSE listener thread.
+     */
+    private void stopSSEListener() {
+        sseActive = false;
+        if (sseThread != null) {
+            sseThread.interrupt();
+            sseThread = null;
+        }
+    }
+
+    /**
+     * Handle a received SSE event.
+     * Only shows system notifications when the app is in the background.
+     */
+    private void handleSSEEvent(String eventType, String data) {
+        Log.d(TAG, "SSE: event=" + eventType + " data=" + data);
+
+        try {
+            JSONObject json = new JSONObject(data);
+
+            switch (eventType) {
+                case "session_complete": {
+                    if (!appInForeground) {
+                        String sessionId = json.optString("sessionId", "");
+                        String reason = json.optString("reason", "done");
+                        String title = "ClawBench";
+                        String text = reason.equals("user_cancel") ? "AI response cancelled" : "AI response completed";
+                        showSystemNotification(title, text, "session_" + sessionId);
+                    }
+                    break;
+                }
+                case "task_exec_update": {
+                    String status = json.optString("status", "");
+                    if (("completed".equals(status) || "failed".equals(status) || "cancelled".equals(status))
+                            && !appInForeground) {
+                        String taskId = json.optString("taskId", "");
+                        String title = "ClawBench";
+                        String text = "completed".equals(status) ? "Scheduled task completed" :
+                                      "failed".equals(status) ? "Scheduled task failed" :
+                                      "Scheduled task cancelled";
+                        showSystemNotification(title, text, "task_" + taskId + "_" + status);
+                    }
+                    break;
+                }
+                case "connected": {
+                    Log.i(TAG, "SSE: connected, clientId=" + json.optString("clientId", "unknown"));
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "SSE: failed to parse event data", e);
+        }
+    }
+
+    /**
+     * Show a system notification (only when app is in the background).
+     */
+    private void showSystemNotification(String title, String text, String tag) {
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        // Create a separate channel for event notifications
+        String eventChannelId = "clawbench_events";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                    eventChannelId, "Event Notifications", NotificationManager.IMPORTANCE_DEFAULT);
+            channel.setDescription("AI completion and task notifications");
+            nm.createNotificationChannel(channel);
+        }
+
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification notification = new NotificationCompat.Builder(this, eventChannelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .setGroup("clawbench_events")
+                .build();
+
+        // Use a unique ID based on the tag hash to avoid overwriting
+        int id = (tag != null ? tag.hashCode() : 0) & 0xFFFF;
+        nm.notify(id, notification);
     }
 }
