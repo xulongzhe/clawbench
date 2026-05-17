@@ -310,8 +310,19 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Notify system event bus: session started
+	service.GlobalEventBus.Publish(service.SystemEvent{
+		Type:    "session_start",
+		Payload: map[string]any{"sessionId": sessionID, "agentId": effectiveAgentID},
+	})
+
 	if _, err := service.AddChatMessage(projectPath, backendName, sessionID, "user", req.Message, allFiles, false, T(r, "FileMessage")); err != nil {
 		service.SetSessionRunning(sessionID, false)
+		// session_start was already published above; emit matching session_complete
+		service.GlobalEventBus.Publish(service.SystemEvent{
+			Type:    "session_complete",
+			Payload: map[string]any{"sessionId": sessionID, "agentId": effectiveAgentID, "reason": "error"},
+		})
 		model.WriteError(w, model.Internal(fmt.Errorf("failed to save message")))
 		return
 	}
@@ -343,8 +354,6 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		slog.Info("ai goroutine started", slog.String("project", projectPath))
-		defer service.SetSessionRunning(sessionID, false)
-		defer service.UnregisterSessionStream(sessionID)
 
 		// Use independent context with cancel to prevent goroutine leaks
 		// and support user-initiated cancellation (no timeout - let AI run indefinitely)
@@ -353,6 +362,28 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 		service.RegisterSessionCancel(sessionID, cancel)
 		defer service.UnregisterSessionCancel(sessionID)
+
+		// Defer session_complete event: must be after ctx is created so we can check cancellation.
+		// Defer order matters (LIFO): session_complete must fire BEFORE SetSessionRunning(false)
+		// so subscribers see the session as still "running" when they receive the event.
+		// By registering AFTER SetSessionRunning/UnregisterSessionStream, session_complete
+		// pops first (LIFO) and fires before those cleanups.
+		defer service.UnregisterSessionStream(sessionID)
+		defer service.SetSessionRunning(sessionID, false)
+		defer func() {
+			reason := "done"
+			if cancelReason := service.GetAndClearCancelReason(sessionID); cancelReason == "user" {
+				reason = "user_cancel"
+			} else if cancelReason == "disconnect" {
+				reason = "disconnect"
+			} else if ctx.Err() == context.Canceled {
+				reason = "cancelled"
+			}
+			service.GlobalEventBus.Publish(service.SystemEvent{
+				Type:    "session_complete",
+				Payload: map[string]any{"sessionId": sessionID, "agentId": effectiveAgentID, "reason": reason},
+			})
+		}()
 
 		// Build the first chat request
 		firstChatReq := buildChatRequest(prompt, sessionID, projectPath, backendName, effectiveAgentID, req.ModelID, req.ThinkingEffort, fileDir)

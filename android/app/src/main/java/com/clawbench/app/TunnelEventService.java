@@ -1,6 +1,8 @@
 package com.clawbench.app;
 
+import android.Manifest;
 import android.app.Notification;
+import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
@@ -16,6 +18,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.util.Log;
 
@@ -59,7 +62,7 @@ import javax.net.ssl.X509TrustManager;
  *
  * All SSH/HTTP network operations run on a background thread to avoid NetworkOnMainThreadException.
  */
-public class PortForwardService extends Service {
+public class TunnelEventService extends Service {
 
     private static final String TAG = "ClawBench";
     private static final int NOTIFICATION_ID = 2;
@@ -67,6 +70,7 @@ public class PortForwardService extends Service {
     private static final String PREFS_NAME = "clawbench_prefs";
     private static final String KEY_SERVER_URL = "server_url";
     private static final String KEY_SSH_PASSWORD = "ssh_password";
+    private static final String KEY_SESSION_TOKEN = "session_token";
     private static final String KEY_FORWARDED_PORTS = "forwarded_ports";
     private static final String KEY_BATTERY_OPT_REQUESTED = "battery_opt_requested";
 
@@ -76,7 +80,7 @@ public class PortForwardService extends Service {
     private static final int MONITOR_CHECK_INTERVAL_MS = 15000;
 
     private static volatile boolean isRunning = false;
-    private static volatile PortForwardService instance;
+    private static volatile TunnelEventService instance;
 
     private JSch jsch;
     private Session sshSession;
@@ -84,9 +88,18 @@ public class PortForwardService extends Service {
     private String serverHost;
     private int sshPort;
     private String password;
+    private volatile String sessionToken; // Session token for ?token= auth (SSE, HTTP)
 
     // Background thread for all network I/O (SSH connect, HTTP fetch, port forward)
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
+
+    // SSE client: receives system events for background notifications
+    private com.launchdarkly.eventsource.background.BackgroundEventSource eventSource;
+
+    // Whether the app is in the foreground (suppresses notifications)
+    // Defaults to false — if service restarts before Activity.onCreate, notifications
+    // should still be shown rather than silently dropped.
+    private static volatile boolean appInForeground = false;
 
     // Lazily initialized SSL context that trusts all certs (for self-signed ClawBench servers)
     private static SSLContext trustAllSSLContext;
@@ -168,7 +181,7 @@ public class PortForwardService extends Service {
      */
     public static void start(Context context) {
         if (isRunning) return;
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, TunnelEventService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
         } else {
@@ -181,7 +194,7 @@ public class PortForwardService extends Service {
      */
     public static void stop(Context context) {
         if (!isRunning) return;
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, TunnelEventService.class);
         context.stopService(intent);
     }
 
@@ -194,6 +207,63 @@ public class PortForwardService extends Service {
                 .edit()
                 .putString(KEY_SSH_PASSWORD, password)
                 .apply();
+    }
+
+    /**
+     * Save the session token for ?token= authentication.
+     * Called from WebAppInterface.setSessionToken() after login.
+     * The token is used for native SSE and HTTP requests (e.g. /api/ssh/info?token=xxx).
+     */
+    public static void setSessionToken(Context context, String token) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_SESSION_TOKEN, token)
+                .apply();
+        // Update the running instance immediately
+        // Capture to local to avoid TOCTOU race with onDestroy setting instance=null
+        TunnelEventService localInstance = instance;
+        if (localInstance != null) {
+            localInstance.sessionToken = token;
+            // Start SSE listener if not already running
+            localInstance.startSSEListener();
+        }
+    }
+
+    /**
+     * Get the saved session token.
+     */
+    public static String getSessionToken(Context context) {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_SESSION_TOKEN, null);
+    }
+
+    /**
+     * Set whether the app is in the foreground.
+     * When in foreground, system notifications are suppressed (the WebView handles UI).
+     * Also manages the SSH tunnel lifecycle:
+     *   - Going to background: shuts down SSH tunnel (SSE runs independently via HTTPS)
+     *   - Coming to foreground: restores SSH tunnel if there are port forwards
+     * Called from MainActivity.onResume/onPause.
+     */
+    public static void setAppForeground(boolean foreground) {
+        appInForeground = foreground;
+        TunnelEventService localInstance = instance;
+        if (localInstance != null) {
+            if (foreground) {
+                localInstance.restoreTunnelIfNeeded();
+            } else {
+                localInstance.shutdownTunnelIfNeeded();
+            }
+        }
+    }
+
+    /**
+     * Ensure the service is running. Called after setSessionToken.
+     */
+    public static void ensureRunning(Context context) {
+        if (!isRunning) {
+            start(context);
+        }
     }
 
     /**
@@ -227,12 +297,15 @@ public class PortForwardService extends Service {
         // Restore previously saved ports (from before Service was killed)
         restoreForwardedPorts();
 
-        // If no ports were restored, there's nothing to forward — stop immediately.
-        // This prevents an idle foreground service with no work to do (wastes battery).
-        if (forwardedPorts.isEmpty()) {
-            Log.i(TAG, "SSH: no saved ports to forward, stopping service");
-            stopSelf();
-        }
+        // Load session token for SSE and authenticated HTTP requests
+        sessionToken = getSessionToken(this);
+
+        // Start SSE listener for system event notifications
+        startSSEListener();
+
+        // Note: We no longer stopSelf() when there are no forwarded ports.
+        // The service stays alive for SSE notifications even without port forwards.
+        // Service lifecycle is tied to login state, not port state.
     }
 
     @Override
@@ -262,9 +335,10 @@ public class PortForwardService extends Service {
             }
         } else {
             // START_STICKY restart: Android killed the service and recreated it with null intent.
-            // onCreate() already restored port numbers into forwardedPorts via restoreForwardedPorts(),
-            // but the SSH session was lost. Re-establish the tunnel now.
-            if (!forwardedPorts.isEmpty()) {
+            // onCreate() already restored port numbers into forwardedPorts via restoreForwardedPorts()
+            // and started the SSE listener. The SSH tunnel is only restored if there are port forwards
+            // AND the app is in the foreground (SSE runs independently via HTTPS).
+            if (!forwardedPorts.isEmpty() && appInForeground) {
                 Log.i(TAG, "SSH: service restarted by START_STICKY, restoring " + forwardedPorts.size() + " port forwards");
                 networkExecutor.execute(this::restoreAndReconnect);
             }
@@ -276,6 +350,7 @@ public class PortForwardService extends Service {
     @Override
     public void onDestroy() {
         intentionalDisconnect = true;
+        stopSSEListener();
         stopConnectionMonitor();
         releaseWifiLock();
         releaseWakeLock();
@@ -302,14 +377,15 @@ public class PortForwardService extends Service {
     public void onTaskRemoved(Intent rootIntent) {
         // When the user swipes the app from recents, restart the service
         // so the SSH tunnel keeps running.
-        Intent restartIntent = new Intent(this, PortForwardService.class);
+        Intent restartIntent = new Intent(this, TunnelEventService.class);
         restartIntent.setAction("RESTORE_PORTS");
         PendingIntent pendingIntent = PendingIntent.getService(
                 this, 1, restartIntent,
                 PendingIntent.FLAG_ONE_SHOT | PendingIntent.FLAG_IMMUTABLE);
         AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
         if (alarmManager != null) {
-            alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+            // Use setAndAllowWhileIdle() so the alarm fires even in Doze mode (Android 6+)
+            alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
                     SystemClock.elapsedRealtime() + 1000, pendingIntent);
         }
         super.onTaskRemoved(rootIntent);
@@ -396,11 +472,20 @@ public class PortForwardService extends Service {
 
                 if (!monitorActive || intentionalDisconnect) break;
 
+                // Re-acquire WakeLock periodically (it has a 1h timeout safety net)
+                acquireWakeLock();
+
                 // Check if session is dead
                 if (sshSession == null || !sshSession.isConnected()) {
                     if (forwardedPorts.isEmpty()) {
                         // No ports to maintain — don't bother reconnecting
                         Log.d(TAG, "SSH: session disconnected but no ports to forward, skipping reconnect");
+                        continue;
+                    }
+
+                    // Don't auto-reconnect in background — tunnel will be restored on foreground
+                    if (!appInForeground) {
+                        Log.d(TAG, "SSH: session disconnected but app is in background, waiting for foreground");
                         continue;
                     }
 
@@ -442,6 +527,7 @@ public class PortForwardService extends Service {
                             isReconnecting = false;
                             reconnectAttempt = 0;
                             updateNotification(forwardedPorts.size(), "SSH 隧道已恢复");
+
                             // Clear the "recovered" status after 3 seconds
                             try {
                                 Thread.sleep(3000);
@@ -688,10 +774,8 @@ public class PortForwardService extends Service {
         saveForwardedPorts();
         updateNotification(forwardedPorts.size(), null);
 
-        // If no more forwarded ports, stop the service
-        if (forwardedPorts.isEmpty()) {
-            stopSelf();
-        }
+        // Note: We no longer stopSelf() when forwardedPorts is empty.
+        // The service stays alive for SSE notifications even without port forwards.
     }
 
     /**
@@ -707,6 +791,12 @@ public class PortForwardService extends Service {
             if (scheme == null) scheme = "https";
             String host = uri.getHost();
             String path = scheme + "://" + host + ":" + httpPort + "/api/ssh/info";
+
+            // Append ?token= for authentication (native HTTP client cannot use cookies)
+            String token = sessionToken;
+            if (token != null && !token.isEmpty()) {
+                path += "?token=" + Uri.encode(token);
+            }
 
             URL url = new URL(path);
             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -794,19 +884,74 @@ public class PortForwardService extends Service {
     }
 
     /**
-     * Create the notification channel (called once in onCreate).
+     * Shut down the SSH tunnel when the app goes to background.
+     * SSE runs independently via HTTPS, so the tunnel is only needed for port forwarding
+     * which is only useful when the WebView is active in the foreground.
+     * This saves battery by releasing WakeLock, WifiLock, and the SSH TCP connection.
+     */
+    private void shutdownTunnelIfNeeded() {
+        if (sshSession == null || !sshSession.isConnected()) return;
+        if (forwardedPorts.isEmpty()) {
+            // No ports — nothing to keep the tunnel alive for
+            Log.i(TAG, "SSH: app going to background, shutting down idle tunnel");
+            stopConnectionMonitor();
+            releaseWifiLock();
+            releaseWakeLock();
+            disconnectInternal();
+            updateNotification(0, null);
+        } else {
+            // Has port forwards — keep tunnel alive but release WakeLock/WifiLock
+            // since the system will manage the connection through the foreground service.
+            // The connection monitor will detect if the session dies and won't reconnect
+            // while in background (intentionalDisconnect is not set, but monitor checks
+            // appInForeground before reconnecting).
+            Log.i(TAG, "SSH: app going to background, keeping tunnel for " + forwardedPorts.size() + " port forwards");
+        }
+    }
+
+    /**
+     * Restore the SSH tunnel when the app comes to the foreground.
+     * If there are forwarded ports and the tunnel is down, reconnect it.
+     */
+    private void restoreTunnelIfNeeded() {
+        if (forwardedPorts.isEmpty()) return;
+        if (sshSession != null && sshSession.isConnected()) return; // Already up
+        Log.i(TAG, "SSH: app coming to foreground, restoring tunnel for " + forwardedPorts.size() + " port forwards");
+        intentionalDisconnect = false;
+        networkExecutor.execute(() -> {
+            try {
+                ensureConnection();
+                Log.i(TAG, "SSH: tunnel restored on foreground");
+            } catch (Exception e) {
+                Log.e(TAG, "SSH: failed to restore tunnel on foreground: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * Create the notification channels (called once in onCreate).
      */
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            android.app.NotificationChannel channel = new android.app.NotificationChannel(
-                    CHANNEL_ID,
-                    "SSH 端口转发",
-                    android.app.NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("SSH 隧道端口转发服务");
             android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
             if (nm != null) {
-                nm.createNotificationChannel(channel);
+                // Foreground service channel
+                android.app.NotificationChannel serviceChannel = new android.app.NotificationChannel(
+                        CHANNEL_ID,
+                        "SSH 端口转发",
+                        android.app.NotificationManager.IMPORTANCE_LOW
+                );
+                serviceChannel.setDescription("SSH 隧道端口转发服务");
+                nm.createNotificationChannel(serviceChannel);
+
+                // Event notification channel
+                android.app.NotificationChannel eventChannel = new android.app.NotificationChannel(
+                        "clawbench_events",
+                        "Event Notifications",
+                        android.app.NotificationManager.IMPORTANCE_DEFAULT
+                );
+                eventChannel.setDescription("AI completion and task notifications");
+                nm.createNotificationChannel(eventChannel);
             }
         }
     }
@@ -865,6 +1010,8 @@ public class PortForwardService extends Service {
      * Acquire a partial WakeLock to prevent CPU from sleeping.
      * This ensures SSH keep-alive packets are sent even when the screen is off
      * and the device enters Doze mode.
+     * Uses a 1-hour timeout as a safety net — the connection monitor re-acquires
+     * periodically, and onDestroy releases explicitly.
      */
     private void acquireWakeLock() {
         if (wakeLock != null && wakeLock.isHeld()) return;
@@ -873,8 +1020,8 @@ public class PortForwardService extends Service {
             if (pm != null) {
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ClawBench:SSH-Tunnel");
                 wakeLock.setReferenceCounted(false);
-                wakeLock.acquire();
-                Log.i(TAG, "SSH: WakeLock acquired");
+                wakeLock.acquire(3600_000L); // 1-hour timeout safety net
+                Log.i(TAG, "SSH: WakeLock acquired (1h timeout)");
             }
         } catch (Exception e) {
             Log.w(TAG, "SSH: failed to acquire WakeLock", e);
@@ -902,7 +1049,7 @@ public class PortForwardService extends Service {
      * Add a port forward via the service.
      */
     public static void addForwardedPort(Context context, int port) {
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, TunnelEventService.class);
         intent.setAction("ADD_PORT");
         intent.putExtra("port", port);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -916,10 +1063,14 @@ public class PortForwardService extends Service {
      * Remove a port forward via the service.
      */
     public static void removeForwardedPort(Context context, int port) {
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, TunnelEventService.class);
         intent.setAction("REMOVE_PORT");
         intent.putExtra("port", port);
-        context.startService(intent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
+        }
     }
 
     /**
@@ -942,5 +1093,204 @@ public class PortForwardService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "SSH: failed to init trust-all SSL context", e);
         }
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // SSE listener for system event notifications
+    // ───────────────────────────────────────────────────────────────────────
+
+    /**
+     * Start the SSE listener that connects to /api/events.
+     * Connects directly via HTTPS (not through SSH tunnel) so that SSE
+     * works independently of the tunnel state. This allows the SSH tunnel
+     * to be shut down when the app goes to background, saving battery,
+     * while SSE stays alive on its own HTTPS connection.
+     * Uses OkHttp EventSource library for robust SSE parsing with automatic
+     * reconnection and proper event handling.
+     * Receives session_complete and task_exec_update events to show system
+     * notifications when the app is in the background.
+     */
+    private void startSSEListener() {
+        if (eventSource != null) return; // Already running
+        String token = sessionToken;
+        if (token == null || token.isEmpty()) {
+            Log.d(TAG, "SSE: no session token, skipping SSE listener");
+            return;
+        }
+
+        String serverUrl = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getString(KEY_SERVER_URL, null);
+        if (serverUrl == null) {
+            Log.w(TAG, "SSE: no server URL, cannot start SSE listener");
+            return;
+        }
+
+        Uri uri = Uri.parse(serverUrl);
+        String scheme = uri.getScheme();
+        if (scheme == null) scheme = "https";
+        String host = uri.getHost();
+        int httpPort = uri.getPort();
+        if (httpPort == -1) {
+            httpPort = scheme.equals("https") ? 443 : 80;
+        }
+
+        String sseUrl = scheme + "://" + host + ":" + httpPort + "/api/events?token=" + Uri.encode(token);
+        Log.i(TAG, "SSE: connecting directly to " + sseUrl);
+
+        // Build OkHttp client with trust-all SSL for self-signed certs
+        okhttp3.OkHttpClient.Builder clientBuilder = new okhttp3.OkHttpClient.Builder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(10, java.util.concurrent.TimeUnit.SECONDS);
+
+        if (scheme.equals("https") && trustAllSSLContext != null) {
+            clientBuilder.sslSocketFactory(trustAllSSLContext.getSocketFactory(), (javax.net.ssl.X509TrustManager) new javax.net.ssl.X509TrustManager() {
+                public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+                public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+                public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+            });
+            clientBuilder.hostnameVerifier((hostname, session) -> true);
+        }
+
+        // Build connect strategy with custom OkHttpClient for trust-all SSL
+        okhttp3.HttpUrl httpUrl = okhttp3.HttpUrl.parse(sseUrl);
+        com.launchdarkly.eventsource.HttpConnectStrategy connectStrategy =
+                com.launchdarkly.eventsource.ConnectStrategy.http(httpUrl);
+        if (scheme.equals("https") && trustAllSSLContext != null) {
+            connectStrategy = connectStrategy.httpClient(clientBuilder.build());
+        }
+
+        // Build EventSource with automatic reconnection (5s retry delay)
+        com.launchdarkly.eventsource.EventSource.Builder esBuilder = new com.launchdarkly.eventsource.EventSource.Builder(
+                connectStrategy
+        ).retryDelay(5, java.util.concurrent.TimeUnit.SECONDS);
+
+        // Wrap with BackgroundEventSource for thread-safe event dispatch
+        eventSource = new com.launchdarkly.eventsource.background.BackgroundEventSource.Builder(
+                new com.launchdarkly.eventsource.background.BackgroundEventHandler() {
+                    @Override
+                    public void onOpen() {
+                        Log.i(TAG, "SSE: connected to /api/events");
+                    }
+
+                    @Override
+                    public void onClosed() {
+                        Log.w(TAG, "SSE: connection closed");
+                    }
+
+                    @Override
+                    public void onComment(String comment) {
+                        // Heartbeat comments from server — ignore
+                    }
+
+                    @Override
+                    public void onError(java.lang.Throwable t) {
+                        Log.w(TAG, "SSE: error: " + t.getMessage());
+                    }
+
+                    @Override
+                    public void onMessage(String event, com.launchdarkly.eventsource.MessageEvent messageEvent) {
+                        if (event == null || event.isEmpty()) return;
+                        String data = messageEvent.getData();
+                        if (data == null || data.isEmpty()) return;
+                        handleSSEEvent(event, data);
+                    }
+                },
+                esBuilder
+        ).build();
+
+        eventSource.start();
+    }
+
+    /**
+     * Stop the SSE listener.
+     */
+    private void stopSSEListener() {
+        if (eventSource != null) {
+            eventSource.close();
+            eventSource = null;
+        }
+    }
+
+    /**
+     * Handle a received SSE event.
+     * Only shows system notifications when the app is in the background.
+     */
+    void handleSSEEvent(String eventType, String data) {
+        Log.d(TAG, "SSE: event=" + eventType + " data=" + data);
+
+        try {
+            JSONObject json = new JSONObject(data);
+
+            switch (eventType) {
+                case "session_complete": {
+                    if (!appInForeground) {
+                        String sessionId = json.optString("sessionId", "");
+                        String reason = json.optString("reason", "done");
+                        String title = "ClawBench";
+                        String text = reason.equals("user_cancel") ? "AI response cancelled" : "AI response completed";
+                        showSystemNotification(title, text, "session_" + sessionId);
+                    }
+                    break;
+                }
+                case "task_exec_update": {
+                    String status = json.optString("status", "");
+                    if (("completed".equals(status) || "failed".equals(status) || "cancelled".equals(status))
+                            && !appInForeground) {
+                        String taskId = json.optString("taskId", "");
+                        String title = "ClawBench";
+                        String text = "completed".equals(status) ? "Scheduled task completed" :
+                                      "failed".equals(status) ? "Scheduled task failed" :
+                                      "Scheduled task cancelled";
+                        showSystemNotification(title, text, "task_" + taskId + "_" + status);
+                    }
+                    break;
+                }
+                case "connected": {
+                    Log.i(TAG, "SSE: connected, clientId=" + json.optString("clientId", "unknown"));
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "SSE: failed to parse event data", e);
+        }
+    }
+
+    /**
+     * Show a system notification (only when app is in the background).
+     * Checks POST_NOTIFICATIONS permission on Android 13+ before posting.
+     */
+    private void showSystemNotification(String title, String text, String tag) {
+        // Check notification permission on Android 13+ (API 33)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "SSE: POST_NOTIFICATIONS permission not granted, skipping notification");
+                return;
+            }
+        }
+
+        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+        // Event notification channel is created in createNotificationChannel() (called from onCreate)
+        String eventChannelId = "clawbench_events";
+
+        Intent intent = new Intent(this, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
+        Notification notification = new NotificationCompat.Builder(this, eventChannelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .setGroup("clawbench_events")
+                .build();
+
+        // Use a unique ID based on the tag hash to avoid overwriting
+        int id = (tag != null ? tag.hashCode() : 0) & 0xFFFF;
+        nm.notify(id, notification);
     }
 }

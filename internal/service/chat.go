@@ -196,6 +196,19 @@ func AddChatMessage(projectPath, backend, sessionID, role, content string, files
 		return 0, err
 	}
 	messageID, _ := result.LastInsertId()
+
+	// Notify system event bus: new message created
+	if !streaming {
+		GlobalEventBus.Publish(SystemEvent{
+			Type: "message_new",
+			Payload: map[string]any{
+				"sessionId": sessionID,
+				"role":      role,
+				"messageId": messageID,
+			},
+		})
+	}
+
 	return messageID, nil
 }
 

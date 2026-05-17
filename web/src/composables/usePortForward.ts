@@ -3,6 +3,7 @@ import { apiGet, apiPost, apiDelete } from '@/utils/api.ts'
 import { useAppMode } from './useAppMode.ts'
 import { gt } from '@/composables/useLocale'
 import { tunnelStatusFromPorts as tunnelStatusFromPortsUtil, buildPortUrl } from '@/utils/portForwardUtils.ts'
+import { registerUIHandler } from '@/composables/useSystemEvents.ts'
 
 interface ForwardedPort {
   port: number
@@ -72,6 +73,23 @@ function tunnelStatusFromPorts(hasPorts: boolean): 'ok' | 'degraded' {
  */
 export function usePortForward() {
   const { isAppMode } = useAppMode()
+
+  // ── Event-driven instant refresh from useSystemEvents ──
+  // When SSE is connected, tunnel_status events provide instant updates
+  // instead of waiting for the next polling interval.
+  registerUIHandler((event) => {
+    if (event.type === 'tunnel_status') {
+      const connected = event.payload?.connected as boolean
+      // If SSH tunnel just reconnected, refresh port list and health
+      if (connected) {
+        loadPorts(true)
+        checkTunnelHealth()
+      } else {
+        // Tunnel disconnected — update status immediately
+        tunnelStatus.value = 'disconnected'
+      }
+    }
+  })
 
   async function loadPorts(silent = false) {
     if (!silent) loading.value = true
@@ -269,7 +287,7 @@ export function usePortForward() {
     }
   }
 
-  /** Start polling tunnel health every 5s while unhealthy */
+  /** Start polling tunnel health every 30s while unhealthy (safety net — primary updates come from tunnel_status SSE events) */
   function startTunnelPoll() {
     if (tunnelPollTimer) return
     tunnelPollTimer = setInterval(async () => {
@@ -314,7 +332,7 @@ export function usePortForward() {
           stopTunnelPoll()
         }
       }
-    }, 5000)
+    }, 30000)
   }
 
   /** Stop the tunnel health polling */

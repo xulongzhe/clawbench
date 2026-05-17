@@ -510,6 +510,13 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		TriggerType: triggerType,
 	}
 	s.runningExecutions.Store(sessionID, running)
+
+	// Notify system event bus: task execution started
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "task_exec_update",
+		Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "running", "triggerType": triggerType},
+	})
+
 	defer func() {
 		s.runningExecutions.Delete(sessionID)
 		cancel()
@@ -519,6 +526,10 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to create backend for task", slog.String("err", err.Error()))
 		UpdateExecutionStatus(sessionID, "failed")
+		GlobalEventBus.Publish(SystemEvent{
+			Type:    "task_exec_update",
+			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "failed"},
+		})
 		return
 	}
 
@@ -526,6 +537,10 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to execute stream for task", slog.String("err", err.Error()))
 		UpdateExecutionStatus(sessionID, "failed")
+		GlobalEventBus.Publish(SystemEvent{
+			Type:    "task_exec_update",
+			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "failed"},
+		})
 		return
 	}
 
@@ -555,6 +570,10 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			slog.String("session_id", sessionID),
 		)
 		UpdateExecutionStatus(sessionID, "cancelled")
+		GlobalEventBus.Publish(SystemEvent{
+			Type:    "task_exec_update",
+			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "cancelled"},
+		})
 		newStatus := task.Status
 		UpdateTaskStats(task, newStatus)
 		return
@@ -569,6 +588,10 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			slog.String("session_id", sessionID),
 		)
 		UpdateExecutionStatus(sessionID, "failed")
+		GlobalEventBus.Publish(SystemEvent{
+			Type:    "task_exec_update",
+			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "failed"},
+		})
 		newStatus := task.Status
 		UpdateTaskStats(task, newStatus)
 		return
@@ -595,6 +618,12 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 
 	// Mark execution as completed
 	UpdateExecutionStatus(sessionID, "completed")
+
+	// Notify system event bus: task execution completed
+	GlobalEventBus.Publish(SystemEvent{
+		Type:    "task_exec_update",
+		Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "completed"},
+	})
 
 	// Update task execution stats
 	newStatus := task.Status

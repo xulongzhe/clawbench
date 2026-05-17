@@ -21,7 +21,8 @@ func isLocalhost(r *http.Request) bool {
 
 // Auth wraps a handler with password auth if configured.
 // Localhost requests (CLI subcommands) are always allowed.
-// Remote requests require a valid "clawbench_session" cookie.
+// Remote requests require a valid "clawbench_session" cookie OR ?token= query parameter.
+// The ?token= parameter is for native SSE/HTTP clients that cannot use cookies.
 func Auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// No password configured — open access
@@ -37,6 +38,12 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 		// Remote — cookie-based auth
 		token, err := r.Cookie(model.SessionCookie)
 		if err == nil && token != nil && subtle.ConstantTimeCompare([]byte(token.Value), []byte(model.SessionToken)) == 1 {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Remote — ?token= query parameter auth (for native SSE/HTTP clients)
+		if qToken := r.URL.Query().Get("token"); qToken != "" &&
+			subtle.ConstantTimeCompare([]byte(qToken), []byte(model.SessionToken)) == 1 {
 			next.ServeHTTP(w, r)
 			return
 		}

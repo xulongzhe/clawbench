@@ -75,6 +75,11 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		service.GlobalEventBus.Publish(service.SystemEvent{
+			Type:    "task_update",
+			Payload: map[string]any{"taskId": task.ID, "action": "create", "status": task.Status},
+		})
+
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "task": task})
 
 	default:
@@ -166,6 +171,10 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 		// Handle actions
 		if req.Action == "pause" {
 			service.GlobalScheduler.PauseTask(taskID)
+			service.GlobalEventBus.Publish(service.SystemEvent{
+				Type:    "task_update",
+				Payload: map[string]any{"taskId": taskID, "action": "pause", "status": "paused"},
+			})
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}
@@ -174,6 +183,10 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 				model.WriteError(w, model.Internal(err))
 				return
 			}
+			service.GlobalEventBus.Publish(service.SystemEvent{
+				Type:    "task_update",
+				Payload: map[string]any{"taskId": taskID, "action": "resume", "status": "active"},
+			})
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}
@@ -204,6 +217,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 				writeLocalizedError(w, r, model.NotFound(err, "TaskNotFound"))
 				return
 			}
+			// Note: task_exec_update with status=running is published by executeTask() in service/scheduler.go
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}
@@ -216,6 +230,10 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 				writeLocalizedError(w, r, model.NotFound(err, "TaskExecutionNotFound"))
 				return
 			}
+			service.GlobalEventBus.Publish(service.SystemEvent{
+				Type:    "task_exec_update",
+				Payload: map[string]any{"taskId": taskID, "execId": req.ExecutionID, "status": "cancelled"},
+			})
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 			return
 		}
@@ -291,6 +309,11 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		service.GlobalEventBus.Publish(service.SystemEvent{
+			Type:    "task_update",
+			Payload: map[string]any{"taskId": task.ID, "action": "update", "status": task.Status},
+		})
+
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "task": task})
 
 	case http.MethodDelete:
@@ -307,6 +330,12 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 		// Cancel any running executions before removing the task
 		service.GlobalScheduler.CancelAllExecutions(taskID)
 		service.GlobalScheduler.RemoveTask(taskID)
+
+		service.GlobalEventBus.Publish(service.SystemEvent{
+			Type:    "task_update",
+			Payload: map[string]any{"taskId": taskID, "action": "delete"},
+		})
+
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 
 	default:

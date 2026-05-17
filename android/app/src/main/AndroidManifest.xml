@@ -37,7 +37,7 @@
         </activity>
 
         <service
-            android:name=".PortForwardService"
+            android:name=".TunnelEventService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
