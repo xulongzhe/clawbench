@@ -1,6 +1,6 @@
 <template>
   <Teleport to="body">
-  <header class="header">
+  <header v-show="!props.hidden" class="header">
     <img class="header-logo" src="/logo.png" alt="ClawBench">
 
     <div class="project-dropdown-wrapper" ref="dropdownRef">
@@ -92,6 +92,7 @@ const { isAppMode } = useAppMode()
 const props = defineProps({
     projectRoot: String,
     theme: String,
+    hidden: Boolean,
 })
 const emit = defineEmits(['toggleTheme', 'openProjectDialog', 'reconfigureServer'])
 

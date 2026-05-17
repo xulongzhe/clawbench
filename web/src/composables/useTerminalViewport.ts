@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
 import type { Terminal } from '@xterm/xterm'
+import { useTerminalKeyboard } from './useTerminalKeyboard'
 
 export function useTerminalViewport(terminal: Ref<Terminal | null>, containerRef: Ref<HTMLElement | null>) {
   const viewportHeight = ref(0)
@@ -8,19 +9,35 @@ export function useTerminalViewport(terminal: Ref<Terminal | null>, containerRef
   let fitTimer: ReturnType<typeof setTimeout> | null = null
   const FIT_DEBOUNCE_MS = 100
 
+  // Use the full-screen height captured at app startup (before any keyboard)
+  // as the baseline for detecting keyboard appearance on Android adjustResize.
+  const { fullScreenHeight, setKeyboardHeight: setSharedKeyboardHeight } = useTerminalKeyboard()
+
   function updateViewport() {
     if (!containerRef.value) return
 
-    // Use visualViewport on mobile for accurate height with keyboard
+    const currentInnerHeight = window.innerHeight
     const vv = window.visualViewport
+
     if (vv) {
-      const fullHeight = window.innerHeight
-      keyboardHeight.value = fullHeight - vv.height - vv.offsetTop
+      // Method 1 (works in non-adjustResize browsers / desktop):
+      // keyboardHeight = innerHeight - visualViewport.height - offsetTop
+      const vvKeyboard = window.innerHeight - vv.height - vv.offsetTop
+
+      // Method 2 (works in Android adjustResize where innerHeight shrinks):
+      // keyboardHeight = fullScreenHeight - currentInnerHeight
+      const resizeKeyboard = fullScreenHeight - currentInnerHeight
+
+      // Use whichever gives a larger value — covers both scenarios
+      keyboardHeight.value = Math.max(vvKeyboard, resizeKeyboard, 0)
       viewportHeight.value = vv.height
     } else {
       viewportHeight.value = containerRef.value.clientHeight
       keyboardHeight.value = 0
     }
+
+    // Sync to module-level singleton so App.vue can react
+    setSharedKeyboardHeight(keyboardHeight.value)
 
     // Debounce fit() to prevent duplicate lines during keyboard animation.
     // Without debounce, each resize event during the keyboard slide-up

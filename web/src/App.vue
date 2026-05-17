@@ -7,8 +7,9 @@
     <LoginView v-else-if="!isAuthenticated" @login-success="handleLoginSuccess" />
 
     <!-- Main app -->
-    <div v-else class="app-container">
+    <div v-else class="app-container" :class="{ 'chrome-hidden': terminalKeyboardActive }">
       <AppHeader
+        :hidden="terminalActive"
         :project-root="projectRoot"
         :theme="theme"
         @toggle-theme="toggleTheme"
@@ -170,7 +171,7 @@
       />
 
       <!-- Bottom dock (tab bar) -->
-      <div v-if="isAuthenticated" class="bottom-dock-wrapper">
+      <div v-if="isAuthenticated" v-show="!terminalKeyboardActive" class="bottom-dock-wrapper">
         <div class="bottom-dock">
           <div class="dock-center">
             <button class="dock-btn" :class="{ active: activeTab === 'chat', 'has-unread': store.state.chatUnread && activeTab !== 'chat', 'has-running': store.state.chatRunning && activeTab !== 'chat' && !store.state.chatUnread }" @click.stop="switchTab('chat')" :title="t('nav.chat')">
@@ -259,6 +260,7 @@ import { useTaskTab, registerSwitchTab } from '@/composables/useTaskTab.ts'
 import { useSessionIdentity } from './composables/useSessionIdentity.ts'
 import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'
+import { useTerminalKeyboard } from './composables/useTerminalKeyboard.ts'
 import { usePortForward } from './composables/usePortForward.ts'
 import { useFileWatch } from './composables/useFileWatch.ts'
 import { refreshCurrentFile } from './composables/useFileRefresh.ts'
@@ -322,6 +324,11 @@ const { startTaskPolling, stopTaskPolling, markAllTasksRead, navigateToTaskSetti
 registerSwitchTab(switchTab)
 const terminalRequestedCwd = ref(null)
 
+// Hide AppHeader when terminal tab is active (always); hide Dock + padding only when keyboard is open
+const terminalActive = computed(() => activeTab.value === 'terminal')
+const { keyboardHeight: terminalKeyboardHeight } = useTerminalKeyboard()
+const terminalKeyboardActive = computed(() => terminalActive.value && terminalKeyboardHeight.value > 0)
+
 const quoteQuestion = useQuoteQuestion()
 const quoteSessionDrawerOpen = ref(false)
 
@@ -372,7 +379,7 @@ const currentFileIsMarkdown = computed(() => {
     const f = currentFile.value
     if (!f) return false
     const ft = getFileType(f.name)
-    return ft?.isMarkdown || false
+    return ft?.isMarkdown || ft?.isHtml || false
 })
 const projectRoot = computed(() => store.state.projectRoot)
 
@@ -686,6 +693,11 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+/* When terminal keyboard is open, remove header padding so content expands to top */
+.chrome-hidden {
+    padding-top: 0 !important;
 }
 
 .bottom-dock-wrapper {

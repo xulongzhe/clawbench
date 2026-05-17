@@ -258,7 +258,7 @@ const {
   showEditDialog,
 } = useQuickCommands()
 
-// Terminal viewport
+// Terminal viewport (also syncs keyboardHeight to useTerminalKeyboard singleton)
 const viewport = useTerminalViewport(xterm, terminalContainer)
 
 // Terminal keys
@@ -663,8 +663,8 @@ function openEditDialog() {
   showEditDialog.value = true
 }
 
-// Expose for parent component
-defineExpose({ activate, deactivate })
+// Expose for parent component — keyboardHeight lets App.vue hide chrome when terminal has soft keyboard
+defineExpose({ activate, deactivate, keyboardHeight: viewport.keyboardHeight })
 </script>
 
 <style scoped>
