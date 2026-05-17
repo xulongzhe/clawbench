@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/subtle"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -47,6 +48,7 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 			next.ServeHTTP(w, r)
 			return
 		}
+		slog.Warn("auth: rejecting request", "path", r.URL.Path, "remote", r.RemoteAddr, "has_cookie", err == nil)
 		model.WriteError(w, model.Unauthorized(nil))
 	}
 }

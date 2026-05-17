@@ -14,6 +14,7 @@ import (
 	i18npkg "clawbench/internal/i18n"
 	"clawbench/internal/middleware"
 	"clawbench/internal/model"
+	"clawbench/internal/ws"
 )
 
 // loc returns the Localizer for the current request.
@@ -274,6 +275,17 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/proxy/ports", middleware.Auth(ServeProxyPortAction))
 	register("/api/proxy/detect", middleware.Auth(ServeProxyDetect))
 
+	// Push config — intentionally unauthenticated:
+	// Android native layer calls this before WebView loads (no cookies)
+	// to discover JPush AppKey at runtime. Only exposes enabled flag and
+	// AppKey — no secrets or credentials.
+	register("/api/push/config", ServePushConfig)
+
+	// Push registration — authenticated:
+	// Android app calls this after login to register its JPush Registration ID.
+	// This is a login-level lifecycle event, not per-WS-connection.
+	register("/api/push/register", middleware.Auth(ServePushRegister))
+
 	// SSH tunnel info — authenticated via cookie or ?token= query parameter:
 	// 1. WebView uses cookie-based auth (clawbench_session).
 	// 2. Android TunnelEventService uses ?token= query parameter (set via JS Bridge).
@@ -288,6 +300,11 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/terminal/config", middleware.Auth(TerminalConfigHandler))
 	register("/api/terminal/quick-commands", middleware.Auth(ServeQuickCommands))
 	register("/api/terminal/quick-commands/", middleware.Auth(ServeQuickCommandByID))
+
+	// Global event WebSocket (replaces polling for session/task status)
+	register("/api/ai/events/ws", middleware.Auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws.EventsHandler(w, r)
+	})))
 
 	// Chat quick-send (CRUD for quick-send presets stored in database)
 	register("/api/chat/quick-send", middleware.Auth(ServeChatQuickSend))

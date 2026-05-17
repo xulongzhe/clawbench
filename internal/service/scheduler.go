@@ -14,6 +14,7 @@ import (
 	"clawbench/internal/ai"
 	"clawbench/internal/model"
 	"clawbench/internal/summarize"
+	"clawbench/internal/ws"
 
 	"github.com/robfig/cron/v3"
 )
@@ -414,6 +415,24 @@ func UpdateTaskStats(task *model.ScheduledTask, newStatus string) {
 		now, newStatus, task.ID)
 }
 
+// emitTaskEvent broadcasts a task_update event to connected clients.
+func emitTaskEvent(taskID, status, executionID string) {
+	mgr := ws.GetManager()
+	if mgr == nil {
+		return
+	}
+	mgr.BroadcastEvent(ws.ServerMessage{
+		Type:  "event",
+		ID:    ws.GenerateEventID(),
+		Event: "task_update",
+		Data: &ws.TaskUpdateData{
+			TaskID:      taskID,
+			Status:      status,
+			ExecutionID: executionID,
+		},
+	})
+}
+
 // executeTask runs a scheduled task by invoking the AI backend and inserting
 // the result as an assistant message in the original session.
 func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, triggerType string) {
@@ -454,6 +473,8 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to record task execution", slog.String("err", err.Error()))
 	}
+
+	emitTaskEvent(fmt.Sprintf("%d", task.ID), "running", fmt.Sprintf("%d", executionID))
 
 	// Write user message (the prompt)
 	if _, err := AddChatMessage(projectPath, backendName, sessionID, "user", task.Prompt, nil, false, task.Name); err != nil {
@@ -530,6 +551,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			Type:    "task_exec_update",
 			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "failed"},
 		})
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID))
 		return
 	}
 
@@ -541,6 +563,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			Type:    "task_exec_update",
 			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "failed"},
 		})
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID))
 		return
 	}
 
@@ -574,6 +597,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			Type:    "task_exec_update",
 			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "cancelled"},
 		})
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "cancelled", fmt.Sprintf("%d", executionID))
 		newStatus := task.Status
 		UpdateTaskStats(task, newStatus)
 		return
@@ -592,6 +616,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			Type:    "task_exec_update",
 			Payload: map[string]any{"taskId": task.ID, "execId": sessionID, "status": "failed"},
 		})
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID))
 		newStatus := task.Status
 		UpdateTaskStats(task, newStatus)
 		return
@@ -618,6 +643,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 
 	// Mark execution as completed
 	UpdateExecutionStatus(sessionID, "completed")
+	emitTaskEvent(fmt.Sprintf("%d", task.ID), "completed", fmt.Sprintf("%d", executionID))
 
 	// Notify system event bus: task execution completed
 	GlobalEventBus.Publish(SystemEvent{

@@ -27,6 +27,8 @@ import (
 	"clawbench/internal/speech"
 	"clawbench/internal/summarize"
 	"clawbench/internal/terminal"
+	"clawbench/internal/push"
+	"clawbench/internal/ws"
 )
 
 // multiHandler sends log records to multiple handlers
@@ -605,6 +607,11 @@ func main() {
 			slog.Int("buffer_lines", cfg.Terminal.BufferLines),
 		)
 	}
+
+	// Initialize WS event manager
+	jpushClient := push.NewJPushClient(cfg.Push.JPush)
+	ws.InitManager(jpushClient)
+	handler.SetPushClient(jpushClient)
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)

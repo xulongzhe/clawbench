@@ -61,6 +61,24 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <!-- JPush push notification receiver -->
+        <receiver
+            android:name=".JPushReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="cn.jpush.android.intent.RECEIVER_MESSAGE" />
+                <category android:name="${applicationId}" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Required by JPush SDK 6.x / JCore 5.x for push service to function -->
+        <service
+            android:name=".PushService"
+            android:enabled="true"
+            android:exported="false"
+            android:process=":pushcore" />
+
     </application>
 
 </manifest>

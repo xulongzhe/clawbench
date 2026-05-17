@@ -15,6 +15,9 @@ import android.util.Log;
  * Android 9+ (API 28) prohibits multiple processes from using the same
  * WebView data directory. This class detects the :browser process and
  * assigns it a separate data directory suffix via WebView.setDataDirectorySuffix().
+ *
+ * JPush initialization is NOT done here — it's deferred to MainActivity
+ * which first fetches the AppKey from the server's /api/push/config endpoint.
  */
 public class ClawBenchApp extends Application {
 
@@ -35,6 +38,7 @@ public class ClawBenchApp extends Application {
                 }
             }
         }
+        // JPush init is done in MainActivity.fetchPushConfig() after getting AppKey from server
     }
 
     /**
