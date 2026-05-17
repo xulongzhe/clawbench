@@ -74,6 +74,7 @@ import { useI18n } from 'vue-i18n'
 import { Square, Loader2, History, Trash2 } from 'lucide-vue-next'
 import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import { useTaskHistory } from '@/composables/useTaskHistory.ts'
+import { useSystemEvents } from '@/composables/useSystemEvents.ts'
 import { formatDuration, formatRelativeTime } from '@/utils/format.ts'
 
 const props = defineProps({
@@ -102,6 +103,25 @@ const {
   onTaskChange,
 } = useTaskHistory({ task: computed(() => props.task) })
 
+// Event-driven execution status updates (replaces 3s polling)
+const { registerUIHandler } = useSystemEvents()
+const unregisterExecEvents = registerUIHandler('task_exec_update', (payload: any) => {
+  if (payload.taskId === props.task?.id) {
+    if (payload.status === 'running') {
+      // New execution started — refresh running list
+      loadRunningStatus()
+    } else if (['completed', 'failed', 'cancelled'].includes(payload.status)) {
+      // Execution finished — refresh both running and completed lists
+      loadRunningStatus()
+      loadExecutions()
+    }
+  }
+})
+
+function onOpenFile(filePath) {
+  emit('open-file', filePath)
+}
+
 function formatTokens(meta) {
   const parts = []
   if (meta.inputTokens) parts.push(`${meta.inputTokens.toLocaleString()}↑`)
@@ -121,37 +141,15 @@ function formatAbsoluteTime(createdAt) {
 }
 
 
-let pollTimer = null
-
-function startPolling() {
-  stopPolling()
-  pollTimer = setInterval(loadRunningStatus, 3000)
-}
-
-function stopPolling() {
-  if (pollTimer !== null) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
-
-function onOpenFile(filePath) {
-  emit('open-file', filePath)
-}
-
 watch(() => props.task?.id, (newId) => {
-  if (!newId) {
-    stopPolling()
-    return
-  }
+  if (!newId) return
   onTaskChange()
   loadExecutions()
   loadRunningStatus()
-  startPolling()
 }, { immediate: true })
 
 onUnmounted(() => {
-  stopPolling()
+  unregisterExecEvents()
   onTaskChange() // Abort in-flight requests (ISS-016)
 })
 </script>

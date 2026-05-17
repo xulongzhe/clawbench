@@ -366,24 +366,8 @@ export function useChatSession(options: UseChatSessionOptions) {
   }
 
   function startMsgCountPolling() {
-    stopMsgCountPolling()
-    if (!currentSessionId.value) return
-    lastMsgCount.value = messages.value.length
-    msgCountInterval = setInterval(async () => {
-      if (!currentSessionId.value || loading.value) return
-      try {
-        const resp = await fetch(`/api/ai/chat/count?session_id=${encodeURIComponent(currentSessionId.value)}`)
-        if (!resp.ok) return
-        const data = await resp.json()
-        if (data.count > lastMsgCount.value) {
-          lastMsgCount.value = data.count
-          // Reload history to pick up new messages (don't force scroll, skip if unchanged)
-          await loadHistory(false, false, true)
-        }
-      } catch (err) {
-        // Silently ignore polling errors
-      }
-    }, 15000)
+    // Replaced by message_new SSE event — no longer polls
+    // Kept as no-op for API compatibility
   }
 
   function stopMsgCountPolling() {
@@ -404,7 +388,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     // When SSE is connected, use a much longer interval (30s) since events
     // provide real-time updates. The poll is only a safety net for edge cases.
     // When SSE is disconnected, use the original 2s interval for reliability.
-    const getInterval = () => systemEventsConnected.value ? 30000 : 2000
+    const getInterval = () => systemEventsConnected.value ? 60000 : 2000
     const poll = async () => {
       try {
         const resp = await fetch('/api/ai/sessions')
@@ -554,7 +538,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         const sid = event.payload?.sessionId as string
         // New message for the current session — reload history
         if (sid === currentSessionId.value && !loading.value) {
+          lastMsgCount.value++
           loadHistory(false, false, true)
+        } else if (sid && sid !== currentSessionId.value) {
+          store.state.chatUnread = true
         }
         break
       }

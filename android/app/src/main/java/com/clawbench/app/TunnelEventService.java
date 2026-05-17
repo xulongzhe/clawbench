@@ -60,7 +60,7 @@ import javax.net.ssl.X509TrustManager;
  *
  * All SSH/HTTP network operations run on a background thread to avoid NetworkOnMainThreadException.
  */
-public class PortForwardService extends Service {
+public class TunnelEventService extends Service {
 
     private static final String TAG = "ClawBench";
     private static final int NOTIFICATION_ID = 2;
@@ -78,7 +78,7 @@ public class PortForwardService extends Service {
     private static final int MONITOR_CHECK_INTERVAL_MS = 15000;
 
     private static volatile boolean isRunning = false;
-    private static volatile PortForwardService instance;
+    private static volatile TunnelEventService instance;
 
     private JSch jsch;
     private Session sshSession;
@@ -178,7 +178,7 @@ public class PortForwardService extends Service {
      */
     public static void start(Context context) {
         if (isRunning) return;
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, TunnelEventService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
         } else {
@@ -191,7 +191,7 @@ public class PortForwardService extends Service {
      */
     public static void stop(Context context) {
         if (!isRunning) return;
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, TunnelEventService.class);
         context.stopService(intent);
     }
 
@@ -360,7 +360,7 @@ public class PortForwardService extends Service {
     public void onTaskRemoved(Intent rootIntent) {
         // When the user swipes the app from recents, restart the service
         // so the SSH tunnel keeps running.
-        Intent restartIntent = new Intent(this, PortForwardService.class);
+        Intent restartIntent = new Intent(this, TunnelEventService.class);
         restartIntent.setAction("RESTORE_PORTS");
         PendingIntent pendingIntent = PendingIntent.getService(
                 this, 1, restartIntent,
@@ -500,6 +500,13 @@ public class PortForwardService extends Service {
                             isReconnecting = false;
                             reconnectAttempt = 0;
                             updateNotification(forwardedPorts.size(), "SSH 隧道已恢复");
+
+                            // Interrupt SSE thread so it reconnects through the new tunnel
+                            if (sseThread != null && sseThread.isAlive()) {
+                                Log.i(TAG, "SSE: interrupting listener to trigger reconnect via restored tunnel");
+                                sseThread.interrupt();
+                            }
+
                             // Clear the "recovered" status after 3 seconds
                             try {
                                 Thread.sleep(3000);
@@ -964,7 +971,7 @@ public class PortForwardService extends Service {
      * Add a port forward via the service.
      */
     public static void addForwardedPort(Context context, int port) {
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, TunnelEventService.class);
         intent.setAction("ADD_PORT");
         intent.putExtra("port", port);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -978,7 +985,7 @@ public class PortForwardService extends Service {
      * Remove a port forward via the service.
      */
     public static void removeForwardedPort(Context context, int port) {
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, TunnelEventService.class);
         intent.setAction("REMOVE_PORT");
         intent.putExtra("port", port);
         context.startService(intent);
@@ -1029,6 +1036,15 @@ public class PortForwardService extends Service {
             while (sseActive && !Thread.interrupted()) {
                 HttpURLConnection conn = null;
                 try {
+                    // Prefer SSH tunnel: http://localhost:{httpPort} (single TCP connection, no extra keep-alive).
+                    // Falls back to waiting if tunnel is not yet established.
+                    boolean tunnelOk = isTunnelConnected();
+                    if (!tunnelOk) {
+                        Log.d(TAG, "SSE: SSH tunnel not connected, retrying in 5s");
+                        Thread.sleep(5000);
+                        continue;
+                    }
+
                     String serverUrl = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                             .getString(KEY_SERVER_URL, null);
                     if (serverUrl == null) {
@@ -1038,20 +1054,17 @@ public class PortForwardService extends Service {
                     }
 
                     Uri uri = Uri.parse(serverUrl);
-                    String scheme = uri.getScheme();
-                    if (scheme == null) scheme = "https";
-                    String host = uri.getHost();
                     int httpPort = uri.getPort();
-                    if (httpPort == -1) httpPort = scheme.equals("https") ? 443 : 80;
+                    if (httpPort == -1) httpPort = 443;
 
-                    String sseUrl = scheme + "://" + host + ":" + httpPort + "/api/events?token=" + Uri.encode(sessionToken != null ? sessionToken : "");
+                    // Always route through SSH tunnel: http://localhost:{httpPort}
+                    // The tunnel maps localhost:{httpPort} on device → 127.0.0.1:{httpPort} on server.
+                    // Server-side is plain HTTP (SSH already provides encryption).
+                    String sseUrl = "http://localhost:" + httpPort + "/api/events?token=" + Uri.encode(sessionToken != null ? sessionToken : "");
+                    Log.d(TAG, "SSE: connecting via SSH tunnel to " + sseUrl);
                     URL url = new URL(sseUrl);
                     conn = (HttpURLConnection) url.openConnection();
-
-                    if (conn instanceof HttpsURLConnection && trustAllSSLContext != null) {
-                        ((HttpsURLConnection) conn).setSSLSocketFactory(trustAllSSLContext.getSocketFactory());
-                        ((HttpsURLConnection) conn).setHostnameVerifier((hostname, session) -> true);
-                    }
+                    // No SSL needed — traffic goes through the encrypted SSH tunnel
 
                     conn.setRequestMethod("GET");
                     conn.setRequestProperty("Accept", "text/event-stream");
@@ -1067,7 +1080,7 @@ public class PortForwardService extends Service {
                         continue;
                     }
 
-                    Log.i(TAG, "SSE: connected to /api/events");
+                    Log.i(TAG, "SSE: connected to /api/events via SSH tunnel");
                     BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                     String currentEventType = null;
 
@@ -1090,12 +1103,21 @@ public class PortForwardService extends Service {
                     Log.w(TAG, "SSE: stream ended, reconnecting in 5s");
                     Thread.sleep(5000);
                 } catch (InterruptedException e) {
-                    Log.i(TAG, "SSE: listener thread interrupted, stopping");
-                    break;
+                    // Interrupted — either intentional stop or tunnel-reconnect signal
+                    if (!sseActive) {
+                        Log.i(TAG, "SSE: listener thread interrupted, stopping");
+                        break;
+                    }
+                    // sseActive still true → tunnel-reconnect signal, retry immediately
+                    Log.i(TAG, "SSE: listener thread interrupted for reconnect, retrying");
+                    continue;
                 } catch (Exception e) {
                     Log.w(TAG, "SSE: connection error: " + e.getMessage());
                     if (conn != null) conn.disconnect();
-                    try { Thread.sleep(10000); } catch (InterruptedException ie) { break; }
+                    try { Thread.sleep(10000); } catch (InterruptedException ie) {
+                        if (!sseActive) break;
+                        continue; // tunnel-reconnect signal
+                    }
                 }
             }
             sseActive = false;

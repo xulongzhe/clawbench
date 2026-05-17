@@ -287,7 +287,7 @@ export function usePortForward() {
     }
   }
 
-  /** Start polling tunnel health every 5s while unhealthy */
+  /** Start polling tunnel health every 30s while unhealthy (safety net — primary updates come from tunnel_status SSE events) */
   function startTunnelPoll() {
     if (tunnelPollTimer) return
     tunnelPollTimer = setInterval(async () => {
@@ -332,7 +332,7 @@ export function usePortForward() {
           stopTunnelPoll()
         }
       }
-    }, 5000)
+    }, 30000)
   }
 
   /** Stop the tunnel health polling */

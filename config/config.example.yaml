@@ -290,5 +290,5 @@ ssh:
 #
 # Frontend: useSystemEvents composable connects automatically (cookie auth).
 # 前端: useSystemEvents composable 自动连接（cookie 认证）。
-# Android: PortForwardService native SSE listener uses ?token= auth; shows system notifications when backgrounded.
-# 安卓: PortForwardService 原生 SSE 监听器使用 ?token= 认证；后台时弹出系统通知。
+# Android: TunnelEventService native SSE listener uses ?token= auth; shows system notifications when backgrounded.
+# 安卓: TunnelEventService 原生 SSE 监听器使用 ?token= 认证；后台时弹出系统通知。
