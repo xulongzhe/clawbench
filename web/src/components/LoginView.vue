@@ -78,6 +78,13 @@ async function handleLogin() {
             // Save password to Android native layer for SSH tunnel authentication
             if (window.AndroidNative?.isNativeApp?.()) {
                 window.AndroidNative.setSSHPassword(password.value)
+
+                // Read session token from cookie and pass to native layer
+                // for SSE/HTTP ?token= authentication (native services can't use cookies)
+                const match = document.cookie.match(/clawbench_session=([^;]+)/)
+                if (match) {
+                    window.AndroidNative.setSessionToken(match[1])
+                }
             }
             emit('loginSuccess')
         } else if (res.status >= 500) {
