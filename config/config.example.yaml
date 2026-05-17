@@ -270,3 +270,25 @@ ssh:
 #   max_line_bytes: 65536     # Per-line byte cap to prevent memory bloat (default: 64KB) / 单行字节上限（默认: 64KB）
 #   max_buffer_mb: 4          # Total buffer memory cap in MB (default: 4) / 缓冲总内存上限 MB（默认: 4）
 #   max_sessions: 10          # Max concurrent terminal sessions (default: 10) / 最大并发终端会话数（默认: 10）
+
+# System events configuration (read-only, for reference) / 系统事件配置（只读参考）
+# The EventBus provides real-time state-change notifications via SSE at GET /api/events.
+# EventBus 通过 SSE 端点 GET /api/events 提供实时状态变更通知。
+# No configuration needed — all values are hardcoded defaults / 无需配置 — 所有值为硬编码默认值：
+#   - Max SSE subscribers: 20 (HTTP 429 when exceeded) / 最大 SSE 订阅数: 20（超出返回 HTTP 429）
+#   - Per-subscriber channel buffer: 256 events / 每个订阅者通道缓冲: 256 个事件
+#   - Heartbeat interval: 15 seconds / 心跳间隔: 15 秒
+#   - Auth: cookie or ?token= query param (same as other /api/ endpoints) / 认证: cookie 或 ?token= 查询参数
+#
+# Event types / 事件类型:
+#   session_start    — AI chat session begins / AI 对话会话开始
+#   session_complete  — AI chat session ends (payload: reason: done/user_cancel/disconnect/cancelled/error) / 对话结束（reason 字段）
+#   message_new       — Non-streaming message persisted / 非流式消息已持久化
+#   task_update       — Scheduled task CRUD (create/pause/resume/update/delete) / 定时任务增删改
+#   task_exec_update  — Task execution lifecycle (running/completed/failed/cancelled) / 任务执行生命周期
+#   tunnel_status     — SSH tunnel client connect/disconnect / SSH 隧道客户端连接/断开
+#
+# Frontend: useSystemEvents composable connects automatically (cookie auth).
+# 前端: useSystemEvents composable 自动连接（cookie 认证）。
+# Android: PortForwardService native SSE listener uses ?token= auth; shows system notifications when backgrounded.
+# 安卓: PortForwardService 原生 SSE 监听器使用 ?token= 认证；后台时弹出系统通知。
