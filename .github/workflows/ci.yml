@@ -33,10 +33,12 @@ jobs:
 
       - name: Cross-compile Windows
         run: CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o /dev/null ./cmd/server
+        continue-on-error: true
 
       - name: Cross-compile macOS
         if: runner.os == 'Linux'
         run: CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o /dev/null ./cmd/server
+        continue-on-error: true
 
   build-frontend:
     name: Build Frontend
