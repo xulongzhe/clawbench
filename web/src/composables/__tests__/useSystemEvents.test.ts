@@ -313,6 +313,45 @@ describe('useSystemEvents', () => {
       unreg1()
       unreg2()
     })
+
+    it('registerUIHandler with type filter only receives matching events', () => {
+      const sessionHandler = vi.fn()
+      const taskHandler = vi.fn()
+      const unreg1 = registerUIHandler('session_complete', sessionHandler)
+      const unreg2 = registerUIHandler('task_exec_update', taskHandler)
+
+      // Dispatch a session_start event — neither handler should fire
+      dispatchEvent({ type: 'session_start', payload: { sessionId: 's-1' } })
+      expect(sessionHandler).not.toHaveBeenCalled()
+      expect(taskHandler).not.toHaveBeenCalled()
+
+      // Dispatch a session_complete event — only sessionHandler should fire
+      dispatchEvent({ type: 'session_complete', payload: { sessionId: 's-1', reason: 'done' } })
+      expect(sessionHandler).toHaveBeenCalledTimes(1)
+      expect(sessionHandler).toHaveBeenCalledWith({ type: 'session_complete', payload: { sessionId: 's-1', reason: 'done' } })
+      expect(taskHandler).not.toHaveBeenCalled()
+
+      // Dispatch a task_exec_update event — only taskHandler should fire
+      dispatchEvent({ type: 'task_exec_update', payload: { taskId: 1, status: 'running' } })
+      expect(sessionHandler).toHaveBeenCalledTimes(1) // still 1
+      expect(taskHandler).toHaveBeenCalledTimes(1)
+
+      unreg1()
+      unreg2()
+    })
+
+    it('registerUIHandler with type filter can be unregistered', () => {
+      const handler = vi.fn()
+      const unregister = registerUIHandler('session_start', handler)
+
+      dispatchEvent({ type: 'session_start', payload: { sessionId: 's-1' } })
+      expect(handler).toHaveBeenCalledTimes(1)
+
+      unregister()
+
+      dispatchEvent({ type: 'session_start', payload: { sessionId: 's-2' } })
+      expect(handler).toHaveBeenCalledTimes(1) // Still 1 — no new call
+    })
   })
 
   // --- SSE connection management ---

@@ -96,7 +96,9 @@ public class TunnelEventService extends Service {
     private volatile boolean sseActive = false;
 
     // Whether the app is in the foreground (suppresses notifications)
-    private static volatile boolean appInForeground = true;
+    // Defaults to false — if service restarts before Activity.onCreate, notifications
+    // should still be shown rather than silently dropped.
+    private static volatile boolean appInForeground = false;
 
     // Lazily initialized SSL context that trusts all certs (for self-signed ClawBench servers)
     private static SSLContext trustAllSSLContext;
@@ -217,10 +219,12 @@ public class TunnelEventService extends Service {
                 .putString(KEY_SESSION_TOKEN, token)
                 .apply();
         // Update the running instance immediately
-        if (instance != null) {
-            instance.sessionToken = token;
+        // Capture to local to avoid TOCTOU race with onDestroy setting instance=null
+        TunnelEventService localInstance = instance;
+        if (localInstance != null) {
+            localInstance.sessionToken = token;
             // Start SSE listener if not already running
-            instance.startSSEListener();
+            localInstance.startSSEListener();
         }
     }
 
@@ -324,6 +328,16 @@ public class TunnelEventService extends Service {
             if (!forwardedPorts.isEmpty()) {
                 Log.i(TAG, "SSH: service restarted by START_STICKY, restoring " + forwardedPorts.size() + " port forwards");
                 networkExecutor.execute(this::restoreAndReconnect);
+            } else if (sessionToken != null && !sessionToken.isEmpty()) {
+                // No ports but SSE needs the tunnel — connect SSH for SSE only
+                Log.i(TAG, "SSH: service restarted by START_STICKY, connecting tunnel for SSE (no port forwards)");
+                networkExecutor.execute(() -> {
+                    try {
+                        ensureConnection();
+                    } catch (Exception e) {
+                        Log.e(TAG, "SSH: failed to reconnect for SSE: " + e.getMessage());
+                    }
+                });
             }
         }
 
@@ -1055,7 +1069,9 @@ public class TunnelEventService extends Service {
 
                     Uri uri = Uri.parse(serverUrl);
                     int httpPort = uri.getPort();
-                    if (httpPort == -1) httpPort = 443;
+                    if (httpPort == -1) {
+                        httpPort = serverUrl.startsWith("https://") ? 443 : 80;
+                    }
 
                     // Always route through SSH tunnel: http://localhost:{httpPort}
                     // The tunnel maps localhost:{httpPort} on device → 127.0.0.1:{httpPort} on server.

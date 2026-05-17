@@ -129,12 +129,27 @@ const connected = ref(false)
 // UI-level event handlers (component-specific — notifications, toasts)
 // ---------------------------------------------------------------------------
 
-const uiHandlers: UIEventHandler[] = []
+interface UIHandlerRegistration {
+  /** Optional event type filter — if set, handler only receives events of this type */
+  type?: string
+  handler: UIEventHandler
+}
 
-function registerUIHandler(handler: UIEventHandler) {
-  uiHandlers.push(handler)
+const uiHandlers: UIHandlerRegistration[] = []
+
+/**
+ * Register a UI-level event handler.
+ * Supports two calling conventions:
+ *   registerUIHandler(handler)           — receives ALL event types
+ *   registerUIHandler('type', handler)   — receives only events of that type
+ */
+function registerUIHandler(typeOrHandler: string | UIEventHandler, handler?: UIEventHandler) {
+  const reg: UIHandlerRegistration = typeof typeOrHandler === 'string'
+    ? { type: typeOrHandler, handler: handler! }
+    : { handler: typeOrHandler }
+  uiHandlers.push(reg)
   return () => {
-    const idx = uiHandlers.indexOf(handler)
+    const idx = uiHandlers.indexOf(reg)
     if (idx !== -1) uiHandlers.splice(idx, 1)
   }
 }
@@ -151,9 +166,11 @@ function dispatchEvent(event: SystemEvent) {
   }
 
   // 2. UI handlers (component-level — notifications, toasts, etc.)
-  for (const h of uiHandlers) {
+  for (const reg of uiHandlers) {
+    // Skip if handler has a type filter that doesn't match
+    if (reg.type && reg.type !== event.type) continue
     try {
-      h(event)
+      reg.handler(event)
     } catch (err) {
       console.error('[useSystemEvents] UI handler error:', err)
     }
@@ -416,14 +433,8 @@ export function useSystemEvents() {
     }
   }
 
-  // Register UI event handler (placeholder — consumers use onEvent() for specific types)
-  const unregisterHandler = registerUIHandler(() => {
-    // No-op — consumers register their own handlers via onEvent()
-  })
-
   // Cleanup on unmount
   onUnmounted(() => {
-    unregisterHandler()
     subscriberCount--
     if (subscriberCount <= 0) {
       subscriberCount = 0

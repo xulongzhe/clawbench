@@ -105,7 +105,8 @@ const {
 
 // Event-driven execution status updates (replaces 3s polling)
 const { registerUIHandler } = useSystemEvents()
-const unregisterExecEvents = registerUIHandler('task_exec_update', (payload: any) => {
+const unregisterExecEvents = registerUIHandler('task_exec_update', (event) => {
+  const payload = event.payload
   if (payload.taskId === props.task?.id) {
     if (payload.status === 'running') {
       // New execution started — refresh running list
