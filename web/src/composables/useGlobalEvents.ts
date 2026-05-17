@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useReconnect } from './useReconnect'
 import { useAppMode } from './useAppMode'
 
@@ -27,6 +27,7 @@ type EventHandler = (event: string, data: ServerEvent['data']) => void
 // Module-level singleton state
 const connected = ref(false)
 const pushAvailable = ref(false)
+const pushRegistered = ref(false)
 const handlers: EventHandler[] = []
 const processedEventIds = new Set<string>()
 const MAX_PROCESSED_IDS = 100
@@ -64,12 +65,16 @@ function isDuplicate(id: string): boolean {
  * Check whether push notifications are available.
  * In app mode: query AndroidNative.isPushAvailable() (set by MainActivity after fetchPushConfig).
  * In web mode: fetch from /api/push/config endpoint.
+ * Also sets pushRegistered if JPush is available AND has a registration ID.
  */
 async function checkPushAvailable() {
     if (isAppMode.value) {
         // Android native bridge — already fetched by MainActivity.fetchPushConfig()
         const native = (window as any).AndroidNative
         pushAvailable.value = !!native?.isPushAvailable?.()
+        // JPush registered = available + has registration ID from SDK
+        const regId = native?.getPushRegistrationId?.()
+        pushRegistered.value = pushAvailable.value && !!regId
     } else {
         // Web mode — check server config
         try {
@@ -81,6 +86,8 @@ async function checkPushAvailable() {
         } catch {
             pushAvailable.value = false
         }
+        // Web mode doesn't run JPush SDK, pushRegistered is always false
+        pushRegistered.value = false
     }
 }
 
@@ -211,6 +218,13 @@ function stopHeartbeat() {
 }
 
 export function useGlobalEvents() {
+    // WebSocket connection status: 'connected' | 'reconnecting' | 'disconnected'
+    const wsStatus = computed(() => {
+        if (connected.value) return 'connected'
+        if (reconnect.reconnecting.value) return 'reconnecting'
+        return 'disconnected'
+    })
+
     function onEvent(handler: EventHandler) {
         handlers.push(handler)
         return () => {
@@ -258,7 +272,9 @@ export function useGlobalEvents() {
 
     return {
         connected,
+        wsStatus,
         pushAvailable,
+        pushRegistered,
         connect,
         disconnect,
         onEvent,

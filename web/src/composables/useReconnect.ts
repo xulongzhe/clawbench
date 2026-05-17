@@ -3,6 +3,8 @@
  * Extracts the common reconnect logic shared across useTerminalSession,
  * useChatStream, and useFileWatch.
  */
+import { ref } from 'vue'
+
 export interface ReconnectOptions {
   maxAttempts?: number           // default 3
   baseDelay?: number             // default 2000 (ms)
@@ -15,11 +17,15 @@ export function useReconnect(options: ReconnectOptions) {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let disabled = false
 
+  // Reactive reconnecting state — true when a reconnect is scheduled or in-progress
+  const reconnecting = ref(false)
+
   function hasActiveAttempts(): boolean {
     return reconnectAttempts < (options.maxAttempts ?? 3)
   }
 
   function scheduleReconnect() {
+    reconnecting.value = true
     const delay = (options.baseDelay ?? 2000) * (reconnectAttempts + 1)
     reconnectTimer = setTimeout(() => {
       reconnectAttempts++
@@ -30,12 +36,14 @@ export function useReconnect(options: ReconnectOptions) {
   function reset() {
     reconnectAttempts = 0
     disabled = false
+    reconnecting.value = false
     if (reconnectTimer) clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
 
   function disable() {
     disabled = true
+    reconnecting.value = false
     if (reconnectTimer) clearTimeout(reconnectTimer)
     reconnectTimer = null
   }
@@ -48,6 +56,7 @@ export function useReconnect(options: ReconnectOptions) {
   }
 
   return {
+    reconnecting,
     scheduleReconnect,
     reset,
     disable,
