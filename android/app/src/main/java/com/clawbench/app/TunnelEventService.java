@@ -239,10 +239,21 @@ public class TunnelEventService extends Service {
     /**
      * Set whether the app is in the foreground.
      * When in foreground, system notifications are suppressed (the WebView handles UI).
+     * Also manages the SSH tunnel lifecycle:
+     *   - Going to background: shuts down SSH tunnel (SSE runs independently via HTTPS)
+     *   - Coming to foreground: restores SSH tunnel if there are port forwards
      * Called from MainActivity.onResume/onPause.
      */
     public static void setAppForeground(boolean foreground) {
         appInForeground = foreground;
+        TunnelEventService localInstance = instance;
+        if (localInstance != null) {
+            if (foreground) {
+                localInstance.restoreTunnelIfNeeded();
+            } else {
+                localInstance.shutdownTunnelIfNeeded();
+            }
+        }
     }
 
     /**
@@ -323,21 +334,12 @@ public class TunnelEventService extends Service {
             }
         } else {
             // START_STICKY restart: Android killed the service and recreated it with null intent.
-            // onCreate() already restored port numbers into forwardedPorts via restoreForwardedPorts(),
-            // but the SSH session was lost. Re-establish the tunnel now.
-            if (!forwardedPorts.isEmpty()) {
+            // onCreate() already restored port numbers into forwardedPorts via restoreForwardedPorts()
+            // and started the SSE listener. The SSH tunnel is only restored if there are port forwards
+            // AND the app is in the foreground (SSE runs independently via HTTPS).
+            if (!forwardedPorts.isEmpty() && appInForeground) {
                 Log.i(TAG, "SSH: service restarted by START_STICKY, restoring " + forwardedPorts.size() + " port forwards");
                 networkExecutor.execute(this::restoreAndReconnect);
-            } else if (sessionToken != null && !sessionToken.isEmpty()) {
-                // No ports but SSE needs the tunnel — connect SSH for SSE only
-                Log.i(TAG, "SSH: service restarted by START_STICKY, connecting tunnel for SSE (no port forwards)");
-                networkExecutor.execute(() -> {
-                    try {
-                        ensureConnection();
-                    } catch (Exception e) {
-                        Log.e(TAG, "SSH: failed to reconnect for SSE: " + e.getMessage());
-                    }
-                });
             }
         }
 
@@ -480,6 +482,12 @@ public class TunnelEventService extends Service {
                         continue;
                     }
 
+                    // Don't auto-reconnect in background — tunnel will be restored on foreground
+                    if (!appInForeground) {
+                        Log.d(TAG, "SSH: session disconnected but app is in background, waiting for foreground");
+                        continue;
+                    }
+
                     Log.w(TAG, "SSH: session disconnected, starting auto-reconnect");
                     isReconnecting = true;
                     reconnectAttempt = 0;
@@ -518,12 +526,6 @@ public class TunnelEventService extends Service {
                             isReconnecting = false;
                             reconnectAttempt = 0;
                             updateNotification(forwardedPorts.size(), "SSH 隧道已恢复");
-
-                            // Interrupt SSE thread so it reconnects through the new tunnel
-                            if (sseThread != null && sseThread.isAlive()) {
-                                Log.i(TAG, "SSE: interrupting listener to trigger reconnect via restored tunnel");
-                                sseThread.interrupt();
-                            }
 
                             // Clear the "recovered" status after 3 seconds
                             try {
@@ -881,6 +883,51 @@ public class TunnelEventService extends Service {
     }
 
     /**
+     * Shut down the SSH tunnel when the app goes to background.
+     * SSE runs independently via HTTPS, so the tunnel is only needed for port forwarding
+     * which is only useful when the WebView is active in the foreground.
+     * This saves battery by releasing WakeLock, WifiLock, and the SSH TCP connection.
+     */
+    private void shutdownTunnelIfNeeded() {
+        if (sshSession == null || !sshSession.isConnected()) return;
+        if (forwardedPorts.isEmpty()) {
+            // No ports — nothing to keep the tunnel alive for
+            Log.i(TAG, "SSH: app going to background, shutting down idle tunnel");
+            stopConnectionMonitor();
+            releaseWifiLock();
+            releaseWakeLock();
+            disconnectInternal();
+            updateNotification(0, null);
+        } else {
+            // Has port forwards — keep tunnel alive but release WakeLock/WifiLock
+            // since the system will manage the connection through the foreground service.
+            // The connection monitor will detect if the session dies and won't reconnect
+            // while in background (intentionalDisconnect is not set, but monitor checks
+            // appInForeground before reconnecting).
+            Log.i(TAG, "SSH: app going to background, keeping tunnel for " + forwardedPorts.size() + " port forwards");
+        }
+    }
+
+    /**
+     * Restore the SSH tunnel when the app comes to the foreground.
+     * If there are forwarded ports and the tunnel is down, reconnect it.
+     */
+    private void restoreTunnelIfNeeded() {
+        if (forwardedPorts.isEmpty()) return;
+        if (sshSession != null && sshSession.isConnected()) return; // Already up
+        Log.i(TAG, "SSH: app coming to foreground, restoring tunnel for " + forwardedPorts.size() + " port forwards");
+        intentionalDisconnect = false;
+        networkExecutor.execute(() -> {
+            try {
+                ensureConnection();
+                Log.i(TAG, "SSH: tunnel restored on foreground");
+            } catch (Exception e) {
+                Log.e(TAG, "SSH: failed to restore tunnel on foreground: " + e.getMessage());
+            }
+        });
+    }
+
+    /**
      * Create the notification channel (called once in onCreate).
      */
     private void createNotificationChannel() {
@@ -1043,8 +1090,12 @@ public class TunnelEventService extends Service {
 
     /**
      * Start the SSE listener thread that connects to /api/events.
-     * Receives session_complete and task_exec_update events to show system notifications
-     * when the app is in the background.
+     * Connects directly via HTTPS (not through SSH tunnel) so that SSE
+     * works independently of the tunnel state. This allows the SSH tunnel
+     * to be shut down when the app goes to background, saving battery,
+     * while SSE stays alive on its own HTTPS connection.
+     * Receives session_complete and task_exec_update events to show system
+     * notifications when the app is in the background.
      */
     private void startSSEListener() {
         if (sseActive) return; // Already running
@@ -1060,15 +1111,6 @@ public class TunnelEventService extends Service {
             while (sseActive && !Thread.interrupted()) {
                 HttpURLConnection conn = null;
                 try {
-                    // Prefer SSH tunnel: http://localhost:{httpPort} (single TCP connection, no extra keep-alive).
-                    // Falls back to waiting if tunnel is not yet established.
-                    boolean tunnelOk = isTunnelConnected();
-                    if (!tunnelOk) {
-                        Log.d(TAG, "SSE: SSH tunnel not connected, retrying in 5s");
-                        Thread.sleep(5000);
-                        continue;
-                    }
-
                     String serverUrl = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                             .getString(KEY_SERVER_URL, null);
                     if (serverUrl == null) {
@@ -1078,19 +1120,26 @@ public class TunnelEventService extends Service {
                     }
 
                     Uri uri = Uri.parse(serverUrl);
+                    String scheme = uri.getScheme();
+                    if (scheme == null) scheme = "https";
+                    String host = uri.getHost();
                     int httpPort = uri.getPort();
                     if (httpPort == -1) {
-                        httpPort = serverUrl.startsWith("https://") ? 443 : 80;
+                        httpPort = scheme.equals("https") ? 443 : 80;
                     }
 
-                    // Always route through SSH tunnel: http://localhost:{httpPort}
-                    // The tunnel maps localhost:{httpPort} on device → 127.0.0.1:{httpPort} on server.
-                    // Server-side is plain HTTP (SSH already provides encryption).
-                    String sseUrl = "http://localhost:" + httpPort + "/api/events?token=" + Uri.encode(sessionToken != null ? sessionToken : "");
-                    Log.d(TAG, "SSE: connecting via SSH tunnel to " + sseUrl);
+                    // Connect directly via HTTPS — SSE is independent of the SSH tunnel.
+                    // This allows the tunnel to be shut down in background while SSE stays alive.
+                    String sseUrl = scheme + "://" + host + ":" + httpPort + "/api/events?token=" + Uri.encode(sessionToken != null ? sessionToken : "");
+                    Log.d(TAG, "SSE: connecting directly to " + sseUrl);
                     URL url = new URL(sseUrl);
                     conn = (HttpURLConnection) url.openConnection();
-                    // No SSL needed — traffic goes through the encrypted SSH tunnel
+
+                    // Handle self-signed HTTPS certificates (ClawBench often uses self-signed certs)
+                    if (conn instanceof HttpsURLConnection && trustAllSSLContext != null) {
+                        ((HttpsURLConnection) conn).setSSLSocketFactory(trustAllSSLContext.getSocketFactory());
+                        ((HttpsURLConnection) conn).setHostnameVerifier((hostname, session) -> true);
+                    }
 
                     conn.setRequestMethod("GET");
                     conn.setRequestProperty("Accept", "text/event-stream");
@@ -1106,7 +1155,7 @@ public class TunnelEventService extends Service {
                         continue;
                     }
 
-                    Log.i(TAG, "SSE: connected to /api/events via SSH tunnel");
+                    Log.i(TAG, "SSE: connected to /api/events");
                     BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                     String currentEventType = null;
 
@@ -1129,20 +1178,18 @@ public class TunnelEventService extends Service {
                     Log.w(TAG, "SSE: stream ended, reconnecting in 5s");
                     Thread.sleep(5000);
                 } catch (InterruptedException e) {
-                    // Interrupted — either intentional stop or tunnel-reconnect signal
                     if (!sseActive) {
                         Log.i(TAG, "SSE: listener thread interrupted, stopping");
                         break;
                     }
-                    // sseActive still true → tunnel-reconnect signal, retry immediately
-                    Log.i(TAG, "SSE: listener thread interrupted for reconnect, retrying");
+                    Log.i(TAG, "SSE: listener thread interrupted, retrying");
                     continue;
                 } catch (Exception e) {
                     Log.w(TAG, "SSE: connection error: " + e.getMessage());
                     if (conn != null) conn.disconnect();
                     try { Thread.sleep(10000); } catch (InterruptedException ie) {
                         if (!sseActive) break;
-                        continue; // tunnel-reconnect signal
+                        continue;
                     }
                 }
             }
