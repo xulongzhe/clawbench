@@ -31,6 +31,11 @@ import { CheckCircle2, XCircle } from 'lucide-vue-next'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { getToolIcon } from '@/utils/icons'
 import { handleToolAction } from '@/utils/renderToolDetail.ts'
+import { useAppMode } from '@/composables/useAppMode.ts'
+import { usePortForward } from '@/composables/usePortForward.ts'
+import { useToast } from '@/composables/useToast.ts'
+import { isLocalhostUrl, parseLocalhostUrl } from '@/composables/useLocalhostAnnotation.ts'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -47,8 +52,62 @@ const emit = defineEmits(['close', 'file-open', 'send-message'])
 const category = computed(() => getToolIcon(props.toolName).category)
 const headerIcon = computed(() => getToolIcon(props.toolName).icon)
 
+const { isAppMode } = useAppMode()
+const { ensurePortRegistered, openPort } = usePortForward()
+const toast = useToast()
+const { t } = useI18n()
+let urlOpening = false
+
+async function openLocalhostUrl(element, port, protocol) {
+  if (urlOpening) return
+  urlOpening = true
+  element.classList.add('loading')
+
+  try {
+    await ensurePortRegistered(port, protocol)
+    openPort(port, protocol)
+  } catch (err) {
+    toast.show(t('chat.localhost.openFailed'), { type: 'error' })
+  } finally {
+    urlOpening = false
+    element.classList.remove('loading')
+  }
+}
+
 function handleBodyClick(event) {
   if (props.toolName && handleToolAction(props.toolName, event, emit)) return
+
+  // Handle localhost URL open buttons — bottom sheet is teleported to <body>,
+  // ChatMessageList's handleChatClick won't see these clicks.
+  if (isAppMode.value) {
+    const urlBtn = event.target.closest('.chat-url-open-btn')
+    if (urlBtn) {
+      event.preventDefault()
+      event.stopPropagation()
+      const port = parseInt(urlBtn.getAttribute('data-port') || '0')
+      const protocol = urlBtn.getAttribute('data-protocol') || 'http'
+      if (port > 0) {
+        openLocalhostUrl(urlBtn, port, protocol)
+      }
+      return
+    }
+
+    // Intercept <a> clicks on localhost URLs in tool output
+    const anchor = event.target.closest('a[href]')
+    if (anchor) {
+      const href = anchor.getAttribute('href') || ''
+      if (isLocalhostUrl(href)) {
+        event.preventDefault()
+        event.stopPropagation()
+        const parsed = parseLocalhostUrl(href)
+        if (parsed) {
+          openLocalhostUrl(anchor, parsed.port, parsed.protocol)
+        }
+        return
+      }
+    }
+  }
+
   // Handle file-open buttons — bottom sheet is teleported to <body>,
   // ChatMessageList's handleChatClick won't see these clicks.
   const fileBtn = event.target.closest('.chat-file-open-btn')
@@ -862,5 +921,54 @@ function handleBodyClick(event) {
 .tool-detail-body .thinking-overlay-md th {
   background: var(--bg-tertiary, rgba(0,0,0,0.04));
   font-weight: 600;
+}
+
+/* ── Localhost URL open button in tool output (same pattern as ChatMessageItem) ── */
+.tool-detail-body .chat-url-open-btn {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+  font-size: 12px;
+  line-height: 1;
+  vertical-align: baseline;
+}
+
+.tool-detail-body .chat-url-open-btn:hover {
+  color: var(--accent-color, #4a90d9);
+  background: var(--bg-tertiary, #f0f0f0);
+}
+
+.tool-detail-body .chat-url-open-btn.loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.tool-detail-body .chat-url-open-btn.loading::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: url-btn-spin 0.6s linear infinite;
+  margin-left: 2px;
+  display: inline-block;
+}
+
+/* Localhost <a> links in tool output pre blocks */
+.tool-detail-body pre a[href] {
+  color: var(--accent-color, #4a90d9);
+  text-decoration: none;
+}
+
+.tool-detail-body pre a[href]:hover {
+  text-decoration: underline;
 }
 </style>

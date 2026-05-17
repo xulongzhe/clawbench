@@ -55,9 +55,11 @@ export function localhostOpenButtonHtml(port: number, protocol: string, url: str
 /**
  * Detect localhost URLs in rendered HTML and append clickable icon buttons.
  *
- * Two cases:
+ * Three cases:
  * 1. <a> tags with localhost hrefs → keep <a> intact, append icon button after
  * 2. Bare localhost URLs in text → wrap in <a>, append icon button after
+ * 3. <code> tags containing a localhost URL → wrap <code> in <a>, append icon button after
+ *    (unlike file paths, localhost URLs in backticks are meant to be clickable)
  *
  * Returns the annotated HTML.
  */
@@ -84,8 +86,9 @@ export function annotateLocalhostUrls(html: string): string {
         return `<!--ABLOCK_LOCALHOST${aBlocks.length - 1}-->`
     })
 
-    // Protect <code> blocks from the bare-URL regex (inline code should not get buttons,
-    // same as useFilePathAnnotation which also skips code blocks for bare-path matching)
+    // Protect <code> blocks from the bare-URL regex, then annotate localhost URLs
+    // inside them during restore (unlike file paths, localhost URLs in inline code
+    // are typically meant to be clickable — e.g. `http://localhost:20003`)
     const codeBlocks: string[] = []
     html = html.replace(/<code[^>]*>[\s\S]*?<\/code>/gi, (match) => {
         codeBlocks.push(match)
@@ -102,8 +105,20 @@ export function annotateLocalhostUrls(html: string): string {
         return `${linkHtml}${localhostOpenButtonHtml(port, protocol, url)}`
     })
 
-    // Restore <code> blocks (no annotation inside inline code)
-    html = html.replace(/<!--CODEBLOCK_LOCALHOST(\d+)-->/g, (_, idx) => codeBlocks[parseInt(idx)])
+    // Restore <code> blocks — annotate localhost URLs inside inline code
+    // (unlike file paths, localhost URLs in backticks are meant to be clickable)
+    html = html.replace(/<!--CODEBLOCK_LOCALHOST(\d+)-->/g, (_, idx) => {
+        let match = codeBlocks[parseInt(idx)]
+        // Check if the <code> content is a localhost URL
+        const codeContent = match.replace(/<code[^>]*>/i, '').replace(/<\/code>/i, '')
+        const parsed = parseLocalhostUrl(codeContent.trim())
+        if (parsed) {
+            // Replace the <code>localhost-url</code> with <a> + button
+            // Keep the <code> styling for visual consistency but wrap in <a>
+            match = `<a href="${escapeHtml(parsed.fullUrl)}" target="_blank" rel="noopener">${match}</a>${localhostOpenButtonHtml(parsed.port, parsed.protocol, parsed.fullUrl)}`
+        }
+        return match
+    })
 
     // Restore <a> blocks and append icon button to localhost <a> tags
     html = html.replace(/<!--ABLOCK_LOCALHOST(\d+)-->/g, (_, idx) => {

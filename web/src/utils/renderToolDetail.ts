@@ -6,6 +6,8 @@ import { hljs } from './globals.ts'
 import { escapeHtml } from './html.ts'
 import { detectLang, highlightLine } from './diff.ts'
 import { resolveFilePath, fileOpenButtonHtml } from '@/composables/useFilePathAnnotation.ts'
+import { localhostOpenButtonHtml } from '@/composables/useLocalhostAnnotation.ts'
+import { useAppMode } from '@/composables/useAppMode.ts'
 import { gt } from '@/composables/useLocale'
 import { store } from '@/stores/app.ts'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer.ts'
@@ -522,17 +524,50 @@ export function formatToolInput(input: any, toolName?: string): string {
 // ── Tool result output formatting ──
 
 /**
+ * Annotate localhost URLs in already-escaped text (e.g. tool output inside <pre>).
+ * Unlike annotateLocalhostUrls() which operates on full HTML with block protection,
+ * this works on plain escaped text — matching bare URLs and wrapping them
+ * with <a> tags + open buttons.
+ * Only runs in App mode (same gate as the main annotation composable).
+ */
+function annotateLocalhostInEscapedText(text: string): string {
+  const { isAppMode } = useAppMode()
+  if (!isAppMode.value) return text
+
+  // Match localhost URLs in escapeHtml'd text.
+  // URL characters (letters, digits, :/.-?) are not changed by escapeHtml,
+  // but & becomes &amp; in query strings, and = stays as-is.
+  // Path group matches anything that isn't whitespace, quotes, or closing brackets.
+  const re = /https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)(\/[^\s"'>)\]]*)?/gi
+  return text.replace(re, (url, portStr) => {
+    const port = parseInt(portStr)
+    if (port <= 0 || port > 65535) return url
+    const protocol = url.startsWith('https') ? 'https' : 'http'
+    // Un-escape the URL for data attributes (escapeHtml turned & into &amp;, etc.)
+    const rawUrl = url.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    // In <pre> context, wrap URL in <a> and append the open button
+    const linkHtml = `<a href="${escapeHtml(rawUrl)}" target="_blank" rel="noopener">${url}</a>`
+    return `${linkHtml}${localhostOpenButtonHtml(port, protocol, rawUrl)}`
+  })
+}
+
+/**
  * Format tool execution output for display in the expanded tool detail area.
  * Renders output text with appropriate styling based on tool type.
+ * In App mode, localhost URLs in the output are annotated with open buttons.
  */
 export function formatToolOutput(output: string, toolName?: string): string {
   if (!output) return ''
   // For Bash tool: render as terminal output
   if (toolName?.toLowerCase() === 'bash') {
-    return `<div class="bash-output-body"><pre>${escapeHtml(output)}</pre></div>`
+    const escaped = escapeHtml(output)
+    const annotated = annotateLocalhostInEscapedText(escaped)
+    return `<div class="bash-output-body"><pre>${annotated}</pre></div>`
   }
   // Default: render as preformatted text
-  return `<div class="tool-output-default"><pre>${escapeHtml(output)}</pre></div>`
+  const escaped = escapeHtml(output)
+  const annotated = annotateLocalhostInEscapedText(escaped)
+  return `<div class="tool-output-default"><pre>${annotated}</pre></div>`
 }
 
 // ── Tool registrations ──
