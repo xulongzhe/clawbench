@@ -14,6 +14,7 @@ import (
 	"clawbench/internal/ai"
 	"clawbench/internal/model"
 	"clawbench/internal/summarize"
+	"clawbench/internal/ws"
 
 	"github.com/robfig/cron/v3"
 )
@@ -414,6 +415,24 @@ func UpdateTaskStats(task *model.ScheduledTask, newStatus string) {
 		now, newStatus, task.ID)
 }
 
+// emitTaskEvent broadcasts a task_update event to connected clients.
+func emitTaskEvent(taskID, status, executionID string) {
+	mgr := ws.GetManager()
+	if mgr == nil {
+		return
+	}
+	mgr.BroadcastEvent(ws.ServerMessage{
+		Type:  "event",
+		ID:    ws.GenerateEventID(),
+		Event: "task_update",
+		Data: &ws.TaskUpdateData{
+			TaskID:      taskID,
+			Status:      status,
+			ExecutionID: executionID,
+		},
+	})
+}
+
 // executeTask runs a scheduled task by invoking the AI backend and inserting
 // the result as an assistant message in the original session.
 func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, triggerType string) {
@@ -454,6 +473,8 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to record task execution", slog.String("err", err.Error()))
 	}
+
+	emitTaskEvent(fmt.Sprintf("%d", task.ID), "running", fmt.Sprintf("%d", executionID))
 
 	// Write user message (the prompt)
 	if _, err := AddChatMessage(projectPath, backendName, sessionID, "user", task.Prompt, nil, false, task.Name); err != nil {
@@ -519,6 +540,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to create backend for task", slog.String("err", err.Error()))
 		UpdateExecutionStatus(sessionID, "failed")
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID))
 		return
 	}
 
@@ -526,6 +548,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to execute stream for task", slog.String("err", err.Error()))
 		UpdateExecutionStatus(sessionID, "failed")
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID))
 		return
 	}
 
@@ -555,6 +578,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			slog.String("session_id", sessionID),
 		)
 		UpdateExecutionStatus(sessionID, "cancelled")
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID))
 		newStatus := task.Status
 		UpdateTaskStats(task, newStatus)
 		return
@@ -569,6 +593,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			slog.String("session_id", sessionID),
 		)
 		UpdateExecutionStatus(sessionID, "failed")
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID))
 		newStatus := task.Status
 		UpdateTaskStats(task, newStatus)
 		return
@@ -595,6 +620,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 
 	// Mark execution as completed
 	UpdateExecutionStatus(sessionID, "completed")
+	emitTaskEvent(fmt.Sprintf("%d", task.ID), "completed", fmt.Sprintf("%d", executionID))
 
 	// Update task execution stats
 	newStatus := task.Status

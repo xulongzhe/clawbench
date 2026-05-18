@@ -7,6 +7,23 @@ import { useAgents } from '@/composables/useAgents.ts'
 import { store } from '@/stores/app.ts'
 import { buildMessageSnapshot, parseMessages } from '@/utils/chatSessionUtils.ts'
 
+// Module-level one-time session list load (replaces continuous polling)
+// Accessible from App.vue without instantiating useChatSession
+export async function loadSessionsOnce() {
+  try {
+    const identity = useSessionIdentity()
+    const res = await fetch('/api/ai/sessions')
+    if (res.ok) {
+      const data = await res.json()
+      const sessions = data.sessions || []
+      const hasRunning = sessions.some((s: any) => s.running)
+      const hasUnread = sessions.some((s: any) => s.unreadCount > 0 && s.id !== identity.currentSessionId.value)
+      store.state.chatRunning = hasRunning
+      store.state.chatUnread = hasUnread
+    }
+  } catch { /* ignore */ }
+}
+
 export interface UseChatSessionOptions {
   currentSessionId: Ref<string>
   messages: Ref<any[]>
@@ -109,7 +126,6 @@ export function useChatSession(options: UseChatSessionOptions) {
   const sessionDrawerOpen = ref(false)
   const lastMsgCount = ref(0)
   let msgCountInterval: ReturnType<typeof setInterval> | null = null
-  let globalPollingInterval: ReturnType<typeof setInterval> | null = null
 
   // Pagination state
   const totalMessages = ref(0)
@@ -387,7 +403,26 @@ export function useChatSession(options: UseChatSessionOptions) {
   }
 
   function stopGlobalPolling() {
-    if (globalPollingInterval) { clearInterval(globalPollingInterval); globalPollingInterval = null }
+    // Replaced by WS events — kept as no-op for compatibility
+  }
+
+  // Called from WS session_update event
+  function onSessionEvent(data: { session_id?: string; status?: string; has_new_messages?: boolean } | undefined) {
+    if (!data) return
+    if (data.status === 'running') {
+      store.state.chatRunning = true
+    } else {
+      store.state.chatRunning = false
+      // Session completed — mark unread
+      if (data.session_id && data.session_id !== currentSessionId.value) {
+        store.state.chatUnread = true
+      }
+    }
+  }
+
+  // One-time session list load — delegates to module-level function
+  async function loadSessionsOnceInner() {
+    await loadSessionsOnce()
   }
 
   // Track which sessions have already had their completion notification fired.
@@ -395,92 +430,8 @@ export function useChatSession(options: UseChatSessionOptions) {
   // prevents runningSessions from being updated.
   const notifiedSessions = new Set<string>()
 
-  async function startGlobalPolling() {
-    stopGlobalPolling()
-    globalPollingInterval = setInterval(async () => {
-      try {
-        const resp = await fetch('/api/ai/sessions')
-        const data = await resp.json()
-        const sessions = data.sessions || []
-        const newRunning = new Set(sessions.filter(s => s.running).map(s => s.id))
-
-        // Check for unread messages in other sessions
-        const hasUnreadOther = sessions.some(s => s.unreadCount > 0 && s.id !== currentSessionId.value)
-        store.state.chatUnread = hasUnreadOther
-
-        // Calculate total chat unread count for native badge
-        const totalChatUnread = sessions.reduce((sum, s) => sum + (s.unreadCount || 0), 0)
-        void totalChatUnread // reserved for future native badge
-
-        // Track running sessions for dock/chat button indicator
-        store.state.chatRunning = newRunning.size > 0
-
-        // Check for completed sessions
-        const completedSessions: string[] = []
-        for (const sessionId of runningSessions.value) {
-          if (!newRunning.has(sessionId)) {
-            completedSessions.push(sessionId)
-          }
-        }
-
-        // Update runningSessions FIRST so that even if callbacks throw,
-        // we won't re-detect these sessions as "just completed" on the next poll.
-        runningSessions.value = newRunning
-
-        // Clean up notifiedSessions: remove entries that are no longer running
-        // and have already been processed.
-        for (const sid of completedSessions) {
-          notifiedSessions.delete(sid)
-        }
-
-        // Now fire callbacks for completed sessions (with idempotency guard)
-        for (const sessionId of completedSessions) {
-          if (notifiedSessions.has(sessionId)) continue
-          notifiedSessions.add(sessionId)
-
-          if (sessionId === currentSessionId.value) {
-            // Current session completed but UI may be stuck in loading state
-            // (e.g. done event was dropped) — force reset with full reload.
-            // Disconnect SSE and fallback polling BEFORE replacing messages
-            // to prevent orphaned connections from writing stale events.
-            if (loading.value) {
-              onDisconnectStream()
-              onStopPolling()
-              loadHistory(true, false, true)
-            }
-          } else {
-            // Other session completed
-            const session = sessions.find(s => s.id === sessionId)
-            if (session) {
-              onStreamDone?.()
-              toast.show(gt('chat.session.completed'), {
-                icon: '✅',
-                type: 'success',
-                duration: 5000,
-                onClick: () => {
-                  switchSession(sessionId, session.backend)
-                  onOpen()
-                }
-              })
-              // Also show browser notification for completed session
-              try {
-                notification.show(gt('chat.session.completed'), {
-                  body: gt('chat.session.clickToViewDetails'),
-                  onClick: () => {
-                    switchSession(sessionId, session.backend)
-                    onOpen()
-                  }
-                })
-              } catch (e) {
-                console.warn('Failed to show browser notification:', e)
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Global polling error:', err)
-      }
-    }, 2000)
+  function startGlobalPolling() {
+    // Replaced by WS events — kept as no-op for compatibility
   }
 
   function handleVisibilityChange() {
@@ -517,6 +468,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     createSession,
     deleteSession,
     openSessionTab,
+    onSessionEvent,
+    loadSessionsOnce: loadSessionsOnceInner,
     startGlobalPolling,
     stopGlobalPolling,
     startMsgCountPolling,

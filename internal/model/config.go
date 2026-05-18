@@ -50,6 +50,7 @@ type Config struct {
 	RAG      RAGConfig      `yaml:"rag"`       // RAG history memory configuration
 	Terminal TerminalConfig `yaml:"terminal"`  // Interactive web terminal configuration
 	Tasks    TasksConfig    `yaml:"tasks"`     // Scheduled task configuration
+	Push     PushConfig     `yaml:"push"`      // Push notification configuration
 }
 
 // TerminalConfig holds configuration for the interactive web terminal.
@@ -66,6 +67,18 @@ type TerminalConfig struct {
 type TasksConfig struct {
 	SummarizeBackend string `yaml:"summarize_backend"` // Summarization backend for task executions (empty = disabled)
 	SummarizeModel   string `yaml:"summarize_model"`   // Model for task summarization (empty = backend default)
+}
+
+// PushConfig holds configuration for push notifications.
+type PushConfig struct {
+	JPush JPushConfig `yaml:"jpush"`
+}
+
+// JPushConfig holds configuration for the JPush push notification service.
+type JPushConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	AppKey       string `yaml:"app_key"`
+	MasterSecret string `yaml:"master_secret"`
 }
 
 // RAGConfig holds configuration for the RAG history memory system.
