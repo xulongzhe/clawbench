@@ -73,4 +73,5 @@ dependencies {
     implementation 'com.github.mwiede:jsch:0.2.16'
     implementation 'cn.jiguang.sdk:jpush:6.1.0'
     implementation 'cn.jiguang.sdk:jcore:5.4.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }

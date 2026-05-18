@@ -618,6 +618,62 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
     }
 
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // App going to background — if JPush is not available, start native WS
+        // so we still get notifications when Android kills the WebView process.
+        if (!pushAvailable && webViewConnected) {
+            PortForwardService.startNativeEventWs(this);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // App returning to foreground — stop native WS (WebView WS handles events)
+        PortForwardService.stopNativeEventWs(this);
+        // Handle notification tap intent
+        handleNotificationIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleNotificationIntent(intent);
+    }
+
+    /**
+     * Handle intent extras from notification taps.
+     * Extracts session_id or task_id and dispatches a clawbench-open-session
+     * event to the WebView (same behavior as JPush notification taps).
+     */
+    private void handleNotificationIntent(Intent intent) {
+        if (intent == null) return;
+        String sessionId = intent.getStringExtra("session_id");
+        String taskId = intent.getStringExtra("task_id");
+        if (sessionId != null || taskId != null) {
+            // Use the same openSession pattern as JPushReceiver
+            if (webView != null) {
+                try {
+                    org.json.JSONObject detail = new org.json.JSONObject();
+                    if (sessionId != null) detail.put("sessionId", sessionId);
+                    if (taskId != null) detail.put("taskId", taskId);
+                    webView.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('clawbench-open-session', { detail: " + detail.toString() + " }))",
+                        null
+                    );
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to dispatch open-session event from notification", e);
+                }
+            }
+            // Clear extras so we don't re-dispatch on subsequent onResume
+            intent.removeExtra("session_id");
+            intent.removeExtra("task_id");
+        }
+    }
+
     /**
      * Intercept volume key events when volumeKeyMode is enabled (terminal panel open).
      * Instead of adjusting system volume, dispatch them to the WebView as JS callbacks.

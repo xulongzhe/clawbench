@@ -35,19 +35,18 @@ type Manager struct {
 	mu            sync.Mutex
 	subscriptions map[string]*ClientSubscription // keyed by clientID
 	jpush         *push.JPushClient
-	initOnce      sync.Once
 }
 
 var defaultManager *Manager
+var defaultManagerOnce sync.Once
 
 func InitManager(jpushClient *push.JPushClient) {
-	defaultManager.initOnce.Do(func() {
-		// noop — already initialized below; protects against double-init
+	defaultManagerOnce.Do(func() {
+		defaultManager = &Manager{
+			subscriptions: make(map[string]*ClientSubscription),
+			jpush:        jpushClient,
+		}
 	})
-	defaultManager = &Manager{
-		subscriptions: make(map[string]*ClientSubscription),
-		jpush:        jpushClient,
-	}
 }
 
 func GetManager() *Manager {
