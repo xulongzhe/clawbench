@@ -25,6 +25,7 @@
       :untracked="untracked"
       :count-label="mode === 'file' ? t('git.history.records') : t('git.history.commitRecords')"
       :selected-s-h-a="selectedSHA"
+      :refresh-hint="refreshHint"
       @select="onCommitSelect"
       @search="onSearch"
       @load-more="loadMoreCommits"
@@ -115,7 +116,7 @@
 
 <script setup>
 import { GitBranch, Plus, Minus, FileText } from 'lucide-vue-next'
-import { ref, computed, inject, onMounted, watch } from 'vue'
+import { ref, computed, inject, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import GitCommitList from './GitCommitList.vue'
 import GitCommitMeta from './GitCommitMeta.vue'
@@ -133,6 +134,10 @@ const props = defineProps({
     default: 'project', // 'project' | 'file'
   },
   file: Object, // { path, name } — used when mode === 'file'
+  active: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['open-file'])
@@ -215,6 +220,8 @@ function resetState() {
   wtFiles.value = []
   lastProjectRoot.value = null
   lastFilePath.value = null
+  hasLoadedMore.value = false
+  refreshHint.value = false
 }
 
 // Expose commitSearch for the search watcher
@@ -267,6 +274,9 @@ async function loadProjectHistory() {
       commits.value = histCommits
     }
     hasMore.value = data.hasMore
+    // Record git state after successful load
+    lastGitState.value = { branch: store.state.gitBranch, head: store.state.gitHead, dirty: store.state.gitDirty }
+    refreshHint.value = false
   } catch {
     error.value = t('git.history.loadError')
   } finally {
@@ -308,6 +318,7 @@ async function loadFileHistory(filePath) {
 async function loadMoreCommits() {
   if (loadingMore.value || !hasMore.value || !isGit.value) return
   loadingMore.value = true
+  hasLoadedMore.value = true
   try {
     // Count only git commits (exclude WT node) for the skip parameter,
     // since WT is a frontend-only entry not present in git log output.
@@ -328,6 +339,7 @@ async function loadMoreCommits() {
 async function onSearch(q) {
   if (!q.trim() || !isGit.value || props.mode === 'file') return
   searchLoading.value = true
+  if (hasMore.value) hasLoadedMore.value = true
   try {
     while (hasMore.value) {
       const gitCount = commits.value.filter(c => !c.isWT).length
@@ -363,6 +375,8 @@ async function initGitRepo() {
 
 async function onRefresh() {
   commitSearch.value = ''
+  hasLoadedMore.value = false
+  refreshHint.value = false
   if (commitListRef.value) commitListRef.value.commitSearch = ''
   if (props.mode === 'file' && props.file?.path) {
     await loadFileHistory(props.file.path)
@@ -479,6 +493,37 @@ async function loadDiff() {
 // Track previous identity to detect actual changes
 const lastProjectRoot = ref(null)
 const lastFilePath = ref(null)
+
+// Track git state for auto-refresh on tab re-entry
+const lastGitState = ref({ branch: '', head: '', dirty: false })
+
+// Whether the refresh button should pulse to indicate stale data
+const refreshHint = ref(false)
+
+// Whether the user has loadMore'd beyond the first page
+const hasLoadedMore = ref(false)
+
+// When tab becomes active, check if git state changed
+watch(() => props.active, async (nowActive) => {
+  if (!nowActive || props.mode !== 'project') return
+  await store.loadGitBranch()
+  const cur = { branch: store.state.gitBranch, head: store.state.gitHead, dirty: store.state.gitDirty }
+  const changed = lastGitState.value.branch &&
+    (cur.branch !== lastGitState.value.branch ||
+     cur.head !== lastGitState.value.head ||
+     cur.dirty !== lastGitState.value.dirty)
+  if (changed) {
+    if (hasLoadedMore.value) {
+      // User has extra data loaded — don't auto-refresh, just hint
+      refreshHint.value = true
+    } else {
+      // Only first page — safe to auto-refresh
+      await loadProjectHistory()
+      nextTick(() => commitListRef.value?.observeList())
+    }
+  }
+  lastGitState.value = { ...cur }
+})
 
 onMounted(async () => {
   const currentProject = store.state.projectRoot

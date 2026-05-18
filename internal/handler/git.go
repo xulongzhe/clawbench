@@ -165,6 +165,8 @@ func ServeGitBranch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"isGit":  false,
 			"branch": "",
+			"head":   "",
+			"dirty":  false,
 		})
 		return
 	}
@@ -177,9 +179,25 @@ func ServeGitBranch(w http.ResponseWriter, r *http.Request) {
 		branch = strings.TrimSpace(string(output))
 	}
 
+	headSHA := ""
+	shaOutput, shaErr := exec.Command("git", "rev-parse", "HEAD").Output()
+	if shaErr == nil {
+		headSHA = strings.TrimSpace(string(shaOutput))
+	}
+
+	// git diff --quiet HEAD exits 0 if clean, 1 if dirty, 128 if no commits yet
+	dirty := false
+	diffCmd := exec.Command("git", "diff", "--quiet", "HEAD")
+	diffCmd.Dir = projectPath
+	if err := diffCmd.Run(); err != nil {
+		dirty = true
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"isGit":  true,
 		"branch": branch,
+		"head":   headSHA,
+		"dirty":  dirty,
 	})
 }
 

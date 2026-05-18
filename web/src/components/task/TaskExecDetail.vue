@@ -220,6 +220,17 @@ function showMetadata() {
 const contentRef = ref(null)
 
 function handleContentClick(event) {
+  // Handle commit-hash clicks (span or button)
+  const commitEl = event.target.closest('.chat-commit-hash, .chat-commit-open-btn')
+  if (commitEl) {
+    event.preventDefault()
+    event.stopPropagation()
+    const sha = commitEl.getAttribute('data-commit-sha')
+    if (sha) {
+      window.dispatchEvent(new CustomEvent('navigate-to-commit', { detail: { sha } }))
+    }
+    return
+  }
   const btn = event.target.closest('.chat-file-open-btn')
   if (!btn) return
   event.preventDefault()

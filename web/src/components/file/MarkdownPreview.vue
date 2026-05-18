@@ -60,7 +60,18 @@ const { renderMarkdown, renderMermaidInElement } = useMarkdownRenderer()
 const { annotateFilePaths, verifyFilePaths, resolveRelativePath, openFilePath } = useFilePathAnnotation()
 
 function handleClick(event) {
-    // Check for file-open button click first
+    // Check for commit-hash click first (span or button)
+    const commitEl = (event.target).closest('.chat-commit-hash, .chat-commit-open-btn')
+    if (commitEl) {
+        event.preventDefault()
+        event.stopPropagation()
+        const sha = commitEl.getAttribute('data-commit-sha')
+        if (sha) {
+            window.dispatchEvent(new CustomEvent('navigate-to-commit', { detail: { sha } }))
+        }
+        return
+    }
+    // Check for file-open button click
     const btn = (event.target).closest('.chat-file-open-btn')
     if (btn) {
         event.preventDefault()

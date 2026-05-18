@@ -108,6 +108,7 @@
           <TabPanel tabId="history" :activeTab="activeTab" :noHeader="true">
             <GitHistoryContent
               mode="project"
+              :active="activeTab === 'history'"
               @open-file="handleSelectFile"
             />
           </TabPanel>
