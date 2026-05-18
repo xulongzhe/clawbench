@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    name: Test
+    name: Test & Coverage Gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,8 +19,8 @@ jobs:
       - name: Go vet
         run: go vet ./...
 
-      - name: Go test
-        run: go test ./...
+      - name: Go coverage gate
+        run: ./scripts/check-go-coverage.sh
 
       - uses: actions/setup-node@v4
         with:
@@ -30,8 +30,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Frontend test
-        run: npm test
+      - name: Frontend coverage gate
+        run: ./scripts/check-frontend-coverage.sh
 
   build-frontend:
     name: Build Frontend
