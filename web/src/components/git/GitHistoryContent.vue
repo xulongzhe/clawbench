@@ -578,6 +578,12 @@ onMounted(async () => {
     lastFilePath.value = currentFile
   }
 
+  // If navigating from a commit hash link, skip the default load and go
+  // directly to that commit's files view. The watch on commitNavigateSha
+  // will handle the navigation. onMounted's loadProjectHistory would
+  // reset selectedSHA and currentView, undoing the navigation.
+  if (store.state.commitNavigateSha) return
+
   if (commits.value.length === 0 && !error.value) {
     if (props.mode === 'file' && props.file?.path) {
       await loadFileHistory(props.file.path)
