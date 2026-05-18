@@ -99,13 +99,20 @@ async function checkPushAvailable() {
 function registerPushId() {
     if (!isAppMode.value) return
     const regId = (window as any).AndroidNative?.getPushRegistrationId?.()
-    if (!regId) return
+    if (!regId) {
+        console.log('[useGlobalEvents] registerPushId: no registration ID available yet (JPush SDK may still be initializing)')
+        return
+    }
+    console.log('[useGlobalEvents] registerPushId: registering with server, regId:', regId)
     fetch('/api/push/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ registration_id: regId }),
-    }).catch(() => {
-        // Non-critical — push will not work until next successful registration
+    }).then(() => {
+        pushRegistered.value = true
+        console.log('[useGlobalEvents] registerPushId: registered successfully')
+    }).catch((err) => {
+        console.warn('[useGlobalEvents] registerPushId: failed', err)
     })
 }
 
@@ -124,6 +131,11 @@ function connect() {
 
         // Check push availability (non-blocking)
         checkPushAvailable()
+
+        // Re-register push ID on every WS connect (JPush SDK may have obtained
+        // the registration ID since last connect, or the server may have lost it
+        // due to CleanupStale). This is idempotent — the server just overwrites.
+        registerPushId()
 
         // Start heartbeat monitoring
         startHeartbeat()
@@ -257,16 +269,42 @@ export function useGlobalEvents() {
         }
     }
 
+    // Handle JPush registration event from native layer.
+    // This fires when JPushReceiver.onRegister() is called — typically a few
+    // seconds after app startup, when the JPush SDK has finished registering
+    // with JPush servers and obtained a Registration ID.
+    function handlePushRegistered(e: Event) {
+        const detail = (e as CustomEvent).detail
+        const regId = detail?.registrationId
+        if (!regId) return
+
+        console.log('[useGlobalEvents] JPush registration ID received from native:', regId)
+        // Update push availability state
+        pushAvailable.value = true
+        pushRegistered.value = true
+        // Register with server — this is the critical step that was missing.
+        // Before this event fires, getPushRegistrationId() returns empty,
+        // so the initial registerPushId() in init() is a no-op.
+        registerPushId()
+    }
+
     function init() {
         document.addEventListener('visibilitychange', handleVisibilityChange)
+        // Listen for JPush registration event from native layer.
+        // This fires when JPushReceiver.onRegister() is called, which may happen
+        // seconds after app startup (JPush SDK registration is async).
+        window.addEventListener('clawbench-push-registered', handlePushRegistered)
         // Initial connect
         connect()
         // Register push ID via HTTP (login-level, not per-WS-connection)
+        // May return empty if JPush hasn't finished registering yet —
+        // that's OK, the clawbench-push-registered event will re-trigger registration.
         registerPushId()
     }
 
     function destroy() {
         document.removeEventListener('visibilitychange', handleVisibilityChange)
+        window.removeEventListener('clawbench-push-registered', handlePushRegistered)
         disconnect()
     }
 

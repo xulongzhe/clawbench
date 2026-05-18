@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -115,7 +116,7 @@ func (m *Manager) RegisterPushID(regID string) {
 	sub.pushRegID = regID
 	sub.mu.Unlock()
 
-	slog.Debug("ws: registered push ID", "reg_id", regID)
+	slog.Info("ws: registered push ID", "reg_id", regID)
 }
 
 // BroadcastEvent sends an event to the connected client, or buffers it / sends JPush.
@@ -177,12 +178,17 @@ func (m *Manager) BroadcastEvent(msg ServerMessage) {
 		if msg.Event == "task_update" {
 			alert = "计划任务已完成"
 		}
+		slog.Info("ws: sending jpush notification", "event", msg.Event, "reg_id", pushRegID, "title", title)
 		if err := m.jpush.SendNotification(pushRegID, title, alert, extras); err != nil {
 			slog.Warn("ws: jpush notification failed", "error", err)
 		}
 		return
 	}
 
+	// No push registration ID available — log for debugging
+	if pushRegID == "" {
+		slog.Debug("ws: client disconnected, no push reg ID — notification not delivered", "event", msg.Event)
+	}
 	sub.mu.Unlock()
 }
 
@@ -218,7 +224,10 @@ func (m *Manager) CleanupStale() {
 	}
 }
 
-// GenerateEventID creates a unique event ID.
+// eventSeq is an atomic counter to ensure unique event IDs even within the same millisecond.
+var eventSeq atomic.Int64
+
+// GenerateEventID creates a unique event ID using millisecond timestamp + atomic counter.
 func GenerateEventID() string {
-	return fmt.Sprintf("evt_%d_%d", time.Now().UnixMilli(), time.Now().Nanosecond()%1000)
+	return fmt.Sprintf("evt_%d_%d", time.Now().UnixMilli(), eventSeq.Add(1))
 }
