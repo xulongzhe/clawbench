@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"path/filepath"
 	"runtime"
 	"testing"
 )
@@ -115,7 +116,7 @@ func TestExpandTilde(t *testing.T) {
 		{
 			name:     "tilde with slash",
 			input:    "~/Documents",
-			expected: home + "/Documents",
+			expected: filepath.Join(home, "Documents"),
 		},
 		{
 			name:     "bare tilde",
@@ -151,7 +152,7 @@ func TestExpandTilde(t *testing.T) {
 	// Windows backslash tilde
 	if runtime.GOOS == "windows" {
 		result := ExpandTilde(`~\Documents`)
-		expected := home + `\Documents`
+		expected := filepath.Join(home, "Documents")
 		if result != expected {
 			t.Errorf("ExpandTilde(%q) = %q, want %q", `~\Documents`, result, expected)
 		}

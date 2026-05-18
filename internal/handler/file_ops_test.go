@@ -111,8 +111,10 @@ func TestServeFileRename(t *testing.T) {
 
 		createTestFile(t, env.ProjectDir, "file.txt", "data")
 
+		// Use os.TempDir() which is guaranteed to be outside the test's WatchDir
+		escapePath := filepath.Join(os.TempDir(), "clawbench-escape-test.txt")
 		req := newRequest(t, http.MethodPost, "/api/file/rename", map[string]string{
-			"path": "/tmp/file.txt", // Escapes WatchDir
+			"path": escapePath,
 			"name": "renamed.txt",
 		})
 		withProjectCookie(req, env.ProjectDir)
@@ -365,8 +367,10 @@ func TestServeFileDelete(t *testing.T) {
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
+		// Use os.TempDir() which is guaranteed to be outside the test's WatchDir
+		escapePath := filepath.Join(os.TempDir(), "clawbench-escape-test.txt")
 		req := newRequest(t, http.MethodPost, "/api/file/delete", map[string]string{
-			"path": "/tmp/something", // Escapes WatchDir
+			"path": escapePath,
 		})
 		withProjectCookie(req, env.ProjectDir)
 

@@ -9,6 +9,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// closeDBAfterTest closes the global DB on test cleanup to release
+// the SQLite file lock on Windows (t.TempDir cleanup would fail otherwise).
+func closeDBAfterTest(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		if service.DB != nil {
+			service.DB.Close()
+			service.DB = nil
+		}
+	})
+}
+
 // setupOldSchemaDB creates a temp directory with an "old schema" database
 // that has task_executions with a content column (pre-migration state).
 func setupOldSchemaDB(t *testing.T) string {
@@ -22,6 +34,7 @@ func setupOldSchemaDB(t *testing.T) string {
 
 	// Initialize DB so all current-schema tables exist
 	service.InitDB()
+	closeDBAfterTest(t)
 
 	db := service.DB
 
@@ -114,6 +127,7 @@ func TestRunMigrateCommand_NoMigrationNeeded(t *testing.T) {
 	model.BinDir = tmpDir
 	model.ConfigInstance = model.Config{WatchDir: tmpDir}
 	service.InitDB()
+	closeDBAfterTest(t)
 
 	exitCode := RunMigrateCommand([]string{})
 	assert.Equal(t, 0, exitCode)
@@ -218,6 +232,7 @@ func TestRunMigrateCommand_SkipsExecutionWithMissingTask(t *testing.T) {
 	model.BinDir = tmpDir
 	model.ConfigInstance = model.Config{WatchDir: tmpDir}
 	service.InitDB()
+	closeDBAfterTest(t)
 
 	replaceWithTextIDScheduledTasks(t)
 
@@ -267,6 +282,7 @@ func TestRunMigrateCommand_EmptyContentSkipped(t *testing.T) {
 	model.BinDir = tmpDir
 	model.ConfigInstance = model.Config{WatchDir: tmpDir}
 	service.InitDB()
+	closeDBAfterTest(t)
 
 	replaceWithTextIDScheduledTasks(t)
 
@@ -318,6 +334,7 @@ func TestRunMigrateCommand_PartialMigration(t *testing.T) {
 	model.BinDir = tmpDir
 	model.ConfigInstance = model.Config{WatchDir: tmpDir}
 	service.InitDB()
+	closeDBAfterTest(t)
 
 	// Simulate partial migration: task_executions has both content and session_id.
 	// The current InitDB schema doesn't have content column, so add it first.

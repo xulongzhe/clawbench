@@ -2,10 +2,15 @@ package platform
 
 import (
 	"os"
+	"runtime"
 	"testing"
 )
 
 func TestResolveLoginShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login shell resolution is POSIX-only")
+	}
+
 	// Save and restore original SHELL
 	origShell := os.Getenv("SHELL")
 	t.Cleanup(func() { os.Setenv("SHELL", origShell) })
@@ -40,6 +45,10 @@ func TestResolveLoginShell(t *testing.T) {
 }
 
 func TestSetLoginShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login shell resolution is POSIX-only")
+	}
+
 	origShell := os.Getenv("SHELL")
 	t.Cleanup(func() { os.Setenv("SHELL", origShell) })
 

@@ -210,8 +210,15 @@ func TestReadFlagOrFile_AtSignAlone(t *testing.T) {
 
 func TestReadFlagOrFile_PathTraversal(t *testing.T) {
 	tmpDir := t.TempDir()
-	// Try to read /etc/hostname with project set to tmpDir — should be denied
-	_, err := readFlagOrFile("@/etc/hostname", tmpDir)
+	// Try to read a file outside the project — use a path that resolves
+	// outside tmpDir regardless of OS. On Unix: /etc/hostname; on Windows
+	// that doesn't exist, so we create a file in the temp dir's parent instead.
+	outsideDir := filepath.Join(tmpDir, "..")
+	outsideFile := filepath.Join(outsideDir, "outside-traversal-test.txt")
+	os.WriteFile(outsideFile, []byte("secret"), 0644)
+	t.Cleanup(func() { os.Remove(outsideFile) })
+
+	_, err := readFlagOrFile("@"+outsideFile, tmpDir)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "access denied")
 }

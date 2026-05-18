@@ -2,15 +2,17 @@ package middleware
 
 import (
 	"context"
-	"fmt"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
-	"time"
 )
 
 type requestIDKey struct{}
 
 func generateRequestID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func GetRequestID(ctx context.Context) string {
