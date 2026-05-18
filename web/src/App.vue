@@ -108,6 +108,7 @@
           <TabPanel tabId="history" :activeTab="activeTab" :noHeader="true">
             <GitHistoryContent
               mode="project"
+              :active="activeTab === 'history'"
               @open-file="handleSelectFile"
             />
           </TabPanel>
@@ -267,6 +268,7 @@ import { useFileWatch } from './composables/useFileWatch.ts'
 import { refreshCurrentFile } from './composables/useFileRefresh.ts'
 import { useGlobalEvents } from './composables/useGlobalEvents'
 import { store } from './stores/app.ts'
+import { setPendingCommitNavigation } from './composables/useCommitNavigation.ts'
 import { initMermaid, reRenderMermaid } from './utils/mermaid.ts'
 import { getFileType } from './utils/fileType.ts'
 import 'highlight.js/styles/github.css'
@@ -592,7 +594,7 @@ function handleOpenFileManager() {
 function handleNavigateToCommit(e) {
     const sha = e?.detail?.sha
     if (sha) {
-        store.setCommitNavigate(sha)
+        setPendingCommitNavigation(sha)
     }
     activeTab.value = 'history'
 }
@@ -815,15 +817,24 @@ onUnmounted(() => {
     isolation: isolate;
     overflow: hidden;
     border-color: transparent;
-    box-shadow: 0 0 6px 2px rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 4px 1px color-mix(in srgb, var(--accent-color, #0066cc) 25%, transparent);
 }
 .dock-btn.has-running::before {
     content: '';
     position: absolute;
     inset: -2px;
     border-radius: inherit;
-    background: conic-gradient(from 0deg, transparent 0%, rgba(255,255,255,0.6) 10%, var(--accent-color, #0066cc) 22%, rgba(255,255,255,0.4) 34%, transparent 50%);
-    animation: dock-spin-light 1.2s linear infinite;
+    background: conic-gradient(
+        from 0deg,
+        transparent 0%,
+        color-mix(in srgb, var(--accent-color, #0066cc) 15%, rgba(255,255,255,0.1)) 8%,
+        color-mix(in srgb, var(--accent-color, #0066cc) 50%, rgba(255,255,255,0.3)) 16%,
+        var(--accent-color, #0066cc) 22%,
+        color-mix(in srgb, var(--accent-color, #0066cc) 50%, rgba(255,255,255,0.3)) 28%,
+        color-mix(in srgb, var(--accent-color, #0066cc) 15%, rgba(255,255,255,0.1)) 36%,
+        transparent 50%
+    );
+    animation: dock-spin-light 2s linear infinite;
     z-index: -2;
 }
 .dock-btn.has-running::after {

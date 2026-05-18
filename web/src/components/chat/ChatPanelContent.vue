@@ -383,7 +383,7 @@ provide('chatRender', {
   hasImagesInContent: render.hasImagesInContent,
 })
 provide('chatSession', { getAgentIcon, getAgentName })
-provide('chatUI', { closeSheet: () => switchTab('viewer') })
+provide('chatUI', { navigateToFileViewer: () => switchTab('viewer') })
 provide('autoSpeech', autoSpeech)
 provide('layoutRefreshKey', layoutRefreshKey)
 

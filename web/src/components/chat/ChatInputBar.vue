@@ -613,7 +613,7 @@ defineExpose({
     }
 }
 
-/* Running session indicator — horizontal sweep light */
+/* Running session indicator — refined sweep light with accent color blend */
 .chat-action-btn.has-running {
     position: relative;
     overflow: hidden;
@@ -631,16 +631,25 @@ defineExpose({
     position: absolute;
     top: 0;
     left: 0;
-    width: 60%;
+    width: 40%;
     height: 100%;
-    transform: translateX(-160%);
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.35), transparent);
-    animation: sweep-light 2s ease-in-out infinite;
+    transform: translateX(-140%);
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--accent-color, #0066cc) 12%, rgba(255,255,255,0.08)) 25%,
+        color-mix(in srgb, var(--accent-color, #0066cc) 30%, rgba(255,255,255,0.22)) 50%,
+        color-mix(in srgb, var(--accent-color, #0066cc) 12%, rgba(255,255,255,0.08)) 75%,
+        transparent 100%
+    );
+    animation: sweep-light 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 @keyframes sweep-light {
-    0% { transform: translateX(-60%); }
-    100% { transform: translateX(160%); }
+    0% { transform: translateX(-40%); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateX(200%); opacity: 0; }
 }
 
 .chat-action-btn svg {

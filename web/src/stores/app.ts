@@ -81,10 +81,9 @@ interface AppState {
 
     // Git
     gitBranch: string
+    gitHead: string
+    gitDirty: boolean
     isGitRepo: boolean
-
-    // Git navigation (commit hash links from chat)
-    commitNavigateSha: string | null
 
 }
 
@@ -129,8 +128,9 @@ const state = reactive<AppState>({
 
     // Git
     gitBranch: '',
+    gitHead: '',
+    gitDirty: false,
     isGitRepo: false,
-    commitNavigateSha: null,
 
 })
 
@@ -173,19 +173,21 @@ async function setProject(path: string): Promise<void> {
 // Git
 // =============================================
 
-async function loadGitBranch(): Promise<void> {
+async function loadGitBranch(): Promise<{ isGit: boolean; branch: string; head: string; dirty: boolean }> {
     try {
-        const data = await apiGet<{ isGit: boolean; branch: string }>('/api/git/branch')
+        const data = await apiGet<{ isGit: boolean; branch: string; head: string; dirty: boolean }>('/api/git/branch')
         state.isGitRepo = data.isGit
         state.gitBranch = data.branch || ''
+        state.gitHead = data.head || ''
+        state.gitDirty = !!data.dirty
+        return data
     } catch (_) {
         state.isGitRepo = false
         state.gitBranch = ''
+        state.gitHead = ''
+        state.gitDirty = false
+        return { isGit: false, branch: '', head: '', dirty: false }
     }
-}
-
-function setCommitNavigate(sha: string): void {
-    state.commitNavigateSha = sha
 }
 
 // =============================================
@@ -444,7 +446,6 @@ export const store = {
     loadProject,
     setProject,
     loadGitBranch,
-    setCommitNavigate,
     loadFiles,
     selectFile,
     deleteFile,

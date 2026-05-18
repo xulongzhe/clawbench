@@ -3,6 +3,7 @@ import { marked, DOMPurify } from '@/utils/globals.ts'
 import { formatToolInput } from '@/utils/renderToolDetail.ts'
 import { renderKatexInString, renderMermaidInElement } from '@/composables/useMarkdownRenderer.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
+import { useCommitHashAnnotation } from '@/composables/useCommitHashAnnotation.ts'
 import { useLocalhostAnnotation } from '@/composables/useLocalhostAnnotation.ts'
 import { store } from '@/stores/app.ts'
 import { apiGet } from '@/utils/api.ts'
@@ -27,7 +28,8 @@ import {
 
 export function useChatRender(options) {
   const { messages, theme, currentSessionId } = options
-  const { annotateFilePaths, verifyFilePaths, annotateCommitHashes, verifyCommitHashes } = useFilePathAnnotation()
+  const { annotateFilePaths, verifyFilePaths } = useFilePathAnnotation()
+  const { annotateCommitHashes, verifyCommitHashes } = useCommitHashAnnotation()
   const { annotateLocalhostUrls } = useLocalhostAnnotation()
 
   const blockTasks = reactive({})

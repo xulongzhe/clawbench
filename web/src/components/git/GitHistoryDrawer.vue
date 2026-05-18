@@ -133,6 +133,7 @@ import GitDiffView from './GitDiffView.vue'
 import GitBreadcrumb from './GitBreadcrumb.vue'
 import { renderDiff } from '@/utils/diff.ts'
 import { store } from '@/stores/app.ts'
+import { useCommitNavigation, consumePendingCommitNavigation } from '@/composables/useCommitNavigation.ts'
 const { t } = useI18n()
 
 const props = defineProps({
@@ -383,6 +384,16 @@ async function onRefresh() {
   setTimeout(() => commitListRef.value?.observeList(), 100)
 }
 
+// ─── Shared commit navigation composable ─────────────────────────────────
+
+const { navigateToCommit, handleDrillBackToCommits } = useCommitNavigation({
+    commits,
+    selectedSHA,
+    currentView,
+    loadCommitFiles,
+    loadProjectHistory,
+})
+
 // ─── Drill-down navigation ──────────────────────────────────────────────────
 
 function onCommitSelect(c) {
@@ -405,27 +416,13 @@ function onCommitSelect(c) {
   }
 }
 
-// Navigate directly to a specific commit's files view
-// Used when clicking a commit hash link from chat
-function navigateToCommit(sha) {
-  selectedSHA.value = sha
-  currentView.value = 'files'
-  loadCommitFiles(sha).catch(() => {})
-}
-
-// Watch for commit navigation requests from chat (commit hash links)
-watch(() => store.state.commitNavigateSha, (sha) => {
-  if (!sha) return
-  store.state.commitNavigateSha = null // consume
-  navigateToCommit(sha)
-})
-
 function drillBack(view) {
   if (view === 'commits') {
     selectedSHA.value = null
     files.value = []
     selectedFilePath.value = null
     diffState.value = { loading: false, empty: false, html: '' }
+    handleDrillBackToCommits()
   } else if (view === 'files') {
     selectedFilePath.value = null
     diffState.value = { loading: false, empty: false, html: '' }
@@ -514,6 +511,14 @@ watch(() => props.open, async (val) => {
     resetState()
     lastProjectRoot.value = currentProject
     lastFilePath.value = currentFile
+  }
+
+  // Check for pending commit navigation (from chat hash links)
+  const pendingSha = consumePendingCommitNavigation()
+  if (pendingSha) {
+    await navigateToCommit(pendingSha)
+    setTimeout(() => commitListRef.value?.observeList(), 100)
+    return
   }
 
   // Only load data if we have no commits loaded

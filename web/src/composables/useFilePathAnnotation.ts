@@ -2,6 +2,7 @@ import { escapeHtml } from '@/utils/html.ts'
 import { splitPath } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
 import { gt } from '@/composables/useLocale'
+import { clearCommitHashCache } from '@/composables/useCommitHashAnnotation.ts'
 
 /**
  * Resolve a file path to a project-relative path usable by store.selectFile().
@@ -55,23 +56,10 @@ export function resolveFilePath(path: string, projectRoot: string): string | nul
 export const FILE_OPEN_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
 
 /**
- * SVG icon markup for the commit-open button (git-commit icon).
- * A small circle with lines — resembles a commit node in a graph.
- */
-export const COMMIT_OPEN_ICON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/></svg>'
-
-/**
  * Generate HTML for the small open-file button.
  */
 export function fileOpenButtonHtml(resolvedPath: string): string {
     return `<button class="chat-file-open-btn" data-file-path="${escapeHtml(resolvedPath)}" title="${escapeHtml(gt('chat.attach.openFile'))}">${FILE_OPEN_ICON_SVG}</button>`
-}
-
-/**
- * Generate HTML for the small commit-open button.
- */
-export function commitOpenButtonHtml(sha: string): string {
-    return `<button class="chat-commit-open-btn" data-commit-sha="${escapeHtml(sha)}" title="${escapeHtml(gt('chat.attach.openCommit'))}">${COMMIT_OPEN_ICON_SVG}</button>`
 }
 
 export interface AnnotateFilePathsOptions {
@@ -96,16 +84,6 @@ export interface AnnotateFilePathsOptions {
 const FILE_PATH_RE = /(?:\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)+\.[a-zA-Z][a-zA-Z0-9]*|\.\.?\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)*\.[a-zA-Z][a-zA-Z0-9]*|[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z][a-zA-Z0-9]*)/g
 
 /**
- * Regex that matches potential git commit hashes in plain text.
- * Matches 7-40 character hex strings with at least one a-f letter.
- * Word-boundary delimited to avoid matching inside longer strings.
- * Pure-decimal 7-digit numbers (timestamps, byte counts) are excluded
- * because git commit hashes are SHA-1 values that virtually always
- * contain at least one hex letter.
- */
-const COMMIT_HASH_RE = /\b([0-9a-f]{7,40})\b/gi
-
-/**
  * Check if a string looks like a file path that should be annotated.
  * - Contains at least one '/' (e.g. src/foo.ts, ./bar.go)
  * - Or has a short file extension (e.g. ChatPanel.vue, main.go)
@@ -113,17 +91,6 @@ const COMMIT_HASH_RE = /\b([0-9a-f]{7,40})\b/gi
  */
 function looksLikeFilePath(text: string): boolean {
     return /\/|\.[a-zA-Z][a-zA-Z0-9]{0,3}$/.test(text)
-}
-
-/**
- * Check if a string looks like a git commit hash.
- * Must be 7-40 hex chars and contain at least one a-f letter
- * (to exclude pure-decimal strings like timestamps and byte counts).
- */
-function looksLikeCommitHash(text: string): boolean {
-    if (text.length < 7 || text.length > 40) return false
-    if (!/^[0-9a-f]+$/i.test(text)) return false
-    return /[a-f]/i.test(text)
 }
 
 /**
@@ -256,115 +223,6 @@ export function annotateFilePaths(
     return { html: doc.body.innerHTML, detectedPaths }
 }
 
-/**
- * Detect potential git commit hashes in rendered HTML and insert open-commit buttons after them.
- *
- * Processing order:
- *   1. <code> tags whose text content looks like a commit hash → add class + button
- *   2. Text nodes (outside pre/a/code) → regex match hashes → insert span + button
- *
- * Returns the annotated HTML and a list of detected SHAs for the caller to verify asynchronously.
- */
-export function annotateCommitHashes(
-    html: string,
-): { html: string; detectedSHAs: string[] } {
-    if (!html) return { html: '', detectedSHAs: [] }
-
-    const detectedSHAs: string[] = []
-
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-
-    // ── Step 1: <code> tags whose content looks like a commit hash ──
-    for (const code of doc.querySelectorAll('code')) {
-        // Skip <code> inside <pre> blocks
-        if (code.closest('pre')) continue
-        // Skip <code> already annotated as file path
-        if (code.classList.contains('chat-file-path')) continue
-        const stripped = (code.textContent || '').trim()
-        if (!looksLikeCommitHash(stripped)) continue
-        detectedSHAs.push(stripped)
-        code.classList.add('chat-commit-hash')
-        code.setAttribute('data-commit-sha', stripped)
-        code.insertAdjacentHTML('afterend', commitOpenButtonHtml(stripped))
-    }
-
-    // ── Step 2: Text nodes (outside pre/a/code) → regex match hashes ──
-    const textNodes: Text[] = []
-    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
-        acceptNode(node: Text) {
-            const parent = node.parentElement
-            if (!parent) return NodeFilter.FILTER_REJECT
-            // Skip <pre> blocks
-            if (parent.closest('pre')) return NodeFilter.FILTER_REJECT
-            // Skip text inside <a> tags
-            if (parent.tagName === 'A' || parent.closest('a')) return NodeFilter.FILTER_REJECT
-            // Skip text inside <code> tags (handled in step 1)
-            if (parent.tagName === 'CODE' || parent.closest('code')) return NodeFilter.FILTER_REJECT
-            // Skip already-annotated spans
-            if (parent.classList.contains('chat-file-path') || parent.classList.contains('chat-commit-hash')) return NodeFilter.FILTER_REJECT
-            return NodeFilter.FILTER_ACCEPT
-        }
-    })
-    while (walker.nextNode()) textNodes.push(walker.currentNode as Text)
-
-    // Process text nodes in reverse order so that DOM insertions
-    // don't invalidate later node positions.
-    for (let i = textNodes.length - 1; i >= 0; i--) {
-        const textNode = textNodes[i]
-        const text = textNode.textContent || ''
-        COMMIT_HASH_RE.lastIndex = 0
-        if (!COMMIT_HASH_RE.test(text)) continue
-
-        // Re-run regex to collect matches
-        COMMIT_HASH_RE.lastIndex = 0
-        const parts: Array<{ text: string; sha: string | null }> = []
-        let lastIndex = 0
-        let match: RegExpExecArray | null
-        while ((match = COMMIT_HASH_RE.exec(text)) !== null) {
-            const shaStr = match[1]
-            const isCommit = looksLikeCommitHash(shaStr)
-            // Push the text before this match
-            if (match.index > lastIndex) {
-                parts.push({ text: text.slice(lastIndex, match.index), sha: null })
-            }
-            parts.push({ text: shaStr, sha: isCommit ? shaStr : null })
-            lastIndex = match.index + shaStr.length
-        }
-        // Push remaining text after last match
-        if (lastIndex < text.length) {
-            parts.push({ text: text.slice(lastIndex), sha: null })
-        }
-
-        // Build replacement nodes
-        const parent = textNode.parentNode!
-        const frag = doc.createDocumentFragment()
-        let hasAnnotation = false
-        for (const part of parts) {
-            if (part.sha) {
-                hasAnnotation = true
-                detectedSHAs.push(part.sha)
-                const span = doc.createElement('span')
-                span.className = 'chat-commit-hash'
-                span.setAttribute('data-commit-sha', part.sha)
-                span.textContent = part.text
-                frag.appendChild(span)
-                // Commit-open button
-                const btnContainer = doc.createElement('span')
-                btnContainer.innerHTML = commitOpenButtonHtml(part.sha)
-                while (btnContainer.firstChild) frag.appendChild(btnContainer.firstChild)
-            } else {
-                frag.appendChild(doc.createTextNode(part.text))
-            }
-        }
-
-        if (hasAnnotation) {
-            parent.replaceChild(frag, textNode)
-        }
-    }
-
-    return { html: doc.body.innerHTML, detectedSHAs }
-}
-
 // Cache of verified paths: path -> true (exists) | false (not found)
 const verifiedCache = new Map<string, boolean>()
 // In-flight verification requests to avoid duplicates
@@ -426,58 +284,13 @@ export async function verifyFilePaths(paths: string[], containerEl: HTMLElement)
     }
 }
 
-// Cache of verified commit SHAs: sha -> true (is commit) | false (not a commit)
-const verifiedCommitCache = new Map<string, boolean>()
-// In-flight verification requests to avoid duplicates
-const commitInFlight = new Map<string, Promise<boolean>>()
-
-/**
- * Check which commit SHAs are valid git commit objects,
- * and hide buttons/annotations for SHAs that aren't.
- */
-export async function verifyCommitHashes(shas: string[], containerEl: HTMLElement): Promise<void> {
-    const unique = [...new Set(shas)]
-    if (unique.length === 0) return
-
-    // Batch verify: send all SHAs in one request
-    let results: Map<string, boolean>
-    try {
-        const resp = await fetch('/api/git/verify-commits', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ shas: unique }),
-        })
-        if (!resp.ok) return
-        const data = await resp.json()
-        results = new Map(Object.entries(data.results || {}).map(([sha, type]) => [sha, type === 'commit']))
-        // Update cache
-        for (const [sha, isCommit] of results) {
-            verifiedCommitCache.set(sha, isCommit)
-        }
-    } catch {
-        return // Network error — leave buttons as-is
-    }
-
-    for (const [sha, isCommit] of results) {
-        if (!isCommit) {
-            containerEl.querySelectorAll(`.chat-commit-open-btn[data-commit-sha="${CSS.escape(sha)}"]`).forEach(btn => {
-                btn.remove()
-            })
-            containerEl.querySelectorAll(`.chat-commit-hash[data-commit-sha="${CSS.escape(sha)}"]`).forEach(span => {
-                span.replaceWith(...span.childNodes)
-            })
-        }
-    }
-}
-
 /**
  * Clear the verification cache (e.g. when switching projects).
  */
 export function clearVerifiedCache(): void {
     verifiedCache.clear()
     inFlight.clear()
-    verifiedCommitCache.clear()
-    commitInFlight.clear()
+    clearCommitHashCache()
 }
 
 /**
@@ -489,8 +302,6 @@ export function useFilePathAnnotation() {
         fileOpenButtonHtml,
         annotateFilePaths,
         verifyFilePaths,
-        annotateCommitHashes,
-        verifyCommitHashes,
         resolveRelativePath,
         openFilePath,
         clearVerifiedCache,

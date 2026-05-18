@@ -108,8 +108,17 @@ function handleBodyClick(event) {
     }
   }
 
-  // Handle file-open buttons — bottom sheet is teleported to <body>,
+  // Handle commit-hash clicks (span or button) — bottom sheet is teleported to <body>,
   // ChatMessageList's handleChatClick won't see these clicks.
+  const commitEl = event.target.closest('.chat-commit-hash, .chat-commit-open-btn')
+  if (commitEl) {
+    const sha = commitEl.getAttribute('data-commit-sha')
+    if (sha) {
+      window.dispatchEvent(new CustomEvent('navigate-to-commit', { detail: { sha } }))
+    }
+    return
+  }
+  // Handle file-open buttons
   const fileBtn = event.target.closest('.chat-file-open-btn')
   if (fileBtn) {
     const filePath = fileBtn.getAttribute('data-file-path')

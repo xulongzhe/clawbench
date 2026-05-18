@@ -165,6 +165,8 @@ func ServeGitBranch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"isGit":  false,
 			"branch": "",
+			"head":   "",
+			"dirty":  false,
 		})
 		return
 	}
@@ -177,9 +179,25 @@ func ServeGitBranch(w http.ResponseWriter, r *http.Request) {
 		branch = strings.TrimSpace(string(output))
 	}
 
+	headSHA := ""
+	shaOutput, shaErr := exec.Command("git", "rev-parse", "HEAD").Output()
+	if shaErr == nil {
+		headSHA = strings.TrimSpace(string(shaOutput))
+	}
+
+	// git diff --quiet HEAD exits 0 if clean, 1 if dirty, 128 if no commits yet
+	dirty := false
+	diffCmd := exec.Command("git", "diff", "--quiet", "HEAD")
+	diffCmd.Dir = projectPath
+	if err := diffCmd.Run(); err != nil {
+		dirty = true
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"isGit":  true,
 		"branch": branch,
+		"head":   headSHA,
+		"dirty":  dirty,
 	})
 }
 
@@ -500,8 +518,9 @@ func parseGitStatusPorcelain(output string) []wtFileInfo {
 
 // ServeGitVerifyCommits checks which SHAs are valid git commit objects.
 // Accepts POST with JSON body {"shas": ["abc1234", ...]}.
-// Returns {"results": {"abc1234": "commit", "def5678": null}} where null means
-// the SHA is not a valid commit (could be blob/tree/tag or not found).
+// Returns {"results": {"abc1234": {"sha":"...","msg":"...","date":"...","author":"..."}, "def5678": null}}
+// where null means the SHA is not a valid commit.
+// For valid commits, the full commit info is returned for breadcrumb display.
 func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
@@ -533,7 +552,20 @@ func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 		} else {
 			objType := strings.TrimSpace(string(output))
 			if objType == "commit" {
-				results[sha] = "commit"
+				// Fetch commit info for breadcrumb display
+				logCmd := exec.Command("git", "log", "-1", "--format=%H|%P|%s|%ad|%an%d", "--date=iso", sha)
+				logCmd.Dir = projectPath
+				logOutput, logErr := logCmd.Output()
+				if logErr == nil && len(logOutput) > 0 {
+					parsed := parseGitLog(string(logOutput))
+					if len(parsed) > 0 {
+						results[sha] = parsed[0]
+					} else {
+						results[sha] = sha // fallback
+					}
+				} else {
+					results[sha] = sha // fallback
+				}
 			} else {
 				results[sha] = nil
 			}

@@ -388,7 +388,7 @@ provide('chatRender', {
   hasImagesInContent: render.hasImagesInContent,
 })
 provide('chatSession', { getAgentIcon, getAgentName })
-provide('chatUI', { closeSheet: () => bottomSheetRef.value?.close() })
+provide('chatUI', { navigateToFileViewer: () => bottomSheetRef.value?.close() })
 provide('autoSpeech', autoSpeech)
 provide('layoutRefreshKey', layoutRefreshKey)
 
