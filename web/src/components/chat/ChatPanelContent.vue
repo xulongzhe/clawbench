@@ -163,6 +163,7 @@ import { refreshCurrentFile } from '@/composables/useFileRefresh.ts'
 import { playNotificationSound } from '@/composables/useNotificationSound.ts'
 import { useAutoSpeech, extractSpeakableText } from '@/composables/useAutoSpeech.ts'
 import { useSwipeSession } from '@/composables/useSwipeSession.ts'
+import { useGlobalEvents } from '@/composables/useGlobalEvents'
 import { store } from '@/stores/app.ts'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer.ts'
 
@@ -583,23 +584,31 @@ function handleFileOpenInOverlay(filePath) {
   switchTab('viewer')
 }
 
-// Start global polling when component mounts
+// Wire up WS event handler for session_update
+const { onEvent } = useGlobalEvents()
+const removeEventHandler = onEvent((event, data) => {
+    if (event === 'session_update') {
+        session.onSessionEvent(data)
+    }
+})
+
+// Start one-time session load when component mounts
 onMounted(() => {
     // Request notification permission on mount
     notification.requestPermission().catch(err => {
         console.warn('Failed to request notification permission:', err)
     })
 
-    session.startGlobalPolling()
+    session.loadSessionsOnce()
     document.addEventListener('visibilitychange', session.handleVisibilityChange)
 })
 
 // Cleanup preview URLs on unmount
 onUnmounted(() => {
+    removeEventHandler()
     cleanupPreviewUrls()
     stream.disconnectStream()
     stream.stopPolling()
-    session.stopGlobalPolling()
     session.stopMsgCountPolling()
     document.removeEventListener('visibilitychange', session.handleVisibilityChange)
     document.removeEventListener('visibilitychange', manager._visibilityHandler)

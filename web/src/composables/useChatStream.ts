@@ -1,6 +1,7 @@
-import { onUnmounted, type Ref } from 'vue'
+import { onMounted, onUnmounted, type Ref } from 'vue'
 import { cancelChat } from '@/utils/api.ts'
 import { useReconnect } from './useReconnect'
+import { useGlobalEvents } from './useGlobalEvents'
 import { gt } from '@/composables/useLocale'
 import { FILE_MODIFYING_TOOLS, findLastBlockOfType, forceCleanupStreamingState as _forceCleanupStreamingState } from '@/utils/chatStreamUtils.ts'
 
@@ -526,12 +527,35 @@ export function useChatStream(options: UseChatStreamOptions) {
   }
   window.addEventListener('online', handleOnline)
 
+  // Visibility change: close SSE and polling when going to background.
+  // When push notifications are available, disconnecting saves battery.
+  // When push is NOT available, keep SSE alive for real-time events.
+  function handleStreamVisibility() {
+    if (document.visibilityState === 'hidden') {
+      const { pushAvailable } = useGlobalEvents()
+      if (!pushAvailable.value) {
+        // Push not available — keep SSE alive in background
+        return
+      }
+      // Going to background — close SSE and polling (push will notify)
+      disconnectStream()
+      stopPolling()
+    }
+    // Restoring on foreground is handled by ChatPanel's visibility handler
+    // which calls loadHistory, which reconnects the stream if needed
+  }
+
   // Cleanup on unmount
+  onMounted(() => {
+    document.addEventListener('visibilitychange', handleStreamVisibility)
+  })
+
   onUnmounted(() => {
     disconnectStream()
     stopPolling()
     clearToolUseTimeouts()
     window.removeEventListener('online', handleOnline)
+    document.removeEventListener('visibilitychange', handleStreamVisibility)
   })
 
   return {

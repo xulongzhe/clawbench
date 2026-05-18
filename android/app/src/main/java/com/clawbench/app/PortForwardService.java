@@ -38,11 +38,18 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
 
 /**
  * Foreground service that manages SSH tunnels for port forwarding.
@@ -64,6 +71,8 @@ public class PortForwardService extends Service {
     private static final String TAG = "ClawBench";
     private static final int NOTIFICATION_ID = 2;
     private static final String CHANNEL_ID = "clawbench_ssh";
+    private static final String EVENTS_CHANNEL_ID = "clawbench_events";
+    private static final int EVENTS_NOTIFICATION_ID = 3;
     private static final String PREFS_NAME = "clawbench_prefs";
     private static final String KEY_SERVER_URL = "server_url";
     private static final String KEY_SSH_PASSWORD = "ssh_password";
@@ -108,6 +117,13 @@ public class PortForwardService extends Service {
 
     // Last SSH error message (for JS bridge error reporting)
     private static volatile String lastError = null;
+
+    // --- Native WebSocket for background event notifications (when JPush is not available) ---
+    private WebSocket nativeEventWs;
+    private volatile boolean nativeWsActive = false;
+    private volatile boolean nativeWsIntentionalStop = false;
+    private volatile int nativeWsReconnectAttempt = 0;
+    private String nativeClientId;
 
     public static boolean isRunning() {
         return isRunning;
@@ -259,6 +275,16 @@ public class PortForwardService extends Service {
             } else if ("RESTORE_PORTS".equals(action)) {
                 // Explicit restore request — e.g. from Activity after configuration change
                 networkExecutor.execute(this::restoreAndReconnect);
+            } else if ("START_NATIVE_WS".equals(action)) {
+                networkExecutor.execute(() -> {
+                    String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .getString(KEY_SERVER_URL, "");
+                    if (!serverUrl.isEmpty()) {
+                        startNativeEventWs(serverUrl);
+                    }
+                });
+            } else if ("STOP_NATIVE_WS".equals(action)) {
+                networkExecutor.execute(this::stopNativeEventWs);
             }
         } else {
             // START_STICKY restart: Android killed the service and recreated it with null intent.
@@ -276,6 +302,7 @@ public class PortForwardService extends Service {
     @Override
     public void onDestroy() {
         intentionalDisconnect = true;
+        stopNativeEventWs();
         stopConnectionMonitor();
         releaseWifiLock();
         releaseWakeLock();
@@ -798,15 +825,27 @@ public class PortForwardService extends Service {
      */
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            android.app.NotificationChannel channel = new android.app.NotificationChannel(
-                    CHANNEL_ID,
-                    "SSH 端口转发",
-                    android.app.NotificationManager.IMPORTANCE_LOW
-            );
-            channel.setDescription("SSH 隧道端口转发服务");
             android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
             if (nm != null) {
+                // SSH tunnel channel (low priority, no sound)
+                android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                        CHANNEL_ID,
+                        "SSH 端口转发",
+                        android.app.NotificationManager.IMPORTANCE_LOW
+                );
+                channel.setDescription("SSH 隧道端口转发服务");
                 nm.createNotificationChannel(channel);
+
+                // AI events channel (high priority, sound + vibration)
+                android.app.NotificationChannel eventsChannel = new android.app.NotificationChannel(
+                        EVENTS_CHANNEL_ID,
+                        "AI 事件通知",
+                        android.app.NotificationManager.IMPORTANCE_HIGH
+                );
+                eventsChannel.setDescription("AI会话和任务完成通知");
+                eventsChannel.enableLights(true);
+                eventsChannel.setVibrationPattern(new long[]{0, 300, 200, 300});
+                nm.createNotificationChannel(eventsChannel);
             }
         }
     }
@@ -941,6 +980,331 @@ public class PortForwardService extends Service {
             trustAllSSLContext = sc;
         } catch (Exception e) {
             AppLog.e(TAG, "SSH: failed to init trust-all SSL context", e);
+        }
+    }
+
+    // --- Native WebSocket for background event notifications ---
+
+    /**
+     * Start the native WebSocket for background event notifications.
+     * Called when the app goes to background and JPush is NOT available.
+     */
+    public static void startNativeEventWs(Context context) {
+        if (!isRunning) {
+            // Service not running — start it first
+            start(context);
+        }
+        Intent intent = new Intent(context, PortForwardService.class);
+        intent.setAction("START_NATIVE_WS");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
+        }
+    }
+
+    /**
+     * Stop the native WebSocket for background event notifications.
+     * Called when the app returns to foreground.
+     */
+    public static void stopNativeEventWs(Context context) {
+        Intent intent = new Intent(context, PortForwardService.class);
+        intent.setAction("STOP_NATIVE_WS");
+        context.startService(intent);
+    }
+
+    /**
+     * Connect to the server's WebSocket event channel for background notifications.
+     * Uses a different client_id than the WebView WS so both can coexist.
+     * MUST be called from a background thread (network I/O).
+     */
+    private void startNativeEventWs(String serverUrl) {
+        if (nativeWsActive) {
+            AppLog.d(TAG, "NativeWS: already active, skipping");
+            return;
+        }
+        nativeWsIntentionalStop = false;
+        nativeWsReconnectAttempt = 0;
+
+        // Build native client_id from ANDROID_ID (stable across service restarts)
+        if (nativeClientId == null) {
+            String androidId = android.provider.Settings.Secure.getString(
+                    getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+            if (androidId != null && androidId.length() >= 8) {
+                nativeClientId = "native-bg-" + androidId.substring(0, 8);
+            } else {
+                nativeClientId = "native-bg-default";
+            }
+        }
+
+        connectNativeWs(serverUrl);
+    }
+
+    private void connectNativeWs(String serverUrl) {
+        try {
+            // Read session cookie from WebView's CookieManager
+            String cookies = android.webkit.CookieManager.getInstance().getCookie(serverUrl);
+            String sessionCookie = null;
+            if (cookies != null) {
+                for (String cookie : cookies.split(";")) {
+                    String trimmed = cookie.trim();
+                    if (trimmed.startsWith("clawbench_session=")) {
+                        sessionCookie = trimmed;
+                        break;
+                    }
+                }
+            }
+            if (sessionCookie == null) {
+                AppLog.w(TAG, "NativeWS: no session cookie found, cannot authenticate");
+                return;
+            }
+
+            // Build WS URL
+            String wsUrl = serverUrl
+                    .replace("https://", "wss://")
+                    .replace("http://", "ws://")
+                    + "/api/ai/events/ws?client_id=" + nativeClientId;
+
+            AppLog.i(TAG, "NativeWS: connecting to " + wsUrl);
+
+            // Build OkHttp client
+            OkHttpClient.Builder clientBuilder = new OkHttpClient.Builder()
+                    .pingInterval(30, TimeUnit.SECONDS)
+                    .readTimeout(0, TimeUnit.MILLISECONDS);
+
+            // Handle self-signed certs
+            if (trustAllSSLContext != null && wsUrl.startsWith("wss://")) {
+                clientBuilder.sslSocketFactory(trustAllSSLContext.getSocketFactory(), new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                });
+                clientBuilder.hostnameVerifier((hostname, session) -> true);
+            }
+
+            // Build request with cookie auth
+            Request request = new Request.Builder()
+                    .url(wsUrl)
+                    .header("Cookie", sessionCookie)
+                    .build();
+
+            nativeEventWs = clientBuilder.build().newWebSocket(request, new NativeEventListener());
+            nativeWsActive = true;
+            AppLog.i(TAG, "NativeWS: connection initiated");
+
+        } catch (Exception e) {
+            AppLog.e(TAG, "NativeWS: failed to connect", e);
+            nativeWsActive = false;
+            scheduleNativeWsReconnect(serverUrl);
+        }
+    }
+
+    /**
+     * Stop the native WebSocket connection.
+     */
+    private void stopNativeEventWs() {
+        nativeWsIntentionalStop = true;
+        nativeWsActive = false;
+        if (nativeEventWs != null) {
+            try {
+                nativeEventWs.close(1000, "foreground");
+            } catch (Exception ignored) {}
+            nativeEventWs = null;
+        }
+        AppLog.i(TAG, "NativeWS: stopped");
+    }
+
+    /**
+     * Schedule a reconnect attempt for the native WebSocket.
+     */
+    private void scheduleNativeWsReconnect(String serverUrl) {
+        if (nativeWsIntentionalStop) return;
+        nativeWsReconnectAttempt++;
+        if (nativeWsReconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
+            AppLog.w(TAG, "NativeWS: exhausted reconnect attempts, giving up");
+            return;
+        }
+        int delayIdx = Math.min(nativeWsReconnectAttempt - 1, RECONNECT_DELAYS_MS.length - 1);
+        int delay = RECONNECT_DELAYS_MS[delayIdx];
+        AppLog.i(TAG, "NativeWS: reconnecting in " + delay + "ms (attempt " + nativeWsReconnectAttempt + ")");
+
+        // Use Handler to schedule on main thread, then post to network executor
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (!nativeWsIntentionalStop && isRunning) {
+                networkExecutor.execute(() -> connectNativeWs(serverUrl));
+            }
+        }, delay);
+    }
+
+    /**
+     * OkHttp WebSocketListener for native background event notifications.
+     */
+    private class NativeEventListener extends WebSocketListener {
+        @Override
+        public void onOpen(WebSocket webSocket, Response response) {
+            nativeWsActive = true;
+            nativeWsReconnectAttempt = 0;
+            AppLog.i(TAG, "NativeWS: connected");
+        }
+
+        @Override
+        public void onMessage(WebSocket webSocket, String text) {
+            try {
+                JSONObject msg = new JSONObject(text);
+                String type = msg.optString("type", "");
+
+                if ("ping".equals(type)) {
+                    // Respond to server ping
+                    webSocket.send("{\"type\":\"pong\"}");
+                    return;
+                }
+
+                if (!"event".equals(type)) return;
+
+                String eventId = msg.optString("id", "");
+                String event = msg.optString("event", "");
+                JSONObject data = msg.optJSONObject("data");
+                if (data == null) return;
+
+                // Send ack for every event
+                if (!eventId.isEmpty()) {
+                    JSONObject ack = new JSONObject();
+                    ack.put("type", "ack");
+                    ack.put("id", eventId);
+                    webSocket.send(ack.toString());
+                }
+
+                // Only notify for terminal states
+                String status = data.optString("status", "");
+                boolean shouldNotify = false;
+
+                if ("session_update".equals(event)
+                        && ("completed".equals(status) || "cancelled".equals(status))) {
+                    shouldNotify = true;
+                } else if ("task_update".equals(event)
+                        && ("completed".equals(status) || "failed".equals(status) || "cancelled".equals(status))) {
+                    shouldNotify = true;
+                }
+
+                if (shouldNotify) {
+                    postEventNotification(event, data);
+                }
+
+            } catch (Exception e) {
+                AppLog.w(TAG, "NativeWS: error processing message", e);
+            }
+        }
+
+        @Override
+        public void onClosing(WebSocket webSocket, int code, String reason) {
+            webSocket.close(1000, null);
+        }
+
+        @Override
+        public void onClosed(WebSocket webSocket, int code, String reason) {
+            nativeWsActive = false;
+            AppLog.i(TAG, "NativeWS: closed (code=" + code + ", reason=" + reason + ")");
+            if (!nativeWsIntentionalStop) {
+                String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .getString(KEY_SERVER_URL, "");
+                if (!serverUrl.isEmpty()) {
+                    scheduleNativeWsReconnect(serverUrl);
+                }
+            }
+        }
+
+        @Override
+        public void onFailure(WebSocket webSocket, Throwable t, Response response) {
+            nativeWsActive = false;
+            AppLog.w(TAG, "NativeWS: connection failure: " + (t != null ? t.getMessage() : "unknown"));
+            if (!nativeWsIntentionalStop) {
+                String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                        .getString(KEY_SERVER_URL, "");
+                if (!serverUrl.isEmpty()) {
+                    scheduleNativeWsReconnect(serverUrl);
+                }
+            }
+        }
+    }
+
+    /**
+     * Post a system notification for an AI event.
+     */
+    private void postEventNotification(String eventType, JSONObject data) {
+        try {
+            String status = data.optString("status", "");
+            String title;
+            String text;
+            String sessionId = null;
+            String taskId = null;
+
+            if ("session_update".equals(eventType)) {
+                sessionId = data.optString("session_id", "");
+                if ("completed".equals(status)) {
+                    title = "AI 会话完成";
+                    text = "会话已结束";
+                } else {
+                    title = "AI 会话通知";
+                    text = "会话已取消";
+                }
+            } else if ("task_update".equals(eventType)) {
+                taskId = data.optString("task_id", "");
+                if ("completed".equals(status)) {
+                    title = "计划任务完成";
+                    text = "任务已完成";
+                } else if ("cancelled".equals(status)) {
+                    title = "计划任务通知";
+                    text = "任务已取消";
+                } else {
+                    title = "计划任务通知";
+                    text = "任务失败";
+                }
+            } else {
+                return;
+            }
+
+            // Build intent for notification tap — open the app and navigate to session
+            Intent intent = new Intent(this, MainActivity.class);
+            intent.setAction(android.content.Intent.ACTION_MAIN);
+            intent.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+            if (sessionId != null && !sessionId.isEmpty()) {
+                intent.putExtra("session_id", sessionId);
+            }
+            if (taskId != null && !taskId.isEmpty()) {
+                intent.putExtra("task_id", taskId);
+            }
+
+            PendingIntent pendingIntent = PendingIntent.getActivity(
+                    this, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+
+            // Use hash of session_id/task_id as notification ID so each gets its own notification
+            int notifId = EVENTS_NOTIFICATION_ID;
+            if (sessionId != null && !sessionId.isEmpty()) {
+                notifId = EVENTS_NOTIFICATION_ID + Math.abs(sessionId.hashCode() % 1000);
+            } else if (taskId != null && !taskId.isEmpty()) {
+                notifId = EVENTS_NOTIFICATION_ID + 1000 + Math.abs(taskId.hashCode() % 1000);
+            }
+
+            Notification notification = new NotificationCompat.Builder(this, EVENTS_CHANNEL_ID)
+                    .setContentTitle(title)
+                    .setContentText(text)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentIntent(pendingIntent)
+                    .setAutoCancel(true)
+                    .build();
+
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) {
+                nm.notify(notifId, notification);
+            }
+
+            AppLog.i(TAG, "NativeWS: posted notification: " + title + " - " + text);
+
+        } catch (Exception e) {
+            AppLog.e(TAG, "NativeWS: failed to post notification", e);
         }
     }
 }

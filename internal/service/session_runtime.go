@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"clawbench/internal/ai"
+	"clawbench/internal/ws"
 )
 
 // Active session tracking - keyed by sessionID
@@ -21,6 +22,24 @@ var sessionStreams sync.Map // map[string]chan ai.StreamEvent
 var sessionCancels sync.Map         // map[string]context.CancelFunc
 var sessionCancelReasons sync.Map   // map[string]string — "user", "disconnect"
 
+// emitSessionEvent broadcasts a session_update event to connected clients.
+func emitSessionEvent(sessionID, status string, hasNewMessages bool) {
+	mgr := ws.GetManager()
+	if mgr == nil {
+		return
+	}
+	mgr.BroadcastEvent(ws.ServerMessage{
+		Type:  "event",
+		ID:    ws.GenerateEventID(),
+		Event: "session_update",
+		Data: &ws.SessionUpdateData{
+			SessionID:      sessionID,
+			Status:         status,
+			HasNewMessages: hasNewMessages,
+		},
+	})
+}
+
 // IsSessionRunning checks if a session is currently running.
 func IsSessionRunning(sessionID string) bool {
 	activeMu.Lock()
@@ -29,13 +48,24 @@ func IsSessionRunning(sessionID string) bool {
 }
 
 // SetSessionRunning sets the running state for a session.
-func SetSessionRunning(sessionID string, running bool) {
+// If skipEvent is true, the session_update event is suppressed (used by CancelSession
+// which emits its own "cancelled" event and should not also emit "completed").
+func SetSessionRunning(sessionID string, running bool, skipEvent ...bool) {
 	activeMu.Lock()
-	defer activeMu.Unlock()
 	if running {
 		activeSessions[sessionID] = true
 	} else {
 		delete(activeSessions, sessionID)
+	}
+	activeMu.Unlock()
+
+	// Emit event unless caller explicitly skips (e.g. CancelSession sends its own event)
+	if len(skipEvent) == 0 || !skipEvent[0] {
+		if !running {
+			emitSessionEvent(sessionID, "completed", true)
+		} else {
+			emitSessionEvent(sessionID, "running", false)
+		}
 	}
 }
 
@@ -96,6 +126,7 @@ func CancelSession(sessionID string) bool {
 	sessionCancelReasons.Store(sessionID, "user")
 	ClearQueue(sessionID)
 	cancel()
+	emitSessionEvent(sessionID, "cancelled", false)
 
 	// Send cancelled event to SSE stream after cancelling context (non-blocking)
 	if streamVal, ok := sessionStreams.Load(sessionID); ok {
@@ -108,8 +139,8 @@ func CancelSession(sessionID string) bool {
 		}
 	}
 
-	// Mark session as not running
-	SetSessionRunning(sessionID, false)
+	// Mark session as not running (skip completed event — we already sent "cancelled")
+	SetSessionRunning(sessionID, false, true)
 
 	return true
 }

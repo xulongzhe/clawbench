@@ -12,6 +12,13 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0.0"
+
+        // JPush manifest placeholders (AppKey set at runtime via JPushConfig)
+        manifestPlaceholders = [
+            JPUSH_PKGNAME: applicationId,
+            JPUSH_APPKEY: "",
+            JPUSH_CHANNEL: "developer-default"
+        ]
     }
 
     signingConfigs {
@@ -26,6 +33,12 @@ android {
     }
 
     applicationVariants.all { variant ->
+        // Debug: use different applicationId so it can coexist with release
+        if (variant.buildType.name == "debug") {
+            variant.outputs.all { output ->
+                outputFileName = "clawbench-android-debug.apk"
+            }
+        }
         if (variant.buildType.name == "release") {
             variant.outputs.all { output ->
                 outputFileName = "clawbench-android.apk"
@@ -43,6 +56,7 @@ android {
         debug {
             minifyEnabled false
             debuggable true
+            applicationIdSuffix ".debug"
         }
     }
 
@@ -57,4 +71,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'com.github.mwiede:jsch:0.2.16'
+    implementation 'cn.jiguang.sdk:jpush:6.1.0'
+    implementation 'cn.jiguang.sdk:jcore:5.4.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }

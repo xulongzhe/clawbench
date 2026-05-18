@@ -1,0 +1,308 @@
+package ws
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/coder/websocket"
+
+	"clawbench/internal/push"
+)
+
+// ClientSubscription tracks a single client's WS connection and push state.
+type ClientSubscription struct {
+	mu          sync.Mutex
+	conn        *websocket.Conn
+	writeMu     *sync.Mutex // shared with EventsHandler for serialized writes
+	clientID    string      // identifies the client device (for logging)
+	pushRegID   string      // JPush registration ID (set via WS "register" message)
+	lastActive  time.Time
+	eventBuffer []ServerMessage
+	bufferStart time.Time
+}
+
+// maxSubscriptions limits the number of concurrent WS subscriptions to prevent
+// resource exhaustion. Matches the original SSE limit of 20.
+const maxSubscriptions = 20
+
+// Manager manages all client subscriptions.
+type Manager struct {
+	mu            sync.Mutex
+	subscriptions map[string]*ClientSubscription // keyed by clientID
+	jpush         *push.JPushClient
+}
+
+var defaultManager *Manager
+var defaultManagerOnce sync.Once
+
+func InitManager(jpushClient *push.JPushClient) {
+	defaultManagerOnce.Do(func() {
+		defaultManager = &Manager{
+			subscriptions: make(map[string]*ClientSubscription),
+			jpush:        jpushClient,
+		}
+	})
+}
+
+func GetManager() *Manager {
+	return defaultManager
+}
+
+// Subscribe registers a new WS connection for a client identified by clientID.
+// If a subscription with the same clientID already exists, its connection is replaced.
+func (m *Manager) Subscribe(conn *websocket.Conn, writeMu *sync.Mutex, clientID string) *ClientSubscription {
+	m.mu.Lock()
+
+	// Check subscription limit (existing clientID reconnect is allowed)
+	if _, exists := m.subscriptions[clientID]; !exists && len(m.subscriptions) >= maxSubscriptions {
+		m.mu.Unlock()
+		conn.Close(websocket.StatusPolicyViolation, "too many subscriptions")
+		slog.Warn("ws: subscription rejected, limit reached", "limit", maxSubscriptions, "client_id", clientID)
+		return nil
+	}
+
+	sub, ok := m.subscriptions[clientID]
+	if !ok {
+		sub = &ClientSubscription{clientID: clientID}
+		m.subscriptions[clientID] = sub
+	}
+
+	sub.mu.Lock()
+	// Save existing connection to close after releasing locks
+	oldConn := sub.conn
+	sub.conn = conn
+	sub.writeMu = writeMu
+	sub.lastActive = time.Now()
+	sub.eventBuffer = nil
+	sub.bufferStart = time.Time{}
+	sub.mu.Unlock()
+
+	m.mu.Unlock()
+
+	// Close old connection outside of locks to avoid blocking on slow networks
+	if oldConn != nil {
+		oldConn.Close(websocket.StatusNormalClosure, "replaced")
+	}
+
+	slog.Info("ws: client subscribed", "client_id", clientID)
+	return sub
+}
+
+// DisconnectClient handles WS disconnection for a specific clientID.
+// This only detaches the connection — the subscription entry (including pushRegID)
+// is preserved so that push notifications can still be delivered while the client
+// is disconnected. Stale subscriptions are eventually cleaned up by CleanupStale.
+func (m *Manager) DisconnectClient(clientID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	sub, ok := m.subscriptions[clientID]
+	if !ok {
+		return
+	}
+
+	sub.mu.Lock()
+	sub.conn = nil
+	sub.writeMu = nil
+	sub.bufferStart = time.Now() // start buffer window
+	sub.mu.Unlock()
+
+	slog.Info("ws: client disconnected (subscription preserved)", "client_id", clientID)
+}
+
+// RegisterPushID stores the JPush registration ID for a client.
+// Called via WS "register" message — pushRegID is tied to the WS session.
+// If another subscription already uses the same pushRegID, the old one is cleared
+// (dedup: same device, later connection wins).
+func (m *Manager) RegisterPushID(regID string, clientID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Dedup: if another subscription already has this pushRegID, clear it.
+	// Same device reconnecting — the new connection wins.
+	if regID != "" {
+		for id, sub := range m.subscriptions {
+			if id == clientID {
+				continue // skip self
+			}
+			sub.mu.Lock()
+			if sub.pushRegID == regID {
+				slog.Info("ws: deduplicating push reg ID, clearing from older client", "reg_id", regID, "old_client_id", id, "new_client_id", clientID)
+				sub.pushRegID = ""
+			}
+			sub.mu.Unlock()
+		}
+	}
+
+	// Set pushRegID on the target subscription
+	sub, ok := m.subscriptions[clientID]
+	if !ok {
+		// Subscription doesn't exist yet — shouldn't happen since register
+		// comes via WS which requires Subscribe first, but handle gracefully.
+		sub = &ClientSubscription{clientID: clientID}
+		m.subscriptions[clientID] = sub
+	}
+	sub.mu.Lock()
+	sub.pushRegID = regID
+	sub.mu.Unlock()
+
+	slog.Info("ws: registered push ID", "client_id", clientID, "reg_id", regID)
+}
+
+// BroadcastEvent sends an event to all connected clients, or buffers/sends JPush.
+// Events are fanned out to every subscription independently:
+// - WS connected → send via WS (and buffer for replay)
+// - WS disconnected + pushRegID → send JPush
+// - WS disconnected, no pushRegID → buffer within 10s window only
+func (m *Manager) BroadcastEvent(msg ServerMessage) {
+	m.mu.Lock()
+	// Snapshot subscription keys to avoid holding lock during sends
+	keys := make([]string, 0, len(m.subscriptions))
+	for k := range m.subscriptions {
+		keys = append(keys, k)
+	}
+	m.mu.Unlock()
+
+	for _, key := range keys {
+		m.broadcastToSubscription(key, msg)
+	}
+}
+
+// broadcastToSubscription handles event delivery for a single subscription.
+func (m *Manager) broadcastToSubscription(key string, msg ServerMessage) {
+	m.mu.Lock()
+	sub, ok := m.subscriptions[key]
+	m.mu.Unlock()
+	if !ok {
+		return
+	}
+
+	sub.mu.Lock()
+	conn := sub.conn
+	writeMu := sub.writeMu
+	pushRegID := sub.pushRegID
+
+	if conn != nil && writeMu != nil {
+		// Client is connected — send via WS (serialized with writeMu)
+		data, err := json.Marshal(msg)
+		if err != nil {
+			slog.Error("ws: marshal event", "error", err, "client_id", key)
+			sub.mu.Unlock()
+			return
+		}
+		writeMu.Lock()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := conn.Write(ctx, websocket.MessageText, data); err != nil {
+			slog.Warn("ws: failed to send event, client may be disconnected", "error", err, "client_id", key)
+		}
+		cancel()
+		writeMu.Unlock()
+		// Buffer event for reconnect replay
+		sub.bufferEvent(msg)
+		sub.mu.Unlock()
+		return
+	}
+
+	// Client is disconnected — check buffer window
+	if sub.bufferStart.IsZero() || time.Since(sub.bufferStart) < 10*time.Second {
+		sub.bufferEvent(msg)
+	}
+
+	// Send JPush if we have a registration ID
+	if pushRegID != "" && m.jpush != nil && m.jpush.Enabled() {
+		sub.mu.Unlock() // unlock before potentially slow network call
+		extras := map[string]string{"event_type": msg.Event}
+		// Extract session_id or task_id from data
+		switch d := msg.Data.(type) {
+		case *SessionUpdateData:
+			extras["session_id"] = d.SessionID
+		case *TaskUpdateData:
+			extras["task_id"] = d.TaskID
+		}
+		title := "AI任务完成"
+		alert := "AI会话已结束"
+		if msg.Event == "task_update" {
+			alert = "计划任务已完成"
+		}
+		slog.Info("ws: sending jpush notification", "event", msg.Event, "client_id", key, "reg_id", pushRegID, "title", title)
+		if err := m.jpush.SendNotification(pushRegID, title, alert, extras); err != nil {
+			slog.Warn("ws: jpush notification failed", "error", err, "client_id", key)
+		}
+		return
+	}
+
+	// No push registration ID available — log for debugging
+	if pushRegID == "" {
+		slog.Debug("ws: client disconnected, no push reg ID — notification not delivered", "event", msg.Event, "client_id", key)
+	}
+	sub.mu.Unlock()
+}
+
+// GetBufferedEvents returns buffered events for replay on reconnect.
+func (s *ClientSubscription) GetBufferedEvents() []ServerMessage {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make([]ServerMessage, len(s.eventBuffer))
+	copy(result, s.eventBuffer)
+	return result
+}
+
+// bufferEvent appends an event to the replay buffer, keeping at most 50 events.
+func (s *ClientSubscription) bufferEvent(msg ServerMessage) {
+	s.eventBuffer = append(s.eventBuffer, msg)
+	if len(s.eventBuffer) > 50 {
+		s.eventBuffer = s.eventBuffer[len(s.eventBuffer)-50:]
+	}
+}
+
+// CleanupStale removes stale subscriptions:
+//   - No pushRegID + disconnected for >120 seconds → remove
+//   - Has pushRegID + no WS connection in the last 10 days → remove
+//   - Connected subscriptions are never cleaned up.
+func (m *Manager) CleanupStale() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for key, sub := range m.subscriptions {
+		sub.mu.Lock()
+		// Never clean up active connections
+		if sub.conn != nil {
+			sub.mu.Unlock()
+			continue
+		}
+		// Must have been disconnected (bufferStart is set)
+		if sub.bufferStart.IsZero() {
+			sub.mu.Unlock()
+			continue
+		}
+		if sub.pushRegID == "" {
+			// No push reg ID — clean up after 120 seconds
+			if time.Since(sub.bufferStart) > 120*time.Second {
+				delete(m.subscriptions, key)
+				slog.Info("ws: cleaned up stale subscription (no push)", "client_id", key, "disconnected_for", time.Since(sub.bufferStart))
+			}
+		} else {
+			// Has push reg ID — clean up if no WS connection in the last 10 days
+			// lastActive is updated on every Subscribe, so it tracks the most recent connection
+			if time.Since(sub.lastActive) > 10*24*time.Hour {
+				delete(m.subscriptions, key)
+				slog.Info("ws: cleaned up stale subscription (with push, no connect in 10 days)", "client_id", key, "last_active", sub.lastActive)
+			}
+		}
+		sub.mu.Unlock()
+	}
+}
+
+// eventSeq is an atomic counter to ensure unique event IDs.
+var eventSeq atomic.Int64
+
+// GenerateEventID creates a unique event ID.
+// Uses an atomic counter instead of exposing server timestamps.
+func GenerateEventID() string {
+	return fmt.Sprintf("evt_%d", eventSeq.Add(1))
+}

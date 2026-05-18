@@ -35,6 +35,23 @@
       </Transition>
     </div>
 
+    <button ref="statusBtnRef" class="status-toggle" @click="toggleStatusMenu" :title="t('appHeader.connectionStatus')">
+      <span class="status-dot" :class="statusDotClass"></span>
+    </button>
+    <PopupMenu v-model:show="statusMenuOpen" :target-element="statusBtnRef" :max-width="200" :max-height="160" :menu-items-count="3">
+      <div class="status-menu-title">{{ t('appHeader.connectionStatus') }}</div>
+      <div class="status-menu-item">
+        <span class="status-indicator" :class="wsDotClass"></span>
+        <span class="status-label">{{ t('appHeader.websocket') }}</span>
+        <span class="status-value">{{ wsStatusLabel }}</span>
+      </div>
+      <div class="status-menu-divider"></div>
+      <div class="status-menu-item">
+        <span class="status-indicator" :class="pushDotClass"></span>
+        <span class="status-label">{{ t('appHeader.jpush') }}</span>
+        <span class="status-value">{{ pushStatusLabel }}</span>
+      </div>
+    </PopupMenu>
     <div v-if="gitBranch" class="branch-badge" :title="gitBranch" @click="openHistory">
       <GitBranch :size="12" class="branch-icon" />
       <span class="branch-name">{{ gitBranch }}</span>
@@ -94,6 +111,7 @@ import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useLocale } from '@/composables/useLocale'
 import { useAppMode } from '@/composables/useAppMode'
+import { useGlobalEvents } from '@/composables/useGlobalEvents'
 import { baseName, toRelativePath } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
@@ -101,6 +119,7 @@ import PopupMenu from '@/components/common/PopupMenu.vue'
 const { t } = useI18n()
 const { currentLocale, setLocale } = useLocale()
 const { isAppMode } = useAppMode()
+const { wsStatus, pushRegistered } = useGlobalEvents()
 const switchTab = inject('switchTab')
 
 const props = defineProps({
@@ -115,6 +134,43 @@ const toast = inject('toast')
 // Settings menu state
 const settingsBtnRef = ref(null)
 const settingsMenuOpen = ref(false)
+
+// Connection status menu state
+const statusBtnRef = ref(null)
+const statusMenuOpen = ref(false)
+
+function toggleStatusMenu() {
+    statusMenuOpen.value = !statusMenuOpen.value
+}
+
+// Status dot class for the button indicator (worst status wins)
+const statusDotClass = computed(() => {
+    if (wsStatus.value === 'disconnected') return 'status-dot-disconnected'
+    if (wsStatus.value === 'reconnecting') return 'status-dot-reconnecting'
+    return 'status-dot-connected'
+})
+
+// WS status dot and label
+const wsDotClass = computed(() => {
+    if (wsStatus.value === 'connected') return 'status-indicator-connected'
+    if (wsStatus.value === 'reconnecting') return 'status-indicator-reconnecting'
+    return 'status-indicator-disconnected'
+})
+
+const wsStatusLabel = computed(() => {
+    if (wsStatus.value === 'connected') return t('appHeader.wsConnected')
+    if (wsStatus.value === 'reconnecting') return t('appHeader.wsReconnecting')
+    return t('appHeader.wsDisconnected')
+})
+
+// Push status dot and label
+const pushDotClass = computed(() => {
+    return pushRegistered.value ? 'status-indicator-connected' : 'status-indicator-disabled'
+})
+
+const pushStatusLabel = computed(() => {
+    return pushRegistered.value ? t('appHeader.pushRegistered') : t('appHeader.pushNotEnabled')
+})
 
 // Debug log capture state (Android only, persisted in localStorage)
 const debugLogEnabled = ref(false)
@@ -550,8 +606,49 @@ onUnmounted(() => {
     margin-left: auto;
 }
 
-.settings-toggle:hover {
-    background: var(--bg-tertiary);
+/* Connection status button */
+.status-toggle {
+    padding: 6px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: background 0.15s;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (hover: hover) {
+    .status-toggle:hover {
+        background: var(--bg-tertiary);
+    }
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    transition: background-color 0.3s;
+}
+
+.status-dot-connected {
+    background: var(--color-green, #22c55e);
+}
+
+.status-dot-reconnecting {
+    background: var(--color-yellow, #eab308);
+    animation: status-pulse 1.2s ease-in-out infinite;
+}
+
+.status-dot-disconnected {
+    background: var(--color-red, #ef4444);
+}
+
+@keyframes status-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
 }
 
 .settings-toggle svg {
@@ -620,6 +717,64 @@ onUnmounted(() => {
 }
 
 .settings-menu-divider {
+    height: 1px;
+    background: var(--border-color, #e5e5e5);
+    margin: 3px 6px;
+}
+
+/* Connection status menu (teleported to body, needs unscoped styles) */
+.status-menu-title {
+    padding: 4px 10px 1px;
+    font-size: 10px;
+    color: var(--text-muted, #999);
+    font-weight: 500;
+    letter-spacing: 0.3px;
+}
+
+.status-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-indicator-connected {
+    background: var(--color-green, #22c55e);
+}
+
+.status-indicator-reconnecting {
+    background: var(--color-yellow, #eab308);
+    animation: status-pulse 1.2s ease-in-out infinite;
+}
+
+.status-indicator-disconnected {
+    background: var(--color-red, #ef4444);
+}
+
+.status-indicator-disabled {
+    background: var(--text-muted, #999);
+}
+
+.status-label {
+    color: var(--text-secondary, #666);
+    font-weight: 500;
+}
+
+.status-value {
+    color: var(--text-primary, #333);
+    margin-left: auto;
+}
+
+.status-menu-divider {
     height: 1px;
     background: var(--border-color, #e5e5e5);
     margin: 3px 6px;

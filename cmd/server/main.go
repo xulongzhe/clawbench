@@ -27,6 +27,8 @@ import (
 	"clawbench/internal/speech"
 	"clawbench/internal/summarize"
 	"clawbench/internal/terminal"
+	"clawbench/internal/push"
+	"clawbench/internal/ws"
 )
 
 // multiHandler sends log records to multiple handlers
@@ -543,6 +545,17 @@ func main() {
 	defer scheduler.Stop()
 	service.GlobalScheduler = scheduler
 
+	// Start periodic cleanup of stale WS subscriptions (every 60s)
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			if mgr := ws.GetManager(); mgr != nil {
+				mgr.CleanupStale()
+			}
+		}
+	}()
+
 	host := cfg.Host
 	addr := fmt.Sprintf("%s:%d", host, port)
 	slog.Info("server ready",
@@ -599,6 +612,11 @@ func main() {
 			slog.Int("buffer_lines", cfg.Terminal.BufferLines),
 		)
 	}
+
+	// Initialize WS event manager
+	jpushClient := push.NewJPushClient(cfg.Push.JPush)
+	ws.InitManager(jpushClient)
+	handler.SetPushClient(jpushClient)
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)

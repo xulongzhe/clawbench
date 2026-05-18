@@ -42,6 +42,9 @@ import android.widget.Toast;
 import android.content.pm.PackageManager;
 import android.Manifest;
 
+import cn.jpush.android.api.JPushInterface;
+import cn.jpush.android.data.JPushConfig;
+
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
@@ -76,7 +79,9 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "ClawBench";
     private static final String LOGIN_HTML_URL = "file:///android_asset/login.html";
 
-    private WebView webView;
+    static MainActivity instance;
+
+    WebView webView;
     private ProgressBar progressBar;
     private SharedPreferences prefs;
 
@@ -147,6 +152,11 @@ public class MainActivity extends AppCompatActivity {
     // as JS calls instead of adjusting system volume. Controlled by the terminal panel.
     private volatile boolean volumeKeyMode = false;
 
+    // Whether JPush push notifications are available (fetched from server config).
+    // When true, WebSocket can be disconnected on background (push will notify the user).
+    // When false, WebSocket stays alive in background for real-time events.
+    volatile boolean pushAvailable = false;
+
     // Fullscreen video state: managed by WebChromeClient.onShowCustomView/onHideCustomView
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -155,6 +165,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        instance = this;
 
         // Keep screen on while app is in foreground (AI may take time to respond)
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -182,6 +194,12 @@ public class MainActivity extends AppCompatActivity {
         // Auto-connect if there's a saved URL (user has configured before).
         // This preserves the original behavior: returning users go straight
         // to the app. Only first-time users see the login page.
+
+        // Fetch JPush config from server and init JPush at runtime.
+        // AppKey is no longer baked into the APK — it comes from /api/push/config.
+        fetchPushConfig();
+
+        // Load saved URL or show configuration dialog
         String savedUrl = prefs.getString(KEY_SERVER_URL, null);
         if (savedUrl != null) {
             webView.setVisibility(View.INVISIBLE);
@@ -401,11 +419,13 @@ public class MainActivity extends AppCompatActivity {
     private String getDownloadFileName(String url, String contentDisposition) {
         // 1. Try Content-Disposition header (sent by server with attachment; filename="...")
         if (contentDisposition != null && !contentDisposition.isEmpty()) {
+            // Parse filename*= (RFC 5987) first, then filename=
             String name = parseContentDispositionFilename(contentDisposition);
             if (name != null && !name.isEmpty()) return name;
         }
         // 2. Fallback: extract from URL path, stripping query parameters
         String decoded = Uri.decode(url);
+        // Remove query string and fragment
         int queryIdx = decoded.indexOf('?');
         if (queryIdx >= 0) decoded = decoded.substring(0, queryIdx);
         int fragmentIdx = decoded.indexOf('#');
@@ -494,6 +514,12 @@ public class MainActivity extends AppCompatActivity {
         prefs.edit().putString(KEY_SERVER_URL, url).apply();
         if (password != null && !password.isEmpty()) {
             PortForwardService.setPassword(this, password);
+        }
+
+        // Fetch JPush config now that we have a server URL.
+        // On first launch, onCreate's fetchPushConfig() skips because URL is empty.
+        if (!pushAvailable) {
+            fetchPushConfig();
         }
 
         if (isNetworkAvailable()) {
@@ -588,7 +614,64 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         // Do NOT stop PortForwardService here — it should survive Activity lifecycle
         // so the SSH tunnel continues running when the app is in background.
+        instance = null; // Clear static reference to prevent memory leak / stale access
         super.onDestroy();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // App going to background — if JPush is not available, start native WS
+        // so we still get notifications when Android kills the WebView process.
+        if (!pushAvailable && webViewConnected) {
+            PortForwardService.startNativeEventWs(this);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // App returning to foreground — stop native WS (WebView WS handles events)
+        PortForwardService.stopNativeEventWs(this);
+        // Handle notification tap intent
+        handleNotificationIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleNotificationIntent(intent);
+    }
+
+    /**
+     * Handle intent extras from notification taps.
+     * Extracts session_id or task_id and dispatches a clawbench-open-session
+     * event to the WebView (same behavior as JPush notification taps).
+     */
+    private void handleNotificationIntent(Intent intent) {
+        if (intent == null) return;
+        String sessionId = intent.getStringExtra("session_id");
+        String taskId = intent.getStringExtra("task_id");
+        if (sessionId != null || taskId != null) {
+            // Use the same openSession pattern as JPushReceiver
+            if (webView != null) {
+                try {
+                    org.json.JSONObject detail = new org.json.JSONObject();
+                    if (sessionId != null) detail.put("sessionId", sessionId);
+                    if (taskId != null) detail.put("taskId", taskId);
+                    webView.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('clawbench-open-session', { detail: " + detail.toString() + " }))",
+                        null
+                    );
+                } catch (Exception e) {
+                    Log.w(TAG, "Failed to dispatch open-session event from notification", e);
+                }
+            }
+            // Clear extras so we don't re-dispatch on subsequent onResume
+            intent.removeExtra("session_id");
+            intent.removeExtra("task_id");
+        }
     }
 
     /**
@@ -611,6 +694,73 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    // --- JPush Runtime Init ---
+
+    /**
+     * Fetch JPush configuration (AppKey, enabled flag) from the server's /api/push/config endpoint.
+     * If JPush is enabled on the server, initializes JPush with the runtime AppKey.
+     * If JPush is not configured, skips init — the app will keep WebSocket alive in background
+     * instead of relying on push notifications.
+     *
+     * This runs on a background thread (OkHttp callback) and posts JPush init back to main thread.
+     */
+    private void fetchPushConfig() {
+        String serverUrl = prefs.getString(KEY_SERVER_URL, "");
+        if (serverUrl.isEmpty()) {
+            Log.w(TAG, "No server URL configured, skipping push config fetch");
+            return;
+        }
+
+        new Thread(() -> {
+            try {
+                java.net.URL url = new java.net.URL(serverUrl + "/api/push/config");
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+
+                int responseCode = conn.getResponseCode();
+                if (responseCode != 200) {
+                    Log.w(TAG, "Push config endpoint returned " + responseCode);
+                    conn.disconnect();
+                    return;
+                }
+
+                java.io.BufferedReader reader = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(conn.getInputStream()));
+                StringBuilder response = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    response.append(line);
+                }
+                reader.close();
+                conn.disconnect();
+
+                // Parse JSON response
+                String jsonStr = response.toString();
+                org.json.JSONObject json = new org.json.JSONObject(jsonStr);
+                boolean jpushEnabled = json.optBoolean("jpush_enabled", false);
+                String jpushAppKey = json.optString("jpush_app_key", "");
+
+                if (jpushEnabled && !jpushAppKey.isEmpty()) {
+                    Log.i(TAG, "JPush enabled on server, initializing with AppKey: " + jpushAppKey.substring(0, 4) + "...");
+                    runOnUiThread(() -> {
+                        JPushInterface.setDebugMode(false);
+                        JPushConfig config = new JPushConfig();
+                        config.setjAppKey(jpushAppKey);
+                        JPushInterface.init(this, config);
+                        pushAvailable = true;
+                        Log.i(TAG, "JPush initialized with server-provided AppKey");
+                    });
+                } else {
+                    Log.i(TAG, "JPush not configured on server — will keep WebSocket alive in background");
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to fetch push config: " + e.getMessage());
+            }
+        }).start();
     }
 
     // --- WebView Client ---
@@ -1014,6 +1164,40 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void setVolumeKeyMode(boolean enabled) {
             activity.volumeKeyMode = enabled;
+        }
+
+        /**
+         * Get the JPush registration ID for push notifications.
+         * The WebView calls this on WS connect to register the device for push.
+         */
+        @JavascriptInterface
+        public String getPushRegistrationId() {
+            return JPushInterface.getRegistrationID(activity);
+        }
+
+        /**
+         * Check whether push notifications are available.
+         * Returns true if JPush was initialized with a valid AppKey from the server.
+         * When push is available, the frontend can safely disconnect WebSocket on background;
+         * when not available, WebSocket must stay alive for real-time events.
+         */
+        @JavascriptInterface
+        public boolean isPushAvailable() {
+            return activity.pushAvailable;
+        }
+
+        /**
+         * Open a chat session by dispatching an event to the WebView.
+         * Called by JPushReceiver when a push notification is tapped.
+         */
+        @JavascriptInterface
+        public void openSession(String sessionId) {
+            activity.runOnUiThread(() -> {
+                activity.webView.evaluateJavascript(
+                    "window.dispatchEvent(new CustomEvent('clawbench-open-session', { detail: { sessionId: '" + sessionId + "' } }))",
+                    null
+                );
+            });
         }
 
         /**
