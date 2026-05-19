@@ -637,6 +637,11 @@ func LaunchSentinelProcess() (*exec.Cmd, error) {
 
 // IsRunningUnderSupervisor detects if the process is managed by systemd, Docker, etc.
 func IsRunningUnderSupervisor() bool {
+	// Explicit override: if CLAWBENCH_NO_SUPERVISOR is set, we are standalone
+	// (e.g. launched by server.sh with nohup, where PPID=1 but no actual supervisor)
+	if os.Getenv("CLAWBENCH_NO_SUPERVISOR") != "" {
+		return false
+	}
 	// systemd sets INVOCATION_ID
 	if os.Getenv("INVOCATION_ID") != "" {
 		return true

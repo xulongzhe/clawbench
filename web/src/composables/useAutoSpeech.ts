@@ -72,6 +72,13 @@ try {
   // localStorage may be unavailable (e.g. private browsing)
 }
 
+// Sync from Settings page changes
+if (typeof window !== 'undefined') {
+  window.addEventListener('clawbench-autospeech-change', (e: Event) => {
+    enabled.value = (e as CustomEvent).detail as boolean
+  })
+}
+
 // Module-level toast instance (shared, not per-component)
 const toast = useToast()
 

@@ -168,9 +168,9 @@ start_release() {
     if [[ -n "$FOREGROUND" ]]; then
         echo "Open http://localhost:$EFFECTIVE_PORT in your browser"
         echo ""
-        PORT=$EFFECTIVE_PORT exec "$BIN"
+        PORT=$EFFECTIVE_PORT CLAWBENCH_NO_SUPERVISOR=1 exec "$BIN"
     else
-        PORT=$EFFECTIVE_PORT nohup $BIN >> "$LOG_FILE" 2>&1 &
+        PORT=$EFFECTIVE_PORT CLAWBENCH_NO_SUPERVISOR=1 nohup $BIN >> "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
         disown $! 2>/dev/null
 

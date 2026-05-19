@@ -11,7 +11,6 @@
       <AppHeader
         :hidden="terminalActive"
         :project-root="projectRoot"
-        @open-settings="settingsDrawerOpen = true"
         @open-project-dialog="handleOpenProjectDialog"
       />
 
@@ -128,15 +127,15 @@
           <TabPanel tabId="tasks" :activeTab="activeTab" :noHeader="true">
             <TaskTab :active="activeTab === 'tasks'" @open-file="handleTaskOpenFile" />
           </TabPanel>
+
+          <!-- Settings Tab -->
+          <TabPanel tabId="settings" :activeTab="activeTab" :noHeader="true">
+            <SettingsPage :active="activeTab === 'settings'" />
+          </TabPanel>
         </div>
       </main>
 
       <Lightbox />
-
-      <SettingsDrawer
-        :show="settingsDrawerOpen"
-        @close="settingsDrawerOpen = false"
-      />
 
       <ProjectDialog
         :open="projectDialogOpen"
@@ -224,6 +223,11 @@
             <TerminalIcon :size="16" />
             <span>{{ t('terminal.title') }}</span>
           </button>
+          <div class="dock-overflow-divider"></div>
+          <button class="dock-overflow-item" @click.stop="handleOverflowSettings">
+            <Settings :size="16" />
+            <span>{{ t('nav.settings') }}</span>
+          </button>
         </div>
       </Transition>
     </Teleport>
@@ -236,7 +240,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessageSquare, FolderOpen, FileText, GitBranch, EthernetPort, Terminal as TerminalIcon, CalendarClock, MoreHorizontal } from 'lucide-vue-next'
+import { MessageSquare, FolderOpen, FileText, GitBranch, EthernetPort, Terminal as TerminalIcon, CalendarClock, MoreHorizontal, Settings } from 'lucide-vue-next'
 import AppHeader from './components/common/AppHeader.vue'
 import TabPanel from './components/common/TabPanel.vue'
 import WelcomeView from './components/WelcomeView.vue'
@@ -258,7 +262,7 @@ import DialogOverlay from './components/common/DialogOverlay.vue'
 import SessionDrawer from './components/session/SessionDrawer.vue'
 import QuoteQuestionBar from './components/common/QuoteQuestionBar.vue'
 import HeaderMarquee from './components/common/HeaderMarquee.vue'
-import SettingsDrawer from './components/settings/SettingsDrawer.vue'
+import SettingsPage from './components/settings/SettingsPage.vue'
 import TaskTab from '@/components/task/TaskTab.vue'
 import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
 import { useTaskTab, registerSwitchTab, onTaskEvent } from '@/composables/useTaskTab.ts'
@@ -387,8 +391,6 @@ async function handleLoginSuccess() {
 
 const projectDialogOpen = ref(false)
 
-const settingsDrawerOpen = ref(false)
-
 function handleOpenProjectDialog() {
     projectDialogOpen.value = true
 }
@@ -499,11 +501,12 @@ function handleDockTerminal() {
 // Overflow menu state
 const overflowMenuOpen = ref(false)
 const overflowBtnRef = ref(null)
-const overflowTabs = ['history', 'proxy', 'terminal']
+const overflowTabs = ['history', 'proxy', 'terminal', 'settings']
 const overflowTabMeta = {
   history: { icon: GitBranch, titleKey: 'git.history.projectHistory' },
   proxy:   { icon: EthernetPort, titleKey: 'nav.portForward' },
   terminal:{ icon: TerminalIcon, titleKey: 'terminal.title' },
+  settings:{ icon: Settings, titleKey: 'nav.settings' },
 }
 
 const isOverflowTabActive = computed(() => overflowTabs.includes(activeTab.value))
@@ -550,6 +553,11 @@ function handleOverflowSelect(tab) {
   } else {
     switchTab(tab)
   }
+}
+
+function handleOverflowSettings() {
+  overflowMenuOpen.value = false
+  switchTab('settings')
 }
 
 // Close overflow menu on outside click
@@ -649,6 +657,17 @@ onMounted(async () => {
     window.addEventListener('navigate-to-commit', handleNavigateToCommit)
     window.addEventListener('quote-sent', playQuoteEmitAnimation)
     document.addEventListener('click', handleOverflowOutsideClick)
+    // Sync reactive state from Settings page changes
+    window.addEventListener('clawbench-theme-change', (e) => {
+        const resolved = e.detail
+        theme.value = resolved
+        // Re-render mermaid diagrams for new theme
+        initMermaid()
+        reRenderMermaid()
+    })
+    window.addEventListener('clawbench-showhidden-change', (e) => {
+        showHidden.value = e.detail
+    })
     applyTheme(theme.value)
     let resp
     try {
@@ -931,6 +950,12 @@ onUnmounted(() => {
 .dock-overflow-item.active {
     background: color-mix(in srgb, var(--accent-color) 15%, transparent);
     color: var(--accent-color);
+}
+
+.dock-overflow-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 8px;
 }
 
 /* Popup transition */

@@ -59,16 +59,12 @@
         <span class="status-value">{{ pushStatusLabel }}</span>
       </div>
     </PopupMenu>
-
-    <button class="settings-toggle" @click="emit('openSettings')" :title="t('appHeader.settings')">
-      <Settings :size="20" />
-    </button>
   </header>
   </Teleport>
 </template>
 
 <script setup>
-import { Projector, ChevronDown, Search, Settings, GitBranch } from 'lucide-vue-next'
+import { Projector, ChevronDown, Search, GitBranch } from 'lucide-vue-next'
 import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useGlobalEvents } from '@/composables/useGlobalEvents'
@@ -84,7 +80,7 @@ const props = defineProps({
     projectRoot: String,
     hidden: Boolean,
 })
-const emit = defineEmits(['openSettings', 'openProjectDialog'])
+const emit = defineEmits(['openProjectDialog'])
 
 const toast = inject('toast')
 
@@ -400,17 +396,6 @@ onUnmounted(() => {
     min-width: 0;
 }
 
-.settings-toggle {
-    padding: 6px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: var(--text-primary);
-    border-radius: var(--radius-sm);
-    transition: background 0.15s;
-    flex-shrink: 0;
-}
-
 /* Connection status button */
 .status-toggle {
     padding: 6px;
@@ -455,11 +440,6 @@ onUnmounted(() => {
 @keyframes status-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
-}
-
-.settings-toggle svg {
-    width: 20px;
-    height: 20px;
 }
 </style>
 

@@ -12,28 +12,38 @@ vi.mock('@/composables/useSettingsConfig', () => ({
     setLocalConfig: vi.fn(),
     getServerValue: vi.fn(),
     setServerValue: vi.fn(),
+    patchConfig: vi.fn(),
   }),
 }))
 
 // Stub child components
 const globalStubs = {
+  BottomSheet: {
+    template: '<div class="stub-bottomsheet" v-if="$slots.default"><slot name="header" /><slot /><slot name="footer" /></div>',
+    props: ['open'],
+  },
   SettingsIndex: {
     template: '<div class="stub-index" @click="$emit(\'navigate\', \'appearance\')" />',
   },
   SettingsCategory: {
     template: '<div class="stub-category" />',
     props: ['categoryId'],
+    methods: {
+      saveChanges: vi.fn().mockResolvedValue(undefined),
+    },
   },
   SettingsRestartDialog: {
     template: '<div class="stub-restart" v-if="false" />',
     props: ['changedFields'],
   },
   'lucide-chevron-left': true,
+  'lucide-settings': true,
+  'lucide-x': true,
 }
 
 function mountDrawer(props = {}) {
   return mount(SettingsDrawer, {
-    props: { show: true, ...props },
+    props: { open: true, ...props },
     global: { stubs: globalStubs },
   })
 }
@@ -56,15 +66,28 @@ describe('SettingsDrawer', () => {
     expect(wrapper.find('.stub-index').exists()).toBe(false)
   })
 
-  it('emits close when back button clicked with empty nav stack', async () => {
+  it('emits close when close button clicked', async () => {
     const wrapper = mountDrawer()
 
-    await wrapper.find('.settings-drawer__back').trigger('click')
+    await wrapper.find('.settings-close-btn').trigger('click')
 
     expect(wrapper.emitted('close')).toBeTruthy()
   })
 
-  it('pops nav stack instead of closing when nav is non-empty', async () => {
+  it('shows back button when in a category', async () => {
+    const wrapper = mountDrawer()
+
+    // Initially no back button
+    expect(wrapper.find('.settings-back-btn').exists()).toBe(false)
+
+    // Navigate into a category
+    await wrapper.find('.stub-index').trigger('click')
+
+    // Back button should now be visible
+    expect(wrapper.find('.settings-back-btn').exists()).toBe(true)
+  })
+
+  it('pops nav stack when back button clicked in category', async () => {
     const wrapper = mountDrawer()
 
     // Navigate into a category
@@ -72,24 +95,29 @@ describe('SettingsDrawer', () => {
     expect(wrapper.find('.stub-category').exists()).toBe(true)
 
     // Click back — should go back to index, not close
-    await wrapper.find('.settings-drawer__back').trigger('click')
+    await wrapper.find('.settings-back-btn').trigger('click')
     expect(wrapper.find('.stub-index').exists()).toBe(true)
     expect(wrapper.emitted('close')).toBeFalsy()
   })
 
-  it('renders with correct z-index above BottomSheet', () => {
+  it('resets nav stack when reopened', async () => {
     const wrapper = mountDrawer()
 
-    const drawer = wrapper.find('.settings-drawer')
-    expect(drawer.exists()).toBe(true)
-    const style = drawer.attributes('style') ?? ''
-    // z-index is set via CSS, not inline, so just verify the element exists
-    expect(drawer.classes()).toContain('settings-drawer')
+    // Navigate into a category
+    await wrapper.find('.stub-index').trigger('click')
+    expect(wrapper.find('.stub-category').exists()).toBe(true)
+
+    // Close and reopen
+    await wrapper.setProps({ open: false })
+    await wrapper.setProps({ open: true })
+
+    // Should be back at index
+    expect(wrapper.find('.stub-index').exists()).toBe(true)
   })
 
-  it('does not render when show is false', () => {
-    const wrapper = mountDrawer({ show: false })
+  it('shows close button always', () => {
+    const wrapper = mountDrawer()
 
-    expect(wrapper.find('.settings-drawer').exists()).toBe(false)
+    expect(wrapper.find('.settings-close-btn').exists()).toBe(true)
   })
 })

@@ -40,6 +40,7 @@ const { t } = useI18n()
 const categoryDefs = [
   { id: 'appearance', icon: Palette },
   { id: 'chat', icon: MessageSquare },
+  { id: 'agents', icon: Bot },
   { id: 'files', icon: FolderOpen },
   { id: 'terminal', icon: Terminal },
   { id: 'tts', icon: Volume2 },
