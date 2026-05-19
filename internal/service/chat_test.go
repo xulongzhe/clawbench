@@ -1497,10 +1497,9 @@ func TestGetSessionsPaged_NoLimit_ReturnsAll(t *testing.T) {
 	helperCreateSession(t, "/project", "claude", "S2")
 	helperCreateSession(t, "/project", "claude", "S3")
 
-	sessions, total, hasMore, err := service.GetSessionsPaged("/project", "", 0, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 0, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 3)
-	assert.Equal(t, 3, total)
 	assert.False(t, hasMore)
 }
 
@@ -1510,10 +1509,9 @@ func TestGetSessionsPaged_LimitGreaterThanTotal(t *testing.T) {
 	helperCreateSession(t, "/project", "claude", "S1")
 	helperCreateSession(t, "/project", "claude", "S2")
 
-	sessions, total, hasMore, err := service.GetSessionsPaged("/project", "", 10, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 10, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 2)
-	assert.Equal(t, 2, total)
 	assert.False(t, hasMore)
 }
 
@@ -1524,10 +1522,9 @@ func TestGetSessionsPaged_LimitEqualsTotal(t *testing.T) {
 	helperCreateSession(t, "/project", "claude", "S2")
 	helperCreateSession(t, "/project", "claude", "S3")
 
-	sessions, total, hasMore, err := service.GetSessionsPaged("/project", "", 3, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 3, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 3)
-	assert.Equal(t, 3, total)
 	assert.False(t, hasMore) // limit+1=4, only 3 exist, so no more
 }
 
@@ -1538,10 +1535,9 @@ func TestGetSessionsPaged_LimitLessThanTotal_HasMore(t *testing.T) {
 		helperCreateSession(t, "/project", "claude", fmt.Sprintf("S%d", i))
 	}
 
-	sessions, total, hasMore, err := service.GetSessionsPaged("/project", "", 3, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 3, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 3)
-	assert.Equal(t, 5, total)
 	assert.True(t, hasMore)
 }
 
@@ -1559,10 +1555,9 @@ func TestGetSessionsPaged_CursorSecondPage(t *testing.T) {
 	}
 
 	// First page: limit=2, no cursor
-	sessions, total, hasMore, err := service.GetSessionsPaged("/project", "", 2, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 2, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 2)
-	assert.Equal(t, 5, total)
 	assert.True(t, hasMore)
 
 	// Use last session as cursor
@@ -1571,10 +1566,9 @@ func TestGetSessionsPaged_CursorSecondPage(t *testing.T) {
 	cursorID := lastSession.ID
 
 	// Second page: cursor from last session of first page
-	sessions2, total2, hasMore2, err := service.GetSessionsPaged("/project", "", 2, cursor, cursorID)
+	sessions2, hasMore2, err := service.GetSessionsPaged("/project", "", 2, cursor, cursorID)
 	assert.NoError(t, err)
 	assert.Len(t, sessions2, 2)
-	assert.Equal(t, 5, total2)
 	assert.True(t, hasMore2)
 
 	// Verify no overlap between page 1 and page 2
@@ -1597,7 +1591,7 @@ func TestGetSessionsPaged_CursorLastPage(t *testing.T) {
 	}
 
 	// First page: limit=3
-	sessions, _, hasMore, err := service.GetSessionsPaged("/project", "", 3, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 3, "", "")
 	assert.NoError(t, err)
 	assert.True(t, hasMore)
 
@@ -1606,7 +1600,7 @@ func TestGetSessionsPaged_CursorLastPage(t *testing.T) {
 	cursor := lastSession.UpdatedAt.Format("2006-01-02 15:04:05")
 	cursorID := lastSession.ID
 
-	sessions2, _, hasMore2, err := service.GetSessionsPaged("/project", "", 3, cursor, cursorID)
+	sessions2, hasMore2, err := service.GetSessionsPaged("/project", "", 3, cursor, cursorID)
 	assert.NoError(t, err)
 	assert.Len(t, sessions2, 2) // only 2 remaining
 	assert.False(t, hasMore2)
@@ -1615,10 +1609,9 @@ func TestGetSessionsPaged_CursorLastPage(t *testing.T) {
 func TestGetSessionsPaged_EmptyProject(t *testing.T) {
 	setupDB(t)
 
-	sessions, total, hasMore, err := service.GetSessionsPaged("/project", "", 10, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 10, "", "")
 	assert.NoError(t, err)
 	assert.Empty(t, sessions)
-	assert.Equal(t, 0, total)
 	assert.False(t, hasMore)
 }
 
@@ -1629,10 +1622,9 @@ func TestGetSessionsPaged_FiltersByProject(t *testing.T) {
 	helperCreateSession(t, "/proj1", "claude", "P1-S2")
 	helperCreateSession(t, "/proj2", "claude", "P2-S1")
 
-	sessions, total, hasMore, err := service.GetSessionsPaged("/proj1", "", 10, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/proj1", "", 10, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 2)
-	assert.Equal(t, 2, total)
 	assert.False(t, hasMore)
 }
 
@@ -1644,10 +1636,9 @@ func TestGetSessionsPaged_ExcludesDeletedSessions(t *testing.T) {
 	err := service.DeleteSession("/project", "claude", deletedSID)
 	assert.NoError(t, err)
 
-	sessions, total, hasMore, err := service.GetSessionsPaged("/project", "", 10, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 10, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 1)
-	assert.Equal(t, 1, total)
 	assert.False(t, hasMore)
 	assert.Equal(t, "Active", sessions[0].Title)
 }
@@ -1658,10 +1649,9 @@ func TestGetSessionsPaged_ExcludesScheduledSessions(t *testing.T) {
 	helperCreateSession(t, "/project", "claude", "Chat")
 	helperCreateScheduledSession(t, "/project", "claude", "Scheduled")
 
-	sessions, total, _, err := service.GetSessionsPaged("/project", "", 10, "", "")
+	sessions, _, err := service.GetSessionsPaged("/project", "", 10, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 1)
-	assert.Equal(t, 1, total)
 	assert.Equal(t, "Chat", sessions[0].Title)
 }
 
@@ -1677,7 +1667,7 @@ func TestGetSessionsPaged_OrderedByUpdatedDesc(t *testing.T) {
 	_, err = service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now') WHERE id = ?", sid2)
 	assert.NoError(t, err)
 
-	sessions, _, _, err := service.GetSessionsPaged("/project", "", 10, "", "")
+	sessions, _, err := service.GetSessionsPaged("/project", "", 10, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 2)
 	assert.Equal(t, sid2, sessions[0].ID) // most recently updated first
@@ -1704,7 +1694,7 @@ func TestGetSessionsPaged_AllPagesCoverAllSessions(t *testing.T) {
 	page := 0
 
 	for {
-		sessions, _, hasMore, err := service.GetSessionsPaged("/project", "", limit, cursor, cursorID)
+		sessions, hasMore, err := service.GetSessionsPaged("/project", "", limit, cursor, cursorID)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, sessions, "page %d should not be empty", page)
 
@@ -1758,10 +1748,9 @@ func TestGetSessionsPaged_SameTimestampTiebreaker(t *testing.T) {
 	assert.NoError(t, err)
 
 	// First page: limit=2 — should get sid3 (newest) and one of sid1/sid2
-	sessions, total, hasMore, err := service.GetSessionsPaged("/project", "", 2, "", "")
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 2, "", "")
 	assert.NoError(t, err)
 	assert.Len(t, sessions, 2)
-	assert.Equal(t, 3, total)
 	assert.True(t, hasMore)
 
 	// Second page: cursor from last session of page 1
@@ -1769,7 +1758,7 @@ func TestGetSessionsPaged_SameTimestampTiebreaker(t *testing.T) {
 	cursor := lastSession.UpdatedAt.Format("2006-01-02 15:04:05")
 	cursorID := lastSession.ID
 
-	sessions2, _, hasMore2, err := service.GetSessionsPaged("/project", "", 2, cursor, cursorID)
+	sessions2, hasMore2, err := service.GetSessionsPaged("/project", "", 2, cursor, cursorID)
 	assert.NoError(t, err)
 	assert.Len(t, sessions2, 1) // only 1 remaining
 	assert.False(t, hasMore2)

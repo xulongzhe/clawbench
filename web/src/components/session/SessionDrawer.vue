@@ -107,7 +107,6 @@ const sessions = ref([])
 const loading = ref(false)
 const loadingMore = ref(false)
 const hasMore = ref(false)
-const totalCount = ref(0)
 const listRef = ref(null)
 const sentinelRef = ref(null)
 let observer = null
@@ -167,12 +166,10 @@ async function handleCreateClick() {
 async function loadSessions() {
   loading.value = true
   hasMore.value = false
-  totalCount.value = 0
   try {
     const resp = await fetch(`/api/ai/sessions?limit=${pageSize.value}`)
     const data = await resp.json()
     sessions.value = data.sessions || []
-    totalCount.value = data.total || 0
     hasMore.value = !!data.hasMore
   } catch (err) {
     console.error('Failed to load sessions:', err)
@@ -198,7 +195,6 @@ async function loadMoreSessions() {
     if (more.length > 0) {
       sessions.value = [...sessions.value, ...more]
     }
-    totalCount.value = data.total || 0
     hasMore.value = !!data.hasMore
   } catch (err) {
     console.error('Failed to load more sessions:', err)
