@@ -25,17 +25,85 @@ const { mockState, resetMockState } = vi.hoisted(() => {
   return { mockState, resetMockState }
 })
 
+const { mockIdentity, mockToastFn, mockAgentFns, mockUtilsFns, mockIdentityFns, resetAdditionalMocks } = vi.hoisted(() => {
+  const mockIdentity: Record<string, string> = {
+    currentSessionTitle: '',
+    currentBackend: '',
+    currentAgentId: '',
+    currentModelId: '',
+    currentModelName: '',
+    currentThinkingEffort: '',
+  }
+  const mockToastFn = vi.fn()
+  const mockIdentityFns = {
+    loadModelPref: vi.fn(),
+    loadThinkingPref: vi.fn(),
+    saveModelPref: vi.fn(),
+    saveThinkingPref: vi.fn(),
+  }
+  const mockAgentFns = {
+    loadAgents: vi.fn().mockResolvedValue(undefined),
+    getAgentIcon: vi.fn().mockReturnValue('🤖'),
+    getAgentName: vi.fn().mockReturnValue('Test'),
+    syncModelFromAgent: vi.fn().mockReturnValue({ modelId: '', modelName: '' }),
+    getAgentModel: vi.fn().mockReturnValue(undefined),
+    agentHeaderTitle: vi.fn().mockReturnValue('🤖 Test'),
+  }
+  const mockUtilsFns = {
+    buildMessageSnapshot: vi.fn().mockReturnValue(''),
+    parseMessages: vi.fn().mockReturnValue([]),
+  }
+  function resetAdditionalMocks() {
+    Object.keys(mockIdentity).forEach(k => { mockIdentity[k] = '' })
+    mockToastFn.mockReset()
+    mockIdentityFns.loadModelPref.mockReset()
+    mockIdentityFns.loadThinkingPref.mockReset()
+    mockIdentityFns.saveModelPref.mockReset()
+    mockIdentityFns.saveThinkingPref.mockReset()
+    mockAgentFns.loadAgents.mockReset().mockResolvedValue(undefined)
+    mockAgentFns.getAgentIcon.mockReset().mockReturnValue('🤖')
+    mockAgentFns.getAgentName.mockReset().mockReturnValue('Test')
+    mockAgentFns.syncModelFromAgent.mockReset().mockReturnValue({ modelId: '', modelName: '' })
+    mockAgentFns.getAgentModel.mockReset().mockReturnValue(undefined)
+    mockAgentFns.agentHeaderTitle.mockReset().mockReturnValue('🤖 Test')
+    mockUtilsFns.buildMessageSnapshot.mockReset().mockReturnValue('')
+    mockUtilsFns.parseMessages.mockReset().mockReturnValue([])
+  }
+  return { mockIdentity, mockToastFn, mockAgentFns, mockUtilsFns, mockIdentityFns, resetAdditionalMocks }
+})
+
 // ── Mocks ──
 
 vi.mock('@/composables/useSessionIdentity', () => ({
   useSessionIdentity: () => ({
-    currentSessionId: { value: mockState.currentSessionId, get value() { return mockState.currentSessionId } },
-    currentSessionTitle: { value: '' },
-    currentBackend: { value: '' },
-    currentAgentId: { value: '' },
-    currentModelId: { value: '' },
-    currentModelName: { value: '' },
-    currentThinkingEffort: { value: '' },
+    currentSessionId: {
+      get value() { return mockState.currentSessionId },
+      set value(v) { mockState.currentSessionId = v },
+    },
+    currentSessionTitle: {
+      get value() { return mockIdentity.currentSessionTitle },
+      set value(v) { mockIdentity.currentSessionTitle = v },
+    },
+    currentBackend: {
+      get value() { return mockIdentity.currentBackend },
+      set value(v) { mockIdentity.currentBackend = v },
+    },
+    currentAgentId: {
+      get value() { return mockIdentity.currentAgentId },
+      set value(v) { mockIdentity.currentAgentId = v },
+    },
+    currentModelId: {
+      get value() { return mockIdentity.currentModelId },
+      set value(v) { mockIdentity.currentModelId = v },
+    },
+    currentModelName: {
+      get value() { return mockIdentity.currentModelName },
+      set value(v) { mockIdentity.currentModelName = v },
+    },
+    currentThinkingEffort: {
+      get value() { return mockIdentity.currentThinkingEffort },
+      set value(v) { mockIdentity.currentThinkingEffort = v },
+    },
     runningSessions: {
       get value() { return mockState.runningSessions },
     },
@@ -51,15 +119,15 @@ vi.mock('@/composables/useSessionIdentity', () => ({
     openChatPanel: vi.fn(),
     registerSessionActions: vi.fn(),
     initSessionFromAPI: vi.fn(),
-    saveModelPref: vi.fn(),
-    saveThinkingPref: vi.fn(),
-    loadModelPref: vi.fn(),
-    loadThinkingPref: vi.fn(),
+    saveModelPref: mockIdentityFns.saveModelPref,
+    saveThinkingPref: mockIdentityFns.saveThinkingPref,
+    loadModelPref: mockIdentityFns.loadModelPref,
+    loadThinkingPref: mockIdentityFns.loadThinkingPref,
   }),
 }))
 
 vi.mock('@/composables/useToast', () => ({
-  useToast: () => ({ show: vi.fn() }),
+  useToast: () => ({ show: mockToastFn }),
 }))
 vi.mock('@/composables/useNotification', () => ({
   useNotification: () => ({ play: vi.fn() }),
@@ -67,12 +135,12 @@ vi.mock('@/composables/useNotification', () => ({
 vi.mock('@/composables/useAgents', () => ({
   useAgents: () => ({
     agents: { value: [] },
-    loadAgents: vi.fn().mockResolvedValue(undefined),
-    getAgentIcon: vi.fn().mockReturnValue('🤖'),
-    getAgentName: vi.fn().mockReturnValue('Test'),
-    syncModelFromAgent: vi.fn().mockReturnValue({ modelId: '', modelName: '' }),
-    getAgentModel: vi.fn().mockReturnValue(undefined),
-    agentHeaderTitle: vi.fn().mockReturnValue('🤖 Test'),
+    loadAgents: mockAgentFns.loadAgents,
+    getAgentIcon: mockAgentFns.getAgentIcon,
+    getAgentName: mockAgentFns.getAgentName,
+    syncModelFromAgent: mockAgentFns.syncModelFromAgent,
+    getAgentModel: mockAgentFns.getAgentModel,
+    agentHeaderTitle: mockAgentFns.agentHeaderTitle,
   }),
 }))
 
@@ -85,8 +153,8 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/utils/chatSessionUtils', () => ({
-  buildMessageSnapshot: vi.fn().mockReturnValue(''),
-  parseMessages: vi.fn().mockReturnValue([]),
+  buildMessageSnapshot: mockUtilsFns.buildMessageSnapshot,
+  parseMessages: mockUtilsFns.parseMessages,
 }))
 
 // ── Import after mocks ──
@@ -1037,5 +1105,1074 @@ describe('chatUnread integration', () => {
 
     // Current session's unreadCount is excluded, s2 has 0 → chatUnread = false
     expect(mockState.chatUnread).toBe(false)
+  })
+})
+
+// ───────────────────────────────────────────────────────────
+// loadHistory
+// ───────────────────────────────────────────────────────────
+
+describe('loadHistory', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    resetMockState()
+    resetAdditionalMocks()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('normal successful load: fetches /api/ai/chat, parses messages, updates identity refs', async () => {
+    const parsedMsgs = [{ id: 'm1', role: 'user' }, { id: 'm2', role: 'assistant' }]
+    mockUtilsFns.parseMessages.mockReturnValue(parsedMsgs)
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        sessionTitle: 'Test Session',
+        backend: 'claude',
+        agentId: 'agent1',
+        modelId: 'model-x',
+        thinkingEffort: 'high',
+        messages: [{ id: 'm1' }, { id: 'm2' }],
+        total: 2,
+        running: false,
+      }),
+    })
+
+    const session = createSession()
+    await session.loadHistory(true, false, false)
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/ai/chat?session_id=current-s1')
+    )
+    expect(mockIdentity.currentSessionTitle).toBe('Test Session')
+    expect(mockIdentity.currentBackend).toBe('claude')
+    expect(mockIdentity.currentAgentId).toBe('agent1')
+    expect(mockUtilsFns.parseMessages).toHaveBeenCalled()
+  })
+
+  it('sets switching=true when showOverlay=true, restores to false after', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [],
+        total: 0,
+        running: false,
+      }),
+    })
+
+    const session = createSession()
+    // switching should be false before and after, but true during the async operation
+    expect(session.switching.value).toBe(false)
+    await session.loadHistory(true, true, false)
+    expect(session.switching.value).toBe(false)
+  })
+
+  it('handles non-ok response: shows toast error', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'Internal Server Error' }),
+    })
+
+    const session = createSession()
+    await session.loadHistory(true, false, false)
+
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+  })
+
+  it('skipIfUnchanged=true with same snapshot: early returns without updating', async () => {
+    // First load: set the snapshot
+    mockUtilsFns.buildMessageSnapshot.mockReturnValue('snap-a')
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [{ id: 'm1' }],
+        total: 1,
+        running: false,
+      }),
+    })
+
+    const session = createSession()
+    await session.loadHistory(true, false, false)
+
+    // Second load: same snapshot, skipIfUnchanged=true
+    // buildMessageSnapshot still returns 'snap-a'
+    const fetchBeforeSecond = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length
+    await session.loadHistory(false, false, true)
+
+    // parseMessages should NOT have been called again for the second load
+    // (it was called once during the first load)
+    expect(mockUtilsFns.parseMessages).toHaveBeenCalledTimes(1)
+  })
+
+  it('skipIfUnchanged=true but data.running=true: still proceeds', async () => {
+    // First load: set the snapshot
+    mockUtilsFns.buildMessageSnapshot.mockReturnValue('snap-a')
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [{ id: 'm1' }],
+        total: 1,
+        running: false,
+      }),
+    })
+
+    const session = createSession()
+    await session.loadHistory(true, false, false)
+
+    // Second load: same snapshot but running=true → should NOT skip
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [{ id: 'm1' }, { id: 'm2' }],
+        total: 2,
+        running: true,
+      }),
+    })
+    mockUtilsFns.parseMessages.mockReturnValue([{ id: 'm1' }, { id: 'm2' }])
+
+    await session.loadHistory(false, false, true)
+
+    // parseMessages should have been called again (second load proceeded)
+    expect(mockUtilsFns.parseMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('sameCore detection: when only last message changed, expandedTools is preserved', async () => {
+    // First load: 2 messages
+    const firstMsgs = [{ id: 'm1' }, { id: 'm2' }]
+    mockUtilsFns.parseMessages.mockReturnValue(firstMsgs)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 'current-s1',
+        messages: [{ id: 'm1' }, { id: 'm2' }],
+        total: 2,
+        running: false,
+      }),
+    })
+
+    const expandedTools = ref({} as Record<string, boolean>)
+    const options = {
+      currentSessionId: ref('current-s1'),
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools,
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.loadHistory(true, false, false)
+
+    // After first load, set expandedTools (simulates user expanding a tool)
+    expandedTools.value = { tool1: true }
+
+    // Second load: same count, same first message, different last message
+    // rawMsgs from API: [{id:'m1'}, {id:'m3'}]
+    // messages.value from first load: [{id:'m1'}, {id:'m2'}]
+    // sameCore check: prevCount===newCount && rawMsgs.slice(0,-1) matches messages.slice(0,-1)
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 'current-s1',
+        messages: [{ id: 'm1' }, { id: 'm3' }],  // same count, first msg same id
+        total: 2,
+        running: false,
+      }),
+    })
+    mockUtilsFns.buildMessageSnapshot.mockReturnValue('snap-b')  // different snapshot to avoid skip
+    mockUtilsFns.parseMessages.mockReturnValue([{ id: 'm1' }, { id: 'm3' }])
+
+    await session.loadHistory(true, false, false)
+
+    // expandedTools should be preserved because sameCore=true
+    expect(expandedTools.value).toEqual({ tool1: true })
+  })
+
+  it('when data is not sameCore: expandedTools is reset to {}', async () => {
+    // First load: 2 messages
+    mockUtilsFns.parseMessages.mockReturnValue([{ id: 'm1' }, { id: 'm2' }])
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [{ id: 'm1' }, { id: 'm2' }],
+        total: 2,
+        running: false,
+      }),
+    })
+
+    const expandedTools = ref({ tool1: true })
+    const options = {
+      currentSessionId: ref('current-s1'),
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools,
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.loadHistory(true, false, false)
+
+    // Second load: different count → not sameCore
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }],
+        total: 3,
+        running: false,
+      }),
+    })
+    mockUtilsFns.buildMessageSnapshot.mockReturnValue('snap-b')
+    mockUtilsFns.parseMessages.mockReturnValue([{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }])
+
+    await session.loadHistory(true, false, false)
+
+    // expandedTools should be reset because sameCore=false (count differs)
+    expect(expandedTools.value).toEqual({})
+  })
+
+  it('when data.running=true: sets loading=true, calls onConnectStream, does NOT call startMsgCountPolling', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [],
+        total: 0,
+        backend: 'claude',
+        agentId: 'agent1',
+        running: true,
+      }),
+    })
+
+    const loading = ref(false)
+    const onConnectStream = vi.fn()
+    const currentSessionId = ref('current-s1')
+    const options = {
+      currentSessionId,
+      messages: ref([]),
+      loading,
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream,
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.loadHistory(true, false, false)
+
+    expect(loading.value).toBe(true)
+    // onConnectStream is called with currentSessionId.value which has been set to data.sessionId
+    expect(onConnectStream).toHaveBeenCalledWith('s1')
+  })
+
+  it('when data.running=false: sets loading=false, calls startMsgCountPolling', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [],
+        total: 0,
+        running: false,
+      }),
+    })
+
+    const loading = ref(true)
+    const options = {
+      currentSessionId: ref('current-s1'),
+      messages: ref([]),
+      loading,
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.loadHistory(true, false, false)
+
+    expect(loading.value).toBe(false)
+  })
+
+  it('clears blockAskQuestions before updating', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [],
+        total: 0,
+        running: false,
+      }),
+    })
+
+    const blockAskQuestions: Record<string, any> = { key1: 'val1', key2: 'val2' }
+    const options = {
+      currentSessionId: ref('current-s1'),
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions,
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.loadHistory(true, false, false)
+
+    expect(Object.keys(blockAskQuestions).length).toBe(0)
+  })
+
+  it('error path: shows toast, resets switching', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network failure'))
+
+    const session = createSession()
+    await session.loadHistory(true, true, false)
+
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+    expect(session.switching.value).toBe(false)
+  })
+})
+
+// ───────────────────────────────────────────────────────────
+// createSession
+// ───────────────────────────────────────────────────────────
+
+describe('createSession', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    resetMockState()
+    resetAdditionalMocks()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('successful creation: POST /api/ai/sessions, updates identity refs, clears messages', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        ok: true,
+        sessionId: 'new-s1',
+        title: 'New Session',
+        backend: 'codebuddy',
+        agentId: 'agent2',
+        sessionCount: 5,
+      }),
+    })
+
+    const messages = ref([{ id: 'old' }] as any[])
+    const options = {
+      currentSessionId: ref('old-s1'),
+      messages,
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: { task1: true },
+      blockAskQuestions: { q1: true },
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.createSession('agent2')
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      '/api/ai/sessions',
+      expect.objectContaining({ method: 'POST' })
+    )
+    expect(options.currentSessionId.value).toBe('new-s1')
+    expect(mockIdentity.currentSessionTitle).toBe('New Session')
+    expect(mockIdentity.currentBackend).toBe('codebuddy')
+    expect(mockIdentity.currentAgentId).toBe('agent2')
+    expect(messages.value).toEqual([])
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'success', icon: '✨' })
+    )
+  })
+
+  it('API returns !ok: shows error toast', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: () => Promise.resolve({ error: 'Server error' }),
+    })
+
+    const session = createSession()
+    await session.createSession()
+
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+  })
+
+  it('API returns !data.ok: shows error toast with data.error', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: false, error: 'Too many sessions' }),
+    })
+
+    const session = createSession()
+    await session.createSession()
+
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+  })
+
+  it('sets currentSessionId, currentBackend, currentAgentId from response', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        ok: true,
+        sessionId: 's-new',
+        title: 'T',
+        backend: 'claude',
+        agentId: 'agent3',
+        sessionCount: 1,
+      }),
+    })
+
+    const currentSessionId = ref('old')
+    const options = {
+      currentSessionId,
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.createSession('agent3')
+
+    expect(currentSessionId.value).toBe('s-new')
+    expect(mockIdentity.currentBackend).toBe('claude')
+    expect(mockIdentity.currentAgentId).toBe('agent3')
+  })
+
+  it('clears blockTasks and blockAskQuestions', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        ok: true,
+        sessionId: 's-new',
+        backend: '',
+        agentId: '',
+        sessionCount: 1,
+      }),
+    })
+
+    const blockTasks: Record<string, any> = { t1: 'a', t2: 'b' }
+    const blockAskQuestions: Record<string, any> = { q1: 'x', q2: 'y' }
+    const options = {
+      currentSessionId: ref('old'),
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks,
+      blockAskQuestions,
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.createSession()
+
+    expect(Object.keys(blockTasks).length).toBe(0)
+    expect(Object.keys(blockAskQuestions).length).toBe(0)
+  })
+})
+
+// ───────────────────────────────────────────────────────────
+// deleteSession
+// ───────────────────────────────────────────────────────────
+
+describe('deleteSession', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    resetMockState()
+    resetAdditionalMocks()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('successful deletion of current session: switches to another session', async () => {
+    // 1. DELETE /api/ai/session/delete → { ok: true }
+    // 2. GET /api/ai/sessions → { sessions: [{ id: 's2', backend: 'claude' }] }
+    // 3. switchSession('s2') → GET /api/ai/chat?session_id=s2 → session data
+    // 4. loadSessionsOnce inside switchSession → GET /api/ai/sessions → sessions
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, sessionCount: 3 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ sessions: [{ id: 's2', backend: 'claude' }] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          sessionId: 's2', messages: [], total: 0,
+          backend: 'claude', agentId: 'a1', modelId: '', thinkingEffort: '', running: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ sessions: [{ id: 's2', unreadCount: 0, running: false }] }),
+      })
+
+    const currentSessionId = ref('s1')
+    const options = {
+      currentSessionId,
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.deleteSession('s1', 'claude')
+
+    // Should have switched to s2
+    expect(currentSessionId.value).toBe('s2')
+    // Success toast shown
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ icon: '🗑️', type: 'success' })
+    )
+  })
+
+  it('deletion of current session with no remaining sessions: creates a new one', async () => {
+    // 1. DELETE /api/ai/session/delete → { ok: true }
+    // 2. GET /api/ai/sessions → { sessions: [] }
+    // 3. createSession() → POST /api/ai/sessions → new session
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, sessionCount: 0 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ sessions: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          ok: true, sessionId: 's-new', title: '', backend: '', agentId: '', sessionCount: 1,
+        }),
+      })
+
+    const currentSessionId = ref('s1')
+    const options = {
+      currentSessionId,
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.deleteSession('s1', 'claude')
+
+    // Should have created a new session
+    expect(currentSessionId.value).toBe('s-new')
+  })
+
+  it('deletion of non-current session: no switch needed', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: true, sessionCount: 2 }),
+    })
+
+    const currentSessionId = ref('s1')
+    const onConnectStream = vi.fn()
+    const options = {
+      currentSessionId,
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream,
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    await session.deleteSession('s2', 'claude')
+
+    // Should NOT switch — still on s1
+    expect(currentSessionId.value).toBe('s1')
+    // No switchSession calls (onConnectStream only called during switch)
+    expect(onConnectStream).not.toHaveBeenCalled()
+    // Success toast shown
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ icon: '🗑️', type: 'success' })
+    )
+    // Only one fetch call (the delete), no sessions list or switch fetches
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('API returns ok=false: no toast shown', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ ok: false }),
+    })
+
+    const session = createSession()
+    await session.deleteSession('s1', 'claude')
+
+    // No toast shown when data.ok is false (no error handling path)
+    expect(mockToastFn).not.toHaveBeenCalled()
+  })
+})
+
+// ───────────────────────────────────────────────────────────
+// startMsgCountPolling / stopMsgCountPolling
+// ───────────────────────────────────────────────────────────
+
+describe('startMsgCountPolling / stopMsgCountPolling', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    resetMockState()
+    resetAdditionalMocks()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    globalThis.fetch = originalFetch
+  })
+
+  it('startMsgCountPolling: sets up interval that polls /api/ai/chat/count', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ count: 5 }),
+    })
+
+    const session = createSession()
+    session.startMsgCountPolling()
+
+    // Advance past one interval (15000ms)
+    await vi.advanceTimersByTimeAsync(16000)
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/ai/chat/count?session_id=current-s1')
+    )
+
+    session.stopMsgCountPolling()
+  })
+
+  it('when count increases: calls loadHistory', async () => {
+    // First poll: count=5, lastMsgCount was 0 → increase detected
+    // loadHistory needs fetch for /api/ai/chat
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ count: 5 }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          sessionId: 'current-s1', messages: [], total: 0, running: false,
+        }),
+      })
+
+    const session = createSession()
+    session.startMsgCountPolling()
+
+    await vi.advanceTimersByTimeAsync(16000)
+
+    // Second fetch call should be loadHistory (not the count poll)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('/api/ai/chat?session_id=current-s1')
+    )
+
+    session.stopMsgCountPolling()
+  })
+
+  it('stopMsgCountPolling: clears interval', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ count: 5 }),
+    })
+
+    const session = createSession()
+    session.startMsgCountPolling()
+    session.stopMsgCountPolling()
+
+    const callCount = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length
+    await vi.advanceTimersByTimeAsync(30000)
+
+    // No additional fetch calls after stopping
+    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callCount)
+  })
+
+  it('does not start when no sessionId', async () => {
+    const options = {
+      currentSessionId: ref(''),
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    session.startMsgCountPolling()
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ count: 5 }),
+    })
+
+    await vi.advanceTimersByTimeAsync(30000)
+
+    // No fetch calls should have been made for polling
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+})
+
+// ───────────────────────────────────────────────────────────
+// handleVisibilityChange
+// ───────────────────────────────────────────────────────────
+
+describe('handleVisibilityChange', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    resetMockState()
+    resetAdditionalMocks()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('when visible and loading=true: disconnects stream, reloads history', async () => {
+    const loading = ref(true)
+    const onDisconnectStream = vi.fn()
+    const onStopPolling = vi.fn()
+    const options = {
+      currentSessionId: ref('s1'),
+      messages: ref([]),
+      loading,
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling,
+      onDisconnectStream,
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+
+    // Mock fetch for the loadHistory call
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1', messages: [], total: 0, running: false,
+      }),
+    })
+
+    // Mock visibilityState to 'visible'
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+
+    session.handleVisibilityChange()
+
+    // Wait for async loadHistory to complete
+    await vi.waitFor(() => {
+      expect(onDisconnectStream).toHaveBeenCalled()
+    })
+    expect(onStopPolling).toHaveBeenCalled()
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/ai/chat?session_id=s1')
+    )
+
+    vi.restoreAllMocks()
+  })
+
+  it('when visible and loading=false: does nothing', async () => {
+    const loading = ref(false)
+    const onDisconnectStream = vi.fn()
+    const options = {
+      currentSessionId: ref('s1'),
+      messages: ref([]),
+      loading,
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream,
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+
+    session.handleVisibilityChange()
+
+    expect(onDisconnectStream).not.toHaveBeenCalled()
+
+    vi.restoreAllMocks()
+  })
+
+  it('when hidden: does nothing', async () => {
+    const loading = ref(true)
+    const onDisconnectStream = vi.fn()
+    const options = {
+      currentSessionId: ref('s1'),
+      messages: ref([]),
+      loading,
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream,
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+
+    session.handleVisibilityChange()
+
+    expect(onDisconnectStream).not.toHaveBeenCalled()
+
+    vi.restoreAllMocks()
+  })
+})
+
+// ───────────────────────────────────────────────────────────
+// syncModelFromData (tested indirectly through loadHistory)
+// ───────────────────────────────────────────────────────────
+
+describe('syncModelFromData', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    resetMockState()
+    resetAdditionalMocks()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('when server provides modelId: uses it', async () => {
+    mockAgentFns.getAgentModel.mockReturnValue({ name: 'GPT-4o' })
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [],
+        total: 0,
+        backend: 'codebuddy',
+        agentId: 'agent1',
+        modelId: 'gpt-4o',
+        thinkingEffort: '',
+        running: false,
+      }),
+    })
+
+    const session = createSession()
+    await session.loadHistory(true, false, false)
+
+    expect(mockIdentity.currentModelId).toBe('gpt-4o')
+    expect(mockIdentity.currentModelName).toBe('GPT-4o')
+  })
+
+  it('when server has no modelId: falls back to localStorage preference', async () => {
+    mockIdentityFns.loadModelPref.mockReturnValue('saved-model')
+    mockAgentFns.getAgentModel.mockReturnValue({ name: 'Saved Model' })
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [],
+        total: 0,
+        backend: 'codebuddy',
+        agentId: 'agent1',
+        modelId: '',  // no model from server
+        thinkingEffort: '',
+        running: false,
+      }),
+    })
+
+    const session = createSession()
+    await session.loadHistory(true, false, false)
+
+    expect(mockIdentityFns.loadModelPref).toHaveBeenCalledWith('agent1')
+    expect(mockIdentity.currentModelId).toBe('saved-model')
+    expect(mockIdentity.currentModelName).toBe('Saved Model')
+  })
+
+  it('when localStorage preference is stale (model no longer available): falls back to agent default', async () => {
+    mockIdentityFns.loadModelPref.mockReturnValue('stale-model')
+    mockAgentFns.getAgentModel.mockReturnValue(undefined)  // model not found
+    mockAgentFns.syncModelFromAgent.mockReturnValue({ modelId: 'default-model', modelName: 'Default Model' })
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessionId: 's1',
+        messages: [],
+        total: 0,
+        backend: 'codebuddy',
+        agentId: 'agent1',
+        modelId: '',  // no model from server
+        thinkingEffort: '',
+        running: false,
+      }),
+    })
+
+    const session = createSession()
+    await session.loadHistory(true, false, false)
+
+    expect(mockAgentFns.syncModelFromAgent).toHaveBeenCalledWith('agent1')
+    expect(mockIdentity.currentModelId).toBe('default-model')
+    expect(mockIdentity.currentModelName).toBe('Default Model')
   })
 })

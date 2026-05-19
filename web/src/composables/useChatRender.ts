@@ -16,6 +16,11 @@ import {
   StaticBlockCache,
 } from '@/utils/streamPerf.ts'
 import {
+  rewriteImageUrls,
+  convertAudioLinks,
+  parseAskQuestionContent,
+} from '@/utils/chatRenderUtils.ts'
+import {
   parseAssistantContent,
   toolCallSummary,
   hasImagesInContent,
@@ -138,37 +143,8 @@ export function useChatRender(options) {
     if (!skipEnhancements) {
       // Image styling, audio links, file path annotation: deferred to post-streaming
       const projectRoot = store.state.projectRoot
-      html = html.replace(/<img([^>]*)>/g, (_match, attrs) => {
-        let cleanAttrs = attrs.replace(/\s*style="[^"]*"/i, '').replace(/\s*class="[^"]*"/i, '')
-        // Convert local project file paths to /api/local-file/ URLs
-        const srcMatch = cleanAttrs.match(/\bsrc="([^"]*)"/)
-        if (srcMatch) {
-          const src = srcMatch[1]
-          // Skip absolute/external URLs
-          if (/^(https?:|\/\/|^\/)/i.test(src)) {
-            return `<img${cleanAttrs} style="max-width: 200px; max-height: 200px; object-fit: cover; border-radius: 6px; margin: 4px 0; cursor: pointer;" class="chat-img-thumbnail">`
-          }
-          // Try to resolve as a project-local path
-          if (projectRoot) {
-            const absolutePath = src.startsWith('/')
-              ? src
-              : `${projectRoot}/${src}`
-            if (absolutePath.startsWith(projectRoot + '/') || absolutePath === projectRoot) {
-              const rel = absolutePath.slice(projectRoot.length + 1)
-              cleanAttrs = cleanAttrs.replace(`src="${src}"`, `src="/api/local-file/${rel}?t=${Date.now()}"`)
-            }
-          }
-        }
-        return `<img${cleanAttrs} style="max-width: 200px; max-height: 200px; object-fit: cover; border-radius: 6px; margin: 4px 0; cursor: pointer;" class="chat-img-thumbnail">`
-      })
-      const audioExts = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma', '.opus']
-      html = html.replace(/<a href="([^"]+)">([^<]*)<\/a>/g, (match, href) => {
-        const lower = href.toLowerCase()
-        if (audioExts.some(ext => lower.endsWith(ext))) {
-          return `<div class="chat-audio-wrapper"><audio src="${href}" controls class="chat-audio-player"></audio></div>`
-        }
-        return match
-      })
+      html = rewriteImageUrls(html, projectRoot)
+      html = convertAudioLinks(html)
       const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, { projectRoot })
       html = annotatedHtml
       if (detectedPaths.length > 0) {
@@ -231,29 +207,9 @@ export function useChatRender(options) {
     if (askResult.found) {
       const askKey = `${msgId}-${blockIdx}`
       if (!blockAskQuestions[askKey]) {
-        try {
-          let askContent = askResult.content.trim()
-          if (askContent.startsWith('```')) {
-            const nlIdx = askContent.indexOf('\n')
-            if (nlIdx !== -1) askContent = askContent.slice(nlIdx + 1).trim()
-            const lastFence = askContent.lastIndexOf('```')
-            if (lastFence !== -1) askContent = askContent.slice(0, lastFence).trim()
-          }
-          // Strip leading XML parameter tags that some models use to wrap the JSON
-          // (e.g. <parameter name="questions">[...]</parameter>)
-          askContent = askContent.replace(/^\s*<[a-zA-Z_][\w.-]*(?:\s[^>]*)?>\s*/, '').trim()
-          // Strip trailing XML closing tags (e.g. </parameter>)
-          askContent = askContent.replace(/\s*<\/[a-zA-Z_][\w.-]*>\s*$/g, '').trim()
-          let questions = JSON.parse(askContent)
-          // Handle bare array format: wrap into {questions: [...]}
-          if (Array.isArray(questions) && questions.length > 0 && questions[0].question) {
-            questions = { questions }
-          }
-          if (questions.questions && Array.isArray(questions.questions)) {
-            blockAskQuestions[askKey] = questions
-          }
-        } catch (e) {
-          console.error('Failed to parse ask-question:', e)
+        const parsed = parseAskQuestionContent(askResult.content)
+        if (parsed) {
+          blockAskQuestions[askKey] = parsed
         }
       }
       // Remove the matched tag from the rendered text
