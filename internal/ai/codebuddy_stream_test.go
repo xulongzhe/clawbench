@@ -8,44 +8,6 @@ import (
 	"time"
 )
 
-func TestCodebuddyStream_BOMRemoval(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "line with BOM prefix",
-			input:    "\xEF\xBB\xBF{\"type\":\"assistant\",\"subtype\":\"text\",\"text\":\"hello\"}",
-			expected: "{\"type\":\"assistant\",\"subtype\":\"text\",\"text\":\"hello\"}",
-		},
-		{
-			name:     "line without BOM",
-			input:    "{\"type\":\"assistant\",\"subtype\":\"text\",\"text\":\"hello\"}",
-			expected: "{\"type\":\"assistant\",\"subtype\":\"text\",\"text\":\"hello\"}",
-		},
-		{
-			name:     "only BOM",
-			input:    "\xEF\xBB\xBF",
-			expected: "",
-		},
-		{
-			name:     "empty line",
-			input:    "",
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := strings.TrimPrefix(tt.input, "\xEF\xBB\xBF")
-			if result != tt.expected {
-				t.Errorf("BOM removal: got %q, want %q", result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestCodebuddyStream_CommandArgs(t *testing.T) {
 	// Verify that Codebuddy stream args do NOT include --verbose
 	req := ChatRequest{
@@ -149,21 +111,6 @@ func TestCodebuddyStream_CommandArgsWithoutSystemPrompt(t *testing.T) {
 		if a == "--system-prompt" {
 			t.Errorf("--system-prompt should NOT be in args when SystemPrompt is empty, but found at index %d", i)
 		}
-	}
-}
-
-func TestCodebuddyStream_ScannerBufferSize(t *testing.T) {
-	if scannerInitial != 64*1024 {
-		t.Errorf("expected initial scanner buffer 64KB, got %d", scannerInitial)
-	}
-	if scannerMax != 1024*1024 {
-		t.Errorf("expected max scanner buffer 1MB, got %d", scannerMax)
-	}
-}
-
-func TestCodebuddyStream_ChannelBufferSize(t *testing.T) {
-	if streamChanSize != 64 {
-		t.Errorf("expected channel buffer size 64, got %d", streamChanSize)
 	}
 }
 

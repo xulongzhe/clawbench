@@ -417,3 +417,93 @@ func (b *twoPhaseBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<
 
 	return outCh, nil
 }
+
+func TestAutoResume_FirstCallError(t *testing.T) {
+	// When the first ExecuteStream call returns an error, the wrapper
+	// should propagate the error and close the outer channel.
+	mock := &MockBackend{
+		name: "test",
+		streams: []MockStream{
+			{err: context.DeadlineExceeded},
+		},
+	}
+
+	wrapper := &AutoResumeBackend{inner: mock}
+	ctx := context.Background()
+
+	ch, err := wrapper.ExecuteStream(ctx, ChatRequest{SessionID: "test"})
+	assert.Error(t, err, "first call error should be propagated")
+	assert.Nil(t, ch, "channel should be nil on error")
+}
+
+func TestAutoResume_ResumeChannelClosedWithoutDone(t *testing.T) {
+	// When the resume stream closes without emitting a "done" event,
+	// the wrapper should emit a synthetic "done" so downstream can finalize.
+	mock := &MockBackend{
+		name: "test",
+		streams: []MockStream{
+			// First stream: ExitPlanMode
+			{
+				events: []StreamEvent{
+					{Type: "content", Content: "planning..."},
+					{Type: "tool_use", Tool: &ToolCall{Name: "ExitPlanMode", ID: "1", Done: true}},
+				},
+			},
+			// Second stream: empty (no events, just closed)
+			{
+				events: []StreamEvent{},
+			},
+		},
+	}
+
+	wrapper := &AutoResumeBackend{inner: mock}
+	ctx := context.Background()
+
+	ch, err := wrapper.ExecuteStream(ctx, ChatRequest{SessionID: "test"})
+	assert.NoError(t, err)
+
+	var events []StreamEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+
+	// Expected: content, tool_use, resume_split, done (synthetic)
+	assert.Equal(t, 4, len(events))
+	assert.Equal(t, "content", events[0].Type)
+	assert.Equal(t, "tool_use", events[1].Type)
+	assert.Equal(t, "ExitPlanMode", events[1].Tool.Name)
+	assert.Equal(t, "resume_split", events[2].Type)
+	assert.Equal(t, "done", events[3].Type, "synthetic 'done' should be emitted when resume channel closes without done")
+}
+
+func TestAutoResume_FirstStreamClosedWithoutDone(t *testing.T) {
+	// When the first stream closes normally (no ExitPlanMode, no "done"),
+	// the wrapper should emit a synthetic "done" event.
+	mock := &MockBackend{
+		name: "test",
+		streams: []MockStream{
+			// First stream: just content, no "done"
+			{
+				events: []StreamEvent{
+					{Type: "content", Content: "hello"},
+				},
+			},
+		},
+	}
+
+	wrapper := &AutoResumeBackend{inner: mock}
+	ctx := context.Background()
+
+	ch, err := wrapper.ExecuteStream(ctx, ChatRequest{SessionID: "test"})
+	assert.NoError(t, err)
+
+	var events []StreamEvent
+	for e := range ch {
+		events = append(events, e)
+	}
+
+	// Expected: content, done (synthetic since first stream closed without "done")
+	assert.Equal(t, 2, len(events))
+	assert.Equal(t, "content", events[0].Type)
+	assert.Equal(t, "done", events[1].Type, "synthetic 'done' should be emitted when first stream closes without done")
+}

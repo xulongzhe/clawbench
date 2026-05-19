@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func parseGeminiLine(line string) []StreamEvent {
@@ -623,4 +625,78 @@ func TestBuildGeminiStreamArgs_Minimal(t *testing.T) {
 			t.Errorf("arg %d: expected %q, got %q", i, v, args[i])
 		}
 	}
+}
+
+func TestGeminiStream_GetCapturedSessionID_AlwaysEmpty(t *testing.T) {
+	// Gemini always returns "" for GetCapturedSessionID since it uses --resume latest
+	parser := &GeminiStreamParser{}
+	assert.Equal(t, "", parser.GetCapturedSessionID())
+
+	// Even after parsing an init event with session_id
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"init","session_id":"sess-123","model":"gemini-2.5"}`, ch)
+	assert.Equal(t, "", parser.GetCapturedSessionID(), "Gemini GetCapturedSessionID should always return empty")
+}
+
+func TestGeminiStream_ErrorEmptyMessage(t *testing.T) {
+	// Error event with empty message should not produce any event
+	parser := &GeminiStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"error","severity":"error","message":""}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("error with empty message should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestGeminiStream_ToolResultEmptyToolID(t *testing.T) {
+	// tool_result with empty tool_id should be skipped
+	parser := &GeminiStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"tool_result","tool_id":"","output":"result","status":"success"}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("tool_result with empty tool_id should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestBuildGeminiStreamArgs_WithSystemPrompt(t *testing.T) {
+	req := ChatRequest{
+		Prompt:       "hello",
+		SystemPrompt: "you are helpful",
+	}
+	args := buildGeminiStreamArgs(req)
+
+	// Gemini injects system prompt into the user prompt
+	found := false
+	for _, arg := range args {
+		if arg == "[System Instructions: you are helpful]\n\nhello" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected system prompt injection in args, got %v", args)
+	}
+}
+
+func TestBuildGeminiStreamArgs_NoSystemPrompt(t *testing.T) {
+	req := ChatRequest{
+		Prompt: "hello",
+	}
+	args := buildGeminiStreamArgs(req)
+
+	// Without system prompt, the prompt is passed as-is
+	for _, arg := range args {
+		if arg == "hello" {
+			return
+		}
+	}
+	t.Errorf("expected plain prompt 'hello' in args, got %v", args)
 }

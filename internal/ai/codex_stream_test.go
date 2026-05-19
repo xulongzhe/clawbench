@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func parseCodexLine(line string) []StreamEvent {
@@ -910,7 +912,9 @@ func TestCodexResumeOutput_EmptyResponse(t *testing.T) {
 
 func TestCodexResumeOutput_AnSIColorCodes(t *testing.T) {
 	// Codex may output ANSI color codes around role markers.
-	// The parser should still detect "codex" and "user" as role markers.
+	// ANSI-prefixed markers won't match the bare "codex"/"user" comparison,
+	// so no content should be extracted. This tests the parser's resilience
+	// to ANSI — it still produces metadata + done without panicking.
 	input := "--------\n" +
 		"\x1b[36muser\x1b[0m\n" + // ANSI-colored "user" — NOT a bare "user" line
 		"hello\n" +
@@ -918,19 +922,28 @@ func TestCodexResumeOutput_AnSIColorCodes(t *testing.T) {
 		"Hi there!\n"
 	events := parseResumeOutput(input)
 
-	// With ANSI codes, "codex" marker won't match (it has escape codes),
-	// so no content should be extracted — this tests the parser's
-	// resilience to ANSI. The parser still produces metadata + done.
 	var contentCount int
 	for _, ev := range events {
 		if ev.Type == "content" {
 			contentCount++
 		}
 	}
-	// ANSI-prefixed markers won't match, so no content is expected
-	if contentCount != 0 {
-		t.Logf("Note: ANSI color codes around role markers may cause content to be missed (got %d content events)", contentCount)
+	// ANSI-prefixed markers won't match, so no content is expected.
+	// If ANSI stripping is added later, this test should be updated.
+	assert.Equal(t, 0, contentCount, "ANSI-prefixed role markers should not produce content events")
+
+	// Parser should still produce metadata + done
+	var foundMetadata, foundDone bool
+	for _, ev := range events {
+		if ev.Type == "metadata" {
+			foundMetadata = true
+		}
+		if ev.Type == "done" {
+			foundDone = true
+		}
 	}
+	assert.True(t, foundMetadata, "metadata event should still be produced")
+	assert.True(t, foundDone, "done event should still be produced")
 }
 
 func TestCodexResumeOutput_MetadataSessionID(t *testing.T) {
