@@ -136,6 +136,25 @@ describe('useTaskHistory', () => {
       expect(history.hasMore.value).toBe(false)
     })
 
+    it('deduplicates concurrent loadExecutions calls', async () => {
+      const { history } = createHistory()
+      let resolveApi: any
+      mockApiGet.mockImplementation(() => new Promise(r => { resolveApi = r }))
+
+      // Start two concurrent calls
+      const p1 = history.loadExecutions()
+      const p2 = history.loadExecutions()
+
+      // Only the first call should have triggered apiGet
+      expect(mockApiGet).toHaveBeenCalledTimes(1)
+
+      resolveApi({ executions: [] })
+      await Promise.all([p1, p2])
+
+      // Second call was deduped — still only 1 API call
+      expect(mockApiGet).toHaveBeenCalledTimes(1)
+    })
+
     it('ignores AbortError', async () => {
       const { history } = createHistory()
       const abortErr = new DOMException('Aborted', 'AbortError')
