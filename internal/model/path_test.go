@@ -212,3 +212,70 @@ func TestValidatePath_SymlinkEscapeViaParent(t *testing.T) {
 	_, valid := model.ValidatePath(linkBase, "escape/secret.txt")
 	assert.False(t, valid, "ValidatePath should reject escape through symlinked parent")
 }
+
+func TestValidatePath_NonExistentTargetUnderBase(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, base)
+
+	// File doesn't exist yet (common for file creation scenarios)
+	path, valid := model.ValidatePath(base, "newfile.txt")
+	assert.True(t, valid, "ValidatePath should accept non-existent file under base")
+	assert.Contains(t, path, "newfile.txt")
+}
+
+func TestValidatePath_NonExistentDeepTarget(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, base)
+
+	// Deep non-existent path that should still be under base
+	path, valid := model.ValidatePath(base, "sub/deep/newfile.txt")
+	assert.True(t, valid, "ValidatePath should accept deep non-existent path under base")
+	assert.Contains(t, path, "newfile.txt")
+}
+
+func TestValidatePath_NonExistentPathEscapesBase(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, base)
+
+	// Path with traversal targeting a non-existent file outside base
+	_, valid := model.ValidatePath(base, "../../tmp/nonexistent.txt")
+	assert.False(t, valid, "ValidatePath should reject non-existent path that escapes base")
+}
+
+func TestValidatePath_ResolveExistingPath_DeepNonExistent(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, base)
+
+	// Deep non-existent path: only base exists, sub/deep/file.txt does not
+	path, valid := model.ValidatePath(base, "sub/deep/file.txt")
+	assert.True(t, valid)
+	assert.Contains(t, path, "file.txt")
+}
+
+func TestResolveExistingPath_NonExistentDeepPath(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, base)
+
+	evalBase, err := filepath.EvalSymlinks(base)
+	assert.NoError(t, err)
+
+	absPath := filepath.Join(base, "a", "b", "c", "file.txt")
+	result := model.ResolveExistingPath(absPath, evalBase)
+	assert.NotEmpty(t, result, "should resolve via existing base ancestor")
+	assert.Contains(t, result, "file.txt")
+}
+
+func TestResolveExistingPath_ExistingParentDir(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	subDir := filepath.Join(base, "sub")
+	ensureDir(t, subDir)
+
+	evalBase, err := filepath.EvalSymlinks(base)
+	assert.NoError(t, err)
+
+	// Parent exists, file does not
+	absPath := filepath.Join(base, "sub", "newfile.txt")
+	result := model.ResolveExistingPath(absPath, evalBase)
+	assert.NotEmpty(t, result)
+	assert.Contains(t, result, "newfile.txt")
+}

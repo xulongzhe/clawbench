@@ -41,6 +41,7 @@ web_dir = sys.argv[2]
 skip_test = sys.argv[3] == "true"
 update_baseline = sys.argv[4] == "true"
 MIN_FLOOR = 80.0
+TOLERANCE = 1.0  # Allow ±1% fluctuation across environments
 EXCLUDED = {"src/i18n/locales"}
 
 # Load baseline

@@ -42,6 +42,45 @@ func TestResolveLoginShell(t *testing.T) {
 		}
 		t.Logf("resolved login shell: %s", got)
 	})
+
+	t.Run("keeps bin-sh when passwd has no better shell", func(t *testing.T) {
+		// If $SHELL is /bin/sh and passwd lookup returns empty,
+		// it should keep /bin/sh
+		os.Setenv("SHELL", "/bin/sh")
+		got := ResolveLoginShell()
+		if got == "" {
+			t.Errorf("ResolveLoginShell() returned empty string")
+		}
+	})
+}
+
+func TestResolveLoginShell_FallbackToBinSh(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("login shell resolution is POSIX-only")
+	}
+
+	origShell := os.Getenv("SHELL")
+	t.Cleanup(func() { os.Setenv("SHELL", origShell) })
+
+	// When SHELL is empty and passwd lookup fails, should return /bin/sh
+	os.Unsetenv("SHELL")
+	got := ResolveLoginShell()
+	// On real systems, passwd lookup usually succeeds, so we just verify non-empty
+	if got == "" {
+		t.Errorf("ResolveLoginShell() returned empty string")
+	}
+}
+
+func TestLookupPasswdShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("passwd lookup is POSIX-only")
+	}
+
+	// lookupPasswdShell should return a non-empty string for the current user
+	// (assuming a normal Unix environment with /etc/passwd)
+	shell := lookupPasswdShell()
+	t.Logf("lookupPasswdShell() = %q", shell)
+	// We don't assert non-empty because CI environments may have unusual setups
 }
 
 func TestSetLoginShell(t *testing.T) {

@@ -1,28 +1,58 @@
 {
   "go": {
     "clawbench/cmd/server": 0.0,
-    "clawbench/internal/ai": 75.9,
+    "clawbench/internal/ai": 81.9,
     "clawbench/internal/cli": 48.5,
     "clawbench/internal/handler": 64.8,
     "clawbench/internal/i18n": 90.9,
     "clawbench/internal/middleware": 87.1,
-    "clawbench/internal/model": 79.8,
-    "clawbench/internal/platform": 79.7,
+    "clawbench/internal/model": 84.7,
+    "clawbench/internal/platform": 81.2,
     "clawbench/internal/push": 85.2,
     "clawbench/internal/rag": 79.5,
-    "clawbench/internal/service": 62.9,
+    "clawbench/internal/service": 68.1,
     "clawbench/internal/speech": 57.8,
     "clawbench/internal/ssh": 80.5,
     "clawbench/internal/summarize": 93.1,
-    "clawbench/internal/terminal": 60.1,
+    "clawbench/internal/terminal": 60.7,
     "clawbench/internal/ws": 53.1
   },
   "frontend": {
-    "src/components": { "statements": 100, "branches": 100, "functions": 100, "lines": 100 },
-    "src/composables": { "statements": 49.89, "branches": 42.06, "functions": 56.57, "lines": 51.49 },
-    "src/i18n": { "statements": 90, "branches": 50, "functions": 100, "lines": 100 },
-    "src/i18n/locales": { "statements": 0, "branches": 0, "functions": 0, "lines": 0 },
-    "src/stores": { "statements": 1.8, "branches": 0, "functions": 0, "lines": 2.0 },
-    "src/utils": { "statements": 97.88, "branches": 92.74, "functions": 98.43, "lines": 98.45 }
+    "src/components": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/composables": {
+      "statements": 49.89,
+      "branches": 42.06,
+      "functions": 56.57,
+      "lines": 51.49
+    },
+    "src/i18n": {
+      "statements": 90,
+      "branches": 50,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/i18n/locales": {
+      "statements": 0,
+      "branches": 0,
+      "functions": 0,
+      "lines": 0
+    },
+    "src/stores": {
+      "statements": 1.8,
+      "branches": 0,
+      "functions": 0,
+      "lines": 2.0
+    },
+    "src/utils": {
+      "statements": 97.88,
+      "branches": 92.74,
+      "functions": 98.43,
+      "lines": 98.45
+    }
   }
 }

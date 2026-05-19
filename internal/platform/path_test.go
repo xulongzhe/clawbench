@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -19,6 +20,43 @@ func TestUserHomeDir(t *testing.T) {
 	if home == "" {
 		t.Error("UserHomeDir() returned empty string")
 	}
+}
+
+func TestUserHomeDir_HomeEnvFallback(t *testing.T) {
+	if IsWindows() {
+		t.Skip("HOME fallback is Unix-only")
+	}
+
+	// Save and restore HOME
+	origHome := os.Getenv("HOME")
+	t.Cleanup(func() { os.Setenv("HOME", origHome) })
+
+	// When os.UserHomeDir() fails, it falls back to $HOME
+	// We can't easily make os.UserHomeDir() fail, but we can verify
+	// the HOME env path is returned when set
+	os.Setenv("HOME", "/tmp/test-home-fallback")
+	home := UserHomeDir()
+	// On most systems os.UserHomeDir() succeeds, so we just verify non-empty
+	if home == "" {
+		t.Error("UserHomeDir() returned empty string with HOME set")
+	}
+}
+
+func TestUserHomeDir_NoHomeEnv(t *testing.T) {
+	if IsWindows() {
+		t.Skip("HOME fallback is Unix-only")
+	}
+
+	// When HOME is unset, os.UserHomeDir() may still work via getuid
+	// on Linux, but on some CI environments it may fail.
+	origHome := os.Getenv("HOME")
+	t.Cleanup(func() { os.Setenv("HOME", origHome) })
+
+	os.Unsetenv("HOME")
+	home := UserHomeDir()
+	// On Linux with getuid, this should still return a value.
+	// On some CI environments without HOME, it may be empty — that's acceptable.
+	t.Logf("UserHomeDir() without HOME: %q", home)
 }
 
 func TestClaudeConfigDir(t *testing.T) {

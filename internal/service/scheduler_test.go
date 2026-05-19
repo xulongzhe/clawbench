@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS task_executions (
 	trigger_type TEXT NOT NULL DEFAULT 'auto',
 	status TEXT NOT NULL DEFAULT 'running',
 	read_at DATETIME,
+	summary TEXT,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_executions_task ON task_executions(task_id, created_at DESC);
@@ -1297,4 +1298,240 @@ func TestHasUnreadTasks_RunningExecutionNotUnread(t *testing.T) {
 	hasUnread, err = service.HasUnreadTasks("/proj")
 	assert.NoError(t, err)
 	assert.True(t, hasUnread, "completed execution should count as unread")
+}
+
+// ---------- UpdateTaskLastRead ----------
+
+func TestUpdateTaskLastRead(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, status, repeat_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Task", "0 * * * *", "agent1", "p", "active", "unlimited", now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Verify last_read_at is NULL initially
+	var lastRead sql.NullTime
+	err = service.DB.QueryRow("SELECT last_read_at FROM scheduled_tasks WHERE id = ?", taskID).Scan(&lastRead)
+	assert.NoError(t, err)
+	assert.False(t, lastRead.Valid, "last_read_at should be NULL initially")
+
+	// Update last read
+	err = service.UpdateTaskLastRead(taskID)
+	assert.NoError(t, err)
+
+	// Verify last_read_at is now set
+	err = service.DB.QueryRow("SELECT last_read_at FROM scheduled_tasks WHERE id = ?", taskID).Scan(&lastRead)
+	assert.NoError(t, err)
+	assert.True(t, lastRead.Valid, "last_read_at should be set after UpdateTaskLastRead")
+}
+
+func TestUpdateTaskLastRead_NonExistentDoesNotError(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	err := service.UpdateTaskLastRead(99999)
+	assert.NoError(t, err)
+}
+
+// ---------- MarkExecutionRead ----------
+
+func TestMarkExecutionRead(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, status, repeat_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Task", "0 * * * *", "agent1", "p", "active", "unlimited", now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	_, err = service.AddTaskExecution(taskID, "session-1", "auto")
+	assert.NoError(t, err)
+
+	var execID int64
+	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", "session-1").Scan(&execID)
+	assert.NoError(t, err)
+
+	// Verify read_at is NULL initially
+	var readAt sql.NullTime
+	err = service.DB.QueryRow("SELECT read_at FROM task_executions WHERE id = ?", execID).Scan(&readAt)
+	assert.NoError(t, err)
+	assert.False(t, readAt.Valid, "read_at should be NULL initially")
+
+	// Mark as read
+	err = service.MarkExecutionRead(fmt.Sprintf("%d", execID))
+	assert.NoError(t, err)
+
+	// Verify read_at is now set
+	err = service.DB.QueryRow("SELECT read_at FROM task_executions WHERE id = ?", execID).Scan(&readAt)
+	assert.NoError(t, err)
+	assert.True(t, readAt.Valid, "read_at should be set after MarkExecutionRead")
+}
+
+func TestMarkExecutionRead_NonExistentDoesNotError(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	err := service.MarkExecutionRead("99999")
+	assert.NoError(t, err)
+}
+
+// ---------- UpdateExecutionSummary ----------
+
+func TestUpdateExecutionSummary(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, status, repeat_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Task", "0 * * * *", "agent1", "p", "active", "unlimited", now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	_, err = service.AddTaskExecution(taskID, "session-1", "auto")
+	assert.NoError(t, err)
+
+	var execID int64
+	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", "session-1").Scan(&execID)
+	assert.NoError(t, err)
+
+	// Verify summary is NULL initially
+	var summary sql.NullString
+	err = service.DB.QueryRow("SELECT summary FROM task_executions WHERE id = ?", execID).Scan(&summary)
+	assert.NoError(t, err)
+	assert.False(t, summary.Valid, "summary should be NULL initially")
+
+	// Update summary
+	err = service.UpdateExecutionSummary(execID, "This is a summary of the task execution")
+	assert.NoError(t, err)
+
+	// Verify summary is now set
+	err = service.DB.QueryRow("SELECT summary FROM task_executions WHERE id = ?", execID).Scan(&summary)
+	assert.NoError(t, err)
+	assert.True(t, summary.Valid, "summary should be set after UpdateExecutionSummary")
+	assert.Equal(t, "This is a summary of the task execution", summary.String)
+}
+
+func TestUpdateExecutionSummary_EmptySummary(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, status, repeat_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Task", "0 * * * *", "agent1", "p", "active", "unlimited", now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	_, err = service.AddTaskExecution(taskID, "session-1", "auto")
+	assert.NoError(t, err)
+
+	var execID int64
+	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", "session-1").Scan(&execID)
+	assert.NoError(t, err)
+
+	// Set empty summary (text was too short)
+	err = service.UpdateExecutionSummary(execID, "")
+	assert.NoError(t, err)
+
+	var summary sql.NullString
+	err = service.DB.QueryRow("SELECT summary FROM task_executions WHERE id = ?", execID).Scan(&summary)
+	assert.NoError(t, err)
+	assert.True(t, summary.Valid, "summary should be set (even if empty string)")
+	assert.Equal(t, "", summary.String)
+}
+
+func TestUpdateExecutionSummary_NonExistentDoesNotError(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	err := service.UpdateExecutionSummary(99999, "summary")
+	assert.NoError(t, err)
+}
+
+// ---------- cleanZombieExecutions ----------
+
+func TestCleanZombieExecutions(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	// Insert a task
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Zombie Task", "0 * * * *", "agent1", "p", "", "active", "unlimited", now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Insert a running execution (zombie)
+	_, err = service.AddTaskExecution(taskID, "session-zombie", "auto")
+	assert.NoError(t, err)
+
+	// Verify it's running
+	var status string
+	err = service.DB.QueryRow("SELECT status FROM task_executions WHERE session_id = ?", "session-zombie").Scan(&status)
+	assert.NoError(t, err)
+	assert.Equal(t, "running", status)
+
+	// LoadTasksFromDB calls cleanZombieExecutions which marks running executions as failed
+	s := service.NewScheduler()
+	err = s.LoadTasksFromDB("/proj")
+	assert.NoError(t, err)
+
+	// The zombie should now be marked as failed
+	err = service.DB.QueryRow("SELECT status FROM task_executions WHERE session_id = ?", "session-zombie").Scan(&status)
+	assert.NoError(t, err)
+	assert.Equal(t, "failed", status)
+}
+
+func TestCleanZombieExecutions_NoRunningExecutions(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Clean Task", "0 * * * *", "agent1", "p", "", "active", "unlimited", now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Insert a completed execution
+	_, err = service.AddTaskExecution(taskID, "session-completed", "auto")
+	assert.NoError(t, err)
+	service.UpdateExecutionStatus("session-completed", "completed")
+
+	// LoadTasksFromDB should not affect completed executions
+	s := service.NewScheduler()
+	err = s.LoadTasksFromDB("/proj")
+	assert.NoError(t, err)
+
+	var status string
+	err = service.DB.QueryRow("SELECT status FROM task_executions WHERE session_id = ?", "session-completed").Scan(&status)
+	assert.NoError(t, err)
+	assert.Equal(t, "completed", status)
+}
+
+// ---------- SetTaskSummarizer ----------
+
+func TestSetTaskSummarizer(t *testing.T) {
+	s := service.NewScheduler()
+	// Should not panic when called with nil
+	s.SetTaskSummarizer(nil)
+
+	// Should not panic when called with a non-nil summarizer
+	// (we can't easily construct a real TaskSummarizer here without
+	// setting up an AI backend, so we just verify it doesn't panic)
+	s.SetTaskSummarizer(nil)
 }

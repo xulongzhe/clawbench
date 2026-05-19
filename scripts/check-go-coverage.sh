@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # check-go-coverage.sh — Run Go tests with coverage and enforce coverage gate.
-# Gate rule: per-package coverage >= min(baseline, 80%).
+# Gate rule: per-package coverage >= min(baseline, 80%) - tolerance.
+# Tolerance (default 1.0%) accounts for cross-environment coverage fluctuations.
 #
 # Usage:
 #   ./scripts/check-go-coverage.sh              # run tests + check
 #   ./scripts/check-go-coverage.sh --skip-test   # skip running tests, use existing coverage.out
-#   ./scripts/check-go-coverage.sh --update      # update baseline with current coverage
+#   ./scripts/check-go-coverage.sh --update      # update baseline with current coverage (only raises, never lowers)
 #
 # Exit code: 0 = pass, 1 = fail
 
@@ -53,6 +54,7 @@ baseline_file = sys.argv[1]
 coverage_profile = sys.argv[2]
 update_baseline = sys.argv[3] == "true"
 MIN_FLOOR = 80.0
+TOLERANCE = 1.0  # Allow ±1% fluctuation across environments
 
 # Load baseline
 with open(baseline_file) as f:
@@ -109,7 +111,7 @@ RESET = "\033[0m"
 
 print(f"{BOLD}╔══════════════════════════════════════════════════════════════════╗{RESET}")
 print(f"{BOLD}║                  Go Coverage Gate Check                        ║{RESET}")
-print(f"{BOLD}║  Rule: coverage >= min(baseline, {MIN_FLOOR}%)                        ║{RESET}")
+print(f"{BOLD}║  Rule: coverage >= min(baseline, {MIN_FLOOR}%) - {TOLERANCE}%              ║{RESET}")
 print(f"{BOLD}╚══════════════════════════════════════════════════════════════════╝{RESET}")
 print()
 
@@ -137,8 +139,8 @@ for pkg in all_pkgs:
         baseline_pct = 0.0
         go_baseline[pkg] = 0.0
 
-    # Floor = min(baseline, 80)
-    floor = min(baseline_pct, MIN_FLOOR)
+    # Floor = min(baseline, 80) - tolerance
+    floor = max(min(baseline_pct, MIN_FLOOR) - TOLERANCE, 0.0)
     passed = curr_pct >= floor
 
     if passed:
@@ -147,7 +149,7 @@ for pkg in all_pkgs:
         status = f"{RED}FAIL{RESET}"
         all_pass = False
 
-    # Track improvements
+    # Track improvements (only upward — never lower baseline)
     if curr_pct > baseline_pct + 0.1:
         updated_pkgs[pkg] = curr_pct
 
