@@ -97,8 +97,8 @@ jobs:
         with:
           name: main-frontend-coverage
           path: |
-            web/coverage/coverage-summary.json
-            web/coverage/coverage-final.json
+            coverage/coverage-summary.json
+            coverage/coverage-final.json
           retention-days: 90
 
   build-frontend:

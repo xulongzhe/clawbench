@@ -46,14 +46,16 @@ if [ "$SKIP_TEST" = false ]; then
   fi
 else
   # --skip-test: just verify coverage data exists
-  if [ ! -f "$WEB_DIR/coverage/coverage-summary.json" ] || [ ! -f "$WEB_DIR/coverage/coverage-final.json" ]; then
+  if [ ! -f "$ROOT_DIR/coverage/coverage-summary.json" ] || [ ! -f "$ROOT_DIR/coverage/coverage-final.json" ]; then
     echo "ERROR: coverage data not found. Run without --skip-test first."
     exit 1
   fi
 fi
 
-COVERAGE_JSON="$WEB_DIR/coverage/coverage-summary.json"
-COVERAGE_FINAL="$WEB_DIR/coverage/coverage-final.json"
+# Coverage data: vitest writes to <root>/coverage/ (not web/coverage/)
+# because vitest.config.ts lives at project root
+COVERAGE_JSON="$ROOT_DIR/coverage/coverage-summary.json"
+COVERAGE_FINAL="$ROOT_DIR/coverage/coverage-final.json"
 
 if [ ! -f "$COVERAGE_JSON" ]; then
   echo "ERROR: coverage-summary.json not found. Run without --skip-test first."
@@ -74,17 +76,25 @@ fi
 
 # Step 3: Try to get baseline
 BASELINE_JSON=""
-if [ -f "$BASELINE_DIR/coverage-summary.json" ]; then
-  BASELINE_JSON="$BASELINE_DIR/coverage-summary.json"
-  echo "ℹ Using baseline from .clawbench/baseline/"
-elif command -v gh &>/dev/null; then
+# CI artifact may have flat files or coverage/ subdirectory
+for _bf in "$BASELINE_DIR/coverage-summary.json" "$BASELINE_DIR/coverage/coverage-summary.json"; do
+  if [ -f "$_bf" ]; then
+    BASELINE_JSON="$_bf"
+    echo "ℹ Using baseline from .clawbench/baseline/"
+    break
+  fi
+done
+if [ -z "$BASELINE_JSON" ] && command -v gh &>/dev/null; then
   echo "ℹ Attempting baseline download via gh CLI..."
   mkdir -p "$BASELINE_DIR"
   if gh run download --name main-frontend-coverage --dir "$BASELINE_DIR" 2>/dev/null; then
-    if [ -f "$BASELINE_DIR/coverage-summary.json" ]; then
-      BASELINE_JSON="$BASELINE_DIR/coverage-summary.json"
-      echo "ℹ Baseline downloaded via gh CLI"
-    fi
+    for _bf in "$BASELINE_DIR/coverage-summary.json" "$BASELINE_DIR/coverage/coverage-summary.json"; do
+      if [ -f "$_bf" ]; then
+        BASELINE_JSON="$_bf"
+        echo "ℹ Baseline downloaded via gh CLI"
+        break
+      fi
+    done
   fi
 fi
 
