@@ -285,6 +285,72 @@ describe('onSessionEvent', () => {
     // This covers the gap where TrySetSessionRunning's WS event arrives
     // before loadSessions is called
   })
+
+  it('ignores data with empty/undefined status', () => {
+    const session = createSession()
+    const versionBefore = mockState.runningSessionsVersion
+
+    // status is empty string → falls into else branch (treated as not-running)
+    session.onSessionEvent({ session_id: 's1', status: '' })
+    // No session_id in the Set (it was never added), but chatRunning derives from set size
+    expect(mockState.chatRunning).toBe(false)
+    // session_id is present → delete from empty set is a no-op, but version still increments
+    expect(mockState.runningSessionsVersion).toBe(versionBefore + 1)
+  })
+
+  it('handles data with undefined status (missing key)', () => {
+    const session = createSession()
+    const versionBefore = mockState.runningSessionsVersion
+
+    // status is undefined → else branch
+    session.onSessionEvent({ session_id: 's1' })
+    expect(mockState.chatRunning).toBe(false)
+    expect(mockState.runningSessionsVersion).toBe(versionBefore + 1)
+  })
+
+  it('does not add duplicate entries to runningSessions for same session_id', () => {
+    const session = createSession()
+
+    session.onSessionEvent({ session_id: 's1', status: 'running' })
+    expect(mockState.runningSessions.size).toBe(1)
+
+    // Duplicate running event — Set.add is idempotent
+    session.onSessionEvent({ session_id: 's1', status: 'running' })
+    expect(mockState.runningSessions.size).toBe(1)
+    // But version still increments
+    expect(mockState.runningSessionsVersion).toBe(2)
+  })
+
+  it('completing a non-running session does not crash', () => {
+    const session = createSession()
+
+    // Complete a session that was never started
+    expect(() => {
+      session.onSessionEvent({ session_id: 'ghost', status: 'completed' })
+    }).not.toThrow()
+    expect(mockState.runningSessions.has('ghost')).toBe(false)
+    expect(mockState.chatRunning).toBe(false)
+  })
+
+  it('preserves chatUnread=true when completing a non-current session even if already unread', () => {
+    const session = createSession()
+    mockState.currentSessionId = 'current-s1'
+    mockState.chatUnread = true
+
+    session.onSessionEvent({ session_id: 's2', status: 'completed' })
+    // Should remain true (not reset to false)
+    expect(mockState.chatUnread).toBe(true)
+  })
+
+  it('marks chatUnread on cancelled status for non-current session', () => {
+    const session = createSession()
+    mockState.currentSessionId = 'current-s1'
+
+    session.onSessionEvent({ session_id: 's1', status: 'running' })
+    // Cancel a different session
+    session.onSessionEvent({ session_id: 's2', status: 'cancelled' })
+    expect(mockState.chatUnread).toBe(true)
+  })
 })
 
 // ── loadSessionsOnce tests ──
@@ -495,6 +561,98 @@ describe('loadSessionsOnce', () => {
     await loadSessionsOnce()
 
     expect(mockState.chatUnread).toBe(true)
+    expect(mockState.chatRunning).toBe(true)
+  })
+
+  it('clears stale runningSessions before repopulating', async () => {
+    // Pre-populate with sessions that are no longer running
+    mockState.runningSessions.add('old-1')
+    mockState.runningSessions.add('old-2')
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessions: [
+          { id: 'new-1', running: true },
+          { id: 'old-1', running: false },
+        ],
+      }),
+    })
+
+    const { loadSessionsOnce } = await import('@/composables/useChatSession')
+    await loadSessionsOnce()
+
+    // old entries should be cleared, only new-1 should remain
+    expect(mockState.runningSessions.has('old-1')).toBe(false)
+    expect(mockState.runningSessions.has('old-2')).toBe(false)
+    expect(mockState.runningSessions.has('new-1')).toBe(true)
+    expect(mockState.runningSessions.size).toBe(1)
+  })
+
+  it('handles json() throwing an error', async () => {
+    mockState.chatRunning = true
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.reject(new SyntaxError('Unexpected token')),
+    })
+
+    const { loadSessionsOnce } = await import('@/composables/useChatSession')
+    // Should not throw
+    await expect(loadSessionsOnce()).resolves.toBeUndefined()
+    // State should not change (error was caught)
+    expect(mockState.chatRunning).toBe(true)
+  })
+
+  it('handles missing sessions field in response', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({}),  // no sessions field
+    })
+
+    const { loadSessionsOnce } = await import('@/composables/useChatSession')
+    await loadSessionsOnce()
+
+    expect(mockState.chatRunning).toBe(false)
+    expect(mockState.runningSessions.size).toBe(0)
+  })
+
+  it('handles sessions=null in response', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ sessions: null }),
+    })
+
+    const { loadSessionsOnce } = await import('@/composables/useChatSession')
+    await loadSessionsOnce()
+
+    expect(mockState.chatRunning).toBe(false)
+    expect(mockState.runningSessions.size).toBe(0)
+  })
+
+  it('does not clear runningSessions when fetch is not ok', async () => {
+    mockState.runningSessions.add('s1')
+    mockState.chatRunning = true
+
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 })
+
+    const { loadSessionsOnce } = await import('@/composables/useChatSession')
+    await loadSessionsOnce()
+
+    // Pre-existing data should not be cleared on failed fetch
+    expect(mockState.runningSessions.has('s1')).toBe(true)
+    expect(mockState.chatRunning).toBe(true)
+  })
+
+  it('does not clear runningSessions when fetch throws', async () => {
+    mockState.runningSessions.add('s1')
+    mockState.chatRunning = true
+
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Network error'))
+
+    const { loadSessionsOnce } = await import('@/composables/useChatSession')
+    await loadSessionsOnce()
+
+    expect(mockState.runningSessions.has('s1')).toBe(true)
     expect(mockState.chatRunning).toBe(true)
   })
 })

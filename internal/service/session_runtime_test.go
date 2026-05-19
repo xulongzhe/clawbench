@@ -252,6 +252,81 @@ func TestTrySetSessionRunning_AlreadyRunning(t *testing.T) {
 	assert.False(t, result2, "Second TrySetSessionRunning should return false")
 }
 
+func TestTrySetSessionRunning_DifferentSessions(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	result1 := TrySetSessionRunning("session-a")
+	assert.True(t, result1)
+	assert.True(t, IsSessionRunning("session-a"))
+
+	result2 := TrySetSessionRunning("session-b")
+	assert.True(t, result2)
+	assert.True(t, IsSessionRunning("session-b"))
+
+	// Both should be running independently
+	assert.True(t, IsSessionRunning("session-a"))
+}
+
+func TestTrySetSessionRunning_FailedTryDoesNotAffectExisting(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	// First TrySet succeeds
+	assert.True(t, TrySetSessionRunning("session-x"))
+	// Second TrySet on same ID fails
+	assert.False(t, TrySetSessionRunning("session-x"))
+	// But session is still marked as running
+	assert.True(t, IsSessionRunning("session-x"))
+}
+
+func TestSetSessionRunning_TrySetMixedSequence(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	// Start via SetSessionRunning
+	SetSessionRunning("session-mix", true)
+	assert.True(t, IsSessionRunning("session-mix"))
+
+	// TrySetSessionRunning on already-running session should fail
+	assert.False(t, TrySetSessionRunning("session-mix"))
+
+	// Stop via SetSessionRunning
+	SetSessionRunning("session-mix", false)
+	assert.False(t, IsSessionRunning("session-mix"))
+
+	// Now TrySetSessionRunning should succeed
+	assert.True(t, TrySetSessionRunning("session-mix"))
+	assert.True(t, IsSessionRunning("session-mix"))
+}
+
+func TestTrySetSessionRunning_Concurrent(t *testing.T) {
+	cleanupActiveSessions()
+	defer cleanupActiveSessions()
+
+	// Multiple goroutines try to set the same session as running.
+	// Exactly one should succeed.
+	var wg sync.WaitGroup
+	successCount := 0
+	var mu sync.Mutex
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if TrySetSessionRunning("session-concurrent-try") {
+				mu.Lock()
+				successCount++
+				mu.Unlock()
+			}
+		}()
+	}
+
+	wg.Wait()
+	assert.Equal(t, 1, successCount, "Exactly one TrySetSessionRunning should succeed")
+	assert.True(t, IsSessionRunning("session-concurrent-try"))
+}
+
 func TestSetSessionRunning_FalseRemovesKey(t *testing.T) {
 	cleanupActiveSessions()
 	defer cleanupActiveSessions()
