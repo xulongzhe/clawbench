@@ -11,10 +11,8 @@
       <AppHeader
         :hidden="terminalActive"
         :project-root="projectRoot"
-        :theme="theme"
-        @toggle-theme="toggleTheme"
+        @open-settings="settingsDrawerOpen = true"
         @open-project-dialog="handleOpenProjectDialog"
-        @reconfigure-server="handleReconfigureServer"
       />
 
       <main class="main-content">
@@ -134,6 +132,11 @@
       </main>
 
       <Lightbox />
+
+      <SettingsDrawer
+        :show="settingsDrawerOpen"
+        @close="settingsDrawerOpen = false"
+      />
 
       <ProjectDialog
         :open="projectDialogOpen"
@@ -255,6 +258,7 @@ import DialogOverlay from './components/common/DialogOverlay.vue'
 import SessionDrawer from './components/session/SessionDrawer.vue'
 import QuoteQuestionBar from './components/common/QuoteQuestionBar.vue'
 import HeaderMarquee from './components/common/HeaderMarquee.vue'
+import SettingsDrawer from './components/settings/SettingsDrawer.vue'
 import TaskTab from '@/components/task/TaskTab.vue'
 import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
 import { useTaskTab, registerSwitchTab, onTaskEvent } from '@/composables/useTaskTab.ts'
@@ -383,14 +387,10 @@ async function handleLoginSuccess() {
 
 const projectDialogOpen = ref(false)
 
+const settingsDrawerOpen = ref(false)
+
 function handleOpenProjectDialog() {
     projectDialogOpen.value = true
-}
-
-function handleReconfigureServer() {
-    if (window.AndroidNative?.showServerDialog) {
-        window.AndroidNative.showServerDialog()
-    }
 }
 
 const theme = ref(localStorage.getItem('theme') ||
