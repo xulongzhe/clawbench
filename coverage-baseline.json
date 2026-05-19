@@ -1,20 +1,20 @@
 {
   "go": {
     "clawbench/cmd/server": 0.0,
-    "clawbench/internal/ai": 77.0,
+    "clawbench/internal/ai": 75.9,
     "clawbench/internal/cli": 48.5,
     "clawbench/internal/handler": 65.3,
     "clawbench/internal/i18n": 90.9,
     "clawbench/internal/middleware": 87.1,
-    "clawbench/internal/model": 88.5,
+    "clawbench/internal/model": 79.8,
     "clawbench/internal/platform": 79.7,
     "clawbench/internal/push": 85.2,
     "clawbench/internal/rag": 79.5,
     "clawbench/internal/service": 62.4,
-    "clawbench/internal/speech": 59.6,
+    "clawbench/internal/speech": 57.8,
     "clawbench/internal/ssh": 80.5,
-    "clawbench/internal/summarize": 94.7,
-    "clawbench/internal/terminal": 60.7,
+    "clawbench/internal/summarize": 93.1,
+    "clawbench/internal/terminal": 60.1,
     "clawbench/internal/ws": 53.1
   },
   "frontend": {
