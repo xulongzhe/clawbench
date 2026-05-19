@@ -215,6 +215,9 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 		// Handle ERROR lines from codex resume output
 		if errMsg, ok := strings.CutPrefix(line, "ERROR:"); ok && errMsg != "" {
 			ch <- StreamEvent{Type: "error", Error: errMsg}
+			// ISS-079: must emit done so the stream consumer can finalize;
+			// without this, the SSE stream hangs indefinitely.
+			ch <- StreamEvent{Type: "done"}
 			return
 		}
 
@@ -357,6 +360,13 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 		ch <- StreamEvent{Type: "thinking", Content: thinkingBuf.String()}
 	}
 
+	// ISS-080: check scanner.Err() after the loop — truncated output due to
+	// a read error must not be silently accepted as complete.
+	if err := scanner.Err(); err != nil {
+		ch <- StreamEvent{Type: "warning", Content: fmt.Sprintf("resume output read error: %v", err), Reason: ReasonParseError}
+		// Fall through to emit done so the consumer can finalize.
+	}
+
 	// Send metadata and done events
 	ch <- StreamEvent{Type: "metadata", Meta: &Metadata{SessionID: sessionID}}
 	ch <- StreamEvent{Type: "done"}
@@ -493,9 +503,19 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 		slog.Any("args", fullArgs),
 	)
 
-	stdoutPipe, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, fmt.Errorf("codex stream: failed to create stdout pipe: %w", err)
+	// ISS-050: only create stdoutPipe for non-resume mode.
+	// In resume mode, Codex writes the formatted transcript to stderr;
+	// stdout is unused. Creating but not consuming stdoutPipe causes an
+	// FD leak and potential deadlock if Codex writes to stdout.
+	var stdoutPipe io.ReadCloser
+	if isResume {
+		cmd.Stdout = io.Discard // drain stdout to prevent deadlock
+	} else {
+		var err error
+		stdoutPipe, err = cmd.StdoutPipe()
+		if err != nil {
+			return nil, fmt.Errorf("codex stream: failed to create stdout pipe: %w", err)
+		}
 	}
 
 	if err := cmd.Start(); err != nil {
