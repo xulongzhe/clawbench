@@ -1,0 +1,305 @@
+<template>
+  <div class="settings-page">
+    <header v-if="navStack.length > 0" class="settings-page__header">
+      <button class="settings-page__back" @click="popNav">
+        <ChevronLeft :size="22" />
+      </button>
+      <span class="settings-page__title">{{ currentCategoryTitle }}</span>
+    </header>
+    <div class="settings-page__body">
+      <SettingsIndex v-if="navStack.length === 0" @navigate="pushNav" />
+      <SettingsCategory
+        v-else
+        :category-id="currentCategory!"
+        @restart-needed="handleRestartNeeded"
+      />
+      <SettingsRestartDialog
+        v-if="restartDialogVisible"
+        :changed-fields="changedColdFields"
+        @restart="handleRestart"
+        @later="restartDialogVisible = false"
+      />
+    </div>
+    <footer class="settings-page__footer">
+      <button class="settings-restart-btn" :class="{ 'settings-restart-btn--pending': needsRestart }" :disabled="restarting" @click="handleRestart">
+        <RefreshCw :size="14" class="settings-restart-btn__icon" :class="{ 'settings-restart-btn__icon--spin': restarting }" />
+        <span>{{ restarting ? t('settings.restarting') : (needsRestart ? t('settings.restartPending') : t('settings.restartServer')) }}</span>
+      </button>
+    </footer>
+    <!-- Restart loading overlay -->
+    <Teleport to="body">
+      <div v-if="restartingOverlay" class="restart-overlay">
+        <div class="restart-overlay__content">
+          <div class="restart-overlay__spinner"></div>
+          <div class="restart-overlay__text">{{ t('settings.restartingPleaseWait') }}</div>
+        </div>
+      </div>
+    </Teleport>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { RefreshCw, ChevronLeft } from 'lucide-vue-next'
+import SettingsIndex from './SettingsIndex.vue'
+import SettingsCategory from './SettingsCategory.vue'
+import SettingsRestartDialog from './SettingsRestartDialog.vue'
+import { useSettingsConfig } from '@/composables/useSettingsConfig'
+
+const props = defineProps<{
+  active?: boolean
+}>()
+
+const { t } = useI18n()
+const { loadConfig, restartServer } = useSettingsConfig()
+
+const navStack = ref<string[]>([])
+const restartDialogVisible = ref(false)
+const changedColdFields = ref<string[]>([])
+const needsRestart = ref(false)
+const restarting = ref(false)
+const restartingOverlay = ref(false)
+
+const currentCategory = computed(() => {
+  return navStack.value.length > 0 ? navStack.value[navStack.value.length - 1] : null
+})
+
+function pushNav(categoryId: string) {
+  navStack.value.push(categoryId)
+}
+
+function popNav() {
+  if (navStack.value.length > 0) {
+    navStack.value.pop()
+  }
+}
+
+const currentCategoryTitle = computed(() => {
+  return currentCategory.value ? t(`settings.categories.${currentCategory.value}`) : ''
+})
+
+function handleRestartNeeded(fields: string[]) {
+  changedColdFields.value = fields
+  needsRestart.value = true
+  restartDialogVisible.value = true
+}
+
+function pollUntilServerUp() {
+  restartingOverlay.value = true
+  const pollInterval = setInterval(async () => {
+    try {
+      const resp = await fetch('/api/agents', { method: 'GET' })
+      if (resp.ok) {
+        clearInterval(pollInterval)
+        window.location.reload()
+      }
+    } catch {
+      // Server not up yet, keep polling
+    }
+  }, 2000)
+}
+
+async function handleRestart() {
+  restartDialogVisible.value = false
+  restarting.value = true
+  try {
+    await restartServer()
+    needsRestart.value = false
+    // Server is shutting down — start polling until it comes back
+    pollUntilServerUp()
+  } catch {
+    restarting.value = false
+  }
+}
+
+// Reset navigation when tab becomes active
+watch(() => props.active, (val) => {
+  if (val) {
+    loadConfig()
+    navStack.value = []
+  }
+})
+</script>
+
+<style scoped>
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.settings-page__header {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  background: var(--bg-primary);
+  gap: 4px;
+}
+
+.settings-page__back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .settings-page__back:hover {
+    background: var(--bg-tertiary);
+  }
+}
+
+.settings-page__back:active {
+  background: var(--bg-tertiary);
+}
+
+.settings-page__title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-page__body {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+.settings-page__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-color);
+  flex-shrink: 0;
+  gap: 8px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Restart footer button */
+.settings-restart-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+
+.settings-restart-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-restart-btn--pending {
+  background: var(--accent-color);
+  color: #fff;
+  animation: restart-pulse 2s ease-in-out infinite;
+}
+
+@keyframes restart-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 144, 217, 0.4); }
+  50% { box-shadow: 0 0 12px 4px rgba(74, 144, 217, 0.2); }
+}
+
+[data-theme="dark"] .settings-restart-btn--pending {
+  animation: restart-pulse-dark 2s ease-in-out infinite;
+}
+
+@keyframes restart-pulse-dark {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.4); }
+  50% { box-shadow: 0 0 12px 4px rgba(88, 166, 255, 0.2); }
+}
+
+@media (hover: hover) {
+  .settings-restart-btn:hover:not(:disabled):not(.settings-restart-btn--pending) {
+    background: var(--bg-secondary);
+  }
+  .settings-restart-btn.settings-restart-btn--pending:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+}
+
+.settings-restart-btn:active:not(.settings-restart-btn--pending) {
+  background: var(--bg-secondary);
+}
+
+.settings-restart-btn:active.settings-restart-btn--pending:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.settings-restart-btn__icon--spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Restart loading overlay */
+.restart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.restart-overlay__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 40px 48px;
+  border-radius: 16px;
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.restart-overlay__spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.restart-overlay__text {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+</style>

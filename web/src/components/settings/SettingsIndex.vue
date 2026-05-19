@@ -16,50 +16,50 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import {
   Palette,
   MessageSquare,
   Bot,
   FolderOpen,
-  FileText,
   Terminal,
   Volume2,
   Brain,
   Network,
-  Shield,
-  Bell,
-  Smartphone,
-  Server,
   Info,
   ChevronRight,
 } from 'lucide-vue-next'
+import { useI18n } from 'vue-i18n'
 
 defineEmits<{
   navigate: [categoryId: string]
 }>()
 
-const categories = [
-  { id: 'appearance', label: '外观', icon: Palette },
-  { id: 'chat', label: '聊天', icon: MessageSquare },
-  { id: 'agents', label: 'Agent偏好', icon: Bot },
-  { id: 'fileManager', label: '文件管理', icon: FolderOpen },
-  { id: 'fileViewer', label: '文件查看器', icon: FileText },
-  { id: 'terminal', label: '终端', icon: Terminal },
-  { id: 'tts', label: 'TTS语音', icon: Volume2 },
-  { id: 'rag', label: 'RAG记忆', icon: Brain },
-  { id: 'proxy', label: '端口转发', icon: Network },
-  { id: 'ssh', label: 'SSH隧道', icon: Shield },
-  { id: 'push', label: '推送', icon: Bell },
-  { id: 'android', label: 'Android', icon: Smartphone },
-  { id: 'server', label: '服务器', icon: Server },
-  { id: 'about', label: '关于', icon: Info },
+const { t } = useI18n()
+
+const categoryDefs = [
+  { id: 'appearance', icon: Palette },
+  { id: 'chat', icon: MessageSquare },
+  { id: 'files', icon: FolderOpen },
+  { id: 'terminal', icon: Terminal },
+  { id: 'tts', icon: Volume2 },
+  { id: 'rag', icon: Brain },
+  { id: 'network', icon: Network },
+  { id: 'about', icon: Info },
 ]
+
+const categories = computed(() =>
+  categoryDefs.map(cat => ({
+    ...cat,
+    label: t(`settings.categories.${cat.id}`),
+  }))
+)
 </script>
 
 <style scoped>
 .settings-index {
   padding: 8px 0;
-  background: var(--settings-bg, #f2f2f7);
+  background: var(--bg-secondary);
   min-height: 100%;
 }
 
@@ -71,7 +71,7 @@ const categories = [
   padding: 0 16px;
   cursor: pointer;
   gap: 12px;
-  background: #fff;
+  background: var(--bg-primary);
   position: relative;
 }
 
@@ -96,17 +96,17 @@ const categories = [
   left: 48px;
   right: 0;
   height: 0.5px;
-  background: var(--border-color, #c6c6c6);
+  background: var(--border-color);
 }
 
 @media (hover: hover) {
   .settings-index__row:hover {
-    background: #f7f7f7;
+    background: var(--bg-secondary);
   }
 }
 
 .settings-index__row:active {
-  background: #ececec;
+  background: var(--bg-tertiary);
 }
 
 .settings-index__left {
@@ -118,12 +118,12 @@ const categories = [
 
 .settings-index__icon {
   flex-shrink: 0;
-  color: var(--text-secondary, #8e8e93);
+  color: var(--text-secondary);
 }
 
 .settings-index__label {
   font-size: 15px;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -131,41 +131,6 @@ const categories = [
 
 .settings-index__arrow {
   flex-shrink: 0;
-  color: var(--text-tertiary, #c7c7cc);
-}
-
-/* Dark mode */
-[data-theme="dark"] .settings-index {
-  background: var(--settings-bg, #000);
-}
-
-[data-theme="dark"] .settings-index__row {
-  background: #1c1c1e;
-}
-
-[data-theme="dark"] .settings-index__row:not(:last-child)::after {
-  background: var(--border-color, #38383a);
-}
-
-@media (hover: hover) {
-  [data-theme="dark"] .settings-index__row:hover {
-    background: #2c2c2e;
-  }
-}
-
-[data-theme="dark"] .settings-index__row:active {
-  background: #3a3a3c;
-}
-
-[data-theme="dark"] .settings-index__icon {
-  color: var(--text-secondary, #8e8e93);
-}
-
-[data-theme="dark"] .settings-index__label {
-  color: var(--text-primary, #e0e0e0);
-}
-
-[data-theme="dark"] .settings-index__arrow {
-  color: var(--text-tertiary, #48484a);
+  color: var(--text-muted);
 }
 </style>

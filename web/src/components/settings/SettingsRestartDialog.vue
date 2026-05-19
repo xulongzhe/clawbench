@@ -1,16 +1,17 @@
 <template>
   <div class="settings-restart-overlay" @click.self="$emit('later')">
     <div class="settings-restart-dialog">
-      <div class="settings-restart-dialog__header">以下配置需重启后生效</div>
+      <div class="settings-restart-dialog__header">{{ t('settings.restartConfirmTitle') }}</div>
+      <p class="settings-restart-dialog__message">{{ t('settings.restartConfirmMessage') }}</p>
       <ul v-if="changedFields.length > 0" class="settings-restart-dialog__list">
         <li v-for="field in changedFields" :key="field">{{ field }}</li>
       </ul>
       <div class="settings-restart-dialog__actions">
         <button class="settings-restart-dialog__btn settings-restart-dialog__btn--later" @click="$emit('later')">
-          稍后
+          {{ t('settings.restartLater') }}
         </button>
         <button class="settings-restart-dialog__btn settings-restart-dialog__btn--restart" @click="$emit('restart')">
-          立即重启
+          {{ t('settings.restartNow') }}
         </button>
       </div>
     </div>
@@ -18,6 +19,8 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+
 defineProps<{
   changedFields: string[]
 }>()
@@ -26,6 +29,8 @@ defineEmits<{
   restart: []
   later: []
 }>()
+
+const { t } = useI18n()
 </script>
 
 <style scoped>
@@ -42,20 +47,27 @@ defineEmits<{
 }
 
 .settings-restart-dialog {
-  background: #fff;
+  background: var(--bg-primary);
   border-radius: 14px;
   padding: 20px;
   margin: 24px;
   max-width: 320px;
   width: 100%;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-md);
 }
 
 .settings-restart-dialog__header {
   font-size: 17px;
   font-weight: 600;
-  color: var(--text-primary, #1a1a1a);
-  margin-bottom: 12px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.settings-restart-dialog__message {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
   text-align: center;
 }
 
@@ -63,7 +75,7 @@ defineEmits<{
   margin: 0 0 20px;
   padding-left: 20px;
   font-size: 14px;
-  color: var(--text-secondary, #8e8e93);
+  color: var(--text-secondary);
   line-height: 1.6;
 }
 
@@ -89,74 +101,32 @@ defineEmits<{
 }
 
 .settings-restart-dialog__btn--later {
-  background: #e9e9ea;
-  color: var(--text-primary, #1a1a1a);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 @media (hover: hover) {
   .settings-restart-dialog__btn--later:hover {
-    background: #ddd;
+    background: var(--bg-secondary);
   }
 }
 
 .settings-restart-dialog__btn--later:active {
-  background: #d1d1d2;
+  background: var(--bg-tertiary);
 }
 
 .settings-restart-dialog__btn--restart {
-  background: #007aff;
+  background: var(--accent-color);
   color: #fff;
 }
 
 @media (hover: hover) {
   .settings-restart-dialog__btn--restart:hover {
-    background: #0066d6;
+    background: var(--accent-hover);
   }
 }
 
 .settings-restart-dialog__btn--restart:active {
-  background: #005ec2;
-}
-
-/* Dark mode */
-[data-theme="dark"] .settings-restart-dialog {
-  background: #2c2c2e;
-}
-
-[data-theme="dark"] .settings-restart-dialog__header {
-  color: var(--text-primary, #e0e0e0);
-}
-
-[data-theme="dark"] .settings-restart-dialog__list {
-  color: var(--text-secondary, #8e8e93);
-}
-
-[data-theme="dark"] .settings-restart-dialog__btn--later {
-  background: #3a3a3c;
-  color: var(--text-primary, #e0e0e0);
-}
-
-@media (hover: hover) {
-  [data-theme="dark"] .settings-restart-dialog__btn--later:hover {
-    background: #48484a;
-  }
-}
-
-[data-theme="dark"] .settings-restart-dialog__btn--later:active {
-  background: #4a4a4c;
-}
-
-[data-theme="dark"] .settings-restart-dialog__btn--restart {
-  background: #0a84ff;
-}
-
-@media (hover: hover) {
-  [data-theme="dark"] .settings-restart-dialog__btn--restart:hover {
-    background: #0070e0;
-  }
-}
-
-[data-theme="dark"] .settings-restart-dialog__btn--restart:active {
-  background: #0062c4;
+  background: var(--accent-hover);
 }
 </style>
