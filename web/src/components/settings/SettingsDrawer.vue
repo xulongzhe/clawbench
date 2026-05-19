@@ -113,7 +113,10 @@ watch(() => props.show, (val) => {
 <style scoped>
 .settings-drawer {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  height: 100vh;
+  width: 100vw;
   z-index: 1100;
   background: rgba(0, 0, 0, 0.4);
   display: flex;
@@ -122,21 +125,30 @@ watch(() => props.show, (val) => {
 
 .settings-drawer__panel {
   width: 100vw;
-  max-width: 420px;
   height: 100%;
-  background: var(--bg-primary, #fff);
+  background: #fff;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
+@media (min-width: 480px) {
+  .settings-drawer__panel {
+    max-width: 420px;
+  }
+}
+
 .settings-drawer__header {
+  position: sticky;
+  top: 0;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 12px 8px;
   border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: #fff;
   flex-shrink: 0;
+  z-index: 1;
 }
 
 .settings-drawer__back {
@@ -153,8 +165,14 @@ watch(() => props.show, (val) => {
   padding: 0;
 }
 
+@media (hover: hover) {
+  .settings-drawer__back:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+}
+
 .settings-drawer__back:active {
-  background: var(--active-bg, rgba(0, 0, 0, 0.05));
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .settings-drawer__title {
@@ -167,17 +185,18 @@ watch(() => props.show, (val) => {
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Slide animation */
 .settings-drawer-enter-active,
 .settings-drawer-leave-active {
-  transition: opacity 0.25s ease;
+  transition: opacity 0.3s ease;
 }
 
 .settings-drawer-enter-active .settings-drawer__panel,
 .settings-drawer-leave-active .settings-drawer__panel {
-  transition: transform 0.25s ease;
+  transition: transform 0.3s ease;
 }
 
 .settings-drawer-enter-from {
@@ -196,16 +215,33 @@ watch(() => props.show, (val) => {
   transform: translateX(100%);
 }
 
+/* Category push/pop animation */
+.settings-drawer__body {
+  position: relative;
+}
+
+/* Dark mode */
 [data-theme="dark"] .settings-drawer__panel {
-  background: var(--bg-primary, #1e1e1e);
+  background: #1a1a1a;
 }
 
 [data-theme="dark"] .settings-drawer__header {
   border-bottom-color: var(--border-color, #333);
+  background: #1a1a1a;
 }
 
 [data-theme="dark"] .settings-drawer__back {
   color: var(--text-primary, #e0e0e0);
+}
+
+@media (hover: hover) {
+  [data-theme="dark"] .settings-drawer__back:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+[data-theme="dark"] .settings-drawer__back:active {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 [data-theme="dark"] .settings-drawer__title {

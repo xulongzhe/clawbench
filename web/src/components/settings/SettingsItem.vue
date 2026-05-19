@@ -107,10 +107,12 @@ function handleClick() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  min-height: 48px;
+  padding: 0 16px;
+  height: 48px;
   cursor: pointer;
   gap: 12px;
+  background: #fff;
+  position: relative;
 }
 
 .settings-item--disabled {
@@ -138,8 +140,8 @@ function handleClick() {
   font-size: 11px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: var(--badge-bg, #fff3e0);
-  color: var(--badge-text, #e65100);
+  background: transparent;
+  color: #8e8e93;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -153,7 +155,7 @@ function handleClick() {
 
 .settings-item__value {
   font-size: 14px;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, #8e8e93);
   max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,15 +164,16 @@ function handleClick() {
 
 .settings-item__arrow {
   font-size: 20px;
-  color: var(--text-tertiary, #999);
+  color: var(--text-tertiary, #c7c7cc);
   line-height: 1;
 }
 
+/* iOS-style switch toggle */
 .settings-item__switch {
   position: relative;
   display: inline-block;
-  width: 44px;
-  height: 24px;
+  width: 51px;
+  height: 31px;
   cursor: pointer;
 }
 
@@ -184,9 +187,9 @@ function handleClick() {
 .settings-item__switch-track {
   position: absolute;
   inset: 0;
-  border-radius: 12px;
-  background: var(--switch-off-bg, #ccc);
-  transition: background 0.2s;
+  border-radius: 15.5px;
+  background: #e9e9ea;
+  transition: background 0.2s ease;
 }
 
 .settings-item__switch-track::after {
@@ -194,40 +197,60 @@ function handleClick() {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 20px;
-  height: 20px;
+  width: 27px;
+  height: 27px;
   border-radius: 50%;
   background: #fff;
-  transition: transform 0.2s;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .settings-item__switch-input:checked + .settings-item__switch-track {
-  background: var(--switch-on-bg, #4caf50);
+  background: #34c759;
 }
 
 .settings-item__switch-input:checked + .settings-item__switch-track::after {
   transform: translateX(20px);
 }
 
+/* Slider */
 .settings-item__slider {
   width: 120px;
   cursor: pointer;
+  accent-color: #007aff;
+}
+
+/* Dark mode */
+[data-theme="dark"] .settings-item {
+  background: #1c1c1e;
 }
 
 [data-theme="dark"] .settings-item__label {
   color: var(--text-primary, #e0e0e0);
 }
 
+[data-theme="dark"] .settings-item__badge {
+  color: #8e8e93;
+}
+
 [data-theme="dark"] .settings-item__value {
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary, #8e8e93);
 }
 
 [data-theme="dark"] .settings-item__arrow {
-  color: var(--text-tertiary, #777);
+  color: var(--text-tertiary, #48484a);
 }
 
 [data-theme="dark"] .settings-item__switch-track {
-  background: var(--switch-off-bg, #555);
+  background: #39393d;
+}
+
+[data-theme="dark"] .settings-item__switch-input:checked + .settings-item__switch-track {
+  background: #34c759;
+}
+
+[data-theme="dark"] .settings-item__switch-track::after {
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 </style>

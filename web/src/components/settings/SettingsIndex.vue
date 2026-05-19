@@ -58,20 +58,55 @@ const categories = [
 
 <style scoped>
 .settings-index {
-  padding: 0 0 8px;
+  padding: 8px 0;
+  background: var(--settings-bg, #f2f2f7);
+  min-height: 100%;
 }
 
 .settings-index__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 13px 16px;
+  height: 48px;
+  padding: 0 16px;
   cursor: pointer;
   gap: 12px;
+  background: #fff;
+  position: relative;
+}
+
+/* Grouped card: first row rounded top, last row rounded bottom */
+.settings-index__row:first-child {
+  border-radius: 12px 12px 0 0;
+}
+
+.settings-index__row:last-child {
+  border-radius: 0 0 12px 12px;
+}
+
+.settings-index__row:only-child {
+  border-radius: 12px;
+}
+
+/* Row separator (not on last) */
+.settings-index__row:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 48px;
+  right: 0;
+  height: 0.5px;
+  background: var(--border-color, #c6c6c6);
+}
+
+@media (hover: hover) {
+  .settings-index__row:hover {
+    background: #f7f7f7;
+  }
 }
 
 .settings-index__row:active {
-  background: var(--active-bg, rgba(0, 0, 0, 0.05));
+  background: #ececec;
 }
 
 .settings-index__left {
@@ -83,7 +118,7 @@ const categories = [
 
 .settings-index__icon {
   flex-shrink: 0;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, #8e8e93);
 }
 
 .settings-index__label {
@@ -96,11 +131,34 @@ const categories = [
 
 .settings-index__arrow {
   flex-shrink: 0;
-  color: var(--text-tertiary, #999);
+  color: var(--text-tertiary, #c7c7cc);
+}
+
+/* Dark mode */
+[data-theme="dark"] .settings-index {
+  background: var(--settings-bg, #000);
+}
+
+[data-theme="dark"] .settings-index__row {
+  background: #1c1c1e;
+}
+
+[data-theme="dark"] .settings-index__row:not(:last-child)::after {
+  background: var(--border-color, #38383a);
+}
+
+@media (hover: hover) {
+  [data-theme="dark"] .settings-index__row:hover {
+    background: #2c2c2e;
+  }
+}
+
+[data-theme="dark"] .settings-index__row:active {
+  background: #3a3a3c;
 }
 
 [data-theme="dark"] .settings-index__icon {
-  color: var(--text-secondary, #aaa);
+  color: var(--text-secondary, #8e8e93);
 }
 
 [data-theme="dark"] .settings-index__label {
@@ -108,10 +166,6 @@ const categories = [
 }
 
 [data-theme="dark"] .settings-index__arrow {
-  color: var(--text-tertiary, #777);
-}
-
-[data-theme="dark"] .settings-index__row:active {
-  background: var(--active-bg, rgba(255, 255, 255, 0.08));
+  color: var(--text-tertiary, #48484a);
 }
 </style>

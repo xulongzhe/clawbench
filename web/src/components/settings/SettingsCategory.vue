@@ -152,6 +152,13 @@ function handleClick(item: ItemSpec) {
 
 <style scoped>
 .settings-category {
-  padding: 0 0 8px;
+  padding: 8px 0;
+  background: var(--settings-bg, #f2f2f7);
+  min-height: 100%;
+}
+
+/* Dark mode */
+[data-theme="dark"] .settings-category {
+  background: var(--settings-bg, #000);
 }
 </style>
