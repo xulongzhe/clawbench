@@ -100,7 +100,7 @@ merge_base = sys.argv[4] if len(sys.argv) > 4 else ""
 
 TIER1_TOLERANCE = 1.5
 DIFF_THRESHOLD = 80.0
-EXCLUDED = {"src/i18n/locales"}
+EXCLUDED = {"src/i18n"}  # i18n locale dict aggregation directory
 
 BOLD = "\033[1m"
 RED = "\033[0;31m"
@@ -306,7 +306,8 @@ else:
                     continue  # skip invalid entries
                 covered = stmts[idx] > 0
                 for ln in range(start_line, end_line + 1):
-                    line_coverage[norm_path][ln] = covered
+                    # OR logic: if ANY statement on this line is covered, the line is covered
+                    line_coverage[norm_path][ln] = line_coverage[norm_path].get(ln, False) or covered
 
     # Cross-reference: Istanbul paths are now normalized to web/src/...
     diff_stats = {}
