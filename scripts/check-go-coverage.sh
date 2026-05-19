@@ -121,9 +121,9 @@ with open(coverage_profile) as f:
     for line in f:
         if line.startswith("mode:"):
             continue
-        parts = line.split()
-        if parts:
-            file_path = parts[0]
+        m = re.match(r'(\S+?):\d+\.\d+,\d+\.\d+\s+\d+\s+\d+', line.strip())
+        if m:
+            file_path = m.group(1)
             pkg = "/".join(file_path.split("/")[:-1])
             if pkg.startswith("clawbench/") and "node_modules" not in pkg and "vendor" not in pkg:
                 profile_pkgs.add(pkg)
@@ -168,17 +168,14 @@ else:
         for line in f:
             if line.startswith("mode:"):
                 continue
-            parts = line.strip().split()
-            if len(parts) < 3:
+            m = re.match(r'(\S+):(\d+)\.\d+,(\d+)\.\d+\s+(\d+)\s+(\d+)', line.strip())
+            if not m:
                 continue
-            file_path = parts[0]
-            range_str = parts[1]
-            count = int(parts[2])
-            m_range = re.match(r'(\d+)\.\d+,(\d+)\.\d+', range_str)
-            if not m_range:
-                continue
-            start_line = int(m_range.group(1))
-            end_line = int(m_range.group(2))
+            file_path = m.group(1)
+            start_line = int(m.group(2))
+            end_line = int(m.group(3))
+            num_stmts = int(m.group(4))
+            count = int(m.group(5))
 
             # Find matching git file path for deleted lines lookup
             # baseline file_path: clawbench/internal/ai/agent.go
@@ -202,7 +199,6 @@ else:
 
             pkg = "/".join(file_path.split("/")[:-1])
             if pkg.startswith("clawbench/"):
-                num_stmts = end_line - start_line + 1
                 adjusted_pkg_stmts[pkg]["total"] += num_stmts
                 if count > 0:
                     adjusted_pkg_stmts[pkg]["covered"] += num_stmts
@@ -292,19 +288,16 @@ else:
         for line in f:
             if line.startswith("mode:"):
                 continue
-            parts = line.strip().split()
-            if len(parts) < 3:
+            m = re.match(r'(\S+):(\d+)\.\d+,(\d+)\.\d+\s+(\d+)\s+(\d+)', line.strip())
+            if not m:
                 continue
-            file_path = parts[0]
-            range_str = parts[1]
-            count = int(parts[2])
-            m = re.match(r'(\d+)\.\d+,(\d+)\.\d+', range_str)
-            if m:
-                start_line = int(m.group(1))
-                end_line = int(m.group(2))
-                covered = count > 0
-                for ln in range(start_line, end_line + 1):
-                    line_coverage[file_path][ln] = covered
+            file_path = m.group(1)
+            start_line = int(m.group(2))
+            end_line = int(m.group(3))
+            count = int(m.group(5))
+            covered = count > 0
+            for ln in range(start_line, end_line + 1):
+                line_coverage[file_path][ln] = covered
 
     # Cross-reference: match git diff files with coverage profile files
     diff_stats = {}
