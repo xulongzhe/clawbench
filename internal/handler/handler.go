@@ -219,6 +219,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/dialog/project", middleware.Auth(ServeProjectDialog))
 	register("/api/me", ServeAuthCheck)
 	register("/api/watch-dir", middleware.Auth(ServeWatchDir))
+	register("/api/config", middleware.Auth(ServeConfig))
 	register("/api/projects", middleware.Auth(ServeProjects))
 	register("/api/project", middleware.Auth(ServeProjectSet))
 	register("/api/ai/chat", middleware.Auth(AIChat))
