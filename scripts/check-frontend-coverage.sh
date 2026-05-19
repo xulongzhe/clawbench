@@ -45,8 +45,11 @@ if [ "$SKIP_TEST" = false ]; then
     exit 1
   fi
 else
-  # Need to regenerate coverage data for parsing
-  npx --prefix "$WEB_DIR" vitest run --coverage 2>&1 | tail -1 || true
+  # --skip-test: just verify coverage data exists
+  if [ ! -f "$WEB_DIR/coverage/coverage-summary.json" ] || [ ! -f "$WEB_DIR/coverage/coverage-final.json" ]; then
+    echo "ERROR: coverage data not found. Run without --skip-test first."
+    exit 1
+  fi
 fi
 
 COVERAGE_JSON="$WEB_DIR/coverage/coverage-summary.json"
@@ -109,23 +112,53 @@ RESET = "\033[0m"
 def pass_fail(passed):
     return f"{GREEN}PASS{RESET}" if passed else f"{RED}FAIL{RESET}"
 
+# ── Helper: extract src/... path from absolute or relative path ──
+def extract_src_path(path):
+    """Extract the src/... portion from a path like /abs/path/web/src/components/Foo.vue"""
+    idx = path.find("/src/")
+    if idx >= 0:
+        return path[idx + 1:]  # e.g., src/components/Foo.vue
+    if path.startswith("src/"):
+        return path
+    return None
+
+def extract_web_src_path(path):
+    """Extract the web/src/... portion from a path like /abs/path/web/src/components/Foo.vue"""
+    idx = path.find("/web/src/")
+    if idx >= 0:
+        return path[idx + 1:]  # e.g., web/src/components/Foo.vue
+    if path.startswith("web/src/"):
+        return path
+    return None
+
 # ── Parse current coverage-summary.json ────────────────────────
 with open(coverage_json) as f:
     summary = json.load(f)
 
-current = {}
+# Aggregate per top-level directory under src/ using weighted average
+dir_stmts = defaultdict(lambda: {"covered": 0, "total": 0})
 for dir_path, data in summary.items():
-    if not dir_path.startswith("src/"):
+    src_path = extract_src_path(dir_path)
+    if not src_path:
         continue
     # Aggregate per top-level directory under src/
-    parts = dir_path.split("/")
+    parts = src_path.split("/")
     if len(parts) >= 2:
         top_dir = "/".join(parts[:2])  # e.g., src/components
     else:
         continue
-    stmts = data.get("statements", {}).get("pct", 0)
-    if top_dir not in current or stmts > current[top_dir]:
-        current[top_dir] = stmts
+    stmt_data = data.get("statements", {})
+    covered = stmt_data.get("covered", 0)
+    total = stmt_data.get("total", 0)
+    dir_stmts[top_dir]["covered"] += covered
+    dir_stmts[top_dir]["total"] += total
+
+current = {}
+for dir_name, data in dir_stmts.items():
+    if data["total"] > 0:
+        current[dir_name] = (data["covered"] / data["total"]) * 100
+    else:
+        current[dir_name] = 0.0
 
 # ══════════════════════════════════════════════════════════════════
 # TIER 1: Project Gate
@@ -142,18 +175,28 @@ else:
     with open(baseline_json) as f:
         baseline_summary = json.load(f)
 
-    baseline = {}
+    baseline_dir_stmts = defaultdict(lambda: {"covered": 0, "total": 0})
     for dir_path, data in baseline_summary.items():
-        if not dir_path.startswith("src/"):
+        src_path = extract_src_path(dir_path)
+        if not src_path:
             continue
-        parts = dir_path.split("/")
+        parts = src_path.split("/")
         if len(parts) >= 2:
             top_dir = "/".join(parts[:2])
         else:
             continue
-        stmts = data.get("statements", {}).get("pct", 0)
-        if top_dir not in baseline or stmts > baseline[top_dir]:
-            baseline[top_dir] = stmts
+        stmt_data = data.get("statements", {})
+        covered = stmt_data.get("covered", 0)
+        total = stmt_data.get("total", 0)
+        baseline_dir_stmts[top_dir]["covered"] += covered
+        baseline_dir_stmts[top_dir]["total"] += total
+
+    baseline = {}
+    for dir_name, data in baseline_dir_stmts.items():
+        if data["total"] > 0:
+            baseline[dir_name] = (data["covered"] / data["total"]) * 100
+        else:
+            baseline[dir_name] = 0.0
 
     print()
     print(f"{BOLD}╔══════════════════════════════════════════════════════════════════╗{RESET}")
@@ -241,12 +284,17 @@ else:
         istanbul = json.load(f)
 
     # Build line coverage map: file -> {line: covered}
+    # Normalize Istanbul absolute paths to web/src/... for git diff matching
     line_coverage = defaultdict(dict)
     for file_path, file_data in istanbul.items():
-        if not file_path.startswith("web/src/"):
-            # Try without web/ prefix
-            if not file_path.startswith("src/"):
-                continue
+        # Normalize: extract web/src/... or src/... from absolute paths
+        norm_path = extract_web_src_path(file_path)
+        if not norm_path:
+            norm_path = extract_src_path(file_path)
+            if norm_path:
+                norm_path = "web/" + norm_path  # add web/ prefix for git diff matching
+        if not norm_path:
+            continue
         stmt_map = file_data.get("statementMap", {})
         stmts = file_data.get("s", {})
         # Map statement index to coverage
@@ -254,29 +302,34 @@ else:
             if idx in stmts:
                 start_line = stmt_info.get("start", {}).get("line", 0)
                 end_line = stmt_info.get("end", {}).get("line", 0)
+                if start_line == 0:
+                    continue  # skip invalid entries
                 covered = stmts[idx] > 0
                 for ln in range(start_line, end_line + 1):
-                    line_coverage[file_path][ln] = covered
+                    line_coverage[norm_path][ln] = covered
 
-    # Cross-reference
+    # Cross-reference: Istanbul paths are now normalized to web/src/...
     diff_stats = {}
     dir_diff_stats = defaultdict(lambda: {"total": 0, "covered": 0})
 
     for file_path, lines in sorted(changed_lines.items()):
         if not (file_path.endswith(".ts") or file_path.endswith(".vue")):
             continue
+        # Exclude test files from diff coverage check
+        if file_path.endswith(".test.ts") or file_path.endswith(".spec.ts"):
+            continue
+        # Exclude i18n locale dictionaries
+        if "i18n/locales" in file_path:
+            continue
 
-        # Try direct match, then strip web/ prefix
+        # Direct match first (git diff paths are web/src/...)
         cov_data = line_coverage.get(file_path)
         if cov_data is None:
+            # Fallback: try suffix match
             for cov_path, cov_lines in line_coverage.items():
                 if cov_path.endswith("/" + file_path) or cov_path == file_path:
                     cov_data = cov_lines
                     break
-        if cov_data is None:
-            # Try with web/ prefix
-            web_path = "web/" + file_path if not file_path.startswith("web/") else file_path
-            cov_data = line_coverage.get(web_path)
 
         if cov_data is None:
             continue
@@ -292,8 +345,8 @@ else:
         if total_changed > 0:
             diff_stats[file_path] = {"total": total_changed, "covered": covered_changed}
             # Derive directory under src/
-            if "src/" in file_path:
-                src_idx = file_path.index("src/")
+            src_idx = file_path.find("src/")
+            if src_idx >= 0:
                 rel = file_path[src_idx:]
                 parts = rel.split("/")
                 if len(parts) >= 2:

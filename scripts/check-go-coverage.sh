@@ -115,19 +115,6 @@ for line in output.split("\n"):
             continue
         current[pkg] = float(m.group(2))
 
-# Discover packages in profile with 0% coverage
-with open(coverage_profile) as f:
-    profile_pkgs = set()
-    for line in f:
-        if line.startswith("mode:"):
-            continue
-        m = re.match(r'(\S+?):\d+\.\d+,\d+\.\d+\s+\d+\s+\d+', line.strip())
-        if m:
-            file_path = m.group(1)
-            pkg = "/".join(file_path.split("/")[:-1])
-            if pkg.startswith("clawbench/") and "node_modules" not in pkg and "vendor" not in pkg:
-                profile_pkgs.add(pkg)
-
 # ══════════════════════════════════════════════════════════════════
 # TIER 1: Project Gate
 # ══════════════════════════════════════════════════════════════════
