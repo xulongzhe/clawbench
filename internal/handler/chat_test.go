@@ -2015,7 +2015,6 @@ func TestServeSessions_Pagination_NoLimit(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 	sessions := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 5)
-	assert.Equal(t, float64(5), result["total"])
 	assert.Equal(t, false, result["hasMore"])
 }
 
@@ -2040,7 +2039,6 @@ func TestServeSessions_Pagination_WithLimit(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 	sessions := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 3)
-	assert.Equal(t, float64(5), result["total"])
 	assert.Equal(t, true, result["hasMore"])
 }
 
@@ -2062,7 +2060,6 @@ func TestServeSessions_Pagination_LimitExceedsTotal(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 	sessions := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 1)
-	assert.Equal(t, float64(1), result["total"])
 	assert.Equal(t, false, result["hasMore"])
 }
 
@@ -2107,7 +2104,6 @@ func TestServeSessions_Pagination_ZeroLimit(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 	sessions := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 3)
-	assert.Equal(t, float64(3), result["total"])
 	assert.Equal(t, false, result["hasMore"])
 }
 
@@ -2132,6 +2128,5 @@ func TestServeSessions_Pagination_EmptyProject(t *testing.T) {
 		sessions := sessionsRaw.([]interface{})
 		assert.Empty(t, sessions)
 	}
-	assert.Equal(t, float64(0), result["total"])
 	assert.Equal(t, false, result["hasMore"])
 }

@@ -284,28 +284,15 @@ func GetSessions(projectPath, backend string) ([]model.ChatSession, error) {
 // limit=0 means no limit (returns all sessions, backward compatible).
 // cursor and cursorID: when non-empty, only return sessions with
 //   (updated_at < cursor) OR (updated_at = cursor AND id < cursorID)
-// Returns sessions, total count, hasMore flag.
-func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cursorID string) ([]model.ChatSession, int, bool, error) {
+// Returns sessions and hasMore flag.
+func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cursorID string) ([]model.ChatSession, bool, error) {
 	// No limit: return all sessions (backward compatible)
 	if limit <= 0 {
 		sessions, err := GetSessions(projectPath, backend)
 		if err != nil {
-			return nil, 0, false, err
+			return nil, false, err
 		}
-		return sessions, len(sessions), false, nil
-	}
-
-	// Get total count
-	total := 0
-	countQuery := `SELECT COUNT(*) FROM chat_sessions s WHERE s.project_path = ? AND s.deleted = 0 AND s.session_type = 'chat'`
-	countArgs := []interface{}{projectPath}
-	if backend != "" {
-		countQuery += " AND s.backend = ?"
-		countArgs = append(countArgs, backend)
-	}
-	err := DB.QueryRow(countQuery, countArgs...).Scan(&total)
-	if err != nil {
-		return nil, 0, false, err
+		return sessions, false, nil
 	}
 
 	// Build main query with cursor and limit+1
@@ -327,7 +314,7 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 
 	rows, err := DB.Query(query, args...)
 	if err != nil {
-		return nil, 0, false, err
+		return nil, false, err
 	}
 	defer rows.Close()
 
@@ -336,7 +323,7 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 		var s model.ChatSession
 		var lastRead sql.NullTime
 		if err := rows.Scan(&s.ID, &s.Title, &s.Backend, &s.AgentID, &s.AgentSource, &s.Model, &s.SessionType, &s.CreatedAt, &s.UpdatedAt, &lastRead, &s.UnreadCount); err != nil {
-			return nil, 0, false, err
+			return nil, false, err
 		}
 		if lastRead.Valid {
 			s.LastReadAt = &lastRead.Time
@@ -344,7 +331,7 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 		sessions = append(sessions, s)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, false, err
+		return nil, false, err
 	}
 
 	hasMore := len(sessions) > limit
@@ -352,7 +339,7 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 		sessions = sessions[:limit]
 	}
 
-	return sessions, total, hasMore, nil
+	return sessions, hasMore, nil
 }
 
 // UpdateLastRead sets the last_read_at timestamp for a session to now.

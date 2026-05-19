@@ -37,15 +37,13 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var sessions []model.ChatSession
-		var total int
 		var hasMore bool
 		var err error
 
 		if limit > 0 {
-			sessions, total, hasMore, err = service.GetSessionsPaged(projectPath, "", limit, cursor, cursorID)
+			sessions, hasMore, err = service.GetSessionsPaged(projectPath, "", limit, cursor, cursorID)
 		} else {
 			sessions, err = service.GetSessions(projectPath, "")
-			total = len(sessions)
 			hasMore = false
 		}
 		if err != nil {
@@ -57,7 +55,6 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"sessions": sessions,
-			"total":    total,
 			"hasMore":  hasMore,
 		})
 
