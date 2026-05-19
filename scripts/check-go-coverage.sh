@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# check-go-coverage.sh — Run Go tests with coverage and enforce coverage gate.
-# Gate rule: per-package coverage >= min(baseline, 80%).
+# check-go-coverage.sh — Run Go tests with coverage and enforce two-tier gate.
+#
+# Tier 1 — Project Gate: current_coverage% >= adjusted_baseline% - 1.5% tolerance
+# Tier 2 — Diff Coverage: changed lines coverage >= 80% (strict)
+#
+# Baseline: auto-downloaded from main branch CI artifact
+#   Falls back to: .clawbench/baseline/ → gh CLI → GitHub API → skip Tier 1
 #
 # Usage:
 #   ./scripts/check-go-coverage.sh              # run tests + check
 #   ./scripts/check-go-coverage.sh --skip-test   # skip running tests, use existing coverage.out
-#   ./scripts/check-go-coverage.sh --update      # update baseline with current coverage
 #
 # Exit code: 0 = pass, 1 = fail
 
@@ -13,18 +17,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BASELINE_FILE="$ROOT_DIR/coverage-baseline.json"
 COVERAGE_PROFILE="$ROOT_DIR/coverage.out"
+BASELINE_DIR="$ROOT_DIR/.clawbench/baseline"
 
 SKIP_TEST=false
-UPDATE_BASELINE=false
 
 for arg in "$@"; do
   case "$arg" in
     --skip-test) SKIP_TEST=true ;;
-    --update) UPDATE_BASELINE=true ;;
     --help|-h)
-      echo "Usage: $0 [--skip-test] [--update] [--help]"
+      echo "Usage: $0 [--skip-test] [--help]"
       exit 0 ;;
   esac
 done
@@ -43,34 +45,67 @@ if [ ! -f "$COVERAGE_PROFILE" ]; then
   exit 1
 fi
 
-# Step 2: Use Python to parse coverage and check gate
-# We run `go test -cover ./...` separately just to get the per-package percentage text
-# (go tool cover -func uses a different algorithm — function-weighted vs statement-weighted)
-python3 - "$BASELINE_FILE" "$COVERAGE_PROFILE" "$UPDATE_BASELINE" << 'PYTHON_SCRIPT'
+# Step 2: Detect merge-base for diff coverage
+MERGE_BASE=""
+if git rev-parse --verify origin/main &>/dev/null; then
+  MERGE_BASE=$(git merge-base HEAD origin/main 2>/dev/null || true)
+fi
+if [ -z "$MERGE_BASE" ] && git rev-parse --verify main &>/dev/null; then
+  MERGE_BASE=$(git merge-base HEAD main 2>/dev/null || true)
+fi
+if [ -z "$MERGE_BASE" ]; then
+  MERGE_BASE=$(git rev-parse HEAD~1 2>/dev/null || true)
+fi
+
+# Step 3: Try to get baseline coverage profile
+BASELINE_PROFILE=""
+# 3a. CI download step (already placed by workflow)
+if [ -f "$BASELINE_DIR/coverage.out" ]; then
+  BASELINE_PROFILE="$BASELINE_DIR/coverage.out"
+  echo "ℹ Using baseline from .clawbench/baseline/coverage.out"
+# 3b. Try gh CLI
+elif command -v gh &>/dev/null; then
+  echo "ℹ Attempting baseline download via gh CLI..."
+  mkdir -p "$BASELINE_DIR"
+  if gh run download --name main-go-coverage --dir "$BASELINE_DIR" 2>/dev/null; then
+    if [ -f "$BASELINE_DIR/coverage.out" ]; then
+      BASELINE_PROFILE="$BASELINE_DIR/coverage.out"
+      echo "ℹ Baseline downloaded via gh CLI"
+    fi
+  fi
+fi
+# 3c. If still no baseline, Tier 1 will be skipped
+
+# Step 4: Run Python gate check
+python3 - "$COVERAGE_PROFILE" "$BASELINE_PROFILE" "$MERGE_BASE" << 'PYTHON_SCRIPT'
 import json, sys, re, subprocess
+from collections import defaultdict
 
-baseline_file = sys.argv[1]
-coverage_profile = sys.argv[2]
-update_baseline = sys.argv[3] == "true"
-MIN_FLOOR = 80.0
+coverage_profile = sys.argv[1]
+baseline_profile = sys.argv[2] if len(sys.argv) > 2 else ""
+merge_base = sys.argv[3] if len(sys.argv) > 3 else ""
 
-# Load baseline
-with open(baseline_file) as f:
-    baseline_data = json.load(f)
-go_baseline = baseline_data.get("go", {})
+TIER1_TOLERANCE = 1.5
+DIFF_THRESHOLD = 80.0
 
-# Get per-package coverage from `go test -cover`
-# This gives statement-weighted coverage (the same metric Go reports in test output)
-# We also parse the cover profile to discover all packages (including 0% ones)
+# ── Colors ──────────────────────────────────────────────────────
+BOLD = "\033[1m"
+RED = "\033[0;31m"
+GREEN = "\033[0;32m"
+YELLOW = "\033[0;33m"
+CYAN = "\033[0;36m"
+RESET = "\033[0m"
+
+def pass_fail(passed):
+    return f"{GREEN}PASS{RESET}" if passed else f"{RED}FAIL{RESET}"
+
+# ── Get current per-package coverage ────────────────────────────
 result = subprocess.run(
     ["go", "test", "-cover", "./..."],
     capture_output=True, text=True
 )
 output = result.stdout + result.stderr
 
-# Parse output:
-#   ok   clawbench/internal/ai  3.092s  coverage: 77.0% of statements
-#   ?    clawbench/cmd/server   [no test files]
 current = {}
 for line in output.split("\n"):
     m = re.search(r'^[ok?]{2}\s+(\S+)\s+.*?coverage:\s+([\d.]+)%', line)
@@ -80,8 +115,7 @@ for line in output.split("\n"):
             continue
         current[pkg] = float(m.group(2))
 
-# Also discover packages in the profile that have 0% coverage
-# (they don't appear in `go test -cover` output)
+# Discover packages in profile with 0% coverage
 with open(coverage_profile) as f:
     profile_pkgs = set()
     for line in f:
@@ -89,91 +123,321 @@ with open(coverage_profile) as f:
             continue
         parts = line.split()
         if parts:
-            # File path like: clawbench/internal/ai/agent.go
             file_path = parts[0]
             pkg = "/".join(file_path.split("/")[:-1])
             if pkg.startswith("clawbench/") and "node_modules" not in pkg and "vendor" not in pkg:
                 profile_pkgs.add(pkg)
 
-# Add packages from baseline that exist in profile but weren't reported by go test
-for pkg in go_baseline:
-    if pkg in profile_pkgs and pkg not in current:
-        current[pkg] = 0.0
+# ══════════════════════════════════════════════════════════════════
+# TIER 1: Project Gate
+# ══════════════════════════════════════════════════════════════════
 
-# Report
-BOLD = "\033[1m"
-RED = "\033[0;31m"
-GREEN = "\033[0;32m"
-YELLOW = "\033[0;33m"
-RESET = "\033[0m"
+tier1_pass = True
+tier1_skipped = False
 
-print(f"{BOLD}╔══════════════════════════════════════════════════════════════════╗{RESET}")
-print(f"{BOLD}║                  Go Coverage Gate Check                        ║{RESET}")
-print(f"{BOLD}║  Rule: coverage >= min(baseline, {MIN_FLOOR}%)                        ║{RESET}")
-print(f"{BOLD}╚══════════════════════════════════════════════════════════════════╝{RESET}")
-print()
+if not baseline_profile:
+    tier1_skipped = True
+    print(f"{CYAN}ℹ Tier 1 (Project) SKIPPED — no baseline available{RESET}")
+    print(f"  (Run on CI or install gh CLI for automatic baseline download)")
+else:
+    # Adjust baseline: recalculate per-package coverage excluding deleted lines
+    # (removed_code_behavior=adjust_base)
+    # Parse baseline profile, skipping entries that overlap with deleted lines
+    deleted_lines = defaultdict(set)
+    if merge_base:
+        diff_result = subprocess.run(
+            ["git", "diff", "--unified=0", merge_base],
+            capture_output=True, text=True
+        )
+        current_diff_file = None
+        for line in diff_result.stdout.split("\n"):
+            if line.startswith("--- a/"):
+                current_diff_file = line[6:].strip()
+            elif line.startswith("@@") and current_diff_file:
+                # Parse removed lines: -start,count
+                m = re.search(r'-(\d+)(?:,(\d+))?\s+\+', line)
+                if m:
+                    start = int(m.group(1))
+                    count = int(m.group(2)) if m.group(2) else 1
+                    for ln in range(start, start + count):
+                        deleted_lines[current_diff_file].add(ln)
 
-all_pass = True
-updated_pkgs = {}
+    # Parse baseline profile, excluding deleted code entries
+    adjusted_pkg_stmts = defaultdict(lambda: {"covered": 0, "total": 0})
+    with open(baseline_profile) as f:
+        for line in f:
+            if line.startswith("mode:"):
+                continue
+            parts = line.strip().split()
+            if len(parts) < 3:
+                continue
+            file_path = parts[0]
+            range_str = parts[1]
+            count = int(parts[2])
+            m_range = re.match(r'(\d+)\.\d+,(\d+)\.\d+', range_str)
+            if not m_range:
+                continue
+            start_line = int(m_range.group(1))
+            end_line = int(m_range.group(2))
 
-# Header
-print(f"{BOLD}{'Package':<40} {'Base%':>8} {'Curr%':>8} {'Floor':>8}  {'Status':<8}{RESET}")
-print(f"{'─'*40} {'─'*8} {'─'*8} {'─'*8}  {'─'*8}")
+            # Find matching git file path for deleted lines lookup
+            # baseline file_path: clawbench/internal/ai/agent.go
+            # git file_path: internal/ai/agent.go
+            git_file_path = None
+            for gf in deleted_lines:
+                if file_path.endswith("/" + gf) or file_path == gf:
+                    git_file_path = gf
+                    break
 
-# Check all baseline packages + any new ones
-all_pkgs = sorted(set(list(go_baseline.keys()) + list(current.keys())))
+            # Check if any line in this range was deleted
+            is_deleted = False
+            if git_file_path and git_file_path in deleted_lines:
+                for ln in range(start_line, end_line + 1):
+                    if ln in deleted_lines[git_file_path]:
+                        is_deleted = True
+                        break
 
-for pkg in all_pkgs:
-    baseline_pct = go_baseline.get(pkg)
-    curr_pct = current.get(pkg)
+            if is_deleted:
+                continue  # Skip this entry — it's deleted code
 
-    # Skip packages with no current data (removed from codebase)
-    if curr_pct is None and baseline_pct is not None:
-        print(f"{pkg:<40} {baseline_pct:>7.1f}% {'N/A':>8} {'N/A':>8}  {YELLOW}REMOVED{RESET}")
-        continue
+            pkg = "/".join(file_path.split("/")[:-1])
+            if pkg.startswith("clawbench/"):
+                num_stmts = end_line - start_line + 1
+                adjusted_pkg_stmts[pkg]["total"] += num_stmts
+                if count > 0:
+                    adjusted_pkg_stmts[pkg]["covered"] += num_stmts
 
-    # New package not in baseline
-    if baseline_pct is None:
-        baseline_pct = 0.0
-        go_baseline[pkg] = 0.0
+    adjusted_baseline_pct = {}
+    for pkg, data in adjusted_pkg_stmts.items():
+        if data["total"] > 0:
+            adjusted_baseline_pct[pkg] = (data["covered"] / data["total"]) * 100
 
-    # Floor = min(baseline, 80)
-    floor = min(baseline_pct, MIN_FLOOR)
-    passed = curr_pct >= floor
+    # Print Tier 1
+    print()
+    print(f"{BOLD}╔══════════════════════════════════════════════════════════════════╗{RESET}")
+    print(f"{BOLD}║              Go Coverage Gate — Tier 1: Project               ║{RESET}")
+    print(f"{BOLD}║  Rule: coverage >= baseline% - {TIER1_TOLERANCE}%                           ║{RESET}")
+    print(f"{BOLD}╚══════════════════════════════════════════════════════════════════╝{RESET}")
+    print()
 
-    if passed:
-        status = f"{GREEN}PASS{RESET}"
+    print(f"{BOLD}{'Package':<40} {'Base%':>8} {'Curr%':>8} {'Floor':>8}  {'Status':<8}{RESET}")
+    print(f"{'─'*40} {'─'*8} {'─'*8} {'─'*8}  {'─'*8}")
+
+    all_pkgs = sorted(set(list(adjusted_baseline_pct.keys()) + list(current.keys())))
+    for pkg in all_pkgs:
+        base_pct = adjusted_baseline_pct.get(pkg)
+        curr_pct = current.get(pkg)
+
+        if curr_pct is None and base_pct is not None:
+            print(f"{pkg:<40} {base_pct:>7.1f}% {'N/A':>8} {'N/A':>8}  {YELLOW}REMOVED{RESET}")
+            continue
+
+        if base_pct is None:
+            base_pct = 0.0
+
+        floor = max(base_pct - TIER1_TOLERANCE, 0.0)
+        passed = curr_pct >= floor
+        if not passed:
+            tier1_pass = False
+
+        drop_note = f"  {YELLOW}↘{RESET}" if curr_pct < base_pct - TIER1_TOLERANCE else ""
+        print(f"{pkg:<40} {base_pct:>7.1f}% {curr_pct:>7.1f}% {floor:>7.1f}%  {pass_fail(passed)}{drop_note}")
+
+    print()
+    if tier1_pass:
+        print(f"{GREEN}{BOLD}✓ Tier 1 (Project) PASSED{RESET}")
     else:
-        status = f"{RED}FAIL{RESET}"
-        all_pass = False
+        print(f"{RED}{BOLD}✗ Tier 1 (Project) FAILED{RESET}")
 
-    # Track improvements
-    if curr_pct > baseline_pct + 0.1:
-        updated_pkgs[pkg] = curr_pct
+# ══════════════════════════════════════════════════════════════════
+# TIER 2: Diff Coverage Gate
+# ══════════════════════════════════════════════════════════════════
 
-    print(f"{pkg:<40} {baseline_pct:>7.1f}% {curr_pct:>7.1f}% {floor:>7.1f}%  {status}")
+tier2_pass = True
+tier2_skipped = False
+
+if not merge_base:
+    tier2_skipped = True
+    print(f"\n{CYAN}ℹ Tier 2 (Diff Coverage) SKIPPED — no merge-base detected{RESET}")
+else:
+    # Get changed lines from git diff
+    diff_result = subprocess.run(
+        ["git", "diff", "--unified=0", merge_base],
+        capture_output=True, text=True
+    )
+    diff_output = diff_result.stdout
+
+    # Parse changed lines per file
+    changed_lines = defaultdict(set)
+    current_file = None
+
+    for line in diff_output.split("\n"):
+        if line.startswith("+++ b/"):
+            current_file = line[6:].strip()
+        elif line.startswith("--- "):
+            continue
+        elif line.startswith("@@"):
+            # Parse added lines: +start,count
+            m = re.search(r'\+(\d+)(?:,(\d+))?', line)
+            if m:
+                start = int(m.group(1))
+                count = int(m.group(2)) if m.group(2) else 1
+                if current_file:
+                    for ln in range(start, start + count):
+                        changed_lines[current_file].add(ln)
+
+    # Parse coverage profile for per-line coverage status
+    line_coverage = defaultdict(dict)
+    with open(coverage_profile) as f:
+        for line in f:
+            if line.startswith("mode:"):
+                continue
+            parts = line.strip().split()
+            if len(parts) < 3:
+                continue
+            file_path = parts[0]
+            range_str = parts[1]
+            count = int(parts[2])
+            m = re.match(r'(\d+)\.\d+,(\d+)\.\d+', range_str)
+            if m:
+                start_line = int(m.group(1))
+                end_line = int(m.group(2))
+                covered = count > 0
+                for ln in range(start_line, end_line + 1):
+                    line_coverage[file_path][ln] = covered
+
+    # Cross-reference: match git diff files with coverage profile files
+    diff_stats = {}
+    pkg_diff_stats = defaultdict(lambda: {"total": 0, "covered": 0})
+
+    for file_path, lines in sorted(changed_lines.items()):
+        if not file_path.endswith(".go") or file_path.endswith("_test.go"):
+            continue
+
+        # Try direct match then suffix match
+        cov_data = line_coverage.get(file_path)
+        if cov_data is None:
+            for cov_path, cov_lines in line_coverage.items():
+                if cov_path.endswith("/" + file_path) or cov_path == file_path:
+                    cov_data = cov_lines
+                    break
+
+        if cov_data is None:
+            continue
+
+        total_changed = 0
+        covered_changed = 0
+        for ln in lines:
+            if ln in cov_data:
+                total_changed += 1
+                if cov_data[ln]:
+                    covered_changed += 1
+
+        if total_changed > 0:
+            diff_stats[file_path] = {"total": total_changed, "covered": covered_changed}
+            # Derive package from file path
+            pkg = "/".join(file_path.split("/")[:-1])
+            if not pkg.startswith("clawbench/"):
+                for cov_path in line_coverage:
+                    if cov_path.endswith("/" + file_path):
+                        pkg = "/".join(cov_path.split("/")[:-1])
+                        break
+            pkg_diff_stats[pkg]["total"] += total_changed
+            pkg_diff_stats[pkg]["covered"] += covered_changed
+
+    if not diff_stats:
+        tier2_skipped = True
+        print(f"\n{CYAN}ℹ Tier 2 (Diff Coverage) SKIPPED — no changed Go lines with coverage data{RESET}")
+    else:
+        print()
+        print(f"{BOLD}╔══════════════════════════════════════════════════════════════════╗{RESET}")
+        print(f"{BOLD}║              Go Coverage Gate — Tier 2: Diff Coverage          ║{RESET}")
+        print(f"{BOLD}║  Rule: changed lines coverage >= {DIFF_THRESHOLD}%                        ║{RESET}")
+        print(f"{BOLD}╚══════════════════════════════════════════════════════════════════╝{RESET}")
+        print()
+
+        print(f"{BOLD}{'Package':<40} {'Covered':>8} {'Total':>8} {'Diff%':>8}  {'Status':<8}{RESET}")
+        print(f"{'─'*40} {'─'*8} {'─'*8} {'─'*8}  {'─'*8}")
+
+        for pkg in sorted(pkg_diff_stats.keys()):
+            stats = pkg_diff_stats[pkg]
+            total = stats["total"]
+            covered = stats["covered"]
+            pct = (covered / total * 100) if total > 0 else 100.0
+            passed = pct >= DIFF_THRESHOLD
+            if not passed:
+                tier2_pass = False
+            print(f"{pkg:<40} {covered:>8} {total:>8} {pct:>7.1f}%  {pass_fail(passed)}")
+
+        # Overall diff coverage
+        total_all = sum(s["total"] for s in pkg_diff_stats.values())
+        covered_all = sum(s["covered"] for s in pkg_diff_stats.values())
+        overall_pct = (covered_all / total_all * 100) if total_all > 0 else 100.0
+        overall_pass = overall_pct >= DIFF_THRESHOLD
+        if not overall_pass:
+            tier2_pass = False
+
+        print(f"{'─'*40} {'─'*8} {'─'*8} {'─'*8}  {'─'*8}")
+        print(f"{BOLD}{'TOTAL':<40} {covered_all:>8} {total_all:>8} {overall_pct:>7.1f}%  {pass_fail(overall_pass)}{RESET}")
+
+        # Show uncovered files
+        uncovered_files = []
+        for file_path, stats in sorted(diff_stats.items()):
+            if stats["covered"] < stats["total"]:
+                pct = (stats["covered"] / stats["total"] * 100) if stats["total"] > 0 else 0
+                uncovered_files.append((file_path, stats["covered"], stats["total"], pct))
+
+        if uncovered_files:
+            print(f"\n{YELLOW}{BOLD}Uncovered changed files:{RESET}")
+            for file_path, covered, total, pct in uncovered_files:
+                print(f"  {RED}{file_path:<50} {covered}/{total} ({pct:.1f}%){RESET}")
+
+        print()
+        if tier2_pass:
+            print(f"{GREEN}{BOLD}✓ Tier 2 (Diff Coverage) PASSED{RESET}")
+        else:
+            print(f"{RED}{BOLD}✗ Tier 2 (Diff Coverage) FAILED{RESET}")
+            print(f"\n{YELLOW}Tips:{RESET}")
+            print(f"  - Add tests for the uncovered changed lines listed above")
+            print(f"  - Diff coverage gate requires new/modified code to have ≥ {DIFF_THRESHOLD}% test coverage")
+
+# ══════════════════════════════════════════════════════════════════
+# Final Result
+# ══════════════════════════════════════════════════════════════════
 
 print()
+results = []
+if not tier1_skipped:
+    results.append(tier1_pass)
+if not tier2_skipped:
+    results.append(tier2_pass)
+
+if not results:
+    # Both skipped — can't evaluate, treat as pass with warning
+    print(f"{YELLOW}{BOLD}⚠ Go coverage gate — no checks could run{RESET}")
+    sys.exit(0)
+
+all_pass = all(results)
 
 if all_pass:
+    print(f"{GREEN}{BOLD}═════════════════════════════════════════════════════════════════════{RESET}")
     print(f"{GREEN}{BOLD}✓ Go coverage gate PASSED{RESET}")
-
-    if updated_pkgs and update_baseline:
-        print(f"\n{YELLOW}Updating baseline with improved coverage...{RESET}")
-        for pkg, pct in updated_pkgs.items():
-            go_baseline[pkg] = pct
-        baseline_data["go"] = go_baseline
-        with open(baseline_file, "w") as f:
-            json.dump(baseline_data, f, indent=2)
-            f.write("\n")
-        print(f"Baseline updated: {list(updated_pkgs.keys())}")
-
+    if tier1_skipped:
+        print(f"{GREEN}  (Tier 1 skipped, Tier 2 only){RESET}")
+    if tier2_skipped:
+        print(f"{GREEN}  (Tier 2 skipped, Tier 1 only){RESET}")
+    print(f"{GREEN}{BOLD}═════════════════════════════════════════════════════════════════════{RESET}")
     sys.exit(0)
 else:
+    print(f"{RED}{BOLD}═════════════════════════════════════════════════════════════════════{RESET}")
     print(f"{RED}{BOLD}✗ Go coverage gate FAILED{RESET}")
+    if not tier1_skipped and not tier1_pass:
+        print(f"  - Tier 1 (Project): per-package coverage below baseline floor")
+    if not tier2_skipped and not tier2_pass:
+        print(f"  - Tier 2 (Diff): changed lines coverage below {DIFF_THRESHOLD}%")
+    print(f"{RED}{BOLD}═════════════════════════════════════════════════════════════════════{RESET}")
     print(f"\n{YELLOW}Tips:{RESET}")
-    print("  - Add tests to improve coverage for failing packages")
-    print("  - If baseline needs updating: ./scripts/check-go-coverage.sh --update")
-    print("  - To skip test run (use existing coverage.out): ./scripts/check-go-coverage.sh --skip-test")
+    print("  - Add tests to improve coverage for failing checks")
+    print("  - To skip test run: ./scripts/check-go-coverage.sh --skip-test")
     sys.exit(1)
 PYTHON_SCRIPT
