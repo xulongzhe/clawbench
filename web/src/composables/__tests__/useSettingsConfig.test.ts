@@ -102,4 +102,48 @@ describe('useSettingsConfig', () => {
     // Clean up
     localStorage.removeItem('clawbench-settings-showHidden')
   })
+
+  describe('agent preference helpers', () => {
+    it('reads and writes agent model preference', () => {
+      const { getAgentModelPref, setAgentModelPref } = useSettingsConfig()
+
+      // Initially null
+      expect(getAgentModelPref('test-agent')).toBeNull()
+
+      // Set and read back
+      setAgentModelPref('test-agent', 'model-1')
+      expect(getAgentModelPref('test-agent')).toBe('model-1')
+
+      // Clean up
+      localStorage.removeItem('clawbench_model_test-agent')
+    })
+
+    it('reads and writes agent thinking preference', () => {
+      const { getAgentThinkingPref, setAgentThinkingPref } = useSettingsConfig()
+
+      // Initially null
+      expect(getAgentThinkingPref('test-agent')).toBeNull()
+
+      // Set and read back
+      setAgentThinkingPref('test-agent', 'high')
+      expect(getAgentThinkingPref('test-agent')).toBe('high')
+
+      // Clean up
+      localStorage.removeItem('clawbench_thinking_test-agent')
+    })
+
+    it('per-agent preferences are independent', () => {
+      const { setAgentModelPref, getAgentModelPref } = useSettingsConfig()
+
+      setAgentModelPref('agent-a', 'model-x')
+      setAgentModelPref('agent-b', 'model-y')
+
+      expect(getAgentModelPref('agent-a')).toBe('model-x')
+      expect(getAgentModelPref('agent-b')).toBe('model-y')
+
+      // Clean up
+      localStorage.removeItem('clawbench_model_agent-a')
+      localStorage.removeItem('clawbench_model_agent-b')
+    })
+  })
 })

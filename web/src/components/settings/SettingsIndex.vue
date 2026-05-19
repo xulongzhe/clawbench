@@ -26,18 +26,21 @@ import {
   Volume2,
   Brain,
   Network,
+  Smartphone,
   Info,
   ChevronRight,
 } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
+import { useAppMode } from '@/composables/useAppMode'
 
 defineEmits<{
   navigate: [categoryId: string]
 }>()
 
 const { t } = useI18n()
+const { isAppMode } = useAppMode()
 
-const categoryDefs = [
+const categoryDefs = computed(() => [
   { id: 'appearance', icon: Palette },
   { id: 'chat', icon: MessageSquare },
   { id: 'agents', icon: Bot },
@@ -46,11 +49,12 @@ const categoryDefs = [
   { id: 'tts', icon: Volume2 },
   { id: 'rag', icon: Brain },
   { id: 'network', icon: Network },
+  ...(isAppMode.value ? [{ id: 'android', icon: Smartphone }] : []),
   { id: 'about', icon: Info },
-]
+])
 
 const categories = computed(() =>
-  categoryDefs.map(cat => ({
+  categoryDefs.value.map(cat => ({
     ...cat,
     label: t(`settings.categories.${cat.id}`),
   }))

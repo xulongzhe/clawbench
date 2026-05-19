@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { ref } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import SettingsIndex from '@/components/settings/SettingsIndex.vue'
@@ -18,6 +19,7 @@ const i18n = createI18n({
           tts: 'TTS语音',
           rag: 'RAG记忆',
           network: '网络',
+          android: 'Android',
           about: '关于',
         },
       },
@@ -36,8 +38,15 @@ const globalStubs = {
   'lucide-volume2': true,
   'lucide-brain': true,
   'lucide-network': true,
+  'lucide-smartphone': true,
   'lucide-info': true,
 }
+
+// Create a mutable ref so tests can toggle app mode
+const isAppModeRef = ref(false)
+vi.mock('@/composables/useAppMode', () => ({
+  useAppMode: () => ({ isAppMode: isAppModeRef }),
+}))
 
 function mountIndex() {
   return mount(SettingsIndex, {
@@ -46,14 +55,16 @@ function mountIndex() {
 }
 
 describe('SettingsIndex', () => {
-  it('renders all 9 category rows', () => {
+  it('renders 9 category rows in web mode (no Android)', () => {
+    isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
     expect(rows.length).toBe(9)
   })
 
-  it('renders category labels', () => {
+  it('renders category labels in web mode', () => {
+    isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
@@ -66,6 +77,7 @@ describe('SettingsIndex', () => {
   })
 
   it('emits navigate with categoryId when row clicked', async () => {
+    isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
@@ -75,7 +87,8 @@ describe('SettingsIndex', () => {
     expect(wrapper.emitted('navigate')![0]).toEqual(['appearance'])
   })
 
-  it('emits correct categoryId for each row', async () => {
+  it('emits correct categoryId for each row in web mode', async () => {
+    isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const expectedIds = [
@@ -88,5 +101,27 @@ describe('SettingsIndex', () => {
       await rows[i].trigger('click')
       expect(wrapper.emitted('navigate')![i]).toEqual([expectedIds[i]])
     }
+  })
+
+  it('shows 10 categories including Android in app mode', () => {
+    isAppModeRef.value = true
+    const wrapper = mountIndex()
+
+    const rows = wrapper.findAll('.settings-index__row')
+    expect(rows.length).toBe(10)
+
+    const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
+    expect(labels).toContain('Android')
+
+    // Reset
+    isAppModeRef.value = false
+  })
+
+  it('does not show Android category in web mode', () => {
+    isAppModeRef.value = false
+    const wrapper = mountIndex()
+
+    const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
+    expect(labels).not.toContain('Android')
   })
 })

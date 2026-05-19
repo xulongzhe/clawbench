@@ -74,6 +74,7 @@ const categoryLabels: Record<string, string> = {
   tts: 'TTS语音',
   rag: 'RAG记忆',
   network: '网络',
+  android: 'Android',
   about: '关于',
 }
 

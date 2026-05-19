@@ -25,6 +25,7 @@ import { useI18n } from 'vue-i18n'
 import SettingsItem from './SettingsItem.vue'
 import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAgents } from '@/composables/useAgents'
+import { useAppMode } from '@/composables/useAppMode'
 
 interface ItemSpec {
   labelKey: string
@@ -50,6 +51,7 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const { localConfig, setLocalConfig, getServerValueWithDefault, setServerValue, getAgentModelPref, setAgentModelPref, getAgentThinkingPref, setAgentThinkingPref } = useSettingsConfig()
 const { agents, loadAgents, getAgentModels, getAgentThinkingEffortLevels, hasThinkingEffortLevels, getDefaultModelId } = useAgents()
+const { isAppMode } = useAppMode()
 
 const openEditorKey = ref<string | null>(null)
 
@@ -117,9 +119,17 @@ const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.ttsSummarizeApi', value: 'api' },
       { labelKey: 'settings.items.ttsSummarizeClaude', value: 'claude' },
       { labelKey: 'settings.items.ttsSummarizeCodebuddy', value: 'codebuddy' },
+      { labelKey: 'settings.items.ttsSummarizeGemini', value: 'gemini' },
+      { labelKey: 'settings.items.ttsSummarizeOpencode', value: 'opencode' },
+      { labelKey: 'settings.items.ttsSummarizeCodex', value: 'codex' },
+      { labelKey: 'settings.items.ttsSummarizeQoder', value: 'qoder' },
+      { labelKey: 'settings.items.ttsSummarizeVecli', value: 'vecli' },
+      { labelKey: 'settings.items.ttsSummarizeDeepseek', value: 'deepseek' },
+      { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
+      { labelKey: 'settings.items.ttsSummarizeMmxcli', value: 'mmx-cli' },
     ]},
     { labelKey: 'settings.items.ttsSummarizeModel', key: 'tts.summarize_model', type: 'text', source: 'server' },
-    { labelKey: 'settings.items.ttsSpeed', key: 'tts.speed', type: 'slider', source: 'server', min: 0.5, max: 2, step: 0.1 },
+    { labelKey: 'settings.items.ttsSpeed', key: 'tts.speed', type: 'slider', source: 'server', min: 0.5, max: 3, step: 0.1 },
     { labelKey: 'settings.items.ttsVoice', key: 'tts.voice', type: 'text', source: 'server' },
     { labelKey: 'settings.items.ttsMaxCacheFiles', key: 'tts.max_cache_files', type: 'number', source: 'server' },
   ],
@@ -139,7 +149,13 @@ const categoryItems: Record<string, ItemSpec[]> = {
     { labelKey: 'settings.items.pushEnabled', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true },
     { labelKey: 'settings.items.pushAppKey', key: 'push.jpush.app_key', type: 'text', source: 'server' },
   ],
+  android: [
+    { labelKey: 'settings.items.androidLogCapture', key: 'androidLogCapture', type: 'switch', source: 'local' },
+    { labelKey: 'settings.items.reconfigureServer', key: 'reconfigureServer', type: 'action', source: 'local' },
+  ],
   about: [
+    { labelKey: 'settings.items.aboutServerVersion', key: 'serverVersion', type: 'info', source: 'server' },
+    { labelKey: 'settings.items.aboutAppVersion', key: 'appVersion', type: 'info', source: 'local' },
     { labelKey: 'settings.items.serverRestart', key: 'restart', type: 'action', source: 'server' },
   ],
 }
@@ -262,6 +278,17 @@ function getItemValue(item: any): any {
   if (item.key?.startsWith('agent-header-')) {
     return ''
   }
+  // Version info items
+  if (item.key === 'serverVersion') {
+    return serverConfig.value?.version ?? '-'
+  }
+  if (item.key === 'appVersion') {
+    try {
+      const native = (window as any).AndroidNative
+      if (native?.getAppVersion) return native.getAppVersion() ?? '-'
+    } catch { /* not in app mode */ }
+    return '-'
+  }
   if (item.source === 'local') {
     return localConfig[item.key]
   }
@@ -299,6 +326,11 @@ async function handleUpdate(item: any, value: any) {
 function handleClick(item: any) {
   if (item.key === 'restart') {
     emit('restartNeeded', [])
+  }
+  if (item.key === 'reconfigureServer') {
+    try {
+      ;(window as any).AndroidNative?.showServerDialog?.()
+    } catch { /* not in app mode */ }
   }
 }
 
