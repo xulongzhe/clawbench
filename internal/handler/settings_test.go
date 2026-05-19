@@ -3,6 +3,8 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"clawbench/internal/middleware"
@@ -132,4 +134,142 @@ func TestServeConfig_Get_Unauthorized(t *testing.T) {
 	w := callHandler(middleware.Auth(ServeConfig), req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// --- PATCH /api/config tests ---
+
+func TestServeConfig_Patch_Success(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Set initial config
+	cfg := model.Config{}
+	cfg.Chat.CollapsedHeight = 150
+	cfg.Upload.MaxSizeMB = 100
+	model.ConfigInstance = cfg
+
+	body := `{"chat":{"collapsed_height":200},"upload":{"max_size_mb":50}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.True(t, resp["needs_restart"].(bool))
+	changed, ok := resp["changed_cold_fields"].([]any)
+	assert.True(t, ok)
+	assert.True(t, len(changed) >= 2)
+
+	// Verify in-memory config was updated
+	assert.Equal(t, 200, model.ConfigInstance.Chat.CollapsedHeight)
+	assert.Equal(t, 50, model.ConfigInstance.Upload.MaxSizeMB)
+}
+
+func TestServeConfig_Patch_ForbiddenField_Password(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := `{"password":"hacked"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_ForbiddenField_TLS(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := `{"tls":{"enabled":false}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_ForbiddenField_MasterSecret(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := `{"push":{"jpush":{"master_secret":"stolen"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_InvalidEngine(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := `{"tts":{"engine":"invalid_engine"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_InvalidSummarizeBackend(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := `{"tts":{"summarize_backend":"nonexistent"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_NegativeNumber(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := `{"chat":{"collapsed_height":-1}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_InvalidJSON(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := `{invalid json`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_EmptyBody(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := `{}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	// Empty patch should succeed with no changes
+	assert.Equal(t, http.StatusOK, w.Code)
 }
