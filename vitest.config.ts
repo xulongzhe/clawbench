@@ -19,5 +19,8 @@ export default defineConfig({
       '**/cypress/**',
       '**/.{idea,git,cache,output,temp}/**',
     ],
+    coverage: {
+      reporter: ['text', 'json', 'json-summary'],
+    },
   },
 })
