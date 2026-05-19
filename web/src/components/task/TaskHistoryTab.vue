@@ -8,8 +8,8 @@
       </button>
     </div>
     <!-- History content -->
-    <div class="task-history-tab">
-    <div v-if="loading" class="history-empty">
+    <div ref="listRef" class="task-history-tab">
+    <div v-if="loading && allExecutions.length === 0" class="history-empty">
       <Loader2 class="spin-icon" :size="20" />
       <span>{{ t('common.loading') }}</span>
     </div>
@@ -66,13 +66,19 @@
           </template>
         </div>
       </div>
+      <!-- Infinite scroll sentinel -->
+      <div ref="sentinelRef" class="history-list-sentinel"></div>
+      <div v-if="loadingMore" class="history-loading-more">
+        <Loader2 class="spin-icon" :size="14" />
+        <span>{{ t('common.loading') }}</span>
+      </div>
     </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch, onUnmounted, computed } from 'vue'
+import { ref, watch, onUnmounted, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Square, Loader2, History, Trash2, RefreshCw } from 'lucide-vue-next'
 import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
@@ -89,6 +95,11 @@ const { t } = useI18n()
 
 const refreshing = ref(false)
 
+// Scroll container and sentinel refs for IntersectionObserver
+const listRef = ref(null)
+const sentinelRef = ref(null)
+let observer = null
+
 async function onRefresh() {
   refreshing.value = true
   try {
@@ -101,12 +112,16 @@ async function onRefresh() {
 // Task history composable (ISS-011 + ISS-015 + ISS-016)
 const {
   loading,
+  loadingMore,
+  hasMore,
   allExecutions,
   executions,
   isRunning,
   isJustCompleted,
   locallyReadIds,
   loadExecutions,
+  loadMoreExecutions,
+  reloadExecutions,
   loadRunningStatus,
   cancelExecution,
   deleteExecution,
@@ -134,6 +149,20 @@ function formatAbsoluteTime(createdAt) {
   return `${y}-${mo}-${day} ${h}:${mi}:${s}`
 }
 
+/** Set up IntersectionObserver for infinite scroll */
+function setupObserver() {
+  if (observer) {
+    observer.disconnect()
+    observer = null
+  }
+  if (!sentinelRef.value || !listRef.value) return
+  observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && hasMore.value && !loadingMore.value) {
+      loadMoreExecutions()
+    }
+  }, { threshold: 0.1, rootMargin: '100px', root: listRef.value })
+  observer.observe(sentinelRef.value)
+}
 
 let pollTimer = null
 
@@ -159,7 +188,7 @@ watch(() => props.task?.id, (newId) => {
     return
   }
   onTaskChange()
-  loadExecutions()
+  loadExecutions().then(() => nextTick(setupObserver))
   loadRunningStatus()
   startPolling()
 }, { immediate: true })
@@ -167,6 +196,10 @@ watch(() => props.task?.id, (newId) => {
 onUnmounted(() => {
   stopPolling()
   onTaskChange() // Abort in-flight requests (ISS-016)
+  if (observer) {
+    observer.disconnect()
+    observer = null
+  }
 })
 </script>
 
@@ -567,5 +600,20 @@ onUnmounted(() => {
 
 .clear-all-btn:active {
   transform: scale(0.95);
+}
+
+/* ── Infinite scroll sentinel ── */
+.history-list-sentinel {
+  height: 1px;
+}
+
+.history-loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  color: var(--text-muted, #9ca3af);
+  font-size: 12px;
 }
 </style>

@@ -73,6 +73,7 @@ import { useChatRender } from '@/composables/useChatRender.ts'
 import { useAgents } from '@/composables/useAgents.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
+import { useTaskTab } from '@/composables/useTaskTab.ts'
 import { formatToolOutput } from '@/utils/renderToolDetail.ts'
 
 const props = defineProps({

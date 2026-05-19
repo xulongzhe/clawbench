@@ -17,13 +17,21 @@
 set -e
 
 NAME="clawbench-dev"
-VITE_PID_FILE="/tmp/${NAME}-vite.pid"
-VITE_LOG="/tmp/vite-dev.log"
 
-# Ports — dev_port defaults to production port + 2 (matches Go backend ApplyDefaults)
-PROD_PORT=${PROD_PORT:-20000}
-DEV_HTTP_PORT=${DEV_HTTP_PORT:-$((PROD_PORT + 2))}
-FRONTEND_PORT=${VITE_FRONTEND_PORT:-$((PROD_PORT + 3))}
+# All runtime data under .clawbench/ (green portable deployment)
+VITE_PID_FILE=".clawbench/dev-vite.pid"
+VITE_LOG=".clawbench/dev-vite.log"
+
+# Resolve effective port from config (fallback to default)
+_resolve_port() {
+    local port
+    port=$(grep "^port:" "config/config.yaml" 2>/dev/null | awk '{print $2}' | tr -d '"')
+    echo "${port:-20000}"
+}
+
+PROD_PORT=$(_resolve_port)
+DEV_HTTP_PORT=$((PROD_PORT + 2))
+FRONTEND_PORT=$((PROD_PORT + 3))
 
 # Load shared shell utilities
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +86,7 @@ _stop_vite() {
     # Fallback: kill by port
     local pids=""
     if command -v ss >/dev/null 2>&1; then
-        pids=$(ss -tlnp 2>/dev/null | grep ":$FRONTEND_PORT" | grep -oP 'pid=\K[0-9]+' | sort -u | tr '\n' ' ')
+        pids=$(ss -tlnp 2>/dev/null | grep ":$FRONTEND_PORT " | grep -oP 'pid=\K[0-9]+' | sort -u | tr '\n' ' ')
     fi
     if [[ -n "$pids" ]]; then
         echo "Killing orphan process on port $FRONTEND_PORT (PIDs: $pids)..."
@@ -90,6 +98,7 @@ start_dev() {
     _stop_vite
     sleep 0.3
 
+    mkdir -p .clawbench
     check_dev_port
 
     echo "=== Starting $NAME (dev mode) ==="

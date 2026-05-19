@@ -267,12 +267,18 @@ export function useTaskTab() {
     async function refreshExecDetail() {
         if (!selectedTaskId.value || !selectedExecId.value) return
         try {
-            const resp = await fetch(`/api/tasks/${selectedTaskId.value}/executions`)
+            const resp = await fetch(`/api/tasks/${selectedTaskId.value}/executions?limit=50`)
             if (!resp.ok) return
             const data = await resp.json()
             const exec = (data.executions || []).find((e: any) => String(e.id) === String(selectedExecId.value) || String(e.sessionId) === String(selectedExecId.value))
             if (exec) {
-                selectedExecData.value = { ...selectedExecData.value, ...exec }
+                // Preserve existing content/blocks/metadata/preview if API returns null
+                // (LEFT JOIN may return null content when chat_history has no matching row)
+                const { content: _apiContent, blocks: _apiBlocks, metadata: _apiMetadata, preview: _apiPreview, ...safeFields } = exec
+                const merged = { ...selectedExecData.value, ...safeFields }
+                // Only overwrite content if API returned a non-null value
+                if (exec.content != null) merged.content = exec.content
+                selectedExecData.value = merged
             }
         } catch {
             // Silently ignore

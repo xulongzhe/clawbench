@@ -124,6 +124,11 @@ public class PortForwardService extends Service {
     private volatile boolean nativeWsIntentionalStop = false;
     private volatile int nativeWsReconnectAttempt = 0;
     private String nativeClientId;
+    // Tracks whether the native WS needs this Service to stay alive.
+    // Without this flag, onCreate() would stopSelf() when there are no SSH ports,
+    // killing the Service before the native WS can be established.
+    // Must be static so startNativeEventWs() can set it before the Service is created.
+    private static volatile boolean nativeWsNeeded = false;
 
     public static boolean isRunning() {
         return isRunning;
@@ -243,10 +248,12 @@ public class PortForwardService extends Service {
         // Restore previously saved ports (from before Service was killed)
         restoreForwardedPorts();
 
-        // If no ports were restored, there's nothing to forward — stop immediately.
-        // This prevents an idle foreground service with no work to do (wastes battery).
-        if (forwardedPorts.isEmpty()) {
-            AppLog.i(TAG, "SSH: no saved ports to forward, stopping service");
+        // If no ports were restored and native WS is not needed, there's nothing
+        // to do — stop immediately to avoid wasting battery on an idle foreground service.
+        // When native WS is needed (JPush not available), the Service must stay alive
+        // so the background WebSocket can receive events and post local notifications.
+        if (forwardedPorts.isEmpty() && !nativeWsNeeded) {
+            AppLog.i(TAG, "SSH: no saved ports to forward and native WS not needed, stopping service");
             stopSelf();
         }
     }
@@ -276,6 +283,7 @@ public class PortForwardService extends Service {
                 // Explicit restore request — e.g. from Activity after configuration change
                 networkExecutor.execute(this::restoreAndReconnect);
             } else if ("START_NATIVE_WS".equals(action)) {
+                nativeWsNeeded = true;
                 networkExecutor.execute(() -> {
                     String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                             .getString(KEY_SERVER_URL, "");
@@ -293,6 +301,18 @@ public class PortForwardService extends Service {
             if (!forwardedPorts.isEmpty()) {
                 AppLog.i(TAG, "SSH: service restarted by START_STICKY, restoring " + forwardedPorts.size() + " port forwards");
                 networkExecutor.execute(this::restoreAndReconnect);
+            }
+            // Also restore native WS if it was active before the service was killed.
+            // Without this, background push notifications are lost after Android kills the service.
+            if (nativeWsNeeded) {
+                AppLog.i(TAG, "NativeWS: service restarted by START_STICKY, restoring native WS");
+                networkExecutor.execute(() -> {
+                    String serverUrl = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                            .getString(KEY_SERVER_URL, "");
+                    if (!serverUrl.isEmpty()) {
+                        startNativeEventWs(serverUrl);
+                    }
+                });
             }
         }
 
@@ -697,7 +717,7 @@ public class PortForwardService extends Service {
     /**
      * Remove a local port forward.
      */
-    private synchronized void removePortForward(int port) {
+    synchronized void removePortForward(int port) {
         if (!forwardedPorts.contains(port)) {
             return;
         }
@@ -715,8 +735,8 @@ public class PortForwardService extends Service {
         saveForwardedPorts();
         updateNotification(forwardedPorts.size(), null);
 
-        // If no more forwarded ports, stop the service
-        if (forwardedPorts.isEmpty()) {
+        // If no more forwarded ports and native WS is not needed, stop the service
+        if (forwardedPorts.isEmpty() && !nativeWsNeeded) {
             stopSelf();
         }
     }
@@ -855,26 +875,31 @@ public class PortForwardService extends Service {
      * @param portCount  Number of currently forwarded ports
      * @param statusText Optional status override (e.g. "SSH 隧道断开，正在重连…"). Null = normal status.
      */
-    private Notification buildNotification(int portCount, String statusText) {
+    Notification buildNotification(int portCount, String statusText) {
         Intent notificationIntent = new Intent(this, MainActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(
                 this, 0, notificationIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
+        String title;
         String text;
         if (statusText != null) {
+            title = portCount > 0 ? "ClawBench 端口转发" : "ClawBench";
             text = statusText;
         } else if (portCount > 0) {
+            title = "ClawBench 端口转发";
             text = portCount + " 个端口转发活跃";
+        } else if (nativeWsNeeded || nativeWsActive) {
+            title = "ClawBench";
+            text = "后台事件监听中";
         } else {
-            // No ports forwarded — service should stop itself shortly,
-            // but if this notification is visible it means we're winding down.
+            title = "ClawBench";
             text = "无端口转发，即将停止";
         }
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("ClawBench 端口转发")
+                .setContentTitle(title)
                 .setContentText(text)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(pendingIntent)
@@ -988,8 +1013,11 @@ public class PortForwardService extends Service {
     /**
      * Start the native WebSocket for background event notifications.
      * Called when the app goes to background and JPush is NOT available.
+     * Sets nativeWsNeeded BEFORE starting the Service so that onCreate()
+     * won't stopSelf() due to having no SSH ports to forward.
      */
     public static void startNativeEventWs(Context context) {
+        nativeWsNeeded = true;
         if (!isRunning) {
             // Service not running — start it first
             start(context);
@@ -1101,10 +1129,13 @@ public class PortForwardService extends Service {
 
     /**
      * Stop the native WebSocket connection.
+     * If the Service has no other work (no SSH ports), stop the Service entirely
+     * to avoid keeping an idle foreground service running.
      */
-    private void stopNativeEventWs() {
+    void stopNativeEventWs() {
         nativeWsIntentionalStop = true;
         nativeWsActive = false;
+        nativeWsNeeded = false;
         if (nativeEventWs != null) {
             try {
                 nativeEventWs.close(1000, "foreground");
@@ -1112,6 +1143,13 @@ public class PortForwardService extends Service {
             nativeEventWs = null;
         }
         AppLog.i(TAG, "NativeWS: stopped");
+
+        // If no SSH ports are forwarded, the Service has no reason to stay alive.
+        // Stop it to avoid wasting battery on an idle foreground service.
+        if (forwardedPorts.isEmpty()) {
+            AppLog.i(TAG, "NativeWS: no SSH ports either, stopping service");
+            stopSelf();
+        }
     }
 
     /**

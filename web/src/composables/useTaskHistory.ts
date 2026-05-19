@@ -11,6 +11,8 @@ interface UseTaskHistoryOptions {
   task: Ref<any>
 }
 
+const PAGE_SIZE = 10
+
 export function useTaskHistory(options: UseTaskHistoryOptions) {
   const { task } = options
   const toast = useToast()
@@ -20,6 +22,8 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
   const chatRender = useChatRender({ messages: ref([]), theme: ref('light'), currentSessionId: ref('') })
 
   const loading = ref(false)
+  const loadingMore = ref(false)
+  const hasMore = ref(false)
   const executions = ref<any[]>([])
   const runningExecutions = ref<any[]>([])
 
@@ -56,6 +60,9 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
   // ISS-016: AbortController for cancelling in-flight requests on task change/unmount
   let abortController = new AbortController()
 
+  // Concurrency guard: prevent overlapping loadExecutions() calls
+  let loadExecutionsInFlight = false
+
   function getSignal(): AbortSignal {
     return abortController.signal
   }
@@ -65,6 +72,7 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
     abortController.abort()
     abortController = new AbortController()
     prevRunningCount = 0
+    loadExecutionsInFlight = false
     // Clear just-completed tracking
     for (const timer of justCompletedTimers.values()) {
       clearTimeout(timer)
@@ -83,20 +91,26 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
     return !!sessionId && justCompletedIds.has(sessionId)
   }
 
+  function parseExecution(exec: any): any {
+    const { blocks, metadata } = chatRender.parseAssistantContent(exec.content)
+    const preview = extractPreview(exec)
+    return { ...exec, blocks, metadata, preview }
+  }
+
+  /** Initial load: fetch the first page of executions */
   async function loadExecutions(): Promise<void> {
     if (!task.value?.id) return
+    if (loadExecutionsInFlight) return
+    loadExecutionsInFlight = true
     loading.value = true
     try {
-      const data = await apiGet<{ executions: any[] }>(
-        `/api/tasks/${task.value.id}/executions`,
+      const data = await apiGet<{ executions: any[]; hasMore?: boolean }>(
+        `/api/tasks/${task.value.id}/executions?limit=${PAGE_SIZE}`,
         { signal: abortController.signal },
       )
       const rawExecutions = data.executions || []
-      executions.value = rawExecutions.map(exec => {
-        const { blocks, metadata } = chatRender.parseAssistantContent(exec.content)
-        const preview = extractPreview(exec)
-        return { ...exec, blocks, metadata, preview }
-      })
+      executions.value = rawExecutions.map(parseExecution)
+      hasMore.value = !!data.hasMore
     } catch (err: any) {
       // Don't report AbortError (expected when switching tasks)
       if (err?.name !== 'AbortError') {
@@ -104,6 +118,55 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
       }
     } finally {
       loading.value = false
+      loadExecutionsInFlight = false
+    }
+  }
+
+  /** Load the next page of executions (appended to existing list) */
+  async function loadMoreExecutions(): Promise<void> {
+    if (!task.value?.id || loadingMore.value || !hasMore.value) return
+    loadingMore.value = true
+    try {
+      // Derive cursor from the last completed execution
+      const completed = executions.value.filter(exec => exec.status !== 'running')
+      const last = completed[completed.length - 1]
+      if (!last) return
+      const cursor = encodeURIComponent(last.createdAt)
+      const cursorId = encodeURIComponent(last.id)
+      const data = await apiGet<{ executions: any[]; hasMore?: boolean }>(
+        `/api/tasks/${task.value.id}/executions?limit=${PAGE_SIZE}&cursor=${cursor}&cursor_id=${cursorId}`,
+        { signal: abortController.signal },
+      )
+      const more = (data.executions || []).map(parseExecution)
+      if (more.length > 0) {
+        // Only append non-running completed executions (running come from in-memory map)
+        executions.value = [...executions.value, ...more.filter(e => e.status !== 'running')]
+      }
+      hasMore.value = !!data.hasMore
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.error('Failed to load more executions:', err)
+      }
+    } finally {
+      loadingMore.value = false
+    }
+  }
+
+  /** Full reload: fetch all executions from scratch (used after delete/cancel) */
+  async function reloadExecutions(): Promise<void> {
+    if (!task.value?.id) return
+    try {
+      const data = await apiGet<{ executions: any[]; hasMore?: boolean }>(
+        `/api/tasks/${task.value.id}/executions?limit=${PAGE_SIZE}`,
+        { signal: abortController.signal },
+      )
+      const rawExecutions = data.executions || []
+      executions.value = rawExecutions.map(parseExecution)
+      hasMore.value = !!data.hasMore
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.error('Failed to reload executions:', err)
+      }
     }
   }
 
@@ -131,7 +194,7 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
             justCompletedTimers.set(execId, timer)
           }
         }
-        loadExecutions()
+        reloadExecutions()
       }
       prevRunningCount = newCount
       runningExecutions.value = newRunning
@@ -170,7 +233,7 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
       toast.show(gt('task.exec.actionFailed'), { type: 'error' })
       return
     }
-    await loadExecutions()
+    await reloadExecutions()
   }
 
   async function deleteAllExecutions(): Promise<void> {
@@ -185,7 +248,7 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
       toast.show(gt('task.exec.actionFailed'), { type: 'error' })
       return
     }
-    await loadExecutions()
+    await reloadExecutions()
   }
 
   async function markExecRead(execId: string): Promise<void> {
@@ -233,6 +296,8 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
 
   return {
     loading,
+    loadingMore,
+    hasMore,
     executions,
     runningExecutions,
     allExecutions,
@@ -240,6 +305,8 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
     isJustCompleted,
     locallyReadIds,
     loadExecutions,
+    loadMoreExecutions,
+    reloadExecutions,
     loadRunningStatus,
     cancelExecution,
     deleteExecution,

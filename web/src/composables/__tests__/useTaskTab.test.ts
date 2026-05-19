@@ -289,6 +289,88 @@ describe('useTaskTab', () => {
     })
   })
 
+  describe('refreshExecDetail — null content guard', () => {
+    it('preserves existing content when API returns null content', async () => {
+      const { navigateToTaskSettings, openExecDetail, refreshExecDetail, selectedExecData } = useTaskTab()
+
+      // Must set selectedTaskId first (navigateToTaskSettings sets it)
+      navigateToTaskSettings(1)
+
+      // Open an execution detail with valid content
+      const execData = {
+        id: 100,
+        sessionId: 'session-100',
+        status: 'completed',
+        content: '{"blocks":[{"type":"text","text":"Hello world"}]}',
+        summary: 'Test summary',
+        createdAt: '2026-01-01T00:00:00Z',
+      }
+      openExecDetail('100', execData)
+      expect(selectedExecData.value.content).toBe(execData.content)
+
+      // API returns the same execution but with null content
+      // (LEFT JOIN no match in chat_history)
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          executions: [{
+            id: 100,
+            sessionId: 'session-100',
+            status: 'completed',
+            content: null,        // ← null from LEFT JOIN
+            summary: 'New summary',
+            createdAt: '2026-01-01T00:00:00Z',
+          }],
+        }),
+      })
+
+      await refreshExecDetail()
+
+      // Content should be preserved, not overwritten with null
+      expect(selectedExecData.value.content).toBe(execData.content)
+      // Other fields should be updated
+      expect(selectedExecData.value.summary).toBe('New summary')
+    })
+
+    it('updates content when API returns non-null content', async () => {
+      const { navigateToTaskSettings, openExecDetail, refreshExecDetail, selectedExecData } = useTaskTab()
+
+      navigateToTaskSettings(1)
+      openExecDetail('100', { id: 100, content: 'old', status: 'completed' })
+      expect(selectedExecData.value.content).toBe('old')
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          executions: [{
+            id: 100,
+            content: 'new content',
+            status: 'completed',
+          }],
+        }),
+      })
+
+      await refreshExecDetail()
+
+      expect(selectedExecData.value.content).toBe('new content')
+    })
+
+    it('does nothing when selectedTaskId or selectedExecId is null', async () => {
+      const { navigateToList, refreshExecDetail } = useTaskTab()
+      // Reset navigation state so selectedTaskId and selectedExecId are null
+      navigateToList()
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ executions: [] }),
+      })
+
+      await refreshExecDetail()
+
+      expect(mockFetch).not.toHaveBeenCalled()
+    })
+  })
+
   describe('polling', () => {
     it('startTaskPolling starts interval-based polling', () => {
       vi.useFakeTimers()

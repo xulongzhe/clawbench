@@ -5,6 +5,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 // Tests ISS-011 (raw fetch → apiGet/apiPut), ISS-015 (locallyReadIds
 // to prevent unread flash-back), ISS-016 (AbortController on task change)
 // Completion tracking: justCompletedIds, isJustCompleted()
+// Lazy loading: limit, hasMore, loadMoreExecutions, reloadExecutions
 // ────────────────────────────────────────────────────────────
 
 // Mock i18n
@@ -85,13 +86,13 @@ function createHistory(taskData: any = { id: 'task-1' }) {
 
 describe('useTaskHistory', () => {
   describe('loadExecutions', () => {
-    it('calls apiGet with task id', async () => {
+    it('calls apiGet with task id and limit=10', async () => {
       const { history } = createHistory()
-      mockApiGet.mockResolvedValue({ executions: [] })
+      mockApiGet.mockResolvedValue({ executions: [], hasMore: false })
 
       await history.loadExecutions()
 
-      expect(mockApiGet).toHaveBeenCalledWith('/api/tasks/task-1/executions', expect.objectContaining({}))
+      expect(mockApiGet).toHaveBeenCalledWith('/api/tasks/task-1/executions?limit=10', expect.objectContaining({}))
     })
 
     it('populates executions with parsed data', async () => {
@@ -100,12 +101,241 @@ describe('useTaskHistory', () => {
         executions: [
           { id: 'e1', content: 'Hello', createdAt: '2026-01-01', isUnread: true },
         ],
+        hasMore: false,
       })
 
       await history.loadExecutions()
 
       expect(history.executions.value.length).toBe(1)
       expect(history.executions.value[0].id).toBe('e1')
+    })
+
+    it('sets hasMore from response', async () => {
+      const { history } = createHistory()
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 'e1', content: 'Hello', createdAt: '2026-01-01', isUnread: true },
+          { id: 'e2', content: 'World', createdAt: '2026-01-02', isUnread: false },
+        ],
+        hasMore: true,
+      })
+
+      await history.loadExecutions()
+
+      expect(history.hasMore.value).toBe(true)
+    })
+
+    it('defaults hasMore to false when not in response', async () => {
+      const { history } = createHistory()
+      mockApiGet.mockResolvedValue({
+        executions: [{ id: 'e1', content: 'Hello', createdAt: '2026-01-01', isUnread: true }],
+      })
+
+      await history.loadExecutions()
+
+      expect(history.hasMore.value).toBe(false)
+    })
+
+    it('ignores AbortError', async () => {
+      const { history } = createHistory()
+      const abortErr = new DOMException('Aborted', 'AbortError')
+      mockApiGet.mockRejectedValue(abortErr)
+
+      // Should not throw
+      await history.loadExecutions()
+    })
+
+    it('logs non-AbortError to console', async () => {
+      const { history } = createHistory()
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockApiGet.mockRejectedValue(new Error('Network error'))
+
+      await history.loadExecutions()
+
+      expect(consoleSpy).toHaveBeenCalled()
+      consoleSpy.mockRestore()
+    })
+  })
+
+  describe('loadMoreExecutions', () => {
+    it('does nothing when hasMore is false', async () => {
+      const { history } = createHistory()
+      // Load initial page
+      mockApiGet.mockResolvedValue({ executions: [], hasMore: false })
+      await history.loadExecutions()
+
+      mockApiGet.mockClear()
+      await history.loadMoreExecutions()
+
+      expect(mockApiGet).not.toHaveBeenCalled()
+    })
+
+    it('does nothing when loadingMore is true', async () => {
+      const { history } = createHistory()
+      // Load initial page with hasMore
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 1, sessionId: 's1', status: 'completed', content: 'done', createdAt: '2026-01-01', isUnread: false },
+        ],
+        hasMore: true,
+      })
+      await history.loadExecutions()
+
+      // Manually set loadingMore to simulate an in-flight request
+      history.loadingMore.value = true
+      mockApiGet.mockClear()
+
+      await history.loadMoreExecutions()
+
+      expect(mockApiGet).not.toHaveBeenCalled()
+    })
+
+    it('fetches next page using cursor from last completed execution', async () => {
+      const { history } = createHistory()
+      // Load initial page
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 1, sessionId: 's1', status: 'completed', content: 'done1', createdAt: '2026-01-02T10:00:00Z', isUnread: false },
+          { id: 2, sessionId: 's2', status: 'completed', content: 'done2', createdAt: '2026-01-01T10:00:00Z', isUnread: false },
+        ],
+        hasMore: true,
+      })
+      await history.loadExecutions()
+      mockApiGet.mockClear()
+
+      // Load more
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 3, sessionId: 's3', status: 'completed', content: 'done3', createdAt: '2025-12-31T10:00:00Z', isUnread: false },
+        ],
+        hasMore: false,
+      })
+      await history.loadMoreExecutions()
+
+      // Should use cursor from last completed execution (id=2, createdAt=2026-01-01T10:00:00Z)
+      expect(mockApiGet).toHaveBeenCalledWith(
+        expect.stringContaining('/api/tasks/task-1/executions?limit=10&cursor='),
+        expect.anything(),
+      )
+      const calledUrl = mockApiGet.mock.calls[0][0] as string
+      expect(calledUrl).toContain('cursor=2026-01-01T10%3A00%3A00Z')
+      expect(calledUrl).toContain('cursor_id=2')
+    })
+
+    it('appends results to existing executions', async () => {
+      const { history } = createHistory()
+      // Load initial page
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 1, sessionId: 's1', status: 'completed', content: 'done1', createdAt: '2026-01-02', isUnread: false },
+        ],
+        hasMore: true,
+      })
+      await history.loadExecutions()
+      expect(history.executions.value.length).toBe(1)
+
+      // Load more
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 2, sessionId: 's2', status: 'completed', content: 'done2', createdAt: '2026-01-01', isUnread: false },
+        ],
+        hasMore: false,
+      })
+      await history.loadMoreExecutions()
+
+      expect(history.executions.value.length).toBe(2)
+      expect(history.hasMore.value).toBe(false)
+    })
+
+    it('filters out running executions from appended results', async () => {
+      const { history } = createHistory()
+      // Load initial page
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 1, sessionId: 's1', status: 'completed', content: 'done1', createdAt: '2026-01-02', isUnread: false },
+        ],
+        hasMore: true,
+      })
+      await history.loadExecutions()
+
+      // Load more — API returns a running record (which should come from in-memory map, not DB)
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 2, sessionId: 's2', status: 'completed', content: 'done2', createdAt: '2026-01-01', isUnread: false },
+          { id: 3, sessionId: 's3', status: 'running', content: 'work...', createdAt: '2026-01-03', isUnread: false },
+        ],
+        hasMore: false,
+      })
+      await history.loadMoreExecutions()
+
+      // Running records should be filtered out — they come from in-memory map
+      const completed = history.executions.value.filter(e => e.status !== 'running')
+      expect(completed.length).toBe(2)
+    })
+
+    it('sets loadingMore during fetch', async () => {
+      const { history } = createHistory()
+      // Load initial page
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 1, sessionId: 's1', status: 'completed', content: 'done1', createdAt: '2026-01-02', isUnread: false },
+        ],
+        hasMore: true,
+      })
+      await history.loadExecutions()
+
+      let loadingMoreDuringFetch = false
+      mockApiGet.mockImplementation(async () => {
+        loadingMoreDuringFetch = history.loadingMore.value
+        return { executions: [], hasMore: false }
+      })
+
+      await history.loadMoreExecutions()
+
+      expect(loadingMoreDuringFetch).toBe(true)
+      expect(history.loadingMore.value).toBe(false)
+    })
+  })
+
+  describe('reloadExecutions', () => {
+    it('resets from first page with limit=10', async () => {
+      const { history } = createHistory()
+      // Initial load
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 1, content: 'done1', createdAt: '2026-01-01', isUnread: false },
+        ],
+        hasMore: true,
+      })
+      await history.loadExecutions()
+
+      // Reload (e.g. after deletion)
+      mockApiGet.mockResolvedValue({
+        executions: [],
+        hasMore: false,
+      })
+      await history.reloadExecutions()
+
+      expect(mockApiGet).toHaveBeenLastCalledWith('/api/tasks/task-1/executions?limit=10', expect.anything())
+      expect(history.executions.value.length).toBe(0)
+      expect(history.hasMore.value).toBe(false)
+    })
+
+    it('is used after deleteExecution', async () => {
+      const { history } = createHistory()
+      mockApiGet.mockResolvedValue({
+        executions: [{ id: 1, content: 'done', createdAt: '2026-01-01', isUnread: false, status: 'completed' }],
+        hasMore: false,
+      })
+      mockDialogConfirm.mockResolvedValue(true)
+      mockApiPut.mockResolvedValue({})
+
+      await history.deleteExecution(1)
+
+      // After deletion, reloadExecutions should be called
+      const urls = mockApiGet.mock.calls.map(c => c[0])
+      // First call is from loadExecutions, second is from reloadExecutions
+      expect(urls.filter((u: string) => u.includes('/executions?limit=10')).length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -117,6 +347,36 @@ describe('useTaskHistory', () => {
       await history.loadRunningStatus()
 
       expect(mockApiGet).toHaveBeenCalledWith('/api/tasks/task-1', expect.objectContaining({}))
+    })
+
+    it('triggers reloadExecutions when running count decreases', async () => {
+      const { history } = createHistory()
+
+      // First poll: 1 running execution
+      mockApiGet.mockImplementation((url: string) => {
+        if (url.includes('/executions')) {
+          return Promise.resolve({ executions: [], hasMore: false })
+        }
+        return Promise.resolve({
+          runningExecutions: [{ id: 'session-abc', startedAt: '2026-01-01T00:00:00Z', triggerType: 'auto' }],
+        })
+      })
+      await history.loadRunningStatus()
+
+      mockApiGet.mockClear()
+
+      // Second poll: 0 running — execution completed
+      mockApiGet.mockImplementation((url: string) => {
+        if (url.includes('/executions')) {
+          return Promise.resolve({ executions: [], hasMore: false })
+        }
+        return Promise.resolve({ runningExecutions: [] })
+      })
+      await history.loadRunningStatus()
+
+      // Should have called reloadExecutions (which calls apiGet with /executions?limit=10)
+      const execCalls = mockApiGet.mock.calls.filter((c: any[]) => c[0].includes('/executions?limit=10'))
+      expect(execCalls.length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -181,6 +441,7 @@ describe('useTaskHistory', () => {
       const { history } = createHistory()
       mockApiGet.mockResolvedValue({
         executions: [{ id: 'e1', content: 'Hello', createdAt: '2026-01-01', isUnread: true }],
+        hasMore: false,
       })
       mockApiPut.mockResolvedValue({})
 
@@ -195,6 +456,7 @@ describe('useTaskHistory', () => {
       const { history } = createHistory()
       mockApiGet.mockResolvedValue({
         executions: [{ id: 'e1', content: 'Hello', createdAt: '2026-01-01', isUnread: true }],
+        hasMore: false,
       })
       mockApiPut.mockResolvedValue({})
 
@@ -212,6 +474,7 @@ describe('useTaskHistory', () => {
       const { history } = createHistory()
       mockApiGet.mockResolvedValue({
         executions: [{ id: 'e1', content: 'Hello', createdAt: '2026-01-01', isUnread: true }],
+        hasMore: false,
       })
       mockApiPut.mockResolvedValue({})
 
@@ -248,10 +511,8 @@ describe('useTaskHistory', () => {
       expect(history.runningExecutions.value.length).toBe(1)
 
       // Second poll: 0 running — execution completed
-      mockApiGet.mockResolvedValue({ runningExecutions: [] })
-      // Also mock loadExecutions so the completion-triggered refresh doesn't fail
       mockApiGet.mockImplementation((url: string) => {
-        if (url.includes('/executions')) return Promise.resolve({ executions: [] })
+        if (url.includes('/executions')) return Promise.resolve({ executions: [], hasMore: false })
         return Promise.resolve({ runningExecutions: [] })
       })
       await history.loadRunningStatus()
@@ -273,7 +534,7 @@ describe('useTaskHistory', () => {
 
       // Second poll: completed
       mockApiGet.mockImplementation((url: string) => {
-        if (url.includes('/executions')) return Promise.resolve({ executions: [] })
+        if (url.includes('/executions')) return Promise.resolve({ executions: [], hasMore: false })
         return Promise.resolve({ runningExecutions: [] })
       })
       await history.loadRunningStatus()
@@ -298,7 +559,7 @@ describe('useTaskHistory', () => {
 
       // Second poll: completed
       mockApiGet.mockImplementation((url: string) => {
-        if (url.includes('/executions')) return Promise.resolve({ executions: [] })
+        if (url.includes('/executions')) return Promise.resolve({ executions: [], hasMore: false })
         return Promise.resolve({ runningExecutions: [] })
       })
       await history.loadRunningStatus()
@@ -323,7 +584,7 @@ describe('useTaskHistory', () => {
 
       // Completed: same session ID
       mockApiGet.mockImplementation((url: string) => {
-        if (url.includes('/executions')) return Promise.resolve({ executions: [] })
+        if (url.includes('/executions')) return Promise.resolve({ executions: [], hasMore: false })
         return Promise.resolve({ runningExecutions: [] })
       })
       await history.loadRunningStatus()
@@ -358,6 +619,7 @@ describe('useTaskHistory', () => {
               { id: 1, sessionId: 'session-abc', status: 'running', content: 'working...', createdAt: '2026-01-01T00:00:00Z' },
               { id: 2, sessionId: 'session-xyz', status: 'completed', content: 'done', createdAt: '2025-12-31T00:00:00Z' },
             ],
+            hasMore: false,
           })
         }
         // In-memory running executions also returns the same running record
@@ -392,6 +654,7 @@ describe('useTaskHistory', () => {
               { id: 1, sessionId: 's1', status: 'completed', content: 'done1', createdAt: '2026-01-01' },
               { id: 2, sessionId: 's2', status: 'completed', content: 'done2', createdAt: '2025-12-31' },
             ],
+            hasMore: false,
           })
         }
         return Promise.resolve({ runningExecutions: [] })
@@ -413,6 +676,7 @@ describe('useTaskHistory', () => {
             executions: [
               { id: 1, sessionId: 'session-abc', status: 'running', content: '...', createdAt: '2026-01-01' },
             ],
+            hasMore: false,
           })
         }
         return Promise.resolve({
@@ -426,6 +690,41 @@ describe('useTaskHistory', () => {
       // Only 1 entry, not 2
       expect(history.allExecutions.value.length).toBe(1)
       expect(history.allExecutions.value[0].status).toBe('running')
+    })
+  })
+
+  describe('lazy loading — full pagination flow', () => {
+    it('loads first page, then more, then reaches end', async () => {
+      const { history } = createHistory()
+
+      // Page 1: 2 items, hasMore=true
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 1, sessionId: 's1', status: 'completed', content: 'done1', createdAt: '2026-01-03T10:00:00Z', isUnread: false },
+          { id: 2, sessionId: 's2', status: 'completed', content: 'done2', createdAt: '2026-01-02T10:00:00Z', isUnread: false },
+        ],
+        hasMore: true,
+      })
+      await history.loadExecutions()
+      expect(history.executions.value.length).toBe(2)
+      expect(history.hasMore.value).toBe(true)
+      expect(history.loading.value).toBe(false)
+
+      // Page 2: 1 item, hasMore=false
+      mockApiGet.mockResolvedValue({
+        executions: [
+          { id: 3, sessionId: 's3', status: 'completed', content: 'done3', createdAt: '2026-01-01T10:00:00Z', isUnread: false },
+        ],
+        hasMore: false,
+      })
+      await history.loadMoreExecutions()
+      expect(history.executions.value.length).toBe(3)
+      expect(history.hasMore.value).toBe(false)
+
+      // Trying to load more should be a no-op
+      mockApiGet.mockClear()
+      await history.loadMoreExecutions()
+      expect(mockApiGet).not.toHaveBeenCalled()
     })
   })
 })

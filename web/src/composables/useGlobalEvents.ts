@@ -246,9 +246,11 @@ export function useGlobalEvents() {
         }
     }
 
-    // Visibility change: when push notifications are available, disconnect WebSocket
-    // on background (push will deliver events). When push is NOT available, keep
-    // WebSocket alive in background so real-time events continue to be received.
+    // Visibility change: always disconnect WebSocket on background.
+    // Mobile OS throttles/kills background connections, so keeping WS alive
+    // is unreliable and wastes resources. The heartbeat monitor may keep
+    // reconnecting a connection that the OS will just kill again.
+    // On foreground, we reconnect and do a full state pull.
     function handleVisibilityChange() {
         if (document.visibilityState === 'visible') {
             // Returning to foreground — reconnect and do full state pull
@@ -256,17 +258,11 @@ export function useGlobalEvents() {
             // Emit a custom event that other composables can listen to
             window.dispatchEvent(new CustomEvent('clawbench-foreground'))
         } else {
-            // Going to background
-            if (pushAvailable.value) {
-                // Push notifications available — safe to disconnect WebSocket.
-                // Events will be delivered via JPush and replayed on reconnect.
-                disconnect()
-                reconnect.disable() // prevent auto-reconnect while backgrounded
-                // Re-enable reconnect for next foreground
-                setTimeout(() => reconnect.reset(), 100)
-            }
-            // If push is NOT available, keep WebSocket alive in background.
-            // The heartbeat monitor will detect dead connections and reconnect.
+            // Going to background — always disconnect WebSocket
+            disconnect()
+            reconnect.disable() // prevent auto-reconnect while backgrounded
+            // Re-enable reconnect for next foreground
+            setTimeout(() => reconnect.reset(), 100)
         }
     }
 

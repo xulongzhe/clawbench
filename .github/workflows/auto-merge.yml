@@ -1,0 +1,51 @@
+name: Auto Merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  pull_request_review:
+    types: [submitted]
+  check_suite:
+    types: [completed]
+
+jobs:
+  auto-merge:
+    name: Auto Merge to Main
+    runs-on: ubuntu-latest
+    # Only auto-merge PRs by repo owner with auto-merge label targeting main
+    if: >
+      github.event.pull_request.base.ref == 'main' &&
+      contains(github.event.pull_request.labels.*.name, 'auto-merge') &&
+      github.event.pull_request.user.login == 'xulongzhe'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Wait for all status checks
+        uses: fountainhead/action-wait-for-check@v1.2.0
+        id: wait-for-checks
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          checkName: ""  # empty = wait for ALL checks
+          ref: ${{ github.event.pull_request.head.sha }}
+          timeoutSeconds: 600
+          intervalSeconds: 15
+
+      - name: Check if CI passed
+        if: steps.wait-for-checks.outputs.status != 'success'
+        run: |
+          echo "❌ CI checks did not pass (status: ${{ steps.wait-for-checks.outputs.status }})"
+          exit 1
+
+      - name: Auto merge PR
+        if: steps.wait-for-checks.outputs.status == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          echo "✅ All CI checks passed, merging PR #${PR_NUMBER}"
+          gh pr merge "$PR_NUMBER" \
+            --squash \
+            --subject "$(gh pr view "$PR_NUMBER" --json title -q .title)" \
+            --body "Auto-merged after CI passed"

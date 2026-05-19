@@ -256,14 +256,14 @@ describe('useGlobalEvents', () => {
         })
     })
 
-    describe('visibility change with pushAvailable', () => {
-        it('should keep WebSocket alive when push is NOT available', () => {
+    describe('visibility change', () => {
+        it('should disconnect WebSocket on background regardless of push availability', () => {
             // init() registers the visibility change handler
             events.init()
             const ws = connectAndGetWs()
             events.pushAvailable.value = false
 
-            // Simulate going to background
+            // Simulate going to background — should disconnect even without push
             Object.defineProperty(document, 'visibilityState', {
                 value: 'hidden',
                 writable: true,
@@ -271,31 +271,13 @@ describe('useGlobalEvents', () => {
             })
             document.dispatchEvent(new Event('visibilitychange'))
 
-            // WebSocket should still be open (push not available)
-            expect(ws.readyState).toBe(MockWebSocket.OPEN)
-        })
-
-        it('should disconnect WebSocket when push IS available', () => {
-            events.init()
-            const ws = connectAndGetWs()
-            events.pushAvailable.value = true
-
-            // Simulate going to background
-            Object.defineProperty(document, 'visibilityState', {
-                value: 'hidden',
-                writable: true,
-                configurable: true,
-            })
-            document.dispatchEvent(new Event('visibilitychange'))
-
-            // WebSocket should be closed (push available to deliver events)
+            // WebSocket should be closed (always disconnect on background)
             expect(ws.readyState).toBe(MockWebSocket.CLOSED)
         })
 
-        it('should reconnect on foreground after background with push', () => {
+        it('should reconnect on foreground after background', () => {
             events.init()
             const ws = connectAndGetWs()
-            events.pushAvailable.value = true
 
             // Go to background (disconnects)
             Object.defineProperty(document, 'visibilityState', {
