@@ -34,6 +34,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download main baseline
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v8
+        with:
+          workflow: ci.yml
+          branch: main
+          name: main-go-coverage
+          path: .clawbench/baseline/
+        continue-on-error: true
 
       - uses: actions/setup-go@v5
         with:
@@ -42,11 +54,31 @@ jobs:
       - name: Run coverage gate check
         run: ./scripts/check-go-coverage.sh
 
+      - name: Upload coverage profile
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-go-coverage
+          path: coverage.out
+          retention-days: 90
+
   coverage-frontend:
     name: Coverage Gate (Frontend)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download main baseline
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v8
+        with:
+          workflow: ci.yml
+          branch: main
+          name: main-frontend-coverage
+          path: .clawbench/baseline/
+        continue-on-error: true
 
       - uses: actions/setup-node@v4
         with:
@@ -58,6 +90,16 @@ jobs:
 
       - name: Run coverage gate check
         run: ./scripts/check-frontend-coverage.sh
+
+      - name: Upload coverage data
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-frontend-coverage
+          path: |
+            web/coverage/coverage-summary.json
+            web/coverage/coverage-final.json
+          retention-days: 90
 
   build-frontend:
     name: Build Frontend
