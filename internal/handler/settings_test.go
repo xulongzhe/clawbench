@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"clawbench/internal/middleware"
 	"clawbench/internal/model"
@@ -272,4 +273,47 @@ func TestServeConfig_Patch_EmptyBody(t *testing.T) {
 
 	// Empty patch should succeed with no changes
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// --- POST /api/config/restart tests ---
+
+func TestServeConfigRestart_Success(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Set up a channel to capture the restart trigger
+	restartCh := make(chan struct{}, 1)
+	SetRestartFunc(func() {
+		restartCh <- struct{}{}
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfigRestart, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.Equal(t, "restarting", resp["status"])
+
+	// Wait for the goroutine to trigger (with 5s timeout)
+	select {
+	case <-restartCh:
+		// Restart function was called — success
+	case <-time.After(5 * time.Second):
+		t.Fatal("restart function was not called within timeout")
+	}
+}
+
+func TestServeConfigRestart_MethodNotAllowed(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/config/restart", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfigRestart, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
 }

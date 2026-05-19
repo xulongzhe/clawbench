@@ -6,8 +6,12 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
+	"syscall"
+	"time"
 
 	"clawbench/internal/model"
 	"net/http"
@@ -17,6 +21,16 @@ import (
 
 // configMutex protects ConfigInstance from concurrent PATCH writes.
 var configMutex sync.Mutex
+
+// restartFunc is the function called to trigger a server restart.
+// Set by main.go via SetRestartFunc(). Defaults to a no-op for tests.
+var restartFunc func()
+
+// SetRestartFunc sets the function called to trigger a server restart.
+// main.go calls this to wire up the actual shutdown+sentinel logic.
+func SetRestartFunc(f func()) {
+	restartFunc = f
+}
 
 // configResponse is the sanitized config returned to clients via GET /api/config.
 // It only contains fields safe for frontend display — no passwords, keys, or
@@ -549,4 +563,103 @@ func writeConfigYAML() error {
 	}
 
 	return nil
+}
+
+// ServeConfigRestart handles POST /api/config/restart — triggers server restart.
+func ServeConfigRestart(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	// Launch sentinel process and trigger graceful shutdown in background
+	go func() {
+		// Give the HTTP response time to reach the client (~200ms)
+		time.Sleep(200 * time.Millisecond)
+
+		if restartFunc != nil {
+			restartFunc()
+		} else {
+			// Fallback: no restart function set (shouldn't happen in production)
+			slog.Warn("restart function not set, cannot restart server")
+		}
+	}()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "restarting",
+	})
+}
+
+// LaunchSentinelProcess starts a sentinel process that waits for the current
+// process to exit, then starts a new one. Returns the sentinel cmd on success.
+func LaunchSentinelProcess() (*exec.Cmd, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get executable path: %w", err)
+	}
+	args := os.Args[1:]
+	pid := os.Getpid()
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		// Windows: fixed delay + process group isolation
+		sentinelScript := fmt.Sprintf(
+			"timeout /t 2 /nobreak >nul & %s %s",
+			exe, joinArgs(args),
+		)
+		cmd = exec.Command("cmd", "/c", sentinelScript)
+		// Windows SysProcAttr with CREATE_NEW_PROCESS_GROUP is set in settings_windows.go
+	} else {
+		// Unix: kill -0 polling with retry loop
+		sentinelScript := fmt.Sprintf(
+			"PID=%d; EXE='%s'; "+
+				"while kill -0 $PID 2>/dev/null; do sleep 0.1; done; "+
+				"for i in 1 2 3 4 5; do sleep 0.2; exec \"$EXE\" %s && exit 0; done; "+
+				"echo 'restart-failed' > '%s/.clawbench/restart-status'",
+			pid, exe, joinArgs(args), model.BinDir,
+		)
+		cmd = exec.Command("/bin/sh", "-c", sentinelScript)
+		cmd.SysProcAttr = &syscall.SysProcAttr{
+			Setpgid: true, // Decouple from parent process group
+		}
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start sentinel process: %w", err)
+	}
+
+	slog.Info("sentinel process started", "pid", cmd.Process.Pid, "parent_pid", pid)
+	return cmd, nil
+}
+
+// IsRunningUnderSupervisor detects if the process is managed by systemd, Docker, etc.
+func IsRunningUnderSupervisor() bool {
+	// systemd sets INVOCATION_ID
+	if os.Getenv("INVOCATION_ID") != "" {
+		return true
+	}
+	// Docker sets container env var or has /.dockerenv
+	if os.Getenv("container") != "" {
+		return true
+	}
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	// PPID=1 means init process is parent (systemd/launchd)
+	if os.Getppid() == 1 {
+		return true
+	}
+	return false
+}
+
+// joinArgs joins command-line args into a space-separated string with proper quoting.
+func joinArgs(args []string) string {
+	parts := make([]string, len(args))
+	for i, arg := range args {
+		parts[i] = fmt.Sprintf("'%s'", arg)
+	}
+	return fmt.Sprintf("%s", parts)
 }

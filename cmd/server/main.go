@@ -622,6 +622,26 @@ func main() {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
+	// Wire up the restart function for POST /api/config/restart
+	// The sentinel process approach: launch a watcher that starts a new process
+	// after this one exits, then trigger graceful shutdown.
+	handler.SetRestartFunc(func() {
+		if handler.IsRunningUnderSupervisor() {
+			// Under systemd/Docker: just shut down, the supervisor will restart us
+			slog.Info("running under supervisor, triggering graceful shutdown for restart")
+		} else {
+			// Standalone: launch sentinel process first, then shut down
+			cmd, err := handler.LaunchSentinelProcess()
+			if err != nil {
+				slog.Error("failed to launch sentinel process for restart", "err", err)
+				return
+			}
+			slog.Info("sentinel process launched for restart", "sentinel_pid", cmd.Process.Pid)
+		}
+		// Trigger graceful shutdown (same path as SIGINT)
+		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	})
+
 	srv := &http.Server{Addr: addr, Handler: mux}
 
 	// Optional localhost-only HTTP dev listener (for Vite dev proxy)
