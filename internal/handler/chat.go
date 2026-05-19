@@ -88,14 +88,16 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if len(allSessions) == 0 {
-				// No sessions exist, create a new one with default agent
+				// No sessions exist, create a new one with default agent.
+				// Don't pre-fill agent default model — leave empty so frontend
+				// falls back to global localStorage preference (cross-project).
 				agentID := model.GetDefaultAgentID()
-				sessionBackend2, defaultModel, _, _, ok := resolveAgentConfig(agentID)
+				sessionBackend2, _, _, _, ok := resolveAgentConfig(agentID)
 				if !ok {
 					writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
 					return
 				}
-				sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID, defaultModel, "default", "chat")
+				sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID, "", "default", "chat")
 				if err != nil {
 					model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 					return
@@ -166,13 +168,15 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		agentID2 := model.GetDefaultAgentID()
-		sessionBackend2, defaultModel2, _, _, ok := resolveAgentConfig(agentID2)
+		sessionBackend2, _, _, _, ok := resolveAgentConfig(agentID2)
 		if !ok {
 			writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
 			return
 		}
 		var err error
-		sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID2, defaultModel2, "default", "chat")
+		// Don't pre-fill agent default model — leave empty so frontend
+		// falls back to global localStorage preference (cross-project).
+		sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID2, "", "default", "chat")
 		if err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 			return
@@ -854,7 +858,10 @@ func buildChatRequestFromQueue(qMsg model.QueuedMessage, sessionID, projectPath,
 		prompt = fmt.Sprintf("[User uploaded %d file(s): %s]\n%s", len(qMsg.Files), strings.Join(qMsg.Files, ", "), prompt)
 	}
 
-	return buildChatRequest(prompt, sessionID, projectPath, backendName, agentID, "", service.GetSessionThinkingEffort(sessionID), fileDir)
+	// Use session-persisted model (if user explicitly chose one) as modelOverride
+	// so queued messages respect the user's model choice, not just the agent default.
+	sessionModel := service.GetSessionModel(sessionID)
+	return buildChatRequest(prompt, sessionID, projectPath, backendName, agentID, sessionModel, service.GetSessionThinkingEffort(sessionID), fileDir)
 }
 
 // CancelChat handles POST to cancel an ongoing AI stream for a session.

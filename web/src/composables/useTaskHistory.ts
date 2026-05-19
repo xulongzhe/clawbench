@@ -24,13 +24,17 @@ export function useTaskHistory(options: UseTaskHistoryOptions) {
   const runningExecutions = ref<any[]>([])
 
   // Unified list: running executions first (normalized to same shape), then completed
+  // Filter out running records from DB list to avoid duplication with runningExecutions
+  // (runningExecutions comes from in-memory map via GET /api/tasks/{id},
+  //  executions comes from DB via GET /api/tasks/{id}/executions which also includes running records)
   const allExecutions = computed(() => {
     const running = runningExecutions.value.map(exec => ({
       ...exec,
       status: 'running',
       createdAt: exec.startedAt,
     }))
-    return [...running, ...executions.value]
+    const completed = executions.value.filter(exec => exec.status !== 'running')
+    return [...running, ...completed]
   })
 
   function isRunning(exec: any): boolean {

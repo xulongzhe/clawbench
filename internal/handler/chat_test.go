@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"clawbench/internal/ai"
 	"clawbench/internal/model"
@@ -2129,4 +2130,128 @@ func TestServeSessions_Pagination_EmptyProject(t *testing.T) {
 		assert.Empty(t, sessions)
 	}
 	assert.Equal(t, false, result["hasMore"])
+}
+
+// ============================================================================
+// Session model: global preference (cross-project) tests
+// ============================================================================
+
+// TestCreateSession_ModelNotPreFilled verifies that CreateSession does NOT
+// pre-fill the agent's default model into the session's model field.
+// The model should be empty so the frontend falls back to the global
+// localStorage preference, making the user's model choice persist across projects.
+func TestCreateSession_ModelNotPreFilled(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session with no explicit model — the model field should be empty,
+	// NOT the agent's default model (e.g. "glm-5.1" for codebuddy agent).
+	sessionID, err := service.CreateSession(env.ProjectDir, "codebuddy", "model-test", "codebuddy", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// Verify model field is empty in DB
+	modelID := service.GetSessionModel(sessionID)
+	assert.Equal(t, "", modelID,
+		"new session should have empty model field so frontend uses global localStorage preference")
+}
+
+// TestCreateSession_ModelPreFilled_OldBehaviorRemoved verifies that the old
+// behavior (pre-filling agent default model) is no longer happening.
+// This is a regression test — if someone changes CreateSession to accept
+// a model parameter again, this test will catch it.
+func TestCreateSession_ModelPreFilled_OldBehaviorRemoved(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// The codebuddy agent has a default model "glm-5.1" in test setup.
+	// Creating a session should NOT auto-fill "glm-5.1" into the model field.
+	sessionID, err := service.CreateSession(env.ProjectDir, "codebuddy", "no-prefill", "codebuddy", "", "default", "chat")
+	assert.NoError(t, err)
+
+	modelID := service.GetSessionModel(sessionID)
+	assert.NotEqual(t, "glm-5.1", modelID,
+		"session model should NOT be pre-filled with agent default model")
+}
+
+// TestBuildChatRequest_ModelOverride_FromSession verifies that buildChatRequest
+// uses the model from the session when no explicit override is provided.
+// This ensures that the user's explicit model choice (stored in session DB)
+// is respected even for queued messages.
+func TestBuildChatRequest_ModelOverride_FromSession(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "codebuddy", "model-from-session", "codebuddy", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// User explicitly selects a model → handler calls UpdateSessionModel
+	service.UpdateSessionModel(sessionID, "claude-sonnet-4-6")
+
+	// buildChatRequest with no modelOverride should use agent default,
+	// NOT the session model (session model is for frontend display;
+	// buildChatRequest modelOverride comes from req.ModelID)
+	req := buildChatRequest("hello", sessionID, env.ProjectDir, "codebuddy", "codebuddy", "", "", env.ProjectDir)
+	// Without modelOverride, agent default is used
+	assert.Equal(t, "glm-5.1", req.Model, "without modelOverride, agent default model should be used")
+}
+
+// TestBuildChatRequest_ModelOverride_ExplicitOverSession verifies that an
+// explicit modelOverride (from frontend req.ModelID) takes priority over
+// everything else, including the agent default.
+func TestBuildChatRequest_ModelOverride_ExplicitOverSession(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "codebuddy", "model-explicit", "codebuddy", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// Frontend sends modelId explicitly
+	req := buildChatRequest("hello", sessionID, env.ProjectDir, "codebuddy", "codebuddy", "claude-sonnet-4-6", "", env.ProjectDir)
+	assert.Equal(t, "claude-sonnet-4-6", req.Model,
+		"explicit modelOverride should take priority over agent default")
+}
+
+// TestBuildChatRequestFromQueue_UsesSessionModel verifies that
+// buildChatRequestFromQueue uses the session-persisted model (which was
+// saved when the user sent a message with an explicit modelId), rather
+// than falling back to the agent default.
+func TestBuildChatRequestFromQueue_UsesSessionModel(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "codebuddy", "queue-model", "codebuddy", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// Simulate user sending a message with explicit model → handler calls UpdateSessionModel
+	service.UpdateSessionModel(sessionID, "claude-sonnet-4-6")
+
+	// buildChatRequestFromQueue should use the session model
+	qMsg := model.QueuedMessage{Text: "next message", CreatedAt: time.Now().Format(time.RFC3339)}
+	req := buildChatRequestFromQueue(qMsg, sessionID, env.ProjectDir, "codebuddy", "codebuddy", env.ProjectDir)
+	assert.Equal(t, "claude-sonnet-4-6", req.Model,
+		"queued message should use session-persisted model, not agent default")
+}
+
+// TestServeSessions_Post_NewSessionEmptyModel verifies that POST /api/ai/sessions
+// creates a session with an empty model field, allowing the frontend to
+// resolve the model from global localStorage preference.
+func TestServeSessions_Post_NewSessionEmptyModel(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	body := map[string]string{}
+	req := newRequest(t, http.MethodPost, "/api/ai/sessions", body)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeSessions, req)
+	assertOK(t, w)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	assert.Equal(t, true, result["ok"])
+
+	sessionID := result["sessionId"].(string)
+	modelID := service.GetSessionModel(sessionID)
+	assert.Equal(t, "", modelID,
+		"newly created session should have empty model field for global preference resolution")
 }

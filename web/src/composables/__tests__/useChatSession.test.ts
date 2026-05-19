@@ -991,4 +991,51 @@ describe('chatUnread integration', () => {
     // chatUnread should remain true — user hasn't opened s2 yet
     expect(mockState.chatUnread).toBe(true)
   })
+
+  it('loadSessionsOnce after stream done clears chatUnread for current session', async () => {
+    // Bug #10 scenario: user views session s1, AI finishes, chatUnread should be recalculated
+    // After AI finishes, loadHistory calls UpdateLastRead, so the API returns unreadCount=0 for s1.
+    // loadSessionsOnce should then set chatUnread=false.
+    mockState.currentSessionId = 's1'
+    mockState.chatUnread = true  // was set incorrectly during initial load
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessions: [
+          { id: 's1', unreadCount: 0, running: false },  // current session, now read
+          { id: 's2', unreadCount: 0, running: false },
+        ],
+      }),
+    })
+
+    const { loadSessionsOnce } = await import('@/composables/useChatSession')
+    await loadSessionsOnce()
+
+    // chatUnread should be cleared — no other sessions have unread messages
+    expect(mockState.chatUnread).toBe(false)
+  })
+
+  it('chatUnread stays false after loadSessionsOnce when only current session has unread', async () => {
+    // Edge case: current session has unreadCount > 0 but it's the current one
+    // This can happen if UpdateLastRead hasn't been called yet
+    mockState.currentSessionId = 's1'
+    mockState.chatUnread = false
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        sessions: [
+          { id: 's1', unreadCount: 5, running: false },  // current session — ignored
+          { id: 's2', unreadCount: 0, running: false },
+        ],
+      }),
+    })
+
+    const { loadSessionsOnce } = await import('@/composables/useChatSession')
+    await loadSessionsOnce()
+
+    // Current session's unreadCount is excluded, s2 has 0 → chatUnread = false
+    expect(mockState.chatUnread).toBe(false)
+  })
 })

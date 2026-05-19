@@ -151,7 +151,7 @@ import ChatMessageList from './ChatMessageList.vue'
 import { useChatRender } from '@/composables/useChatRender.ts'
 import { formatToolOutput } from '@/utils/renderToolDetail.ts'
 import { useChatStream } from '@/composables/useChatStream.ts'
-import { useChatSession } from '@/composables/useChatSession.ts'
+import { useChatSession, loadSessionsOnce } from '@/composables/useChatSession.ts'
 import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
 import { useSessionManager } from '@/composables/useSessionManager.ts'
 import { useAgents } from '@/composables/useAgents.ts'
@@ -264,6 +264,10 @@ function onStreamEnd(reason) {
         }
       }
     }
+    // Recalculate chatUnread after stream completes — the current session's
+    // unreadCount is now 0 (UpdateLastRead called by loadHistory), so
+    // chatUnread should be false if no other sessions have unread messages.
+    loadSessionsOnce()
   } else if (reason === 'cancelled') {
     // Backend already cleared queue; clear locally for immediate UI response
     manager.pendingMessages.value = []

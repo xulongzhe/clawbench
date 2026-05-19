@@ -691,7 +691,7 @@ onMounted(async () => {
     await sessionIdentity.initSessionFromAPI()
     try {
         const sr = await fetch('/api/ai/sessions')
-        if (sr.ok) { const sd = await sr.json(); if (sd.sessions?.some(s => s.unreadCount > 0)) store.state.chatUnread = true }
+        if (sr.ok) { const sd = await sr.json(); if (sd.sessions?.some(s => s.unreadCount > 0 && s.id !== sessionIdentity.currentSessionId.value)) store.state.chatUnread = true }
     } catch (_) {}
     if (isAppMode.value) syncToNative().catch(() => {})
     try { await store.loadProject() } catch (_) {

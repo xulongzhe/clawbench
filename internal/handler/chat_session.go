@@ -77,11 +77,10 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		backend := req.Backend
-		agentModel := ""
 		agentID := req.AgentID
 		resolvedAgentID := agentID
 		agentSource := "default"
-		backend2, model2, _, _, ok := resolveAgentConfig(agentID)
+		backend2, _, _, _, ok := resolveAgentConfig(agentID)
 		if !ok {
 		writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
 			return
@@ -89,7 +88,11 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		if backend2 != "" {
 			backend = backend2
 		}
-		agentModel = model2
+		// Don't pre-fill agent default model into session — leave model empty so
+		// the frontend falls back to the global localStorage preference, making the
+		// user's model choice persist across projects. The model will be persisted
+		// to the session only when the user explicitly sends a message with a modelId.
+		agentModel := ""
 		if resolvedAgentID == "" {
 			resolvedAgentID = model.GetDefaultAgentID()
 		}

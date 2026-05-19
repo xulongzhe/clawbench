@@ -28,12 +28,14 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 				}
 				if len(sessions) == 0 {
 					agentID := model.GetDefaultAgentID()
-					backend, defaultModel, _, _, ok := resolveAgentConfig(agentID)
+					backend, _, _, _, ok := resolveAgentConfig(agentID)
 					if !ok {
 				writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
 						return
 					}
-					sessionID, err = service.CreateSession(projectPath, backend, T(r, "NewSession"), agentID, defaultModel, "default", "chat")
+					// Don't pre-fill agent default model — leave empty so frontend
+					// falls back to global localStorage preference (cross-project).
+					sessionID, err = service.CreateSession(projectPath, backend, T(r, "NewSession"), agentID, "", "default", "chat")
 					if err != nil {
 						model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
 						return

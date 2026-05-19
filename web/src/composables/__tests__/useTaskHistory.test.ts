@@ -345,4 +345,87 @@ describe('useTaskHistory', () => {
       expect(history.isJustCompleted({ sessionId: 'session-abc', status: 'running' })).toBe(false)
     })
   })
+
+  describe('allExecutions dedup — running records not duplicated', () => {
+    it('does not duplicate running records from both data sources', async () => {
+      const { history } = createHistory()
+
+      // Simulate: DB executions API returns a running record AND completed records
+      mockApiGet.mockImplementation((url: string) => {
+        if (url.includes('/executions')) {
+          return Promise.resolve({
+            executions: [
+              { id: 1, sessionId: 'session-abc', status: 'running', content: 'working...', createdAt: '2026-01-01T00:00:00Z' },
+              { id: 2, sessionId: 'session-xyz', status: 'completed', content: 'done', createdAt: '2025-12-31T00:00:00Z' },
+            ],
+          })
+        }
+        // In-memory running executions also returns the same running record
+        return Promise.resolve({
+          runningExecutions: [{ id: 'session-abc', startedAt: '2026-01-01T00:00:00Z', triggerType: 'manual' }],
+        })
+      })
+
+      await history.loadExecutions()
+      await history.loadRunningStatus()
+
+      // allExecutions should have exactly 2 entries: 1 running (from in-memory) + 1 completed (from DB)
+      const all = history.allExecutions.value
+      expect(all.length).toBe(2)
+
+      // First should be the running one (from in-memory, normalized)
+      expect(all[0].status).toBe('running')
+      expect(all[0].id).toBe('session-abc')
+
+      // Second should be the completed one (from DB)
+      expect(all[1].status).toBe('completed')
+      expect(all[1].sessionId).toBe('session-xyz')
+    })
+
+    it('shows all completed records when no running executions', async () => {
+      const { history } = createHistory()
+
+      mockApiGet.mockImplementation((url: string) => {
+        if (url.includes('/executions')) {
+          return Promise.resolve({
+            executions: [
+              { id: 1, sessionId: 's1', status: 'completed', content: 'done1', createdAt: '2026-01-01' },
+              { id: 2, sessionId: 's2', status: 'completed', content: 'done2', createdAt: '2025-12-31' },
+            ],
+          })
+        }
+        return Promise.resolve({ runningExecutions: [] })
+      })
+
+      await history.loadExecutions()
+      await history.loadRunningStatus()
+
+      expect(history.allExecutions.value.length).toBe(2)
+      expect(history.allExecutions.value.every(e => e.status === 'completed')).toBe(true)
+    })
+
+    it('shows only running when all DB records are running', async () => {
+      const { history } = createHistory()
+
+      mockApiGet.mockImplementation((url: string) => {
+        if (url.includes('/executions')) {
+          return Promise.resolve({
+            executions: [
+              { id: 1, sessionId: 'session-abc', status: 'running', content: '...', createdAt: '2026-01-01' },
+            ],
+          })
+        }
+        return Promise.resolve({
+          runningExecutions: [{ id: 'session-abc', startedAt: '2026-01-01T00:00:00Z', triggerType: 'manual' }],
+        })
+      })
+
+      await history.loadExecutions()
+      await history.loadRunningStatus()
+
+      // Only 1 entry, not 2
+      expect(history.allExecutions.value.length).toBe(1)
+      expect(history.allExecutions.value[0].status).toBe('running')
+    })
+  })
 })

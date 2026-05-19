@@ -401,6 +401,21 @@ func UpdateSessionThinkingEffort(sessionID, effort string) error {
 	return err
 }
 
+// GetLatestUserModel returns the most recent model and thinking effort the user
+// explicitly chose for the given agent+project. Returns ("", "") if no user
+// preference exists (caller should fall back to agent defaults).
+// Used by scheduled tasks to respect the user's global model preference.
+func GetLatestUserModel(agentID, projectPath string) (modelID, thinkingEffort string) {
+	err := DB.QueryRow(
+		"SELECT model, thinking_effort FROM chat_sessions WHERE agent_id = ? AND project_path = ? AND deleted = 0 AND model != '' ORDER BY updated_at DESC LIMIT 1",
+		agentID, projectPath,
+	).Scan(&modelID, &thinkingEffort)
+	if err != nil {
+		return "", ""
+	}
+	return modelID, thinkingEffort
+}
+
 // CreateSession creates a new chat session and returns its ID.
 // agentSource tracks how the agent was chosen: "default" (auto-assigned) or "user" (manually selected).
 // sessionType is "chat" or "scheduled"; empty string defaults to "chat".
