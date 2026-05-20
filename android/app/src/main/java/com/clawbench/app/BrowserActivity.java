@@ -216,6 +216,30 @@ public class BrowserActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        pauseWebView();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        resumeWebView();
+    }
+
+    /** Pause WebView rendering and JS timers to release CPU/GPU resources. */
+    void pauseWebView() {
+        webView.onPause();
+        webView.pauseTimers();
+    }
+
+    /** Resume WebView rendering and JS timers when returning to foreground. */
+    void resumeWebView() {
+        webView.onResume();
+        webView.resumeTimers();
+    }
+
+    @Override
     public void onBackPressed() {
         if (webView.canGoBack()) {
             webView.goBack();

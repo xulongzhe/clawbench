@@ -186,9 +186,6 @@ public class MainActivity extends AppCompatActivity {
         // Check if launched from notification
         logLaunchIntent(getIntent());
 
-        // Keep screen on while app is in foreground (AI may take time to respond)
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
         // Initialize trust-all SSL for self-signed HTTPS servers (used by BackgroundService)
         BackgroundService.initTrustAllSSL();
 
@@ -639,6 +636,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        pauseWebView();
         // App going to background — if JPush is not available, start native WS
         // so we still get notifications when Android kills the WebView process.
         // Check both pushAvailable (SDK ready) and jpushEnabledOnServer (config fetched)
@@ -651,10 +649,23 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumeWebView();
         // App returning to foreground — stop native WS (WebView WS handles events)
         BackgroundService.stopNativeEventWs(this);
         // Handle notification tap intent + re-dispatch pending navigation
         handleResumeIntent();
+    }
+
+    /** Pause WebView rendering and JS timers to release CPU/GPU resources. */
+    void pauseWebView() {
+        webView.onPause();
+        webView.pauseTimers();
+    }
+
+    /** Resume WebView rendering and JS timers when returning to foreground. */
+    void resumeWebView() {
+        webView.onResume();
+        webView.resumeTimers();
     }
 
     /**
