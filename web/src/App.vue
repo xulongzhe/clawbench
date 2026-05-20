@@ -164,6 +164,7 @@
 
       <!-- Session drawer for quote-question session switching -->
       <SessionDrawer
+        ref="quoteSessionDrawerRef"
         :open="quoteSessionDrawerOpen"
         :currentSessionId="sessionIdentity.currentSessionId.value"
         :runningSessionIds="sessionIdentity.runningSessions.value"
@@ -379,6 +380,7 @@ const terminalKeyboardActive = computed(() => terminalActive.value && terminalKe
 
 const quoteQuestion = useQuoteQuestion()
 const quoteSessionDrawerOpen = ref(false)
+const quoteSessionDrawerRef = ref(null)
 
 function handleQuoteOpenSessions() {
   quoteSessionDrawerOpen.value = true
@@ -391,11 +393,13 @@ function handleQuoteSessionSelect(sessionId) {
 
 function handleQuoteSessionCreate(agentId) {
   sessionIdentity.createSession(agentId)
+  quoteSessionDrawerRef.value?.invalidate()
   quoteSessionDrawerOpen.value = false
 }
 
 function handleQuoteSessionDelete(sessionId, backend) {
   sessionIdentity.deleteSession(sessionId, backend)
+  quoteSessionDrawerRef.value?.invalidate()
 }
 
 async function handleLoginSuccess() {

@@ -249,6 +249,9 @@ async function deleteSession(sessionId) {
   const session = sessions.value.find(s => s.id === sessionId)
   // Optimistic removal from local list — no need for a full API reload
   sessions.value = sessions.value.filter(s => s.id !== sessionId)
+  // Mark stale: if the deleted session was the current one, the core handler
+  // may create a new session or switch to another — the list will refresh on next open.
+  stale = true
   emit('delete', sessionId, session?.backend)
 }
 

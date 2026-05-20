@@ -89,9 +89,9 @@
       @open-session-tab="session.openSessionTab"
       @file-tag-click="handleFileTagClick"
       @toggle-auto-speech="autoSpeech.toggle"
-      @create-session="manager.createSession"
+      @create-session="() => { manager.createSession(); sessionDrawerRef.value?.invalidate() }"
       @show-agent-selector="handleShowAgentSelector"
-      @delete-session="(id) => manager.deleteCurrentSession((draftId) => inputBarRef.value?.deleteDraft(draftId))"
+      @delete-session="(id) => { manager.deleteCurrentSession((draftId) => inputBarRef.value?.deleteDraft(draftId)); sessionDrawerRef.value?.invalidate() }"
       @switch-model="handleSwitchModel"
       @switch-thinking-effort="handleSwitchThinkingEffort"
     />
@@ -414,6 +414,7 @@ async function handleShowAgentSelector() {
   // If only one agent exists, skip the selector and create directly
   if (agentsList.value.length === 1) {
     manager.createSession(agentsList.value[0].id)
+    sessionDrawerRef.value?.invalidate()
     return
   }
   sessionDrawerRef.value?.openAgentSelector()
