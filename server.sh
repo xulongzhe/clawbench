@@ -44,7 +44,9 @@ check_binary() {
     if [[ ! -f "$bin" ]]; then
         echo "Binary not found, building..."
         if command -v go >/dev/null 2>&1; then
-            go build -o "$bin" ./cmd/server
+            local ver
+            ver=$(git describe --tags --always 2>/dev/null || echo "dev")
+            go build -ldflags "-X clawbench/internal/version.Version=$ver" -o "$bin" ./cmd/server
         else
             echo "Error: Go not found and binary missing." >&2
             exit 1

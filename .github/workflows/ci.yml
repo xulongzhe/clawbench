@@ -138,7 +138,10 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: |
+          VERSION_CODE=$(git rev-list --count HEAD)
+          VERSION_NAME=$(git describe --tags --always 2>/dev/null || echo "dev")
+          ./gradlew assembleDebug -PversionCode=$VERSION_CODE -PversionName=$VERSION_NAME
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

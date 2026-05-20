@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"clawbench/internal/model"
+	"clawbench/internal/version"
 	"net/http"
 
 	"gopkg.in/yaml.v3"
@@ -241,9 +242,15 @@ var validMossNanoBackends = map[string]bool{
 }
 
 // getBuildVersion returns a human-readable version string from build info.
+// When version.Version is set via -ldflags (from git describe), it combines
+// the semantic version with the VCS short SHA, e.g. "v1.0.0 (abc1234)".
+// When not set (bare "go build"), it falls back to VCS info only.
 func getBuildVersion() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
+		if version.Version != "" {
+			return version.Version
+		}
 		return "dev"
 	}
 	var vcsRev, vcsTime string
@@ -255,6 +262,14 @@ func getBuildVersion() string {
 			vcsTime = s.Value
 		}
 	}
+	// If version was injected via ldflags (git describe), combine with short SHA
+	if version.Version != "" {
+		if vcsRev != "" {
+			return version.Version + " (" + vcsRev + ")"
+		}
+		return version.Version
+	}
+	// Fallback: VCS info only (same as pre-ldflags behavior)
 	if vcsRev != "" {
 		if vcsTime != "" {
 			return vcsRev + " (" + vcsTime + ")"

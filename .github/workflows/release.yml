@@ -74,7 +74,9 @@ jobs:
       - name: Build Linux binary
         env:
           CGO_ENABLED: 1
-        run: go build -ldflags="-s -w" -o clawbench-linux ./cmd/server
+        run: |
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
+          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-linux ./cmd/server
 
       - name: Package Linux
         run: |
@@ -112,7 +114,9 @@ jobs:
       - name: Build Windows binary
         env:
           CGO_ENABLED: 1
-        run: go build -ldflags="-s -w" -o clawbench.exe ./cmd/server
+        run: |
+          $VERSION = if (git describe --tags --always 2>$null) { git describe --tags --always } else { "dev" }
+          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench.exe ./cmd/server
 
       - name: Package Windows
         shell: pwsh
@@ -150,7 +154,9 @@ jobs:
       - name: Build macOS arm64 binary
         env:
           CGO_ENABLED: 1
-        run: go build -ldflags="-s -w" -o clawbench-darwin-arm64 ./cmd/server
+        run: |
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
+          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-arm64 ./cmd/server
 
       - name: Package macOS arm64
         run: |
@@ -191,7 +197,9 @@ jobs:
           GOARCH: amd64
           CC: clang -target x86_64-apple-macos13.0
           CXX: clang++ -target x86_64-apple-macos13.0
-        run: go build -ldflags="-s -w" -o clawbench-darwin-amd64 ./cmd/server
+        run: |
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
+          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-amd64 ./cmd/server
 
       - name: Package macOS amd64
         run: |
@@ -238,7 +246,10 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: |
+          VERSION_CODE=$(git rev-list --count HEAD)
+          VERSION_NAME=$(git describe --tags --always 2>/dev/null || echo "dev")
+          ./gradlew assembleRelease -PversionCode=$VERSION_CODE -PversionName=$VERSION_NAME
 
       - uses: softprops/action-gh-release@v2
         with:
