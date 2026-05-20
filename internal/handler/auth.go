@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -158,7 +159,10 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 		}
 
 		var body struct{ Password string }
-		json.NewDecoder(r.Body).Decode(&body)
+		// ISS-118: Limit request body to 4KB to prevent memory exhaustion DoS.
+		// A password never needs more than a few hundred bytes.
+		limitedReader := io.LimitReader(r.Body, 4*1024)
+		json.NewDecoder(limitedReader).Decode(&body)
 
 		// Use bcrypt for password verification (ISS-003a)
 		var authenticated bool

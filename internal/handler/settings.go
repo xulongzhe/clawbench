@@ -354,7 +354,7 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 		Push: configPush{
 			JPush: configJPush{
 				Enabled: cfg.Push.JPush.Enabled,
-				AppKey:  cfg.Push.JPush.AppKey,
+				AppKey:  maskAPIKey(cfg.Push.JPush.AppKey), // ISS-119: mask semi-secret AppKey
 			},
 		},
 		Tasks: configTasks{
