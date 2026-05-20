@@ -561,6 +561,44 @@ func TestServeSessions_Get_WithExistingSessions(t *testing.T) {
 	assert.Len(t, sessions, 2)
 }
 
+func TestServeSessions_Get_RunningState(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create two sessions
+	sid1, err := service.CreateSession(env.ProjectDir, "codebuddy", "running session", "", "", "default", "chat")
+	assert.NoError(t, err)
+	sid2, err := service.CreateSession(env.ProjectDir, "codebuddy", "idle session", "", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// Mark sid1 as running
+	service.SetSessionRunning(sid1, true)
+	defer service.SetSessionRunning(sid1, false)
+
+	req := newRequest(t, http.MethodGet, "/api/ai/sessions", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeSessions, req)
+	assertOK(t, w)
+
+	var result map[string]interface{}
+	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	sessions, ok := result["sessions"].([]interface{})
+	assert.True(t, ok)
+	assert.Len(t, sessions, 2)
+
+	// Build a map of session ID -> running state
+	runningMap := make(map[string]bool)
+	for _, s := range sessions {
+		session := s.(map[string]interface{})
+		id, _ := session["id"].(string)
+		running, _ := session["running"].(bool)
+		runningMap[id] = running
+	}
+	assert.True(t, runningMap[sid1], "session %s should be running", sid1)
+	assert.False(t, runningMap[sid2], "session %s should not be running", sid2)
+}
+
 func TestServeSessions_Post_CreateSession(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
