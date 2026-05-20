@@ -259,11 +259,13 @@
           </div>
         </template>
         <!-- Group 4: Terminal -->
-        <div class="context-menu-divider" />
-        <div class="context-menu-item" @click.stop="doOpenTerminal">
-          <TerminalIcon :size="14" />
-          {{ t('file.context.openTerminal') }}
-        </div>
+        <template v-if="!isTerminalDisabled">
+          <div class="context-menu-divider" />
+          <div class="context-menu-item" @click.stop="doOpenTerminal">
+            <TerminalIcon :size="14" />
+            {{ t('file.context.openTerminal') }}
+          </div>
+        </template>
       </div>
       <div v-if="ctxMenu.visible" class="ctx-overlay" @click="ctxMenu.visible = false" @touchstart="ctxMenu.visible = false" />
     </Teleport>
@@ -284,7 +286,7 @@ import {
   resolveClickAction,
 } from '@/utils/fileManager.ts'
 import { store } from '@/stores/app.ts'
-import { localConfig, setLocalConfig } from '@/composables/useSettingsConfig'
+import { localConfig, setLocalConfig, useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAppMode } from '@/composables/useAppMode.ts'
 import { useDialog } from '@/composables/useDialog.ts'
 import SearchInput from '@/components/common/SearchInput.vue'
@@ -294,6 +296,8 @@ const toast = inject('toast', null)
 const { isAppMode } = useAppMode()
 const { t, locale } = useI18n()
 const dialog = useDialog()
+const { getServerValueWithDefault } = useSettingsConfig()
+const isTerminalDisabled = computed(() => !getServerValueWithDefault('terminal.enabled'))
 
 const props = defineProps({
     entries: Array,
