@@ -47,9 +47,11 @@
         <span class="settings-item__arrow">›</span>
       </template>
       <template v-else-if="type === 'info'">
-        <span class="settings-item__value">{{ displayValue }}</span>
+        <!-- info value shown in description area below, nothing on the right -->
       </template>
     </div>
+    <!-- Info-type: show value as a full-width detail line below the label/desc -->
+    <div v-if="type === 'info' && displayValue" class="settings-item__info-detail">{{ displayValue }}</div>
   </div>
   <!-- Inline editor -->
   <div v-if="editing" class="settings-item__editor" @click.stop>
@@ -338,6 +340,15 @@ function confirmEdit() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Info-type: full-width detail line below the label row */
+.settings-item__info-detail {
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding: 0 16px 10px;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
 .settings-item__arrow {
