@@ -252,11 +252,6 @@ func (s *Server) InitHostKey() error {
 	return nil
 }
 
-// Addr returns the SSH server listen address.
-func (s *Server) Addr() string {
-	return s.addr
-}
-
 // Port returns the SSH server port number.
 func (s *Server) Port() int {
 	_, portStr, _ := net.SplitHostPort(s.addr)

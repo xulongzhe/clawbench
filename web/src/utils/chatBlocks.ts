@@ -139,29 +139,6 @@ export function formatDetailTime(createdAt: string): string {
 }
 
 /**
- * Convert a cron expression into a human-readable description.
- */
-export function humanizeCron(expr: string): string {
-  const parts = expr.split(' ')
-  if (parts.length !== 5) return expr
-  const [min, hour, day, month, weekday] = parts
-  if (min.startsWith('*/') && hour === '*') return gt('cron.everyMinutes', { count: min.slice(2) })
-  if (hour.startsWith('*/') && min === '0') return gt('cron.everyHours', { count: hour.slice(2) })
-  if (min === '0' && !hour.includes('/') && day === '*' && month === '*' && weekday === '*') return gt('cron.daily', { time: `${hour}:00` })
-  if (min === '0' && weekday === '1-5') return gt('cron.weekdays', { time: `${hour}:00` })
-  return expr
-}
-
-/**
- * Get a human-readable label for a task repeat mode.
- */
-export function repeatLabel(mode: string, maxRuns?: number): string {
-  if (mode === 'once') return gt('task.repeat.onceExecute')
-  if (mode === 'limited') return gt('task.repeat.timesThenStop', { count: maxRuns })
-  return gt('task.repeat.unlimitedTimes')
-}
-
-/**
  * Truncate a string to a maximum number of Unicode codepoints, appending "..." if truncated.
  * Returns empty string for null/undefined input.
  */

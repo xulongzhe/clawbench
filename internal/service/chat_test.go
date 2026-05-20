@@ -1545,10 +1545,8 @@ func TestGetSessionsPaged_CursorSecondPage(t *testing.T) {
 	setupDB(t)
 
 	// Create 5 sessions with staggered updated_at times
-	var ids []string
 	for i := 0; i < 5; i++ {
 		sid := helperCreateSession(t, "/project", "claude", fmt.Sprintf("S%d", i))
-		ids = append(ids, sid)
 		// Stagger updated_at so ordering is deterministic
 		_, err := service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now', ? || ' seconds') WHERE id = ?", fmt.Sprintf("-%d", (4-i)*60), sid)
 		assert.NoError(t, err)

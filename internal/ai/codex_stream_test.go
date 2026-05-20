@@ -1081,7 +1081,7 @@ func TestCodexResumeOutput_SecondSession_ResumeFlow(t *testing.T) {
 	var firstEvents []StreamEvent
 	var threadID string
 	for ev := range ch1 {
-		firstEvents = append(firstEvents, ev)
+		_ = append(firstEvents, ev)
 		if ev.Type == "metadata" && ev.Meta != nil && ev.Meta.SessionID != "" {
 			threadID = ev.Meta.SessionID
 		}

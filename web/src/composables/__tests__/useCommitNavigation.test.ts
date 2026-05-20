@@ -12,7 +12,6 @@ import {
   useCommitNavigation,
   setPendingCommitNavigation,
   consumePendingCommitNavigation,
-  hasPendingCommitNavigation,
   _resetPendingShaForTesting,
   pendingSha,
 } from '@/composables/useCommitNavigation'
@@ -82,19 +81,18 @@ describe('pending SHA (module-level)', () => {
     expect(consumePendingCommitNavigation()).toBeNull()
   })
 
-  it('hasPendingCommitNavigation reflects current state', () => {
-    expect(hasPendingCommitNavigation()).toBe(false)
+  it('pendingSha reflects current state', () => {
+    expect(pendingSha.value).toBeNull()
     setPendingCommitNavigation('abc1234')
-    expect(hasPendingCommitNavigation()).toBe(true)
+    expect(pendingSha.value).toBe('abc1234')
     consumePendingCommitNavigation()
-    expect(hasPendingCommitNavigation()).toBe(false)
+    expect(pendingSha.value).toBeNull()
   })
 
   it('_resetPendingShaForTesting clears the value', () => {
     setPendingCommitNavigation('abc1234')
     _resetPendingShaForTesting()
     expect(pendingSha.value).toBeNull()
-    expect(hasPendingCommitNavigation()).toBe(false)
   })
 })
 

@@ -143,17 +143,3 @@ func (rb *RingBuffer) Reset() {
 	rb.count = 0
 	rb.totalBytes = 0
 }
-
-// Len returns the current number of lines in the buffer.
-func (rb *RingBuffer) Len() int {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-	return rb.count
-}
-
-// TotalBytes returns the current total bytes in the buffer.
-func (rb *RingBuffer) TotalBytes() int {
-	rb.mu.Lock()
-	defer rb.mu.Unlock()
-	return rb.totalBytes
-}

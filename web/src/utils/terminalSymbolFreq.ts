@@ -4,8 +4,8 @@
  */
 
 export const ALL_SYMBOLS = ['.', '/', '-', '$', '"', "'", '&', ';', '|', '=', '>', '_', '~', '*', ':', '<', '`', '!', '#']
-export const SYMBOL_FREQ_KEY = 'clawbench-terminal-symbol-freq'
-export const DECAY_LAMBDA = 0.15 // decay rate per hour — half-life ≈ 4.6h
+const SYMBOL_FREQ_KEY = 'clawbench-terminal-symbol-freq'
+const DECAY_LAMBDA = 0.15 // decay rate per hour — half-life ≈ 4.6h
 
 export interface SymbolScore { s: number; t: number }
 export type SymbolFreqs = Record<string, SymbolScore>

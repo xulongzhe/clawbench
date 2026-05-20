@@ -25,7 +25,7 @@ export function consumePendingCommitNavigation(): string | null {
 /**
  * Check if there's a pending commit navigation without consuming it.
  */
-export function hasPendingCommitNavigation(): boolean {
+function hasPendingCommitNavigation(): boolean {
     return pendingSha.value !== null
 }
 

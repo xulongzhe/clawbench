@@ -12,7 +12,6 @@ import {
   buildTaskKeyIndex,
   hasScheduledTasks,
   scheduledTaskKeys,
-  SEVERE_REASONS,
 } from '@/utils/contentBlocks.ts'
 
 // ── isSevereWarning ──
@@ -40,17 +39,6 @@ describe('isSevereWarning', () => {
   })
   it('returns false when reason is undefined', () => {
     expect(isSevereWarning({ reason: undefined })).toBe(false)
-  })
-})
-
-// ── SEVERE_REASONS ──
-describe('SEVERE_REASONS', () => {
-  it('contains the four severe reasons', () => {
-    expect(SEVERE_REASONS.has('disconnect')).toBe(true)
-    expect(SEVERE_REASONS.has('timeout')).toBe(true)
-    expect(SEVERE_REASONS.has('restart')).toBe(true)
-    expect(SEVERE_REASONS.has('panic')).toBe(true)
-    expect(SEVERE_REASONS.size).toBe(4)
   })
 })
 

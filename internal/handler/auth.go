@@ -1,12 +1,10 @@
 package handler
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -184,10 +182,12 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 			// bcrypt verification
 			authenticated = bcrypt.CompareHashAndPassword(model.PasswordHash, []byte(body.Password)) == nil
 		} else {
-			// Fallback: SHA-256 for backward compatibility (shouldn't happen after startup fix)
-			hash := sha256.Sum256([]byte(body.Password + "clawbench-salt"))
-			token := hex.EncodeToString(hash[:])
-			authenticated = subtle.ConstantTimeCompare([]byte(token), []byte(model.SessionToken)) == 1
+			// No bcrypt hash available — bcrypt generation must have failed at startup.
+			// Reject the login rather than falling back to insecure SHA-256.
+			slog.Error("password hash not available, rejecting login", slog.String("remoteIP", remoteIP))
+			writeLocalizedError(w, r, model.Internal(nil))
+			limiter.recordFailure(remoteIP)
+			return
 		}
 
 		if authenticated {
@@ -216,14 +216,4 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
-}
-
-// GenerateSecureRandom produces cryptographically secure random bytes.
-// Panics on failure (ISS-003d) — random generation failure is a fatal security error.
-func GenerateSecureRandom(n int) ([]byte, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return nil, fmt.Errorf("crypto/rand.Read failed: %w", err)
-	}
-	return b, nil
 }

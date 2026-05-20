@@ -7,8 +7,6 @@ import {
   loadSymbolFreqs,
   saveSymbolFreqs,
   ALL_SYMBOLS,
-  DECAY_LAMBDA,
-  SYMBOL_FREQ_KEY,
   type SymbolFreqs,
 } from '@/utils/terminalSymbolFreq'
 
@@ -176,7 +174,7 @@ describe('saveSymbolFreqs', () => {
     const setItem = (k: string, v: string) => { storedKey = k; storedValue = v }
     const freqs: SymbolFreqs = { '.': { s: 5, t: 1000 } }
     saveSymbolFreqs(freqs, setItem)
-    expect(storedKey).toBe(SYMBOL_FREQ_KEY)
+    expect(storedKey).toBe('clawbench-terminal-symbol-freq')
     expect(JSON.parse(storedValue)).toEqual(freqs)
   })
 })
@@ -199,13 +197,5 @@ describe('constants', () => {
 
   it('ALL_SYMBOLS has no duplicates', () => {
     expect(new Set(ALL_SYMBOLS).size).toBe(ALL_SYMBOLS.length)
-  })
-
-  it('DECAY_LAMBDA is 0.15', () => {
-    expect(DECAY_LAMBDA).toBe(0.15)
-  })
-
-  it('SYMBOL_FREQ_KEY has expected value', () => {
-    expect(SYMBOL_FREQ_KEY).toBe('clawbench-terminal-symbol-freq')
   })
 })

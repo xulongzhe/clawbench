@@ -40,8 +40,8 @@ func TestRingBuffer_LineCountEviction(t *testing.T) {
 	if string(replay) != expected {
 		t.Errorf("expected %q, got %q", expected, string(replay))
 	}
-	if rb.Len() != 3 {
-		t.Errorf("expected 3 lines, got %d", rb.Len())
+	if rb.count != 3 {
+		t.Errorf("expected 3 lines, got %d", rb.count)
 	}
 }
 
@@ -108,16 +108,16 @@ func TestRingBuffer_Reset(t *testing.T) {
 	rb := NewRingBuffer(10, 65536, 4*1024*1024)
 
 	rb.Write([]byte("some data\n"))
-	if rb.Len() != 1 {
-		t.Errorf("expected 1 line, got %d", rb.Len())
+	if rb.count != 1 {
+		t.Errorf("expected 1 line, got %d", rb.count)
 	}
 
 	rb.Reset()
-	if rb.Len() != 0 {
-		t.Errorf("expected 0 lines after reset, got %d", rb.Len())
+	if rb.count != 0 {
+		t.Errorf("expected 0 lines after reset, got %d", rb.count)
 	}
-	if rb.TotalBytes() != 0 {
-		t.Errorf("expected 0 bytes after reset, got %d", rb.TotalBytes())
+	if rb.totalBytes != 0 {
+		t.Errorf("expected 0 bytes after reset, got %d", rb.totalBytes)
 	}
 
 	replay := rb.Replay()
@@ -132,8 +132,8 @@ func TestRingBuffer_EmptyWrite(t *testing.T) {
 	rb.Write(nil)
 	rb.Write([]byte{})
 
-	if rb.Len() != 0 {
-		t.Errorf("expected 0 lines after empty write, got %d", rb.Len())
+	if rb.count != 0 {
+		t.Errorf("expected 0 lines after empty write, got %d", rb.count)
 	}
 }
 
@@ -155,8 +155,8 @@ func TestRingBuffer_LargeDataset(t *testing.T) {
 		rb.Write([]byte("line\n"))
 	}
 
-	if rb.Len() != capacity {
-		t.Errorf("expected %d lines, got %d", capacity, rb.Len())
+	if rb.count != capacity {
+		t.Errorf("expected %d lines, got %d", capacity, rb.count)
 	}
 
 	replay := rb.Replay()

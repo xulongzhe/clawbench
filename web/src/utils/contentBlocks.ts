@@ -4,7 +4,7 @@
  */
 
 /** Reasons that indicate a severe issue (red error-level styling) */
-export const SEVERE_REASONS = new Set(['disconnect', 'timeout', 'restart', 'panic'])
+const SEVERE_REASONS = new Set(['disconnect', 'timeout', 'restart', 'panic'])
 
 /**
  * Check if a warning block represents a severe issue.

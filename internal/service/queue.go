@@ -95,15 +95,3 @@ func RemoveQueueItem(sessionID string, index int) []model.QueuedMessage {
 func ClearQueue(sessionID string) {
 	sessionQueues.Delete(sessionID)
 }
-
-// QueueLength returns the number of items in the session's queue.
-func QueueLength(sessionID string) int {
-	val, ok := sessionQueues.Load(sessionID)
-	if !ok {
-		return 0
-	}
-	entry := val.(*queueEntry)
-	entry.mu.Lock()
-	defer entry.mu.Unlock()
-	return len(entry.items)
-}

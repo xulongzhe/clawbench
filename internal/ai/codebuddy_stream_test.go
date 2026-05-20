@@ -260,7 +260,7 @@ func TestCodebuddyStream_ExecuteStreamReturnsChannel(t *testing.T) {
 			if !ok {
 				return
 			}
-			events = append(events, ev)
+			_ = append(events, ev)
 		case <-timer.C:
 			return
 		}

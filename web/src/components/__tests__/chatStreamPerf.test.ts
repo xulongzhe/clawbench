@@ -1,6 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import {
-  SCHEDULED_TASK_RE,
   extractScheduledTaskIds,
   stripScheduledTaskTags,
   isValidAskContent,
@@ -191,11 +190,6 @@ describe('scheduled-task regex (module-level constant)', () => {
     extractScheduledTaskIds(text)
     const ids = extractScheduledTaskIds(text)
     expect(ids).toEqual(['1'])
-  })
-
-  it('regex has global flag for multi-match', () => {
-    expect(SCHEDULED_TASK_RE.global).toBe(true)
-    expect(SCHEDULED_TASK_RE.ignoreCase).toBe(true)
   })
 
   it('does not match non-numeric IDs', () => {

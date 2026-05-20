@@ -9,14 +9,7 @@ import (
 
 // Sentinel errors
 var (
-	ErrUnauthorized  = errors.New("unauthorized")
-	ErrForbidden     = errors.New("access denied")
-	ErrNotFound      = errors.New("not found")
-	ErrBadRequest    = errors.New("bad request")
-	ErrInternal      = errors.New("internal server error")
 	ErrProjectNotSet = errors.New("no project selected")
-	ErrInvalidPath   = errors.New("invalid path")
-	ErrPathTraversal = errors.New("path traversal detected")
 )
 
 // AppError is the application-level error type with an HTTP status code.
@@ -39,14 +32,6 @@ func (e *AppError) Unwrap() error { return e.Err }
 
 func NewAppError(code int, message string, err error) *AppError {
 	return &AppError{Code: code, Message: message, Err: err}
-}
-
-func NewAppErrorf(code int, msg string, err error, args ...any) *AppError {
-	return &AppError{Code: code, Message: fmt.Sprintf(msg, args...), Err: err}
-}
-
-func BadRequest(err error, msg string) *AppError {
-	return NewAppError(http.StatusBadRequest, msg, err)
 }
 
 func Forbidden(err error, msg string) *AppError {

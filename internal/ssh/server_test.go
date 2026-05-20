@@ -300,8 +300,10 @@ func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
 	if err == nil {
 		t.Error("expected RegisterPort to reject port 8080 (outside allowed range 3000-4000)")
 	}
-	if r.IsPortRegistered(8080) {
-		t.Error("port 8080 should not be registered since it's outside allowed range")
+	for _, p := range r.ListPorts() {
+		if p.Port == 8080 {
+			t.Error("port 8080 should not be registered since it's outside allowed range")
+		}
 	}
 }
 

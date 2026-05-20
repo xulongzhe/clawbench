@@ -44,7 +44,7 @@ export function stripLeadingNumbering(text: string): string {
  * - 'external': http/https, mailto, tel, protocol-relative
  * - 'local': everything else (relative file paths)
  */
-export function classifyLink(href: string): 'anchor' | 'external' | 'local' {
+function classifyLink(href: string): 'anchor' | 'external' | 'local' {
   if (isAnchorLink(href)) return 'anchor'
   if (isExternalLink(href)) return 'external'
   return 'local'
