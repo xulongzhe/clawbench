@@ -55,7 +55,7 @@ if $IS_RELEASE; then
 else
     FULL_VERSION="$VERSION ($BUILD_TIME)"
 fi
-LDFLAGS="-X clawbench/internal/version.Version=$FULL_VERSION"
+LDFLAGS="-X 'clawbench/internal/version.Version=$FULL_VERSION'"
 # Derive versionCode from git commit count (monotonically increasing for Play Store)
 VERSION_CODE=$(git rev-list --count HEAD 2>/dev/null || echo "1")
 echo "  Version: $FULL_VERSION (code: $VERSION_CODE, release: $IS_RELEASE)"
