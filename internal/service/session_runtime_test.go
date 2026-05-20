@@ -7,9 +7,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"clawbench/internal/ai"
 	"clawbench/internal/model"
+	"clawbench/internal/ws"
 
 	"github.com/stretchr/testify/assert"
 
@@ -531,4 +533,133 @@ func TestGetSessionResponsePreview_UsesLastAssistantMessage(t *testing.T) {
 
 	result := getSessionResponsePreview("session-preview-5")
 	assert.Equal(t, "第二次回复", result)
+}
+
+func TestGetSessionResponsePreview_InvalidJSON(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	insertTestMessage(t, db, "session-preview-6", "user", "问题")
+	insertTestMessage(t, db, "session-preview-6", "assistant", "not valid json {{{")
+
+	result := getSessionResponsePreview("session-preview-6")
+	assert.Equal(t, "", result)
+}
+
+func TestGetSessionResponsePreview_NoTextBlocks(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{toolBlock}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-7", "user", "问题")
+	insertTestMessage(t, db, "session-preview-7", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-7")
+	assert.Equal(t, "", result)
+}
+
+func TestGetSessionResponsePreview_Exact16Runes(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	// Exactly 16 runes — should NOT be truncated
+	exactText := "一二三四五六七八九零一二三四五六" // 16 chars
+	content := model.ContentBlock{Type: "text", Text: exactText}
+	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-8", "user", "问题")
+	insertTestMessage(t, db, "session-preview-8", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-8")
+	assert.Equal(t, exactText, result)
+	assert.Equal(t, 16, utf8.RuneCountInString(result))
+}
+
+func TestGetSessionResponsePreview_17Runes(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	// 17 runes — should be truncated to 16 + …
+	longText := "一二三四五六七八九零一二三四五六七" // 17 chars
+	content := model.ContentBlock{Type: "text", Text: longText}
+	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-9", "user", "问题")
+	insertTestMessage(t, db, "session-preview-9", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-9")
+	assert.Equal(t, "一二三四五六七八九零一二三四五六…", result)
+}
+
+// --- emitSessionEvent with response preview ---
+
+func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	// Insert assistant message for preview
+	content := model.ContentBlock{Type: "text", Text: "AI完成了任务"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-emit-1", "user", "问题")
+	insertTestMessage(t, db, "session-emit-1", "assistant", string(contentJSON))
+
+	// Set up ws manager and a subscriber to capture the event
+	mgr := ws.NewManagerForTest(nil)
+	ws.SetManagerForTest(mgr)
+	defer ws.SetManagerForTest(nil)
+
+	var writeMu sync.Mutex
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit")
+	_ = sub
+
+	emitSessionEvent("session-emit-1", "completed", true)
+
+	// Verify the buffered event has response_preview
+	buffered := sub.GetBufferedEvents()
+	if len(buffered) == 0 {
+		t.Fatal("expected at least one buffered event")
+	}
+	data, ok := buffered[0].Data.(*ws.SessionUpdateData)
+	if !ok {
+		t.Fatal("expected SessionUpdateData")
+	}
+	assert.Equal(t, "completed", data.Status)
+	assert.Equal(t, "session-emit-1", data.SessionID)
+	assert.Equal(t, "AI完成了任务", data.ResponsePreview)
+}
+
+func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
+	mgr := ws.NewManagerForTest(nil)
+	ws.SetManagerForTest(mgr)
+	defer ws.SetManagerForTest(nil)
+
+	var writeMu sync.Mutex
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit2")
+	_ = sub
+
+	emitSessionEvent("session-emit-2", "running", false)
+
+	buffered := sub.GetBufferedEvents()
+	if len(buffered) == 0 {
+		t.Fatal("expected at least one buffered event")
+	}
+	data, ok := buffered[0].Data.(*ws.SessionUpdateData)
+	if !ok {
+		t.Fatal("expected SessionUpdateData")
+	}
+	assert.Equal(t, "running", data.Status)
+	assert.Equal(t, "", data.ResponsePreview)
 }

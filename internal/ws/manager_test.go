@@ -391,6 +391,33 @@ func TestCleanupStale_RecentNotCleaned(t *testing.T) {
 	}
 }
 
+func TestSetManagerForTest(t *testing.T) {
+	orig := defaultManager
+	defer func() { defaultManager = orig }()
+
+	mgr := NewManagerForTest(nil)
+	SetManagerForTest(mgr)
+
+	if GetManager() != mgr {
+		t.Error("expected GetManager to return the test manager")
+	}
+
+	SetManagerForTest(nil)
+	if GetManager() != nil {
+		t.Error("expected GetManager to return nil after reset")
+	}
+}
+
+func TestNewManagerForTest(t *testing.T) {
+	mgr := NewManagerForTest(nil)
+	if mgr == nil {
+		t.Fatal("expected non-nil manager")
+	}
+	if len(mgr.subscriptions) != 0 {
+		t.Errorf("expected empty subscriptions, got %d", len(mgr.subscriptions))
+	}
+}
+
 func TestClientSubscription_GetBufferedEvents_Empty(t *testing.T) {
 	sub := &ClientSubscription{}
 	events := sub.GetBufferedEvents()

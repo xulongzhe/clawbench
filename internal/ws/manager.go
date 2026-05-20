@@ -40,6 +40,19 @@ type Manager struct {
 var defaultManager *Manager
 var defaultManagerOnce sync.Once
 
+// SetManagerForTest sets the global manager for testing. Do not use in production.
+func SetManagerForTest(m *Manager) {
+	defaultManager = m
+}
+
+// NewManagerForTest creates a new Manager for testing.
+func NewManagerForTest(jpushClient *push.JPushClient) *Manager {
+	return &Manager{
+		subscriptions: make(map[string]*ClientSubscription),
+		jpush:        jpushClient,
+	}
+}
+
 func InitManager(jpushClient *push.JPushClient) {
 	defaultManagerOnce.Do(func() {
 		defaultManager = &Manager{
