@@ -672,5 +672,12 @@ describe('SettingsCategory', () => {
       expect(item).toBeTruthy()
       expect(item!.props().type).toBe('info')
     })
+
+    it('hides appVersion row when not in App mode', () => {
+      const wrapper = mountCategory('about')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const appVersionItem = allItems.find(i => i.props().label === 'APP版本')
+      expect(appVersionItem).toBeFalsy()
+    })
   })
 })
