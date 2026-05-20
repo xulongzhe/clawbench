@@ -3,6 +3,9 @@ package rag
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"clawbench/internal/service"
@@ -114,6 +117,7 @@ func TestRAGSearch_WithResults(t *testing.T) {
 func TestRAGSearch_FTSOnly(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	SetOllamaHealthy(false) // Ensure cached state doesn't interfere
 
 	// Insert chunks and build FTS index
 	insertTestChunks(t, store, 3)
@@ -185,4 +189,174 @@ func TestGetSessionTitles_Empty(t *testing.T) {
 
 	titles := getSessionTitles(map[string]bool{})
 	assert.Empty(t, titles)
+}
+
+// ---------- RAGSearch vector-only mode ----------
+
+func TestRAGSearch_VectorOnlyMode(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+
+	// Set Ollama healthy but FTS not available
+	SetOllamaHealthy(true)
+	t.Cleanup(func() { SetOllamaHealthy(false) })
+	store.ftsAvailable = false
+
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	// Insert chunks with embeddings
+	insertTestChunks(t, store, 2)
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	assert.Equal(t, SearchModeVector, result.Mode)
+}
+
+// ---------- RAGSearch with no search available ----------
+
+func TestRAGSearch_NoSearchAvailable(t *testing.T) {
+	store := setupTestStore(t)
+	store.ftsAvailable = false
+	SetOllamaHealthy(false)
+
+	// nil embedder — no search available
+	_, err := RAGSearch(context.Background(), store, nil, SearchParams{Query: "test"}, 5, 20)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no search available")
+}
+
+// ---------- RAGSearch with default poolSize ----------
+
+func TestRAGSearch_DefaultPoolSize(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	insertTestChunks(t, store, 2)
+	require.NoError(t, store.CreateFTSIndex())
+
+	// poolSize=0 should use default of 20
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 0)
+	require.NoError(t, err)
+	assert.NotEmpty(t, result.Results)
+}
+
+// ---------- RAGSearch embedding fallback to FTS ----------
+
+func TestRAGSearch_EmbeddingFailsFallsBackToFTS(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	// Server where embedding endpoint fails
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaModelInfo{{Name: "bge-m3:latest"}}})
+		} else if r.URL.Path == "/api/embeddings" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	embedder := NewEmbeddingClient(server.URL, "bge-m3")
+	embedder.HTTPClient = server.Client()
+	SetOllamaHealthy(true)
+	t.Cleanup(func() { SetOllamaHealthy(false) })
+
+	insertTestChunks(t, store, 3)
+	require.NoError(t, store.CreateFTSIndex())
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "chunk", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	assert.Equal(t, SearchModeFTS, result.Mode, "should fall back to FTS when embedding fails")
+}
+
+// ---------- RAGSearch with Ollama cached health ----------
+
+func TestRAGSearch_CachedOllamaHealth(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+
+	// Set cached Ollama health to true
+	SetOllamaHealthy(true)
+	t.Cleanup(func() { SetOllamaHealthy(false) })
+
+	insertTestChunks(t, store, 2)
+	require.NoError(t, store.CreateFTSIndex())
+
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	// With cached healthy state, should use hybrid or vector mode
+	assert.Contains(t, []SearchMode{SearchModeHybrid, SearchModeVector}, result.Mode)
+}
+
+// ---------- RAGSearch vector-only (no FTS) ----------
+
+func TestRAGSearch_VectorOnlyNoFTS(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	SetOllamaHealthy(true)
+	t.Cleanup(func() { SetOllamaHealthy(false) })
+	store.ftsAvailable = false
+
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	insertTestChunks(t, store, 2)
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	assert.Equal(t, SearchModeVector, result.Mode)
+}
+
+// ---------- RAGSearch with vector-only embedding error ----------
+
+func TestRAGSearch_VectorOnlyEmbeddingError(t *testing.T) {
+	store := setupTestStore(t)
+	SetOllamaHealthy(true)
+	t.Cleanup(func() { SetOllamaHealthy(false) })
+	store.ftsAvailable = false
+
+	// Embedding will fail
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaModelInfo{{Name: "bge-m3:latest"}}})
+		} else if r.URL.Path == "/api/embeddings" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	embedder := NewEmbeddingClient(server.URL, "bge-m3")
+	embedder.HTTPClient = server.Client()
+
+	insertTestChunks(t, store, 2)
+
+	_, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
+	assert.Error(t, err, "should error when embedding fails in vector-only mode")
+}
+
+// ---------- getSessionTitles batch failure fallback ----------
+
+func TestGetSessionTitles_BatchFailureFallback(t *testing.T) {
+	db := setupSearchDB(t)
+
+	// Create a session with known title
+	sid, err := service.CreateSession("/test", "claude", "Batch Fallback Title", "", "", "default", "chat")
+	require.NoError(t, err)
+
+	// Drop the chat_sessions table to make batch query fail
+	db.Exec("DROP TABLE chat_sessions")
+
+	// Should fall back gracefully (return empty map)
+	titles := getSessionTitles(map[string]bool{sid: true})
+	_, ok := titles[sid]
+	assert.False(t, ok, "should handle batch failure gracefully")
 }

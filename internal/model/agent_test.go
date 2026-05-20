@@ -267,3 +267,205 @@ func TestGetDefaultAgentID_NoAgents(t *testing.T) {
 
 	assert.Equal(t, "", model.GetDefaultAgentID())
 }
+
+// ---------- DefaultModelID ----------
+
+func TestDefaultModelID_PreferredModel(t *testing.T) {
+	agent := &model.Agent{
+		PreferredModel: "preferred-model",
+		Models: []model.AgentModel{
+			{ID: "default-model", Default: true},
+		},
+	}
+	assert.Equal(t, "preferred-model", agent.DefaultModelID())
+}
+
+func TestDefaultModelID_NoPreferredModel(t *testing.T) {
+	agent := &model.Agent{
+		Models: []model.AgentModel{
+			{ID: "other-model"},
+			{ID: "default-model", Default: true},
+		},
+	}
+	assert.Equal(t, "default-model", agent.DefaultModelID())
+}
+
+func TestDefaultModelID_NoDefaultFlag(t *testing.T) {
+	agent := &model.Agent{
+		Models: []model.AgentModel{
+			{ID: "first-model"},
+			{ID: "second-model"},
+		},
+	}
+	assert.Equal(t, "first-model", agent.DefaultModelID())
+}
+
+func TestDefaultModelID_NoModels(t *testing.T) {
+	agent := &model.Agent{}
+	assert.Equal(t, "", agent.DefaultModelID())
+}
+
+// ---------- BaseModelID ----------
+
+func TestBaseModelID_DefaultFlag(t *testing.T) {
+	agent := &model.Agent{
+		PreferredModel: "preferred", // should be ignored
+		Models: []model.AgentModel{
+			{ID: "first"},
+			{ID: "flagged", Default: true},
+		},
+	}
+	assert.Equal(t, "flagged", agent.BaseModelID())
+}
+
+func TestBaseModelID_FirstInList(t *testing.T) {
+	agent := &model.Agent{
+		PreferredModel: "preferred", // should be ignored
+		Models: []model.AgentModel{
+			{ID: "first"},
+			{ID: "second"},
+		},
+	}
+	assert.Equal(t, "first", agent.BaseModelID())
+}
+
+func TestBaseModelID_NoModels(t *testing.T) {
+	agent := &model.Agent{PreferredModel: "ignored"}
+	assert.Equal(t, "", agent.BaseModelID())
+}
+
+// ---------- EffectiveThinkingEffort ----------
+
+func TestEffectiveThinkingEffort_Preferred(t *testing.T) {
+	agent := &model.Agent{
+		PreferredThinkingEffort: "high",
+		ThinkingEffort:           "medium",
+	}
+	assert.Equal(t, "high", agent.EffectiveThinkingEffort())
+}
+
+func TestEffectiveThinkingEffort_NoPreferred(t *testing.T) {
+	agent := &model.Agent{
+		ThinkingEffort: "medium",
+	}
+	assert.Equal(t, "medium", agent.EffectiveThinkingEffort())
+}
+
+func TestEffectiveThinkingEffort_Neither(t *testing.T) {
+	agent := &model.Agent{}
+	assert.Equal(t, "", agent.EffectiveThinkingEffort())
+}
+
+// ---------- WriteAgentYAML ----------
+
+func TestWriteAgentYAML_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Write initial agent YAML
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	// Load agents to set agentsDir
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Write preferences
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = "glm-5.1"
+	agent.PreferredThinkingEffort = "high"
+
+	err = model.WriteAgentYAML(agent)
+	assert.NoError(t, err)
+
+	// Read back and verify
+	data, err := os.ReadFile(filepath.Join(agentsDir, "test-agent.yaml"))
+	require.NoError(t, err)
+	content := string(data)
+	assert.Contains(t, content, "preferred_model: glm-5.1")
+	assert.Contains(t, content, "preferred_thinking_effort: high")
+	assert.Contains(t, content, "backend: codebuddy")
+}
+
+func TestWriteAgentYAML_ClearPreferences(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+preferred_model: old-model
+preferred_thinking_effort: low
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Clear preferences
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = ""
+	agent.PreferredThinkingEffort = ""
+
+	err = model.WriteAgentYAML(agent)
+	assert.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(agentsDir, "test-agent.yaml"))
+	require.NoError(t, err)
+	content := string(data)
+	assert.NotContains(t, content, "preferred_model")
+	assert.NotContains(t, content, "preferred_thinking_effort")
+}
+
+func TestWriteAgentYAML_NotInitialized(t *testing.T) {
+	// Save and restore agentsDir
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// LoadAgents sets agentsDir, so calling it on a valid dir then
+	// testing WriteAgentYAML for a nonexistent agent tests the read path
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+
+	// Write an agent YAML that doesn't exist on disk
+	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent"})
+	assert.Error(t, err)
+}
+
+func TestWriteAgentYAML_AgentNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Agent YAML doesn't exist
+	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent"})
+	assert.Error(t, err)
+}
