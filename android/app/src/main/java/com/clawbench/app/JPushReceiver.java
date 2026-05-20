@@ -16,28 +16,37 @@ public class JPushReceiver extends JPushMessageReceiver {
     @Override
     public void onNotifyMessageOpened(Context context, NotificationMessage message) {
         Log.i(TAG, "JPush notification opened: " + message.msgId);
-        // Extract session_id from notification extras and notify the WebView
+        // Extract session_id and project_path from notification extras
         String sessionId = null;
+        String projectPath = null;
         if (message.notificationExtras != null) {
             try {
                 org.json.JSONObject extras = new org.json.JSONObject(message.notificationExtras);
                 sessionId = extras.optString("session_id", null);
+                projectPath = extras.optString("project_path", null);
             } catch (Exception e) {
                 Log.w(TAG, "Failed to parse notification extras", e);
             }
         }
         if (sessionId == null) return;
-        // Build safe JSON parameter to prevent XSS injection via sessionId
+        // Build safe JSON parameter to prevent XSS injection
         final String jsArg;
         try {
             org.json.JSONObject detail = new org.json.JSONObject();
             detail.put("sessionId", sessionId);
+            if (projectPath != null) detail.put("projectPath", projectPath);
             jsArg = detail.toString();
         } catch (Exception e) {
             Log.w(TAG, "Failed to build JSON for open-session event", e);
             return;
         }
+        // Store as pending navigation for cold-start fallback
         if (MainActivity.instance != null) {
+            try {
+                MainActivity.instance.pendingNavigation = new org.json.JSONObject(jsArg);
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to store pending navigation", e);
+            }
             MainActivity.instance.runOnUiThread(() -> {
                 if (MainActivity.instance.webView != null) {
                     MainActivity.instance.webView.evaluateJavascript(
