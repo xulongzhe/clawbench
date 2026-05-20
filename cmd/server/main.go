@@ -232,10 +232,7 @@ func main() {
 			os.Exit(1)
 		}
 		if cfg.TTS.API.Format == "anthropic" {
-			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-			if cfg.TTS.SummarizeModel != "" {
-				s.Model = cfg.TTS.SummarizeModel
-			}
+			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.SummarizeModel)
 			ttsSummarizer = s
 			slog.Info("tts summarizer configured",
 				slog.String("backend", "api"),
@@ -243,10 +240,7 @@ func main() {
 				slog.String("model", s.Model),
 			)
 		} else {
-			s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-			if cfg.TTS.SummarizeModel != "" {
-				s.Model = cfg.TTS.SummarizeModel
-			}
+			s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.SummarizeModel)
 			ttsSummarizer = s
 			slog.Info("tts summarizer configured",
 				slog.String("backend", "api"),
@@ -752,10 +746,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 		// For API backends, create OpenAI/Anthropic summarizer and wrap its pass function
 		// in a pipeline with PreserveMarkdown=true and task-specific prompt.
 		if cfg.TTS.API.Format == "anthropic" {
-			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-			if modelName != "" {
-				s.Model = modelName
-			}
+			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, modelName)
 			pipeline := summarize.NewPipelineWithOpts(
 				s.DoSummarizePass,
 				summarize.TaskSummarizePrompt(),
@@ -763,10 +754,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 			)
 			return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 		}
-		s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-		if modelName != "" {
-			s.Model = modelName
-		}
+		s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, modelName)
 		pipeline := summarize.NewPipelineWithOpts(
 			s.DoSummarizePass,
 			summarize.TaskSummarizePrompt(),

@@ -139,8 +139,6 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.apiFormatOpenai', value: 'openai' },
       { labelKey: 'settings.items.apiFormatAnthropic', value: 'anthropic' },
     ]},
-    { labelKey: 'settings.items.apiModel', descriptionKey: 'settings.items.apiModelDesc', key: 'tts.api.model', type: 'text', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
     // Cache
     { labelKey: 'settings.items.ttsMaxCacheFiles', descriptionKey: 'settings.items.ttsMaxCacheFilesDesc', key: 'tts.max_cache_files', type: 'number', source: 'server',
       sectionHeader: 'settings.items.ttsCacheHeader' },

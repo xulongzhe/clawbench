@@ -131,7 +131,6 @@ type configAPI struct {
 	BaseURL string `json:"base_url"`
 	Key     string `json:"key"`
 	Format  string `json:"format"`
-	Model   string `json:"model"`
 }
 
 type configRAG struct {
@@ -201,7 +200,6 @@ var PatchableConfigPaths = map[string]bool{
 	"tts.api.base_url":            true,
 	"tts.api.key":                  true,
 	"tts.api.format":              true,
-	"tts.api.model":               true,
 	"rag.base_url":              true,
 	"rag.model":                 true,
 	"rag.api_key":               true,
@@ -395,7 +393,6 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 			BaseURL: cfg.TTS.API.BaseURL,
 			Key:     maskAPIKey(cfg.TTS.API.Key),
 			Format:  cfg.TTS.API.Format,
-			Model:   cfg.TTS.API.Model,
 		}
 	}
 
@@ -829,9 +826,6 @@ func applyConfigPatch(patch map[string]any) error {
 			}
 			if v, ok := api["format"].(string); ok {
 				cfg.TTS.API.Format = v
-			}
-			if v, ok := api["model"].(string); ok {
-				cfg.TTS.API.Model = v
 			}
 		}
 	}

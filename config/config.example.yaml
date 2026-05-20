@@ -172,11 +172,11 @@ tts:
   # --- 组合5: API总结（OpenAI兼容格式，如 DeepSeek、Groq、Ollama） ---
   # engine: "edge"
   # summarize_backend: "api"
+  # summarize_model: "gpt-4o-mini"                          # Model name (leave empty for default) / 模型名称（留空使用默认）
   # api:
   #   base_url: "https://api.openai.com/v1/chat/completions"  # Full endpoint URL / 完整端点URL
   #   key: "sk-xxx"                                         # API key / API密钥
   #   format: "openai"                                      # "openai" (default) or "anthropic" / "openai"（默认）或 "anthropic"
-  #   model: "gpt-4o-mini"                                  # Model name / 模型名称
   # voice: "zh-CN-XiaoxiaoNeural"
   # speed: 1
 
@@ -184,11 +184,11 @@ tts:
   # --- 组合6: API总结（Anthropic格式） ---
   # engine: "edge"
   # summarize_backend: "api"
+  # summarize_model: "claude-3-5-haiku-latest"               # Model name (leave empty for default) / 模型名称（留空使用默认）
   # api:
   #   base_url: "https://api.anthropic.com/v1/messages"
   #   key: "sk-ant-xxx"
   #   format: "anthropic"
-  #   model: "claude-3-5-haiku-latest"
   # voice: "zh-CN-XiaoxiaoNeural"
   # speed: 1
 

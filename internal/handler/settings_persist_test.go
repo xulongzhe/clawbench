@@ -443,16 +443,6 @@ func TestPersist_APIFormat(t *testing.T) {
 	assert.Equal(t, "anthropic", getNestedValue(cfg, "tts.api.format"))
 }
 
-func TestPersist_APIModel(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"tts":{"api":{"model":"claude-3-5-haiku"}}}`)
-	assert.Equal(t, "claude-3-5-haiku", getNestedValue(cfg, "tts.api.model"))
-}
-
 // ─── RAG section ──────────────────────────────────────
 
 func TestPersist_RAGSearchPoolSize(t *testing.T) {

@@ -906,8 +906,6 @@ export default {
       apiFormatDesc: 'API 请求的协议格式',
       apiFormatOpenai: 'OpenAI',
       apiFormatAnthropic: 'Anthropic',
-      apiModel: '模型名称',
-      apiModelDesc: 'API 摘要服务使用的模型名称',
       tasksSummarizeBackend: '摘要后端',
       tasksSummarizeBackendDesc: '定时任务执行结果的摘要处理方式',
       tasksSummarizeModel: '摘要模型',

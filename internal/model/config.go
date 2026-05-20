@@ -127,7 +127,6 @@ type APIConfig struct {
 	BaseURL string `yaml:"base_url"` // Full endpoint URL (e.g., "https://api.openai.com/v1/chat/completions")
 	Key     string `yaml:"key"`      // API key (sent as Bearer token for OpenAI, x-api-key for Anthropic)
 	Format  string `yaml:"format"`   // API format: "openai" (default) or "anthropic"
-	Model   string `yaml:"model"`    // Model name (default: "gpt-4o-mini" for openai, "claude-3-5-haiku-latest" for anthropic)
 }
 
 // ConfigInstance holds the resolved configuration after ApplyDefaults.

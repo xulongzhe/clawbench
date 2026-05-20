@@ -37,7 +37,7 @@ rag:
 session:
     max_count: 20
 tasks:
-    summarize_backend: api
+    summarize_backend: codebuddy
     summarize_model: codebuddy-latest
 terminal:
     buffer_lines: 0
@@ -52,10 +52,9 @@ tls:
     key_file: ""
 tts:
     api:
-        base_url: https://api.openai.com/v1
+        base_url: https://api.example.com/v1/chat
         format: openai
         key: sk-1234567890abcdef
-        model: gpt-4o-mini
     engine: moss-nano
     format: ""
     inline_code_max_len: 0
@@ -77,7 +76,7 @@ tts:
         sentence_silence: 0.3
     speed: 0
     summarize_backend: api
-    summarize_model: ""
+    summarize_model: gpt-4o-mini
     tts_model: ""
     voice: ""
 upload:

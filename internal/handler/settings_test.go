@@ -225,7 +225,7 @@ func TestServeConfig_Get_ConditionalAPISubConfig(t *testing.T) {
 	cfg.TTS.API.BaseURL = "https://api.openai.com/v1/chat/completions"
 	cfg.TTS.API.Key = "sk-1234567890abcdefghijklmnopqrstuvwxyz"
 	cfg.TTS.API.Format = "openai"
-	cfg.TTS.API.Model = "gpt-4o-mini"
+	cfg.TTS.SummarizeModel = "gpt-4o-mini"
 	model.ConfigInstance = cfg
 
 	req := newRequest(t, http.MethodGet, "/api/config", nil)
@@ -248,7 +248,6 @@ func TestServeConfig_Get_ConditionalAPISubConfig(t *testing.T) {
 	// Verify mask format: first 4 + *** + last 3
 	assert.Equal(t, "sk-1***xyz", api["key"])
 	assert.Equal(t, "openai", api["format"])
-	assert.Equal(t, "gpt-4o-mini", api["model"])
 }
 
 func TestServeConfig_Get_APIMaskShortKey(t *testing.T) {
@@ -376,7 +375,7 @@ func TestServeConfig_Patch_APISubConfig(t *testing.T) {
 	cfg := model.Config{}
 	model.ConfigInstance = cfg
 
-	body := `{"tts":{"api":{"base_url":"https://api.example.com/v1/chat","format":"openai","model":"gpt-4o-mini"}}}`
+	body := `{"tts":{"summarize_model":"gpt-4o-mini","api":{"base_url":"https://api.example.com/v1/chat","format":"openai"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -385,7 +384,7 @@ func TestServeConfig_Patch_APISubConfig(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "https://api.example.com/v1/chat", model.ConfigInstance.TTS.API.BaseURL)
 	assert.Equal(t, "openai", model.ConfigInstance.TTS.API.Format)
-	assert.Equal(t, "gpt-4o-mini", model.ConfigInstance.TTS.API.Model)
+	assert.Equal(t, "gpt-4o-mini", model.ConfigInstance.TTS.SummarizeModel)
 }
 
 func TestServeConfig_Patch_APIKeyMasked(t *testing.T) {

@@ -906,8 +906,6 @@ export default {
       apiFormatDesc: 'Protocol format for API requests',
       apiFormatOpenai: 'OpenAI',
       apiFormatAnthropic: 'Anthropic',
-      apiModel: 'Model Name',
-      apiModelDesc: 'Model name used by the API summarization service',
       tasksSummarizeBackend: 'Summarization Backend',
       tasksSummarizeBackendDesc: 'How to summarize scheduled task execution results',
       tasksSummarizeModel: 'Summarization Model',
