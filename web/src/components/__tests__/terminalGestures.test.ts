@@ -455,4 +455,48 @@ describe('useTerminalGestures — uncovered branches', () => {
     dispatchTouch(el, 'touchmove', [makeTouch(84, 160)])
     expect(scrollDeltas).toEqual([40]) // no new scroll delta
   })
+
+  it('stops repeat interval that is already running when touchend fires', () => {
+    vi.useFakeTimers()
+    const { el, sent } = setupGestures()
+
+    dispatchTouch(el, 'touchstart', [makeTouch(60, 60)])
+    dispatchTouch(el, 'touchmove', [makeTouch(120, 60)])
+    expect(sent).toEqual(['right'])
+
+    // Wait for repeat timer to fire → creates the interval
+    vi.advanceTimersByTime(500)
+    // Let the interval fire once to confirm it's active
+    vi.advanceTimersByTime(150)
+    expect(sent.length).toBe(2)
+
+    // Now release — stopRepeat should clear the active interval
+    dispatchTouch(el, 'touchend', [], [makeTouch(120, 60)])
+
+    // Advance past another repeat cycle — no more arrows should be sent
+    vi.advanceTimersByTime(300)
+    expect(sent.length).toBe(2) // no additional sends after release
+  })
+
+  it('changes direction during hold-to-repeat', () => {
+    vi.useFakeTimers()
+    const { el, sent, hints } = setupGestures()
+
+    dispatchTouch(el, 'touchstart', [makeTouch(60, 60)])
+    // Start swiping right
+    dispatchTouch(el, 'touchmove', [makeTouch(120, 60)])
+    expect(sent).toEqual(['right'])
+    expect(hints).toEqual(['→'])
+
+    // Change direction to down — should stop old repeat, start new one
+    dispatchTouch(el, 'touchmove', [makeTouch(120, 120)])
+    expect(sent).toEqual(['right', 'down'])
+    expect(hints).toEqual(['→', '↓'])
+
+    // The new direction repeat should be active
+    vi.advanceTimersByTime(500)
+    vi.advanceTimersByTime(150)
+    expect(sent.length).toBe(3)
+    expect(sent[2]).toBe('down')
+  })
 })
