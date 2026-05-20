@@ -130,19 +130,28 @@ const sessionsWithStatus = computed(() => {
   void runningSessionsVersion.value
   return sessions.value.map(s => ({
     ...s,
-    // A session is running if either the WS-event-driven set or the API response says so.
-    // The set updates in real time via WS events; the API field is the source of truth
-    // when the drawer is opened (loadSessions fetches fresh data).
-    running: props.runningSessionIds.has(s.id) || !!s.running
+    // WS-maintained runningSessionIds is the authoritative source of truth.
+    // It is initialized from API on app start (loadSessionsOnce) and updated
+    // in real-time via WS session_update events. The API snapshot s.running
+    // is stale once the drawer is open — do NOT fall back to it.
+    running: props.runningSessionIds.has(s.id)
   }))
 })
 
-defineExpose({ loadSessions, openAgentSelector })
+// Whether the cached session list needs a full reload on next open.
+// Set after create/delete operations that change the list composition.
+let stale = true
+
+/** Mark cached session list as stale so the next open triggers a full reload. */
+function invalidate() { stale = true }
+
+defineExpose({ loadSessions, openAgentSelector, invalidate })
 
 async function openAgentSelector() {
   await loadAgents()
   // If only one agent exists, skip the selector and create directly
   if (agents.value.length === 1) {
+    stale = true
     emit('create', agents.value[0].id)
     bottomSheetRef.value?.close()
     return
@@ -155,6 +164,7 @@ async function handleCreateClick() {
   await loadAgents()
   // If only one agent exists, skip the selector and create directly
   if (agents.value.length === 1) {
+    stale = true
     emit('create', agents.value[0].id)
     bottomSheetRef.value?.close()
     return
@@ -176,6 +186,7 @@ async function loadSessions() {
     sessions.value = []
   } finally {
     loading.value = false
+    stale = false
     await nextTick()
     setupObserver()
   }
@@ -227,6 +238,8 @@ function createSession(agentId) {
   // from touch events that propagate to the newly rendered dialog
   if (Date.now() - agentSelectorOpenTime < 400) return
   showAgentSelector.value = false
+  // New session will be added to the list — mark stale so next open refreshes
+  stale = true
   emit('create', agentId)
   bottomSheetRef.value?.close()
 }
@@ -234,14 +247,20 @@ function createSession(agentId) {
 async function deleteSession(sessionId) {
   if (!await dialog.confirm(t('session.confirmDelete'), { dangerous: true })) return
   const session = sessions.value.find(s => s.id === sessionId)
+  // Optimistic removal from local list — no need for a full API reload
+  sessions.value = sessions.value.filter(s => s.id !== sessionId)
   emit('delete', sessionId, session?.backend)
-  // Reload list after a short delay to let the delete API complete (resets pagination)
-  setTimeout(() => loadSessions(), 300)
 }
 
 watch(() => props.open, async (val) => {
   if (val) {
-    await Promise.all([loadSessions(), loadAgents()])
+    if (stale || sessions.value.length === 0) {
+      // First open or after cache invalidation (create/delete) — load from API
+      await Promise.all([loadSessions(), loadAgents()])
+    } else {
+      // Subsequent opens — reuse cached list, running status comes from WS
+      await loadAgents()
+    }
   }
 })
 
@@ -264,10 +283,20 @@ onUnmounted(() => {
   flex: 1;
 }
 
-.session-loading,
+.session-loading {
+  min-height: 40vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #999);
+  font-size: 13px;
+}
+
 .session-empty {
-  padding: 24px 12px;
-  text-align: center;
+  min-height: 40vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted, #999);
   font-size: 13px;
 }

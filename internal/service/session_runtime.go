@@ -38,9 +38,15 @@ func emitSessionEvent(sessionID, status string, hasNewMessages bool) {
 		HasNewMessages: hasNewMessages,
 	}
 
-	// On completion, include a preview of the AI's final reply
-	if status == "completed" {
-		data.ResponsePreview = getSessionResponsePreview(sessionID)
+	// On completion, include session title for push notification
+	if status == "completed" || status == "cancelled" {
+		if title, err := GetSessionTitle(sessionID); err == nil && title != "" {
+			data.SessionTitle = title
+		}
+		// Also include response preview for other consumers
+		if status == "completed" {
+			data.ResponsePreview = getSessionResponsePreview(sessionID)
+		}
 	}
 
 	mgr.BroadcastEvent(ws.ServerMessage{
