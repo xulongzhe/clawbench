@@ -15,6 +15,7 @@ import (
 	"clawbench/internal/ws"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	_ "modernc.org/sqlite"
 )
@@ -620,6 +621,13 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 	insertTestMessage(t, db, "session-emit-1", "user", "问题")
 	insertTestMessage(t, db, "session-emit-1", "assistant", string(contentJSON))
 
+	// Insert a session row so GetSessionProjectPath can look it up
+	_, err := db.Exec("CREATE TABLE IF NOT EXISTS chat_sessions (id TEXT PRIMARY KEY, project_path TEXT, backend TEXT, title TEXT)")
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES (?, ?, ?, ?)",
+		"session-emit-1", "/home/user/test-project", "codebuddy", "Test Session")
+	require.NoError(t, err)
+
 	// Set up ws manager and a subscriber to capture the event
 	mgr := ws.NewManagerForTest(nil)
 	ws.SetManagerForTest(mgr)
@@ -643,9 +651,15 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 	assert.Equal(t, "completed", data.Status)
 	assert.Equal(t, "session-emit-1", data.SessionID)
 	assert.Equal(t, "AI完成了任务", data.ResponsePreview)
+	assert.Equal(t, "/home/user/test-project", data.ProjectPath)
 }
 
 func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
 	mgr := ws.NewManagerForTest(nil)
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)

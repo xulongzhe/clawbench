@@ -84,7 +84,7 @@ func TestClientMessageJSON(t *testing.T) {
 
 func TestDataTypesJSON(t *testing.T) {
 	t.Run("SessionUpdateData", func(t *testing.T) {
-		d := SessionUpdateData{SessionID: "s1", Status: "running", HasNewMessages: true}
+		d := SessionUpdateData{SessionID: "s1", Status: "running", HasNewMessages: true, ProjectPath: "/home/user/project"}
 		data, err := json.Marshal(d)
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
@@ -93,8 +93,19 @@ func TestDataTypesJSON(t *testing.T) {
 		if err := json.Unmarshal(data, &decoded); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		if decoded.SessionID != "s1" || decoded.Status != "running" || !decoded.HasNewMessages {
+		if decoded.SessionID != "s1" || decoded.Status != "running" || !decoded.HasNewMessages || decoded.ProjectPath != "/home/user/project" {
 			t.Errorf("roundtrip failed: %+v", decoded)
+		}
+	})
+
+	t.Run("SessionUpdateData_empty_project_path", func(t *testing.T) {
+		d := SessionUpdateData{SessionID: "s1", Status: "running", HasNewMessages: true}
+		data, err := json.Marshal(d)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if strings.Contains(string(data), "project_path") {
+			t.Errorf("expected project_path to be omitted when empty, got %s", data)
 		}
 	})
 

@@ -22,6 +22,7 @@ type SessionUpdateData struct {
 	HasNewMessages bool   `json:"has_new_messages"`
 	ResponsePreview string `json:"response_preview,omitempty"` // preview of AI's final reply (completed only)
 	SessionTitle    string `json:"session_title,omitempty"`    // session title for push notification
+	ProjectPath     string `json:"project_path,omitempty"`
 }
 
 // TaskUpdateData is the data payload for "task_update" events.

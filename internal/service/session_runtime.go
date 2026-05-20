@@ -55,6 +55,8 @@ func EmitSessionEvent(sessionID, status string, hasNewMessages bool) {
 		}
 	}
 
+	data.ProjectPath = GetSessionProjectPath(sessionID)
+
 	mgr.BroadcastEvent(ws.ServerMessage{
 		Type:  "event",
 		ID:    ws.GenerateEventID(),
