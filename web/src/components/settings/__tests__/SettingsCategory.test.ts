@@ -126,7 +126,7 @@ const i18n = createI18n({
           tasksSummarizeDisabled: '禁用',
           tasksHeader: '定时任务',
           ragSearchPoolSize: '搜索池大小',
-          ragOllamaUrl: 'Ollama地址',
+          ragOllamaUrl: '嵌入接口地址',
           portForwardEnabled: '启用 SSH 隧道',
           portForwardPort: 'SSH 隧道端口',
           portForwardAllowedPorts: '允许的端口范围',
@@ -149,7 +149,7 @@ const i18n = createI18n({
           fileViewGrid: '网格',
           uploadMaxSize: '上传大小上限',
           uploadMaxFiles: '上传文件上限',
-          ragOllamaUrl: 'Ollama地址',
+          ragOllamaUrl: '嵌入接口地址',
           ragOllamaModel: '嵌入模型',
           ragChunkSize: '分块大小',
           ragSearchLimit: '搜索限制',
@@ -461,7 +461,7 @@ describe('SettingsCategory', () => {
     it('PATCHes rag.ollama_base_url when changed', async () => {
       const wrapper = mountCategory('rag')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === 'Ollama地址')
+      const item = allItems.find(i => i.props().label === '嵌入接口地址')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', 'http://ollama:11434')
