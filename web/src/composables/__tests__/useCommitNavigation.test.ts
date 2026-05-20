@@ -12,6 +12,8 @@ import {
   useCommitNavigation,
   setPendingCommitNavigation,
   consumePendingCommitNavigation,
+  setPendingManageNavigation,
+  consumePendingManageNavigation,
   _resetPendingShaForTesting,
   pendingSha,
 } from '@/composables/useCommitNavigation'
@@ -93,6 +95,31 @@ describe('pending SHA (module-level)', () => {
     setPendingCommitNavigation('abc1234')
     _resetPendingShaForTesting()
     expect(pendingSha.value).toBeNull()
+  })
+})
+
+// ─── Module-level pending manage navigation ─────────────────────────────────
+
+describe('pending manage navigation (module-level)', () => {
+  it('setPendingManageNavigation sets the value to true', () => {
+    setPendingManageNavigation()
+    expect(consumePendingManageNavigation()).toBe(true)
+  })
+
+  it('consumePendingManageNavigation returns false when nothing is pending', () => {
+    expect(consumePendingManageNavigation()).toBe(false)
+  })
+
+  it('consumePendingManageNavigation is destructive — second call returns false', () => {
+    setPendingManageNavigation()
+    expect(consumePendingManageNavigation()).toBe(true)
+    expect(consumePendingManageNavigation()).toBe(false)
+  })
+
+  it('_resetPendingShaForTesting clears manage navigation too', () => {
+    setPendingManageNavigation()
+    _resetPendingShaForTesting()
+    expect(consumePendingManageNavigation()).toBe(false)
   })
 })
 

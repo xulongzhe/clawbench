@@ -334,3 +334,192 @@ func TestApplyDefaultsPasswordExplicitRemovesFile(t *testing.T) {
 		t.Error("auto-password file should be removed when user sets password explicitly")
 	}
 }
+
+func TestApplyDefaults_DevPortWithTLS(t *testing.T) {
+	setupTestBinDir(t)
+
+	// When DevPort is 0 and TLS is enabled, DevPort should be Port+2
+	cfg := Config{TLS: struct {
+		Enabled  bool   `yaml:"enabled"`
+		CertFile string `yaml:"cert_file"`
+		KeyFile  string `yaml:"key_file"`
+	}{Enabled: true}}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.DevPort != cfg.Port+2 {
+		t.Errorf("DevPort = %d, want %d (Port+2 when TLS enabled)", cfg.DevPort, cfg.Port+2)
+	}
+}
+
+func TestApplyDefaults_DevPortNegative1Disables(t *testing.T) {
+	setupTestBinDir(t)
+
+	// DevPort = -1 should be preserved (explicitly disabled)
+	cfg := Config{DevPort: -1}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.DevPort != -1 {
+		t.Errorf("DevPort = %d, want -1 (explicitly disabled)", cfg.DevPort)
+	}
+}
+
+func TestApplyDefaults_DevPortZeroNoTLS(t *testing.T) {
+	setupTestBinDir(t)
+
+	// DevPort = 0 without TLS should stay 0 (disabled)
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.DevPort != 0 {
+		t.Errorf("DevPort = %d, want 0 (disabled without TLS)", cfg.DevPort)
+	}
+}
+
+func TestApplyDefaults_TerminalPresenceFalse(t *testing.T) {
+	setupTestBinDir(t)
+
+	// When terminal.enabled is NOT in presence, should default to true
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if !cfg.Terminal.Enabled {
+		t.Error("Terminal.Enabled should default to true when absent from config")
+	}
+}
+
+func TestApplyDefaults_TerminalPresenceExplicit(t *testing.T) {
+	setupTestBinDir(t)
+
+	// When terminal.enabled IS in presence and set to false, should stay false
+	cfg := Config{}
+	presence := map[string]bool{"terminal.enabled": true}
+	cfg.Terminal.Enabled = false
+	ApplyDefaults(&cfg, presence)
+
+	if cfg.Terminal.Enabled {
+		t.Error("Terminal.Enabled should stay false when explicitly set")
+	}
+}
+
+func TestApplyDefaults_TerminalDefaults(t *testing.T) {
+	setupTestBinDir(t)
+
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.Terminal.IdleTimeout != "10m" {
+		t.Errorf("Terminal.IdleTimeout = %q, want %q", cfg.Terminal.IdleTimeout, "10m")
+	}
+	if cfg.Terminal.BufferLines != 2000 {
+		t.Errorf("Terminal.BufferLines = %d, want 2000", cfg.Terminal.BufferLines)
+	}
+	if cfg.Terminal.MaxLineBytes != 65536 {
+		t.Errorf("Terminal.MaxLineBytes = %d, want 65536", cfg.Terminal.MaxLineBytes)
+	}
+	if cfg.Terminal.MaxBufferMB != 4 {
+		t.Errorf("Terminal.MaxBufferMB = %d, want 4", cfg.Terminal.MaxBufferMB)
+	}
+	if cfg.Terminal.MaxSessions != 10 {
+		t.Errorf("Terminal.MaxSessions = %d, want 10", cfg.Terminal.MaxSessions)
+	}
+}
+
+func TestApplyDefaults_RAGDefaults(t *testing.T) {
+	setupTestBinDir(t)
+
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.RAG.BaseURL != "http://localhost:11434" {
+		t.Errorf("RAG.BaseURL = %q, want %q", cfg.RAG.BaseURL, "http://localhost:11434")
+	}
+	if cfg.RAG.Model != "bge-m3" {
+		t.Errorf("RAG.Model = %q, want %q", cfg.RAG.Model, "bge-m3")
+	}
+	if cfg.RAG.ChunkSize != 512 {
+		t.Errorf("RAG.ChunkSize = %d, want 512", cfg.RAG.ChunkSize)
+	}
+	if cfg.RAG.ChunkOverlap != 64 {
+		t.Errorf("RAG.ChunkOverlap = %d, want 64", cfg.RAG.ChunkOverlap)
+	}
+	if cfg.RAG.PollInterval != "10s" {
+		t.Errorf("RAG.PollInterval = %q, want %q", cfg.RAG.PollInterval, "10s")
+	}
+	if cfg.RAG.BatchSize != 10 {
+		t.Errorf("RAG.BatchSize = %d, want 10", cfg.RAG.BatchSize)
+	}
+	if cfg.RAG.SearchLimit != 5 {
+		t.Errorf("RAG.SearchLimit = %d, want 5", cfg.RAG.SearchLimit)
+	}
+	if cfg.RAG.RetentionDays != 90 {
+		t.Errorf("RAG.RetentionDays = %d, want 90", cfg.RAG.RetentionDays)
+	}
+}
+
+func TestApplyDefaults_RAGOllamaMigration(t *testing.T) {
+	setupTestBinDir(t)
+
+	// When Ollama fields are set but new fields are empty, should migrate
+	cfg := Config{}
+	cfg.RAG.OllamaBaseURL = "http://old-ollama:11434"
+	cfg.RAG.OllamaModel = "old-model"
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.RAG.BaseURL != "http://old-ollama:11434" {
+		t.Errorf("RAG.BaseURL = %q, want %q (migrated from OllamaBaseURL)", cfg.RAG.BaseURL, "http://old-ollama:11434")
+	}
+	if cfg.RAG.Model != "old-model" {
+		t.Errorf("RAG.Model = %q, want %q (migrated from OllamaModel)", cfg.RAG.Model, "old-model")
+	}
+}
+
+func TestApplyDefaults_ChatSessionPageSize(t *testing.T) {
+	setupTestBinDir(t)
+
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.Chat.SessionPageSize != 10 {
+		t.Errorf("Chat.SessionPageSize = %d, want 10", cfg.Chat.SessionPageSize)
+	}
+	if cfg.Chat.SystemPromptInterval != 10 {
+		t.Errorf("Chat.SystemPromptInterval = %d, want 10", cfg.Chat.SystemPromptInterval)
+	}
+}
+
+func TestApplyDefaults_TTSCacheFiles(t *testing.T) {
+	setupTestBinDir(t)
+
+	// MaxCacheFiles = 0 should default to 100
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.TTS.MaxCacheFiles != 100 {
+		t.Errorf("TTS.MaxCacheFiles = %d, want 100", cfg.TTS.MaxCacheFiles)
+	}
+}
+
+func TestApplyDefaults_TTSInlineCodeMaxLen(t *testing.T) {
+	setupTestBinDir(t)
+
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.TTS.InlineCodeMaxLen != 100 {
+		t.Errorf("TTS.InlineCodeMaxLen = %d, want 100", cfg.TTS.InlineCodeMaxLen)
+	}
+	if cfg.TTS.MaxSummarizeRunes != 10000 {
+		t.Errorf("TTS.MaxSummarizeRunes = %d, want 10000", cfg.TTS.MaxSummarizeRunes)
+	}
+}
+
+func TestApplyDefaults_PortForwardHostKey(t *testing.T) {
+	setupTestBinDir(t)
+
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.PortForward.HostKey == "" {
+		t.Error("PortForward.HostKey should have a default value")
+	}
+}

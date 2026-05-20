@@ -246,21 +246,110 @@ func TestIsHealthy_InvalidJSON(t *testing.T) {
 
 // ---------- Dim ----------
 
-func TestDim_AutoDetected(t *testing.T) {
+func TestEmbed_NoResultsFromBatch(t *testing.T) {
+	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		// Return empty data array
+		resp := openaiEmbedResponse{Data: []openaiEmbeddingData{}}
+		json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+
+	_, err := client.Embed(context.Background(), "hello")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty data")
+}
+
+func TestEmbedBatch_OutOfRangeIndex(t *testing.T) {
 	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
 		resp := openaiEmbedResponse{
 			Data: []openaiEmbeddingData{
-				{Embedding: makeTestEmbedding(768), Index: 0},
+				{Embedding: makeTestEmbedding(4), Index: 99}, // out of range
 			},
 		}
 		json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
-	assert.Equal(t, 0, client.Dim(), "dim should be 0 before first embed")
+	_, err := client.EmbedBatch(context.Background(), []string{"hello"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "out-of-range index")
+}
 
-	_, err := client.Embed(context.Background(), "test")
-	require.NoError(t, err)
+func TestEmbedBatch_WithAPIKey(t *testing.T) {
+	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		resp := openaiEmbedResponse{
+			Data: []openaiEmbeddingData{
+				{Embedding: makeTestEmbedding(4), Index: 0},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+	client.APIKey = "test-key"
 
-	assert.Equal(t, 768, client.Dim(), "dim should be auto-detected after first embed")
+	_, err := client.EmbedBatch(context.Background(), []string{"hello"})
+	assert.NoError(t, err)
+}
+
+func TestIsHealthy_WithAPIKey(t *testing.T) {
+	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		resp := openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}}
+		json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+	client.APIKey = "test-key"
+
+	reachable, modelAvailable, err := client.IsHealthy(context.Background())
+	assert.NoError(t, err)
+	assert.True(t, reachable)
+	assert.True(t, modelAvailable)
+}
+
+func TestIsHealthy_RequestCreationError(t *testing.T) {
+	// Use an invalid URL that causes NewRequestWithContext to fail
+	client := NewEmbeddingClient("http://localhost:11434", "bge-m3", "")
+	// Cancel context immediately to force request error
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	reachable, modelAvailable, err := client.IsHealthy(ctx)
+	// Cancelled context causes Do() error, which returns (false, false, nil)
+	assert.NoError(t, err)
+	assert.False(t, reachable)
+	assert.False(t, modelAvailable)
+}
+
+func TestDim_Initial(t *testing.T) {
+	client := NewEmbeddingClient("http://localhost:11434", "bge-m3", "")
+	assert.Equal(t, 0, client.Dim(), "dim should be 0 before any embed call")
+}
+
+func TestEmbedBatch_EmptyEmbeddingAtIndex(t *testing.T) {
+	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		resp := openaiEmbedResponse{
+			Data: []openaiEmbeddingData{
+				{Embedding: []float64{}, Index: 0}, // empty embedding at valid index
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+
+	_, err := client.EmbedBatch(context.Background(), []string{"hello"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty embedding at index")
+}
+
+func TestEmbedBatch_EmptyData(t *testing.T) {
+	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
+		resp := openaiEmbedResponse{Data: []openaiEmbeddingData{}}
+		json.NewEncoder(w).Encode(resp)
+	})
+	defer cleanup()
+
+	_, err := client.EmbedBatch(context.Background(), []string{"hello"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty data")
 }

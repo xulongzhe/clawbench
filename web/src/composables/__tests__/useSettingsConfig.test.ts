@@ -26,7 +26,7 @@ const mockedApiPost = vi.mocked(apiPost)
 
 describe('useSettingsConfig', () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
   })
 
   it('loads config from API', async () => {
@@ -51,6 +51,13 @@ describe('useSettingsConfig', () => {
     const result = await patchConfig({ ssh: { enabled: false } })
 
     expect(mockedApiPatch).toHaveBeenCalledWith('/api/config', { ssh: { enabled: false } })
+    // Log the actual result for CI debugging
+    if (result.needsRestart !== true) {
+      console.log('DEBUG patchConfig result:', JSON.stringify(result))
+      // Try reading the raw API response
+      const rawCall = mockedApiPatch.mock.results[0]
+      console.log('DEBUG raw mock result:', JSON.stringify(rawCall?.value))
+    }
     expect(result.needsRestart).toBe(true)
     expect(result.changedColdFields).toEqual(['ssh.enabled'])
   })

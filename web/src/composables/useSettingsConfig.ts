@@ -284,14 +284,14 @@ export function useSettingsConfig() {
   }
 
   async function patchConfig(changes: Record<string, any>): Promise<{ needsRestart: boolean; changedColdFields: string[] }> {
-    const result = await apiPatch<{ needsRestart?: boolean; changedColdFields?: string[] }>('/api/config', changes)
+    const result = await apiPatch<{ needs_restart?: boolean; changed_cold_fields?: string[] }>('/api/config', changes)
     // Deep-merge patched values into local cache after successful response.
     // Using Object.assign would overwrite nested objects (e.g. {chat: {collapsed_height: 300}}
     // would lose the existing page_size), so we deep-merge instead.
     deepAssign(serverConfig.value, changes)
     return {
-      needsRestart: result.needsRestart ?? false,
-      changedColdFields: result.changedColdFields ?? [],
+      needsRestart: result.needs_restart ?? false,
+      changedColdFields: result.changed_cold_fields ?? [],
     }
   }
 
