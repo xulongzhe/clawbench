@@ -880,6 +880,7 @@ export default {
     restartConfirmMessage: '以下配置变更需要重启服务器才能生效：',
     restartNow: '立即重启',
     restartLater: '稍后',
+    saveFailed: '保存失败',
   },
   terminal: {
     title: '终端',

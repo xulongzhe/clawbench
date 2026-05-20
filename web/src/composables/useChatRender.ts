@@ -6,7 +6,7 @@ import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useCommitHashAnnotation } from '@/composables/useCommitHashAnnotation.ts'
 import { useLocalhostAnnotation } from '@/composables/useLocalhostAnnotation.ts'
 import { store } from '@/stores/app.ts'
-import { apiGet } from '@/utils/api.ts'
+import { apiGet } from '@/utils/api'
 import { createTaskBlockStore } from '@/utils/taskBlockStore.ts'
 import {
   extractScheduledTaskIds,

@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { useAgents } from '@/composables/useAgents.ts'
+import { useAgents } from '@/composables/useAgents'
 import { gt } from '@/composables/useLocale'
 
 // ───────────────────────────────────────────────────────────

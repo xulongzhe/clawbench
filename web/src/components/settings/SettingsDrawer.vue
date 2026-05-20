@@ -29,10 +29,19 @@
     <template #footer>
       <button class="settings-restart-btn" :class="{ 'settings-restart-btn--pending': needsRestart }" :disabled="restarting" @click="handleRestart">
         <RefreshCw :size="14" class="settings-restart-btn__icon" :class="{ 'settings-restart-btn__icon--spin': restarting }" />
-        <span>{{ restarting ? '重启中…' : (needsRestart ? '重启生效' : '重启服务器') }}</span>
+        <span>{{ restarting ? t('settings.restarting') : (needsRestart ? t('settings.restartPending') : t('settings.restartServer')) }}</span>
       </button>
     </template>
   </BottomSheet>
+  <!-- Restart loading overlay (same as SettingsPage) -->
+  <Teleport to="body">
+    <div v-if="restartingOverlay" class="restart-overlay">
+      <div class="restart-overlay__content">
+        <div class="restart-overlay__spinner"></div>
+        <div class="restart-overlay__text">{{ t('settings.restartingPleaseWait') }}</div>
+      </div>
+    </div>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -42,7 +51,7 @@ import BottomSheet from '@/components/common/BottomSheet.vue'
 import SettingsIndex from './SettingsIndex.vue'
 import SettingsCategory from './SettingsCategory.vue'
 import SettingsRestartDialog from './SettingsRestartDialog.vue'
-import { useSettingsConfig } from '@/composables/useSettingsConfig'
+import { useSettingsNavigation } from '@/composables/useSettingsNavigation'
 
 const props = defineProps<{
   open: boolean
@@ -52,77 +61,30 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const { loadConfig, restartServer } = useSettingsConfig()
+const {
+  t, loadConfig,
+  navStack, currentCategory, pushNav, popNav, resetState,
+  restartDialogVisible, changedColdFields, needsRestart,
+  restarting, restartingOverlay,
+  handleRestartNeeded, handleRestart,
+} = useSettingsNavigation()
 
 const bottomSheetRef = ref<InstanceType<typeof BottomSheet> | null>(null)
-const navStack = ref<string[]>([])
-const restartDialogVisible = ref(false)
-const changedColdFields = ref<string[]>([])
-const needsRestart = ref(false)
-const restarting = ref(false)
-
-const currentCategory = computed(() => {
-  return navStack.value.length > 0 ? navStack.value[navStack.value.length - 1] : null
-})
-
-const categoryLabels: Record<string, string> = {
-  appearance: '外观',
-  chat: '聊天',
-  agents: 'Agent偏好',
-  files: '文件',
-  terminal: '终端',
-  tts: 'TTS语音',
-  rag: 'RAG记忆',
-  network: '网络',
-  android: 'Android',
-  about: '关于',
-}
 
 const headerTitle = computed(() => {
-  if (navStack.value.length === 0) return '设置'
-  return categoryLabels[currentCategory.value!] ?? currentCategory.value!
+  if (navStack.value.length === 0) return t('nav.settings')
+  return currentCategory.value ? t(`settings.categories.${currentCategory.value}`) : ''
 })
-
-function pushNav(categoryId: string) {
-  navStack.value.push(categoryId)
-}
-
-function popNav() {
-  if (navStack.value.length > 0) {
-    navStack.value.pop()
-  }
-}
 
 function handleClose() {
   emit('close')
-}
-
-function handleRestartNeeded(fields: string[]) {
-  changedColdFields.value = fields
-  needsRestart.value = true
-  // Also show the dialog with details
-  restartDialogVisible.value = true
-}
-
-async function handleRestart() {
-  restartDialogVisible.value = false
-  restarting.value = true
-  try {
-    await restartServer()
-    needsRestart.value = false
-  } catch {
-    // Ignore
-  } finally {
-    restarting.value = false
-  }
 }
 
 // Load config and reset state when drawer opens
 watch(() => props.open, (val) => {
   if (val) {
     loadConfig()
-    navStack.value = []
-    needsRestart.value = false
+    resetState()
   }
 })
 </script>
@@ -143,7 +105,7 @@ watch(() => props.open, (val) => {
   height: 28px;
   border: none;
   background: none;
-  color: var(--text-primary, #1a1a1a);
+  color: var(--text-primary);
   cursor: pointer;
   border-radius: 6px;
   padding: 0;
@@ -152,12 +114,12 @@ watch(() => props.open, (val) => {
 
 @media (hover: hover) {
   .settings-back-btn:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: var(--bg-tertiary);
   }
 }
 
 .settings-back-btn:active {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--bg-tertiary);
 }
 
 .settings-close-btn {
@@ -168,7 +130,7 @@ watch(() => props.open, (val) => {
   height: 28px;
   border: none;
   background: none;
-  color: var(--text-secondary, #8e8e93);
+  color: var(--text-secondary);
   cursor: pointer;
   border-radius: 6px;
   padding: 0;
@@ -178,12 +140,12 @@ watch(() => props.open, (val) => {
 
 @media (hover: hover) {
   .settings-close-btn:hover {
-    background: rgba(0, 0, 0, 0.04);
+    background: var(--bg-tertiary);
   }
 }
 
 .settings-close-btn:active {
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--bg-tertiary);
 }
 
 /* Restart footer button */
@@ -196,8 +158,8 @@ watch(() => props.open, (val) => {
   padding: 10px 16px;
   border: none;
   border-radius: 10px;
-  background: var(--bg-tertiary, #e9e9ea);
-  color: var(--text-secondary, #8e8e93);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
@@ -211,31 +173,40 @@ watch(() => props.open, (val) => {
 }
 
 .settings-restart-btn--pending {
-  background: #007aff;
+  background: var(--accent-color);
   color: #fff;
   animation: restart-pulse 2s ease-in-out infinite;
 }
 
 @keyframes restart-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 122, 255, 0.4); }
-  50% { box-shadow: 0 0 12px 4px rgba(0, 122, 255, 0.2); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 144, 217, 0.4); }
+  50% { box-shadow: 0 0 12px 4px rgba(74, 144, 217, 0.2); }
+}
+
+[data-theme="dark"] .settings-restart-btn--pending {
+  animation: restart-pulse-dark 2s ease-in-out infinite;
+}
+
+@keyframes restart-pulse-dark {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.4); }
+  50% { box-shadow: 0 0 12px 4px rgba(88, 166, 255, 0.2); }
 }
 
 @media (hover: hover) {
   .settings-restart-btn:hover:not(:disabled):not(.settings-restart-btn--pending) {
-    background: var(--bg-secondary, #f0f0f0);
+    background: var(--bg-secondary);
   }
   .settings-restart-btn.settings-restart-btn--pending:hover:not(:disabled) {
-    background: #0066d6;
+    background: var(--accent-hover);
   }
 }
 
 .settings-restart-btn:active:not(.settings-restart-btn--pending) {
-  background: var(--bg-secondary, #e0e0e0);
+  background: var(--bg-secondary);
 }
 
 .settings-restart-btn:active.settings-restart-btn--pending:not(:disabled) {
-  background: #005ec2;
+  background: var(--accent-hover);
 }
 
 .settings-restart-btn__icon--spin {
@@ -247,64 +218,43 @@ watch(() => props.open, (val) => {
   to { transform: rotate(360deg); }
 }
 
-/* Dark mode */
-[data-theme="dark"] .settings-back-btn {
-  color: var(--text-primary, #e0e0e0);
+/* Restart loading overlay (same as SettingsPage) */
+.restart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
-@media (hover: hover) {
-  [data-theme="dark"] .settings-back-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
+.restart-overlay__content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 40px 48px;
+  border-radius: 16px;
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-md);
 }
 
-[data-theme="dark"] .settings-back-btn:active {
-  background: rgba(255, 255, 255, 0.1);
+.restart-overlay__spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--accent-color);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
-[data-theme="dark"] .settings-close-btn {
-  color: var(--text-secondary, #8e8e93);
-}
-
-@media (hover: hover) {
-  [data-theme="dark"] .settings-close-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
-  }
-}
-
-[data-theme="dark"] .settings-close-btn:active {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-[data-theme="dark"] .settings-restart-btn {
-  background: #2c2c2e;
-  color: var(--text-secondary, #8e8e93);
-}
-
-[data-theme="dark"] .settings-restart-btn--pending {
-  background: #0a84ff;
-  color: #fff;
-}
-
-@keyframes restart-pulse-dark {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(10, 132, 255, 0.4); }
-  50% { box-shadow: 0 0 12px 4px rgba(10, 132, 255, 0.2); }
-}
-
-[data-theme="dark"] .settings-restart-btn--pending {
-  animation: restart-pulse-dark 2s ease-in-out infinite;
-}
-
-@media (hover: hover) {
-  [data-theme="dark"] .settings-restart-btn:hover:not(:disabled):not(.settings-restart-btn--pending) {
-    background: #3a3a3c;
-  }
-  [data-theme="dark"] .settings-restart-btn.settings-restart-btn--pending:hover:not(:disabled) {
-    background: #0070e0;
-  }
-}
-
-[data-theme="dark"] .settings-restart-btn:active.settings-restart-btn--pending:not(:disabled) {
-  background: #0062c4;
+.restart-overlay__text {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
 </style>

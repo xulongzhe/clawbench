@@ -19,7 +19,7 @@ const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
 // Import after mocks are set up
-import { apiGet, apiPost, apiPut, apiDelete, cancelChat } from '@/utils/api.ts'
+import { apiGet, apiPost, apiPut, apiDelete, cancelChat } from '@/utils/api'
 
 beforeEach(() => {
   mockFetch.mockReset()
@@ -131,27 +131,28 @@ describe('apiDelete', () => {
 
 describe('cancelChat', () => {
   it('makes POST request to cancel endpoint', async () => {
-    mockFetch.mockResolvedValue({ ok: true })
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) })
 
     await cancelChat('session-123')
-    expectFetchCalledWith(
+    expect(mockFetch).toHaveBeenCalledWith(
       '/api/ai/chat/cancel?session_id=session-123',
-      {
+      expect.objectContaining({
         method: 'POST',
-        headers: { 'X-Locale': 'en' },
-      },
+        body: '{}',
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+        signal: expect.any(AbortSignal),
+      }),
     )
   })
 
   it('encodes session ID with special characters', async () => {
-    mockFetch.mockResolvedValue({ ok: true })
+    mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve({}) })
 
     await cancelChat('session/with+special')
     expect(mockFetch).toHaveBeenCalledWith(
       '/api/ai/chat/cancel?session_id=session%2Fwith%2Bspecial',
       expect.objectContaining({
         method: 'POST',
-        headers: { 'X-Locale': 'en' },
         signal: expect.any(AbortSignal),
       }),
     )
@@ -161,9 +162,10 @@ describe('cancelChat', () => {
     mockFetch.mockResolvedValue({
       ok: false,
       statusText: 'Not Found',
+      json: () => Promise.resolve({}),
     })
 
-    await expect(cancelChat('bad-session')).rejects.toThrow('Not Found')
+    await expect(cancelChat('bad-session')).rejects.toThrow()
   })
 })
 

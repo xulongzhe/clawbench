@@ -118,16 +118,5 @@ export async function apiDelete<T = unknown>(url: string, opts: ApiOptions = {})
 }
 
 export async function cancelChat(sessionId: string): Promise<void> {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS)
-    try {
-        const resp = await fetch(`/api/ai/chat/cancel?session_id=${encodeURIComponent(sessionId)}`, {
-            method: 'POST',
-            headers: localeHeaders(),
-            signal: controller.signal,
-        })
-        if (!resp.ok) throw new Error(resp.statusText)
-    } finally {
-        clearTimeout(timer)
-    }
+    await apiPost(`/api/ai/chat/cancel?session_id=${encodeURIComponent(sessionId)}`, {})
 }

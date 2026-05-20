@@ -105,7 +105,8 @@
           @keydown.enter="confirmEdit"
         />
         <button class="settings-item__editor-toggle" @click="showPassword = !showPassword">
-          {{ showPassword ? '🙈' : '👁' }}
+          <EyeOff v-if="showPassword" :size="16" />
+          <Eye v-else :size="16" />
         </button>
         <button class="settings-item__editor-confirm" @click="confirmEdit">{{ t('common.ok') }}</button>
       </div>
@@ -116,6 +117,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { Eye, EyeOff } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -341,7 +343,7 @@ function confirmEdit() {
   width: 27px;
   height: 27px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--bg-primary);
   transition: transform 0.2s ease;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }

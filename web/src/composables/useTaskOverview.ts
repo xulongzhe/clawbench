@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import { apiPut, apiDelete } from '@/utils/api.ts'
+import { apiPut, apiDelete } from '@/utils/api'
 import { useToast } from '@/composables/useToast.ts'
 import { useTaskTab } from '@/composables/useTaskTab.ts'
 import { useDialog } from '@/composables/useDialog.ts'

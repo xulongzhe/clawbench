@@ -20,9 +20,15 @@ func ServeAgents(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveAgentsGet(w http.ResponseWriter, r *http.Request) {
+	configMutex.RLock()
+	agents := make([]*model.Agent, len(model.AgentList))
+	copy(agents, model.AgentList)
+	defaultAgent := model.GetDefaultAgentID()
+	configMutex.RUnlock()
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"agents":       model.AgentList,
-		"defaultAgent": model.GetDefaultAgentID(),
+		"agents":       agents,
+		"defaultAgent": defaultAgent,
 	})
 }
 
@@ -41,6 +47,9 @@ func serveAgentsPatch(w http.ResponseWriter, r *http.Request) {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 		return
 	}
+
+	configMutex.Lock()
+	defer configMutex.Unlock()
 
 	agent, ok := model.Agents[agentID]
 	if !ok {

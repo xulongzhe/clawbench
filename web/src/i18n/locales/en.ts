@@ -880,6 +880,7 @@ export default {
     restartConfirmMessage: 'The following changes require a server restart to take effect:',
     restartNow: 'Restart Now',
     restartLater: 'Later',
+    saveFailed: 'Save failed',
   },
   terminal: {
     title: 'Terminal',

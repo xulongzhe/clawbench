@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { apiGet } from '@/utils/api.ts'
+import { apiGet } from '@/utils/api'
 
 interface TaskBlockEntry {
   taskId: number

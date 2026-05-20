@@ -201,13 +201,13 @@ export function useSettingsConfig() {
       const data = await apiGet<Record<string, any>>('/api/config')
       serverConfig.value = data
     } catch {
-      // Silently ignore — server may be unreachable
+      // Server may be unreachable — keep existing cached values
     }
   }
 
   async function patchConfig(changes: Record<string, any>): Promise<{ needsRestart: boolean; changedColdFields: string[] }> {
     const result = await apiPatch<{ needsRestart?: boolean; changedColdFields?: string[] }>('/api/config', changes)
-    // Merge patched values into local cache
+    // Merge patched values into local cache after successful response
     Object.assign(serverConfig.value, changes)
     return {
       needsRestart: result.needsRestart ?? false,
@@ -275,7 +275,10 @@ export function useSettingsConfig() {
     }
     obj[parts[parts.length - 1]] = value
 
-    // Also update local cache immediately
+    // Save old value for rollback on failure
+    const oldValue = getServerValue(dotPath)
+
+    // Optimistic local cache update
     let current: any = serverConfig.value
     for (let i = 0; i < parts.length - 1; i++) {
       if (current[parts[i]] == null) current[parts[i]] = {}
@@ -283,7 +286,20 @@ export function useSettingsConfig() {
     }
     current[parts[parts.length - 1]] = value
 
-    return patchConfig(changes)
+    try {
+      return await patchConfig(changes)
+    } catch (err) {
+      // Rollback local cache on failure
+      let rollbackTarget: any = serverConfig.value
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (rollbackTarget[parts[i]] == null) break
+        rollbackTarget = rollbackTarget[parts[i]]
+      }
+      if (rollbackTarget && typeof rollbackTarget === 'object') {
+        rollbackTarget[parts[parts.length - 1]] = oldValue
+      }
+      throw err
+    }
   }
 
   return {

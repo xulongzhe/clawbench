@@ -4,7 +4,7 @@
       <div class="settings-restart-dialog__header">{{ t('settings.restartConfirmTitle') }}</div>
       <p class="settings-restart-dialog__message">{{ t('settings.restartConfirmMessage') }}</p>
       <ul v-if="changedFields.length > 0" class="settings-restart-dialog__list">
-        <li v-for="field in changedFields" :key="field">{{ field }}</li>
+        <li v-for="field in displayFields" :key="field">{{ field }}</li>
       </ul>
       <div class="settings-restart-dialog__actions">
         <button class="settings-restart-dialog__btn settings-restart-dialog__btn--later" @click="$emit('later')">
@@ -19,9 +19,10 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-defineProps<{
+const props = defineProps<{
   changedFields: string[]
 }>()
 
@@ -31,6 +32,50 @@ defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+// Map server dot-path keys to i18n label keys for user-friendly display
+const fieldToLabelKey: Record<string, string> = {
+  'default_agent': 'settings.items.defaultAgent',
+  'chat.initial_messages': 'settings.items.chatInitialMessages',
+  'chat.page_size': 'settings.items.chatPageSize',
+  'chat.collapsed_height': 'settings.items.chatCollapsedHeight',
+  'chat.system_prompt_interval': 'settings.items.chatSystemPromptInterval',
+  'session.max_count': 'settings.items.sessionMaxCount',
+  'upload.max_size_mb': 'settings.items.uploadMaxSize',
+  'upload.max_files': 'settings.items.uploadMaxFiles',
+  'terminal.enabled': 'settings.items.terminalEnabled',
+  'terminal.idle_timeout': 'settings.items.terminalIdleTimeout',
+  'terminal.max_sessions': 'settings.items.terminalMaxSessions',
+  'terminal.buffer_lines': 'settings.items.terminalBufferLines',
+  'tts.engine': 'settings.items.ttsEngine',
+  'tts.format': 'settings.items.ttsFormat',
+  'tts.summarize_backend': 'settings.items.ttsSummarizeBackend',
+  'tts.summarize_model': 'settings.items.ttsSummarizeModel',
+  'tts.speed': 'settings.items.ttsSpeed',
+  'tts.voice': 'settings.items.ttsVoice',
+  'tts.max_cache_files': 'settings.items.ttsMaxCacheFiles',
+  'rag.enabled': 'settings.items.ragEnabled',
+  'rag.ollama_base_url': 'settings.items.ragOllamaUrl',
+  'rag.ollama_model': 'settings.items.ragOllamaModel',
+  'rag.chunk_size': 'settings.items.ragChunkSize',
+  'rag.search_limit': 'settings.items.ragSearchLimit',
+  'rag.retention_days': 'settings.items.ragRetentionDays',
+  'proxy.enabled': 'settings.items.proxyEnabled',
+  'proxy.allowed_ports': 'settings.items.proxyAllowedPorts',
+  'ssh.enabled': 'settings.items.sshEnabled',
+  'ssh.port': 'settings.items.sshPort',
+  'push.jpush.enabled': 'settings.items.pushEnabled',
+  'push.jpush.app_key': 'settings.items.pushAppKey',
+  'tasks.summarize_backend': 'settings.items.tasksSummarizeBackend',
+  'tasks.summarize_model': 'settings.items.tasksSummarizeModel',
+}
+
+const displayFields = computed(() =>
+  props.changedFields.map(key => {
+    const labelKey = fieldToLabelKey[key]
+    return labelKey ? t(labelKey) : key
+  })
+)
 </script>
 
 <style scoped>

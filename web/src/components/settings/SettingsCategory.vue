@@ -25,6 +25,7 @@ import { useI18n } from 'vue-i18n'
 import SettingsItem from './SettingsItem.vue'
 import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAgents } from '@/composables/useAgents'
+import { useToast } from '@/composables/useToast'
 
 interface DependsOn {
   key: string
@@ -56,6 +57,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const toast = useToast()
 const { localConfig, serverConfig, setLocalConfig, getServerValueWithDefault, setServerValue, patchAgentPref, getAgentModelPref, getAgentThinkingPref } = useSettingsConfig()
 const { agents, loadAgents, getAgentModels, getAgentThinkingEffortLevels, hasThinkingEffortLevels, getDefaultModelId } = useAgents()
 
@@ -63,7 +65,7 @@ const openEditorKey = ref<string | null>(null)
 
 // Load agents when this category is shown
 watch(() => props.categoryId, (id) => {
-  if (id === 'chat' || id === 'agents') loadAgents()
+  if (id === 'chat' || id === 'agents') loadAgents(true)
 }, { immediate: true })
 
 function resolveConfigValue(key: string): any {
@@ -340,31 +342,8 @@ const items = computed(() => {
   })
 })
 
-function resolveOptionLabel(itemKey: string, opt: { labelKey: string; value: any }): string {
-  // Special cases where option labels differ from item label
-  if (itemKey === 'theme') {
-    const themeLabels: Record<string, string> = {
-      auto: t('settings.items.themeAuto'),
-      light: t('settings.items.themeLight'),
-      dark: t('settings.items.themeDark'),
-    }
-    return themeLabels[opt.value] ?? String(opt.value)
-  }
-  if (itemKey === 'locale') {
-    const localeLabels: Record<string, string> = {
-      zh: t('settings.items.localeZh'),
-      en: t('settings.items.localeEn'),
-    }
-    return localeLabels[opt.value] ?? String(opt.value)
-  }
-  if (itemKey === 'fileView') {
-    const viewLabels: Record<string, string> = {
-      list: t('settings.items.fileViewList'),
-      grid: t('settings.items.fileViewGrid'),
-    }
-    return viewLabels[opt.value] ?? String(opt.value)
-  }
-  // For all other select options, the labelKey is already set to the i18n key
+function resolveOptionLabel(_itemKey: string, opt: { labelKey: string; value: any }): string {
+  // All select options should have labelKey set to the i18n key
   if (opt.labelKey) return t(opt.labelKey)
   return String(opt.value)
 }
@@ -403,13 +382,13 @@ async function handleUpdate(item: any, value: any) {
   // Agent model preference
   if (item.key?.startsWith('agent-model-')) {
     const agentId = item.key.replace('agent-model-', '')
-    try { await patchAgentPref(agentId, 'preferred_model', value) } catch { /* silently ignore */ }
+    try { await patchAgentPref(agentId, 'preferred_model', value) } catch { toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 }) }
     return
   }
   // Agent thinking preference
   if (item.key?.startsWith('agent-thinking-')) {
     const agentId = item.key.replace('agent-thinking-', '')
-    try { await patchAgentPref(agentId, 'preferred_thinking_effort', value) } catch { /* silently ignore */ }
+    try { await patchAgentPref(agentId, 'preferred_thinking_effort', value) } catch { toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 }) }
     return
   }
   // Password type: skip if empty or still masked (contains bullet chars)
@@ -427,7 +406,7 @@ async function handleUpdate(item: any, value: any) {
       emit('restartNeeded', result.changedColdFields)
     }
   } catch {
-    // Silently ignore — value will revert on next config load
+    toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 })
   }
 }
 

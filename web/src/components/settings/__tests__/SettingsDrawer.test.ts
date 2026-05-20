@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
 import SettingsDrawer from '@/components/settings/SettingsDrawer.vue'
 
 // Mock composable
@@ -15,6 +16,23 @@ vi.mock('@/composables/useSettingsConfig', () => ({
     patchConfig: vi.fn(),
   }),
 }))
+
+const i18n = createI18n({
+  legacy: false,
+  locale: 'zh',
+  messages: {
+    zh: {
+      nav: { settings: '设置' },
+      settings: {
+        categories: { appearance: '外观', chat: '聊天', agents: 'Agent偏好', files: '文件', terminal: '终端', tts: 'TTS语音', rag: 'RAG记忆', network: '网络', android: 'Android', about: '关于' },
+        restartServer: '重启服务器',
+        restartPending: '重启生效',
+        restarting: '重启中…',
+        restartingPleaseWait: '正在重启，请稍候…',
+      },
+    },
+  },
+})
 
 // Stub child components
 const globalStubs = {
@@ -36,15 +54,12 @@ const globalStubs = {
     template: '<div class="stub-restart" v-if="false" />',
     props: ['changedFields'],
   },
-  'lucide-chevron-left': true,
-  'lucide-settings': true,
-  'lucide-x': true,
 }
 
 function mountDrawer(props = {}) {
   return mount(SettingsDrawer, {
     props: { open: true, ...props },
-    global: { stubs: globalStubs },
+    global: { plugins: [i18n], stubs: globalStubs },
   })
 }
 

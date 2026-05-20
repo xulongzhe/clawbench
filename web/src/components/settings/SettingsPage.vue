@@ -39,85 +39,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
+import { computed, watch } from 'vue'
 import { RefreshCw, ChevronLeft } from 'lucide-vue-next'
 import SettingsIndex from './SettingsIndex.vue'
 import SettingsCategory from './SettingsCategory.vue'
 import SettingsRestartDialog from './SettingsRestartDialog.vue'
-import { useSettingsConfig } from '@/composables/useSettingsConfig'
+import { useSettingsNavigation } from '@/composables/useSettingsNavigation'
 
 const props = defineProps<{
   active?: boolean
 }>()
 
-const { t } = useI18n()
-const { loadConfig, restartServer } = useSettingsConfig()
-
-const navStack = ref<string[]>([])
-const restartDialogVisible = ref(false)
-const changedColdFields = ref<string[]>([])
-const needsRestart = ref(false)
-const restarting = ref(false)
-const restartingOverlay = ref(false)
-
-const currentCategory = computed(() => {
-  return navStack.value.length > 0 ? navStack.value[navStack.value.length - 1] : null
-})
-
-function pushNav(categoryId: string) {
-  navStack.value.push(categoryId)
-}
-
-function popNav() {
-  if (navStack.value.length > 0) {
-    navStack.value.pop()
-  }
-}
+const {
+  t, loadConfig,
+  navStack, currentCategory, pushNav, popNav, resetState,
+  restartDialogVisible, changedColdFields, needsRestart,
+  restarting, restartingOverlay,
+  handleRestartNeeded, handleRestart,
+} = useSettingsNavigation()
 
 const currentCategoryTitle = computed(() => {
   return currentCategory.value ? t(`settings.categories.${currentCategory.value}`) : ''
 })
 
-function handleRestartNeeded(fields: string[]) {
-  changedColdFields.value = fields
-  needsRestart.value = true
-  restartDialogVisible.value = true
-}
-
-function pollUntilServerUp() {
-  restartingOverlay.value = true
-  const pollInterval = setInterval(async () => {
-    try {
-      const resp = await fetch('/api/agents', { method: 'GET' })
-      if (resp.ok) {
-        clearInterval(pollInterval)
-        window.location.reload()
-      }
-    } catch {
-      // Server not up yet, keep polling
-    }
-  }, 2000)
-}
-
-async function handleRestart() {
-  restartDialogVisible.value = false
-  restarting.value = true
-  try {
-    await restartServer()
-    needsRestart.value = false
-    // Server is shutting down — start polling until it comes back
-    pollUntilServerUp()
-  } catch {
-    restarting.value = false
-  }
-}
-
 // Reset navigation when tab becomes active
 watch(() => props.active, (val) => {
   if (val) {
     loadConfig()
-    navStack.value = []
+    resetState()
   }
 })
 </script>

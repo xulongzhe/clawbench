@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { apiGet } from '@/utils/api.ts'
+import { apiGet } from '@/utils/api'
 import { gt } from '@/composables/useLocale'
 
 // Singleton state — shared across the whole app
@@ -7,9 +7,9 @@ const agents = ref<any[]>([])
 const defaultAgentId = ref('')
 let loadPromise: Promise<void> | null = null
 
-async function loadAgents(): Promise<void> {
-    if (agents.value.length > 0) return // already loaded
-    if (loadPromise) return loadPromise  // load in progress
+async function loadAgents(force = false): Promise<void> {
+    if (!force && agents.value.length > 0) return // already loaded
+    if (!force && loadPromise) return loadPromise  // load in progress
 
     loadPromise = (async () => {
         try {
