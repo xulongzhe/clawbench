@@ -142,8 +142,16 @@ const sessionsWithStatus = computed(() => {
 // Set after create/delete operations that change the list composition.
 let stale = true
 
-/** Mark cached session list as stale so the next open triggers a full reload. */
-function invalidate() { stale = true }
+/** Mark cached session list as stale so the next open triggers a full reload.
+ *  If a sessionId is provided and the drawer is currently open, optimistically
+ *  remove it from the local list so the UI updates immediately without waiting
+ *  for the next open→load cycle. */
+function invalidate(sessionId) {
+  stale = true
+  if (sessionId && props.open) {
+    sessions.value = sessions.value.filter(s => s.id !== sessionId)
+  }
+}
 
 defineExpose({ loadSessions, openAgentSelector, invalidate })
 

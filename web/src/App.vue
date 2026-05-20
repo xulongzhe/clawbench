@@ -399,7 +399,7 @@ function handleQuoteSessionCreate(agentId) {
 
 function handleQuoteSessionDelete(sessionId, backend) {
   sessionIdentity.deleteSession(sessionId, backend)
-  quoteSessionDrawerRef.value?.invalidate()
+  quoteSessionDrawerRef.value?.invalidate(sessionId)
 }
 
 async function handleLoginSuccess() {
