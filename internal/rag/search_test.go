@@ -72,7 +72,7 @@ func setupSearchDB(t *testing.T) *sql.DB {
 
 func TestRAGSearch_EmptyQuery(t *testing.T) {
 	store := setupTestStore(t)
-	embedder, cleanup := newHealthyMockOllama(t)
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: ""}, 5, 20)
@@ -87,7 +87,7 @@ func TestRAGSearch_DefaultLimit(t *testing.T) {
 	if !store.ftsAvailable {
 		t.Skip("FTS not available")
 	}
-	embedder, cleanup := newHealthyMockOllama(t)
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	// Insert some chunks and build FTS index
@@ -106,7 +106,7 @@ func TestRAGSearch_WithResults(t *testing.T) {
 	if !store.ftsAvailable {
 		t.Skip("FTS not available")
 	}
-	embedder, cleanup := newHealthyMockOllama(t)
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	insertTestChunks(t, store, 2)
@@ -116,7 +116,7 @@ func TestRAGSearch_WithResults(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, result.Results)
 	assert.Equal(t, len(result.Results), result.Total)
-	// Should use hybrid or vector mode since Ollama is healthy
+	// Should use hybrid or vector mode since embedder is healthy
 	assert.Contains(t, []SearchMode{SearchModeHybrid, SearchModeVector, SearchModeFTS}, result.Mode)
 }
 
@@ -126,13 +126,13 @@ func TestRAGSearch_FTSOnly(t *testing.T) {
 	if !store.ftsAvailable {
 		t.Skip("FTS not available")
 	}
-	SetOllamaHealthy(false) // Ensure cached state doesn't interfere
+	SetEmbedderHealthy(false) // Ensure cached state doesn't interfere
 
 	// Insert chunks and build FTS index
 	insertTestChunks(t, store, 3)
 	require.NoError(t, store.CreateFTSIndex())
 
-	// Use nil embedder (Ollama not available) — should fall back to FTS-only
+	// Use nil embedder (embedder not available) — should fall back to FTS-only
 	result, err := RAGSearch(context.Background(), store, nil, SearchParams{Query: "chunk", Limit: 5}, 5, 20)
 	assert.NoError(t, err)
 	assert.Equal(t, SearchModeFTS, result.Mode)
@@ -162,13 +162,13 @@ func TestRAGSearch_SearchModeField(t *testing.T) {
 	insertTestChunks(t, store, 3)
 	require.NoError(t, store.CreateFTSIndex())
 
-	// With healthy Ollama — should be hybrid
-	embedder, cleanup := newHealthyMockOllama(t)
+	// With healthy embedder — should be hybrid
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "chunk", Limit: 5}, 5, 20)
 	require.NoError(t, err)
-	// With both FTS and Ollama available, should use hybrid
+	// With both FTS and embedder available, should use hybrid
 	assert.Equal(t, SearchModeHybrid, result.Mode)
 }
 
@@ -206,12 +206,12 @@ func TestRAGSearch_VectorOnlyMode(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
 
-	// Set Ollama healthy but FTS not available
-	SetOllamaHealthy(true)
-	t.Cleanup(func() { SetOllamaHealthy(false) })
+	// Set embedder healthy but FTS not available
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
 	store.ftsAvailable = false
 
-	embedder, cleanup := newHealthyMockOllama(t)
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	// Insert chunks with embeddings
@@ -227,7 +227,7 @@ func TestRAGSearch_VectorOnlyMode(t *testing.T) {
 func TestRAGSearch_NoSearchAvailable(t *testing.T) {
 	store := setupTestStore(t)
 	store.ftsAvailable = false
-	SetOllamaHealthy(false)
+	SetEmbedderHealthy(false)
 
 	// nil embedder — no search available
 	_, err := RAGSearch(context.Background(), store, nil, SearchParams{Query: "test"}, 5, 20)
@@ -243,7 +243,7 @@ func TestRAGSearch_DefaultPoolSize(t *testing.T) {
 	if !store.ftsAvailable {
 		t.Skip("FTS not available")
 	}
-	embedder, cleanup := newHealthyMockOllama(t)
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	insertTestChunks(t, store, 2)
@@ -266,18 +266,18 @@ func TestRAGSearch_EmbeddingFailsFallsBackToFTS(t *testing.T) {
 
 	// Server where embedding endpoint fails
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaModelInfo{{Name: "bge-m3:latest"}}})
-		} else if r.URL.Path == "/api/embeddings" {
+		if r.URL.Path == "/v1/models" {
+			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+		} else if r.URL.Path == "/v1/embeddings" {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()
 
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
+	embedder := NewEmbeddingClient(server.URL, "bge-m3", "")
 	embedder.HTTPClient = server.Client()
-	SetOllamaHealthy(true)
-	t.Cleanup(func() { SetOllamaHealthy(false) })
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
 
 	insertTestChunks(t, store, 3)
 	require.NoError(t, store.CreateFTSIndex())
@@ -287,23 +287,23 @@ func TestRAGSearch_EmbeddingFailsFallsBackToFTS(t *testing.T) {
 	assert.Equal(t, SearchModeFTS, result.Mode, "should fall back to FTS when embedding fails")
 }
 
-// ---------- RAGSearch with Ollama cached health ----------
+// ---------- RAGSearch with cached embedder health ----------
 
-func TestRAGSearch_CachedOllamaHealth(t *testing.T) {
+func TestRAGSearch_CachedEmbedderHealth(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
 	if !store.ftsAvailable {
 		t.Skip("FTS not available")
 	}
 
-	// Set cached Ollama health to true
-	SetOllamaHealthy(true)
-	t.Cleanup(func() { SetOllamaHealthy(false) })
+	// Set cached embedder health to true
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
 
 	insertTestChunks(t, store, 2)
 	require.NoError(t, store.CreateFTSIndex())
 
-	embedder, cleanup := newHealthyMockOllama(t)
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
@@ -317,11 +317,11 @@ func TestRAGSearch_CachedOllamaHealth(t *testing.T) {
 func TestRAGSearch_VectorOnlyNoFTS(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
-	SetOllamaHealthy(true)
-	t.Cleanup(func() { SetOllamaHealthy(false) })
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
 	store.ftsAvailable = false
 
-	embedder, cleanup := newHealthyMockOllama(t)
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	insertTestChunks(t, store, 2)
@@ -335,21 +335,21 @@ func TestRAGSearch_VectorOnlyNoFTS(t *testing.T) {
 
 func TestRAGSearch_VectorOnlyEmbeddingError(t *testing.T) {
 	store := setupTestStore(t)
-	SetOllamaHealthy(true)
-	t.Cleanup(func() { SetOllamaHealthy(false) })
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
 	store.ftsAvailable = false
 
 	// Embedding will fail
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/tags" {
-			json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaModelInfo{{Name: "bge-m3:latest"}}})
-		} else if r.URL.Path == "/api/embeddings" {
+		if r.URL.Path == "/v1/models" {
+			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+		} else if r.URL.Path == "/v1/embeddings" {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
 	defer server.Close()
 
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
+	embedder := NewEmbeddingClient(server.URL, "bge-m3", "")
 	embedder.HTTPClient = server.Client()
 
 	insertTestChunks(t, store, 2)

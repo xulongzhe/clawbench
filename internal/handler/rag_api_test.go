@@ -271,28 +271,32 @@ func setupRAGStore(t *testing.T) *rag.Store {
 }
 
 // setupWorkingMockEmbedder creates a mock EmbeddingClient backed by a test server
-// that returns valid 1024-dim embeddings.
+// that returns valid 1024-dim embeddings using OpenAI /v1/embeddings format.
 func setupWorkingMockEmbedder(t *testing.T) *rag.EmbeddingClient {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/embeddings":
-			// Return a 1024-dim embedding
+		case "/v1/embeddings":
+			// Return a 1024-dim embedding in OpenAI format
 			emb := make([]float64, 1024)
 			for i := range emb {
 				emb[i] = 0.01
 			}
-			json.NewEncoder(w).Encode(map[string]any{"embedding": emb})
-		case "/api/tags":
 			json.NewEncoder(w).Encode(map[string]any{
-				"models": []map[string]any{{"name": "bge-m3:latest"}},
+				"data": []map[string]any{
+					{"embedding": emb, "index": 0},
+				},
+			})
+		case "/v1/models":
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "bge-m3"}},
 			})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(server.Close)
-	client := rag.NewEmbeddingClient(server.URL, "bge-m3")
+	client := rag.NewEmbeddingClient(server.URL, "bge-m3", "")
 	client.HTTPClient = server.Client()
 	return client
 }

@@ -297,7 +297,7 @@ func TestStore_SearchSimple_FiltersByTimeRange(t *testing.T) {
 
 func TestStore_CheckDimensionMismatch_Empty(t *testing.T) {
 	store := setupTestStore(t)
-	dim, mismatch, err := store.CheckDimensionMismatch(1024)
+	dim, mismatch, err := store.CheckDimensionMismatch()
 	assert.NoError(t, err)
 	assert.Equal(t, 0, dim, "empty table should return 0 dim")
 	assert.False(t, mismatch, "empty table should not report mismatch")
@@ -307,7 +307,7 @@ func TestStore_CheckDimensionMismatch_Match(t *testing.T) {
 	store := setupTestStore(t)
 	insertTestChunks(t, store, 1)
 
-	dim, mismatch, err := store.CheckDimensionMismatch(1024)
+	dim, mismatch, err := store.CheckDimensionMismatch()
 	assert.NoError(t, err)
 	assert.Equal(t, 1024, dim)
 	assert.False(t, mismatch, "same dimension should not report mismatch")
@@ -317,7 +317,9 @@ func TestStore_CheckDimensionMismatch_Mismatch(t *testing.T) {
 	store := setupTestStore(t)
 	insertTestChunks(t, store, 1)
 
-	dim, mismatch, err := store.CheckDimensionMismatch(768)
+	// Change the store's expected dimension to simulate a mismatch
+	store.embeddingDim = 768
+	dim, mismatch, err := store.CheckDimensionMismatch()
 	assert.NoError(t, err)
 	assert.Equal(t, 1024, dim)
 	assert.True(t, mismatch, "different dimension should report mismatch")
@@ -394,7 +396,7 @@ func TestStore_Close_NilDB(t *testing.T) {
 
 func TestEmbeddingToSQLArray(t *testing.T) {
 	vec := []float64{0.1, 0.2, 0.3}
-	result := embeddingToSQLArray(vec)
+	result := embeddingToSQLArray(vec, 1024)
 	assert.True(t, strings.HasPrefix(result, "array["))
 	assert.True(t, strings.HasSuffix(result, "]::FLOAT[1024]"))
 	assert.Contains(t, result, "0.1")
@@ -403,7 +405,7 @@ func TestEmbeddingToSQLArray(t *testing.T) {
 }
 
 func TestEmbeddingToSQLArray_Empty(t *testing.T) {
-	result := embeddingToSQLArray([]float64{})
+	result := embeddingToSQLArray([]float64{}, 1024)
 	assert.Equal(t, "array[]::FLOAT[1024]", result)
 }
 

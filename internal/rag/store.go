@@ -20,9 +20,10 @@ import (
 type Store struct {
 	db             *sql.DB
 	dbPath         string
-	ftsAvailable   bool      // Whether FTS extension loaded successfully
-	ftsDirty       bool      // Whether FTS index needs rebuild after data changes
-	ftsLastRebuild time.Time // Last time FTS index was rebuilt (for debounce)
+	embeddingDim   int        // adaptive embedding dimension
+	ftsAvailable   bool       // Whether FTS extension loaded successfully
+	ftsDirty       bool       // Whether FTS index needs rebuild after data changes
+	ftsLastRebuild time.Time  // Last time FTS index was rebuilt (for debounce)
 }
 
 // Chunk represents a text chunk with its embedding and metadata.
@@ -74,6 +75,9 @@ func NewStore(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("failed to init duckdb schema: %w", err)
 	}
 
+	// Load persisted embedding dimension from metadata
+	s.loadEmbeddingDim()
+
 	// Initialize FTS extension
 	if err := s.initFTS(); err != nil {
 		slog.Warn("rag: FTS extension not available, full-text search disabled", slog.String("err", err.Error()))
@@ -99,7 +103,24 @@ func InitStore() (*Store, error) {
 }
 
 func (s *Store) initSchema() error {
+	// Create metadata table first
 	_, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS rag_metadata (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
+	`)
+	if err != nil {
+		return fmt.Errorf("create rag_metadata table: %w", err)
+	}
+
+	// Read persisted embedding dimension (default 1024 for backward compat)
+	dim := s.readMetadataInt("embedding_dim", 1024)
+	s.embeddingDim = dim
+
+	dimSQL := fmt.Sprintf("FLOAT[%d]", dim)
+
+	_, err = s.db.Exec(fmt.Sprintf(`
 		CREATE SEQUENCE IF NOT EXISTS chat_chunks_id_seq;
 		CREATE TABLE IF NOT EXISTS chat_chunks (
 			id INTEGER PRIMARY KEY,
@@ -109,7 +130,7 @@ func (s *Store) initSchema() error {
 			chunk_text_segmented TEXT,
 			chunk_index INTEGER NOT NULL DEFAULT 0,
 			token_count INTEGER NOT NULL,
-			embedding FLOAT[1024],
+			embedding %s,
 			has_embedding BOOLEAN NOT NULL DEFAULT false,
 			project_path TEXT NOT NULL,
 			backend TEXT NOT NULL,
@@ -121,7 +142,7 @@ func (s *Store) initSchema() error {
 		CREATE INDEX IF NOT EXISTS idx_chunks_project ON chat_chunks(project_path);
 		CREATE INDEX IF NOT EXISTS idx_chunks_created ON chat_chunks(created_at);
 		CREATE INDEX IF NOT EXISTS idx_chunks_message ON chat_chunks(message_id);
-	`)
+	`, dimSQL))
 	if err != nil {
 		return err
 	}
@@ -157,7 +178,7 @@ func (s *Store) CreateFTSIndex() error {
 			'chat_chunks', 'id', 'chunk_text_segmented',
 			stemmer = 'none',
 			stopwords = 'none',
-			ignore = '(\\.|[，。！？、；：""''（）【】《》…—\\-\\d])+',
+			ignore = '(\.|[，。！？、；：“”‘’（）【】《》…—\-\d])+',
 			lower = 1,
 			strip_accents = 1
 		)
@@ -196,7 +217,7 @@ func (s *Store) InsertChunks(chunks []Chunk) error {
 	for _, c := range chunks {
 		var embeddingSQL string
 		if c.Embedding != nil {
-			embeddingSQL = embeddingToSQLArray(c.Embedding)
+			embeddingSQL = embeddingToSQLArray(c.Embedding, s.embeddingDim)
 		} else {
 			embeddingSQL = "NULL"
 		}
@@ -227,8 +248,8 @@ func (s *Store) InsertChunks(chunks []Chunk) error {
 // (DuckDB cannot access SQLite directly). Session titles are fetched separately.
 func (s *Store) SearchSimple(queryEmbedding []float64, limit int, projectPath, backend, role, sessionID, excludeSessionID, fromTime, toTime string) ([]SearchHit, error) {
 	// Build embedding as SQL array literal since go-duckdb cannot bind []float64
-	// as a parameter for FLOAT[1024] columns.
-	embeddingLiteral := embeddingToSQLArray(queryEmbedding)
+	// as a parameter for FLOAT[dim] columns.
+	embeddingLiteral := embeddingToSQLArray(queryEmbedding, s.embeddingDim)
 
 	query := fmt.Sprintf(`
 		SELECT id,
@@ -448,7 +469,7 @@ func (s *Store) PendingEmbeddingCount() (int, error) {
 
 // GetPendingEmbeddings returns chunks that need embedding backfill.
 type PendingChunk struct {
-	ID       int64
+	ID        int64
 	ChunkText string
 }
 
@@ -473,7 +494,7 @@ func (s *Store) GetPendingEmbeddings(limit int) ([]PendingChunk, error) {
 
 // UpdateEmbedding updates the embedding for a specific chunk (for backfill).
 // Uses DELETE+INSERT instead of UPDATE to work around a DuckDB v1.1.3 bug where
-// UPDATE on FLOAT[1024] columns spuriously triggers "Duplicate key" constraint errors.
+// UPDATE on FLOAT[dim] columns spuriously triggers "Duplicate key" constraint errors.
 // Preserves the original row ID.
 // Note: DELETE+INSERT must happen on the same connection outside a transaction,
 // because DuckDB v1.1.3 also triggers the same spurious "Duplicate key" error
@@ -501,7 +522,7 @@ func (s *Store) UpdateEmbedding(chunkID int64, embedding []float64) error {
 	}
 
 	// Re-insert with the SAME id and embedding
-	embeddingLiteral := embeddingToSQLArray(embedding)
+	embeddingLiteral := embeddingToSQLArray(embedding, s.embeddingDim)
 	_, err = s.db.Exec(fmt.Sprintf(`
 		INSERT INTO chat_chunks (id, session_id, message_id, chunk_text, chunk_text_segmented,
 			chunk_index, token_count, embedding, has_embedding, project_path, backend, role, created_at)
@@ -521,9 +542,9 @@ func (s *Store) UpdateEmbedding(chunkID int64, embedding []float64) error {
 }
 
 // CheckDimensionMismatch checks if existing embeddings have a different dimension
-// than the expected dimension. Returns the existing dimension (0 if no data) and
-// whether there is a mismatch.
-func (s *Store) CheckDimensionMismatch(expectedDim int) (int, bool, error) {
+// than the store's configured dimension. Returns the existing dimension (0 if no data)
+// and whether there is a mismatch.
+func (s *Store) CheckDimensionMismatch() (int, bool, error) {
 	var dim int
 	err := s.db.QueryRow(`
 		SELECT CASE
@@ -539,7 +560,58 @@ func (s *Store) CheckDimensionMismatch(expectedDim int) (int, bool, error) {
 	if dim == 0 {
 		return 0, false, nil
 	}
-	return dim, dim != expectedDim, nil
+	return dim, dim != s.embeddingDim, nil
+}
+
+// SetEmbeddingDim persists a new embedding dimension to metadata.
+// Returns true if the dimension changed (i.e. there was a mismatch).
+func (s *Store) SetEmbeddingDim(dim int) bool {
+	if dim == s.embeddingDim {
+		return false
+	}
+	s.embeddingDim = dim
+	s.writeMetadata("embedding_dim", strconv.Itoa(dim))
+	return true
+}
+
+// loadEmbeddingDim reads the persisted embedding dimension from metadata.
+func (s *Store) loadEmbeddingDim() {
+	dim := s.readMetadataInt("embedding_dim", 0)
+	if dim > 0 {
+		s.embeddingDim = dim
+		slog.Info("rag: loaded embedding dimension from metadata", slog.Int("dim", dim))
+	}
+}
+
+// readMetadata reads a string value from rag_metadata.
+func (s *Store) readMetadata(key string) string {
+	var value string
+	err := s.db.QueryRow("SELECT value FROM rag_metadata WHERE key = ?", key).Scan(&value)
+	if err != nil {
+		return ""
+	}
+	return value
+}
+
+// readMetadataInt reads an integer value from rag_metadata, returning fallback if missing.
+func (s *Store) readMetadataInt(key string, fallback int) int {
+	val := s.readMetadata(key)
+	if val == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil {
+		return fallback
+	}
+	return n
+}
+
+// writeMetadata persists a key-value pair to rag_metadata.
+func (s *Store) writeMetadata(key, value string) {
+	_, err := s.db.Exec("INSERT INTO rag_metadata (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = ?", key, value, value)
+	if err != nil {
+		slog.Warn("rag: failed to write metadata", slog.String("key", key), slog.String("err", err.Error()))
+	}
 }
 
 // ResetTable drops and recreates the chat_chunks table.
@@ -615,8 +687,8 @@ func (s *Store) RecoverFromCorruption() error {
 }
 
 // embeddingToSQLArray converts a float64 slice to a DuckDB array literal string.
-// e.g., [0.1, 0.2, 0.3] → "array[0.1, 0.2, 0.3]::FLOAT[1024]"
-func embeddingToSQLArray(vec []float64) string {
+// e.g., [0.1, 0.2, 0.3] -> "array[0.1, 0.2, 0.3]::FLOAT[dim]"
+func embeddingToSQLArray(vec []float64, dim int) string {
 	var buf strings.Builder
 	buf.WriteString("array[")
 	for i, v := range vec {
@@ -625,6 +697,8 @@ func embeddingToSQLArray(vec []float64) string {
 		}
 		buf.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
 	}
-	buf.WriteString("]::FLOAT[1024]")
+	buf.WriteString("]::FLOAT[")
+	buf.WriteString(strconv.Itoa(dim))
+	buf.WriteString("]")
 	return buf.String()
 }
