@@ -44,9 +44,20 @@ check_binary() {
     if [[ ! -f "$bin" ]]; then
         echo "Binary not found, building..."
         if command -v go >/dev/null 2>&1; then
-            local ver
+            local ver is_release build_time full_ver
             ver=$(git describe --tags --always 2>/dev/null || echo "dev")
-            go build -ldflags "-X clawbench/internal/version.Version=$ver" -o "$bin" ./cmd/server
+            if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+                is_release=true
+            else
+                is_release=false
+            fi
+            build_time=$(date +"%Y-%m-%d %H:%M:%S")
+            if $is_release; then
+                full_ver="$ver"
+            else
+                full_ver="$ver ($build_time)"
+            fi
+            go build -ldflags "-X clawbench/internal/version.Version=$full_ver" -o "$bin" ./cmd/server
         else
             echo "Error: Go not found and binary missing." >&2
             exit 1

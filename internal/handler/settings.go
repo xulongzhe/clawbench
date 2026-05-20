@@ -220,7 +220,7 @@ var PatchableConfigPaths = map[string]bool{
 
 // validTTSEngines is the set of valid TTS engine values.
 var validTTSEngines = map[string]bool{
-	"edge": true, "minimax": true, "piper": true, "kokoro": true, "moss-nano": true,
+	"edge": true, "piper": true, "kokoro": true, "moss-nano": true,
 }
 
 // validSummarizeBackends is the set of valid TTS summarization backend values.
@@ -229,7 +229,6 @@ var validSummarizeBackends = map[string]bool{
 	"claude": true, "codebuddy": true, "gemini": true,
 	"opencode": true, "codex": true, "qoder": true,
 	"vecli": true, "deepseek": true, "pi": true,
-	"mmx-cli": true,
 }
 
 // validTTSFormats is the set of valid TTS output format values.
@@ -251,36 +250,26 @@ var validMossNanoBackends = map[string]bool{
 // getBuildVersion returns a human-readable version string from build info.
 // When version.Version is set via -ldflags (from git describe), it combines
 // the semantic version with the VCS short SHA, e.g. "v1.0.0 (abc1234)".
-// When not set (bare "go build"), it falls back to VCS info only.
+// getBuildVersion returns the version string injected at build time via -ldflags.
+// For release builds (HEAD on a tag), the format is: "v1.0.0"
+// For dev builds, the format is: "v0.30.0-33-ga636beb (2026-05-21 10:30:00)"
+// When not set (bare "go build"), falls back to VCS info or "dev".
 func getBuildVersion() string {
+	if version.Version != "" {
+		return version.Version
+	}
+	// Fallback: no ldflags injected (bare "go build") — use VCS info
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		if version.Version != "" {
-			return version.Version
-		}
 		return "dev"
 	}
-	var vcsRev, vcsTime string
+	var vcsRev string
 	for _, s := range info.Settings {
 		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
 			vcsRev = s.Value[:7]
 		}
-		if s.Key == "vcs.time" {
-			vcsTime = s.Value
-		}
 	}
-	// If version was injected via ldflags (git describe), combine with short SHA
-	if version.Version != "" {
-		if vcsRev != "" {
-			return version.Version + " (" + vcsRev + ")"
-		}
-		return version.Version
-	}
-	// Fallback: VCS info only (same as pre-ldflags behavior)
 	if vcsRev != "" {
-		if vcsTime != "" {
-			return vcsRev + " (" + vcsTime + ")"
-		}
 		return vcsRev
 	}
 	if info.Main.Version != "" && info.Main.Version != "(devel)" {
@@ -521,7 +510,7 @@ func validatePatchValues(patch map[string]any) error {
 	if ok {
 		if engine, ok := tts["engine"].(string); ok {
 			if !validTTSEngines[engine] {
-				return fmt.Errorf("tts.engine must be one of: edge,minimax,piper,kokoro,moss-nano")
+				return fmt.Errorf("tts.engine must be one of: edge,piper,kokoro,moss-nano")
 			}
 		}
 		if backend, ok := tts["summarize_backend"].(string); ok {
