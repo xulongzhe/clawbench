@@ -143,13 +143,12 @@ import { store } from '@/stores/app'
 import { resolveTerminalCwd, shouldPromptForTerminalReopen } from './terminalCwd'
 import {
   DEFAULT_FONT_SIZE,
-  loadFontSize as loadFontSizeUtil,
-  applyFontSize as applyFontSizeUtil,
   shortCwd as shortCwdUtil,
   canReconnect as canReconnectUtil,
   errorDisplayMessage as errorDisplayMessageUtil,
   showErrorOverlay as showErrorOverlayUtil,
 } from '@/utils/terminalFontUtils'
+import { localConfig, setLocalConfig } from '@/composables/useSettingsConfig'
 import {
   ALL_SYMBOLS,
   loadSymbolFreqs,
@@ -173,13 +172,16 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const toast = useToast()
 
-// Font size with persistence
-const fontSize = ref(DEFAULT_FONT_SIZE)
+// Font size with persistence via settings config
+const fontSize = ref<number>(localConfig.terminalFontSize || DEFAULT_FONT_SIZE)
 
 function applyFontSize(size: number) {
-  fontSize.value = applyFontSizeUtil(size)
+  const MIN = 8, MAX = 28
+  const clamped = Math.max(MIN, Math.min(MAX, size))
+  fontSize.value = clamped
+  setLocalConfig('terminalFontSize', clamped)
   if (xterm.value) {
-    xterm.value.options.fontSize = fontSize.value
+    xterm.value.options.fontSize = clamped
     viewport.fitTerminal()
   }
 }
@@ -381,7 +383,7 @@ function initTerminal() {
 
   const term = new Terminal({
     theme: getXtermTheme(),
-    fontSize: loadFontSizeUtil(),
+    fontSize: fontSize.value,
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
     cursorBlink: true,
     convertEol: true,

@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"clawbench/internal/middleware"
 	"clawbench/internal/model"
 )
 
@@ -112,23 +113,6 @@ func (l *loginLimiter) cleanupLoop() {
 	}
 }
 
-func extractIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
-// isLocalhost returns true if the request originates from the local machine.
-func isLocalhost(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	return host == "127.0.0.1" || host == "::1" || host == "localhost"
-}
-
 // --- Auth handlers ---
 
 // ServeAuthCheck returns 200 if the session cookie is valid, 401 otherwise.
@@ -140,7 +124,7 @@ func ServeAuthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Localhost (CLI subcommands / local browser) — always allowed
-	if isLocalhost(r) {
+	if middleware.IsLocalhost(r) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -160,7 +144,10 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodPost {
-		remoteIP := extractIP(r)
+		remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if remoteIP == "" {
+			remoteIP = r.RemoteAddr
+		}
 
 		// Rate limiting check (ISS-003c)
 		limiter := getLoginLimiter()

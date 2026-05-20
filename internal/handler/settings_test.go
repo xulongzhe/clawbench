@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -37,7 +38,6 @@ func TestServeConfig_Get(t *testing.T) {
 	cfg.TTS.Speed = 1.5
 	cfg.TTS.Voice = "zh-CN-XiaoxiaoNeural"
 	cfg.TTS.MaxCacheFiles = 50
-	cfg.RAG.Enabled = true
 	cfg.RAG.OllamaBaseURL = "http://localhost:11434"
 	cfg.RAG.OllamaModel = "bge-m3"
 	cfg.RAG.ChunkSize = 512
@@ -340,10 +340,11 @@ func TestServeConfig_Patch_Success(t *testing.T) {
 	var resp map[string]any
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
-	assert.True(t, resp["needs_restart"].(bool))
+	// Both chat.collapsed_height and upload.max_size_mb are hot-reload fields
+	assert.False(t, resp["needs_restart"].(bool), "hot-reload fields should not need restart")
 	changed, ok := resp["changed_cold_fields"].([]any)
 	assert.True(t, ok)
-	assert.True(t, len(changed) >= 2)
+	assert.Empty(t, changed, "no cold fields should be reported for hot-reload changes")
 
 	assert.Equal(t, 200, model.ConfigInstance.Chat.CollapsedHeight)
 	assert.Equal(t, 50, model.ConfigInstance.Upload.MaxSizeMB)
@@ -794,4 +795,124 @@ func TestServeConfig_Patch_InvalidDefaultAgent(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "not found")
+}
+
+// --- PATCH needs_restart / cold-vs-hot field classification ---
+
+func TestServeConfig_Patch_HotReloadFields_NoRestartNeeded(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Chat.CollapsedHeight = 150
+	cfg.Upload.MaxSizeMB = 100
+	model.ConfigInstance = cfg
+
+	// Only hot-reload fields — no restart should be needed
+	body := `{"chat":{"collapsed_height":200},"upload":{"max_size_mb":50}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.False(t, resp["needs_restart"].(bool), "needs_restart should be false when only hot-reload fields are changed")
+	changed, ok := resp["changed_cold_fields"].([]any)
+	assert.True(t, ok)
+	assert.Empty(t, changed, "changed_cold_fields should be empty when only hot-reload fields are changed")
+
+	assert.Equal(t, 200, model.ConfigInstance.Chat.CollapsedHeight)
+	assert.Equal(t, 50, model.ConfigInstance.Upload.MaxSizeMB)
+}
+
+func TestServeConfig_Patch_ColdFields_NeedRestart(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Terminal.Enabled = true
+	cfg.TTS.Engine = "edge"
+	model.ConfigInstance = cfg
+
+	// terminal.enabled is a cold field — restart should be needed
+	body := `{"terminal":{"enabled":false},"tts":{"engine":"minimax"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.True(t, resp["needs_restart"].(bool), "needs_restart should be true when cold fields are changed")
+	changed, ok := resp["changed_cold_fields"].([]any)
+	assert.True(t, ok)
+	assert.Equal(t, 2, len(changed))
+	// Should contain the cold field paths
+	changedStr := make([]string, len(changed))
+	for i, v := range changed {
+		changedStr[i] = fmt.Sprint(v)
+	}
+	assert.Contains(t, changedStr, "terminal.enabled")
+	assert.Contains(t, changedStr, "tts.engine")
+}
+
+func TestServeConfig_Patch_MixedHotAndColdFields(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Chat.CollapsedHeight = 150
+	cfg.Terminal.Enabled = true
+	model.ConfigInstance = cfg
+
+	// Mix of hot (chat.collapsed_height) and cold (terminal.enabled) fields
+	body := `{"chat":{"collapsed_height":200},"terminal":{"enabled":false}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.True(t, resp["needs_restart"].(bool), "needs_restart should be true when any cold field is changed")
+	changed, ok := resp["changed_cold_fields"].([]any)
+	assert.True(t, ok)
+	assert.Equal(t, 1, len(changed), "only cold fields should appear in changed_cold_fields")
+	assert.Equal(t, "terminal.enabled", fmt.Sprint(changed[0]))
+}
+
+func TestServeConfig_Patch_SessionMaxCount_IsHotField(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Session.MaxCount = 10
+	model.ConfigInstance = cfg
+
+	// session.max_count is a hot-reload field — no restart should be needed
+	body := `{"session":{"max_count":20}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.False(t, resp["needs_restart"].(bool), "session.max_count is hot-reloadable, should not need restart")
+	changed, ok := resp["changed_cold_fields"].([]any)
+	assert.True(t, ok)
+	assert.Empty(t, changed)
 }

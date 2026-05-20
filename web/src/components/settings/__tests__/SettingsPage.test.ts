@@ -1,19 +1,37 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import { ref } from 'vue'
 import SettingsPage from '@/components/settings/SettingsPage.vue'
 
-// Mock composable
-vi.mock('@/composables/useSettingsConfig', () => ({
-  useSettingsConfig: () => ({
+// Mutable refs that tests can flip to control UI state
+const needsRestart = ref(false)
+const restarting = ref(false)
+
+// Keep a shared navStack ref so we can wire up pushNav/popNav
+const navStack = ref<string[]>([])
+
+function createMockNavigation() {
+  return {
+    t: (key: string) => key,
     loadConfig: vi.fn(),
-    restartServer: vi.fn(),
-    localConfig: {},
-    serverConfig: { value: {} },
-    setLocalConfig: vi.fn(),
-    getServerValue: vi.fn(),
-    setServerValue: vi.fn(),
-  }),
+    navStack,
+    currentCategory: ref<string | null>(null),
+    pushNav: (id: string) => { navStack.value.push(id) },
+    popNav: () => { navStack.value.pop() },
+    resetState: () => { navStack.value = []; needsRestart.value = false; restarting.value = false },
+    restartDialogVisible: ref(false),
+    changedColdFields: ref<string[]>([]),
+    needsRestart,
+    restarting,
+    restartingOverlay: ref(false),
+    handleRestartNeeded: vi.fn(),
+    handleRestart: vi.fn(),
+  }
+}
+
+vi.mock('@/composables/useSettingsNavigation', () => ({
+  useSettingsNavigation: () => createMockNavigation(),
 }))
 
 const i18n = createI18n({
@@ -26,6 +44,7 @@ const i18n = createI18n({
         restartServer: '重启服务器',
         restartPending: '重启生效',
         restarting: '重启中…',
+        restartingPleaseWait: '正在重启，请稍候…',
       },
     },
   },
@@ -56,6 +75,11 @@ function mountPage(props = {}) {
 }
 
 describe('SettingsPage', () => {
+  beforeEach(() => {
+    navStack.value = []
+    needsRestart.value = false
+    restarting.value = false
+  })
   it('shows SettingsIndex when nav stack is empty', () => {
     const wrapper = mountPage()
 
@@ -94,10 +118,42 @@ describe('SettingsPage', () => {
     expect(wrapper.find('.stub-index').exists()).toBe(true)
   })
 
-  it('shows restart-pending style when needsRestart is true after receiving restart-needed event', async () => {
+  it('shows restart-pending style when needsRestart is true', async () => {
+    needsRestart.value = false
     const wrapper = mountPage()
 
     expect(wrapper.find('.settings-restart-btn--pending').exists()).toBe(false)
+    expect(wrapper.find('.settings-restart-btn--idle').exists()).toBe(true)
+
+    needsRestart.value = true
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.settings-restart-btn--pending').exists()).toBe(true)
+    expect(wrapper.find('.settings-restart-btn--idle').exists()).toBe(false)
+  })
+
+  it('shows idle class on restart button when no changes need restart', () => {
+    needsRestart.value = false
+    restarting.value = false
+    const wrapper = mountPage()
+
+    const btn = wrapper.find('.settings-restart-btn')
+    expect(btn.classes()).toContain('settings-restart-btn--idle')
+    expect(btn.classes()).not.toContain('settings-restart-btn--pending')
+  })
+
+  it('removes idle class and adds pending class when needsRestart becomes true', async () => {
+    needsRestart.value = false
+    const wrapper = mountPage()
+
+    const btn = wrapper.find('.settings-restart-btn')
+    expect(btn.classes()).toContain('settings-restart-btn--idle')
+
+    needsRestart.value = true
+    await wrapper.vm.$nextTick()
+
+    expect(btn.classes()).toContain('settings-restart-btn--pending')
+    expect(btn.classes()).not.toContain('settings-restart-btn--idle')
   })
 
   it('renders as a full page layout', () => {

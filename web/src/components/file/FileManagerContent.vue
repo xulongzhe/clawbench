@@ -277,13 +277,14 @@ import { Folder, ArrowDownAz, ArrowUpZa, ChevronDown, ChevronUp, Clock, FileText
 import { getFileType } from '@/utils/fileType.ts'
 import { dirName } from '@/utils/path.ts'
 import {
-  VIEW_MODE_KEY, loadViewMode, saveViewMode, buildThumbUrl,
+  buildThumbUrl,
   isImage as isImageEntry, isAudio as isAudioEntry, isVideo as isVideoEntry,
   isThumbable as isThumbableEntry, formatSize as formatFileSize, THUMBABLE_EXTS,
   createMultiSelect as _createMultiSelect, createClipboard as _createClipboard,
   resolveClickAction,
 } from '@/utils/fileManager.ts'
 import { store } from '@/stores/app.ts'
+import { localConfig, setLocalConfig } from '@/composables/useSettingsConfig'
 import { useAppMode } from '@/composables/useAppMode.ts'
 import { useDialog } from '@/composables/useDialog.ts'
 import SearchInput from '@/components/common/SearchInput.vue'
@@ -310,9 +311,9 @@ const emit = defineEmits(['navigateDir', 'selectFile', 'toggleSort', 'toggleHidd
 const searchQuery = ref('')
 const sortMenuOpen = ref(false)
 
-// ── View mode (list / grid) ──
-const viewMode = ref(loadViewMode())
-watch(viewMode, v => saveViewMode(v))
+// ── View mode (list / grid) from settings config ──
+const viewMode = ref(localConfig.fileView || 'list')
+watch(viewMode, v => setLocalConfig('fileView', v))
 
 // ── Thumbnail loading errors ──
 const thumbErrors = reactive(new Set())

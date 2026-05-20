@@ -820,9 +820,6 @@ export default {
       ragSearchLimit: '搜索结果数',
       ragSearchPoolSize: '搜索池大小',
       ragRetentionDays: '保留天数',
-      sshHeader: 'SSH',
-      sshEnabled: '启用SSH',
-      sshPort: 'SSH端口',
       proxyEnabled: '启用端口转发',
       proxyAllowedPorts: '允许的端口范围',
       portForwardEnabled: '启用端口转发',
@@ -879,6 +876,7 @@ export default {
     restartLater: '稍后',
     restartTimeout: '服务器未在预期时间内恢复，请手动刷新页面',
     saveFailed: '保存失败',
+    passwordDiscarded: '密码输入已丢弃',
   },
   terminal: {
     title: '终端',

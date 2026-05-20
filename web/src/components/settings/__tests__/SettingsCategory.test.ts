@@ -126,7 +126,8 @@ const i18n = createI18n({
           tasksSummarizeModel: '任务摘要模型',
           tasksSummarizeDisabled: '禁用',
           tasksHeader: '定时任务',
-          ragEnabled: '启用RAG',
+          ragSearchPoolSize: '搜索池大小',
+          ragOllamaUrl: 'Ollama地址',
           proxyEnabled: '启用代理',
           proxyAllowedPorts: '允许端口',
           portForwardEnabled: '启用端口转发',
@@ -261,6 +262,15 @@ describe('SettingsCategory', () => {
       await wrapper.vm.$nextTick()
 
       expect(mockSetServerValue).toHaveBeenCalledWith('session.max_count', 20)
+    })
+
+    it('session.max_count should NOT be marked as needsRestart (hot-reload field)', async () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '最大会话数')
+      expect(item).toBeTruthy()
+      // session.max_count is hot-reloadable via applyHotReloadGlobals, no restart needed
+      expect(item!.props().needsRestart).toBe(false)
     })
   })
 
@@ -451,18 +461,6 @@ describe('SettingsCategory', () => {
 
   // ─── RAG category ──────────────────────────────
   describe('rag category', () => {
-    it('PATCHes rag.enabled when toggled', async () => {
-      const wrapper = mountCategory('rag')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用RAG')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', true)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('rag.enabled', true)
-    })
-
     it('PATCHes rag.ollama_base_url when changed', async () => {
       const wrapper = mountCategory('rag')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })

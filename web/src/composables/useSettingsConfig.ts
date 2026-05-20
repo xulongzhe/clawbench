@@ -5,6 +5,58 @@ import { useAgents } from '@/composables/useAgents'
 
 const LOCAL_PREFIX = 'clawbench-settings-'
 
+/** One-time migration: copy legacy localStorage keys to new prefixed keys. */
+function migrateLegacyKeys() {
+  const migrations: Record<string, { key: string; format: 'raw' | 'json' }> = {
+    theme: { key: 'theme', format: 'raw' },
+    locale: { key: LOCALE_KEY, format: 'raw' },
+    autoSpeech: { key: 'clawbench-auto-speech', format: 'raw' },
+    showHidden: { key: 'clawbenchShowHidden', format: 'json' },
+    wordWrap: { key: 'clawbench-word-wrap', format: 'raw' },
+    lineNumbers: { key: 'clawbench-line-numbers', format: 'raw' },
+    fileView: { key: 'clawbench-file-view', format: 'raw' },
+    terminalFontSize: { key: 'clawbench-terminal-font-size', format: 'raw' },
+  }
+  for (const [settingsKey, legacy] of Object.entries(migrations)) {
+    const newKey = LOCAL_PREFIX + settingsKey
+    // Only migrate if new key doesn't exist yet but legacy key does
+    if (localStorage.getItem(newKey) !== null) continue
+    const value = localStorage.getItem(legacy.key)
+    if (value === null) continue
+    try {
+      if (legacy.format === 'json') {
+        localStorage.setItem(newKey, value) // already JSON
+      } else {
+        // Convert raw string to JSON for consistency
+        const bool = value === 'true' || value === 'false'
+        const num = Number(value)
+        const parsed = bool ? value === 'true' : (!isNaN(num) && value !== '' ? num : value)
+        localStorage.setItem(newKey, JSON.stringify(parsed))
+      }
+    } catch { /* ignore */ }
+  }
+}
+// Run migration on module load
+migrateLegacyKeys()
+
+/** Deep-merge source into target (mutates target). Only overwrites leaf values. */
+function deepAssign(target: Record<string, any>, source: Record<string, any>) {
+  for (const key of Object.keys(source)) {
+    if (
+      source[key] !== null &&
+      typeof source[key] === 'object' &&
+      !Array.isArray(source[key]) &&
+      target[key] !== null &&
+      typeof target[key] === 'object' &&
+      !Array.isArray(target[key])
+    ) {
+      deepAssign(target[key], source[key])
+    } else {
+      target[key] = source[key]
+    }
+  }
+}
+
 /**
  * Mapping from settings key → legacy localStorage key + write format.
  * Each entry tells setLocalConfig() how to also write to the key that
@@ -74,10 +126,15 @@ const legacyKeys: Record<string, {
   },
 }
 
-/** Read initial value from legacy key (falls back to our own prefixed key, then default) */
+/** Read initial value from prefixed key (falls back to legacy key, then default) */
 function readLocalValue(settingsKey: string, defaultValue: any): any {
+  // Try our own prefixed key first (canonical location after migration)
+  try {
+    const saved = localStorage.getItem(LOCAL_PREFIX + settingsKey)
+    if (saved !== null) return JSON.parse(saved)
+  } catch { /* ignore */ }
+  // Fallback: try legacy key (for values not yet migrated)
   const legacy = legacyKeys[settingsKey]
-  // Try legacy key first (it's the source of truth if already set)
   if (legacy?.key) {
     try {
       const saved = localStorage.getItem(legacy.key)
@@ -97,11 +154,6 @@ function readLocalValue(settingsKey: string, defaultValue: any): any {
       }
     } catch { /* ignore */ }
   }
-  // Fallback: try our own prefixed key
-  try {
-    const saved = localStorage.getItem(LOCAL_PREFIX + settingsKey)
-    if (saved !== null) return JSON.parse(saved)
-  } catch { /* ignore */ }
   return defaultValue
 }
 
@@ -122,6 +174,35 @@ const localConfig = reactive<Record<string, any>>({})
 for (const key of Object.keys(localDefaults)) {
   localConfig[key] = readLocalValue(key, localDefaults[key])
 }
+
+/** Set a local config value, persisting to both prefixed and legacy localStorage keys. */
+export function setLocalConfig(key: string, value: any) {
+  localConfig[key] = value
+
+  // Write to our own prefixed key (for persistence)
+  try {
+    localStorage.setItem(LOCAL_PREFIX + key, JSON.stringify(value))
+  } catch { /* ignore */ }
+
+  // Write to the legacy key that the actual feature reads from
+  const legacy = legacyKeys[key]
+  if (legacy?.key) {
+    try {
+      if (legacy.format === 'json') {
+        localStorage.setItem(legacy.key, JSON.stringify(value))
+      } else {
+        localStorage.setItem(legacy.key, String(value))
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Run side-effect for immediate runtime change
+  if (legacy?.sideEffect) {
+    legacy.sideEffect(value)
+  }
+}
+
+export { localConfig }
 
 const serverConfig = ref<Record<string, any>>({})
 
@@ -147,16 +228,14 @@ const serverDefaults: Record<string, any> = {
   'tts.summarize_backend': 'simple',
   'tts.speed': 1.0,
   'tts.max_cache_files': 100,
-  'rag.enabled': false,
   'rag.ollama_base_url': 'http://localhost:11434',
   'rag.ollama_model': 'bge-m3',
   'rag.chunk_size': 512,
   'rag.search_limit': 5,
+  'rag.search_pool_size': 20,
   'rag.retention_days': 90,
   'proxy.enabled': true,
   'proxy.allowed_ports': '1024-65535',
-  'ssh.enabled': true,
-  'ssh.port': 0,
   'push.jpush.enabled': false,
   'tts.piper.noise_scale': 0.667,
   'tts.piper.length_scale': 1.0,
@@ -207,8 +286,10 @@ export function useSettingsConfig() {
 
   async function patchConfig(changes: Record<string, any>): Promise<{ needsRestart: boolean; changedColdFields: string[] }> {
     const result = await apiPatch<{ needsRestart?: boolean; changedColdFields?: string[] }>('/api/config', changes)
-    // Merge patched values into local cache after successful response
-    Object.assign(serverConfig.value, changes)
+    // Deep-merge patched values into local cache after successful response.
+    // Using Object.assign would overwrite nested objects (e.g. {chat: {collapsed_height: 300}}
+    // would lose the existing page_size), so we deep-merge instead.
+    deepAssign(serverConfig.value, changes)
     return {
       needsRestart: result.needsRestart ?? false,
       changedColdFields: result.changedColdFields ?? [],
@@ -217,32 +298,6 @@ export function useSettingsConfig() {
 
   async function restartServer() {
     await apiPost('/api/config/restart', {})
-  }
-
-  function setLocalConfig(key: string, value: any) {
-    localConfig[key] = value
-
-    // Write to our own prefixed key (for persistence)
-    try {
-      localStorage.setItem(LOCAL_PREFIX + key, JSON.stringify(value))
-    } catch { /* ignore */ }
-
-    // Write to the legacy key that the actual feature reads from
-    const legacy = legacyKeys[key]
-    if (legacy?.key) {
-      try {
-        if (legacy.format === 'json') {
-          localStorage.setItem(legacy.key, JSON.stringify(value))
-        } else {
-          localStorage.setItem(legacy.key, String(value))
-        }
-      } catch { /* ignore */ }
-    }
-
-    // Run side-effect for immediate runtime change
-    if (legacy?.sideEffect) {
-      legacy.sideEffect(value)
-    }
   }
 
   /** Read a server config value by dot-path (e.g. "server.port") */

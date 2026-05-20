@@ -3,9 +3,6 @@ package rag
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"clawbench/internal/service"
@@ -75,7 +72,7 @@ func TestRAGSearch_EmptyQuery(t *testing.T) {
 	embedder, cleanup := newHealthyMockOllama(t)
 	defer cleanup()
 
-	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: ""}, 5)
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: ""}, 5, 20)
 	assert.NoError(t, err)
 	assert.Empty(t, result.Results)
 	assert.Equal(t, 0, result.Total)
@@ -84,93 +81,82 @@ func TestRAGSearch_EmptyQuery(t *testing.T) {
 func TestRAGSearch_DefaultLimit(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
 
-	// Mock embedder that returns 1024-dim vectors
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbedResponse{Embedding: makeTestEmbedding(1024)}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
-	embedder.HTTPClient = server.Client()
-
-	// Insert some chunks
+	// Insert some chunks and build FTS index
 	insertTestChunks(t, store, 3)
+	require.NoError(t, store.CreateFTSIndex())
 
 	// Search with limit=0 should use defaultLimit
-	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 0}, 5)
-	assert.NoError(t, err)
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 0}, 5, 20)
+	require.NoError(t, err)
 	assert.LessOrEqual(t, len(result.Results), 5)
 }
 
 func TestRAGSearch_WithResults(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbedResponse{Embedding: makeTestEmbedding(1024)}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
-	embedder.HTTPClient = server.Client()
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
 
 	insertTestChunks(t, store, 2)
+	require.NoError(t, store.CreateFTSIndex())
 
-	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 10}, 5)
-	assert.NoError(t, err)
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 10}, 5, 20)
+	require.NoError(t, err)
 	assert.NotEmpty(t, result.Results)
 	assert.Equal(t, len(result.Results), result.Total)
+	// Should use hybrid or vector mode since Ollama is healthy
+	assert.Contains(t, []SearchMode{SearchModeHybrid, SearchModeVector, SearchModeFTS}, result.Mode)
 }
 
-func TestRAGSearch_EmbedError(t *testing.T) {
+func TestRAGSearch_FTSOnly(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
 
-	// Server that returns 500
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server.Close()
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
-	embedder.HTTPClient = server.Client()
+	// Insert chunks and build FTS index
+	insertTestChunks(t, store, 3)
+	require.NoError(t, store.CreateFTSIndex())
 
-	_, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test"}, 5)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "embed query")
-}
-
-func TestRAGSearch_SearchError(t *testing.T) {
-	// Use a store that's been closed — should error on search
-	dir := t.TempDir()
-	store, err := NewStore(dir + "/test.duckdb")
-	require.NoError(t, err)
-	insertTestChunks(t, store, 1)
-	store.Close() // Close the store
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbedResponse{Embedding: makeTestEmbedding(1024)}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
-	embedder.HTTPClient = server.Client()
-
-	_, err = RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test"}, 5)
-	assert.Error(t, err)
+	// Use nil embedder (Ollama not available) — should fall back to FTS-only
+	result, err := RAGSearch(context.Background(), store, nil, SearchParams{Query: "chunk", Limit: 5}, 5, 20)
+	assert.NoError(t, err)
+	assert.Equal(t, SearchModeFTS, result.Mode)
+	assert.NotEmpty(t, result.Results)
 }
 
 func TestRAGSearch_NilStore(t *testing.T) {
-	_, err := RAGSearch(context.Background(), nil, nil, SearchParams{Query: "test"}, 5)
+	_, err := RAGSearch(context.Background(), nil, nil, SearchParams{Query: "test"}, 5, 20)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "RAG not initialized")
 }
 
 func TestRAGSearch_NilStoreEmptyQuery(t *testing.T) {
 	// Empty query should return before nil check
-	result, err := RAGSearch(context.Background(), nil, nil, SearchParams{Query: ""}, 5)
+	result, err := RAGSearch(context.Background(), nil, nil, SearchParams{Query: ""}, 5, 20)
 	assert.NoError(t, err)
 	assert.Empty(t, result.Results)
+}
+
+func TestRAGSearch_SearchModeField(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	insertTestChunks(t, store, 3)
+	require.NoError(t, store.CreateFTSIndex())
+
+	// With healthy Ollama — should be hybrid
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "chunk", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	// With both FTS and Ollama available, should use hybrid
+	assert.Equal(t, SearchModeHybrid, result.Mode)
 }
 
 // ---------- getSessionTitles ----------

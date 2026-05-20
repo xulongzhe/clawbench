@@ -178,8 +178,8 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	}
 
 	// --- RAG ---
-	// Bool zero-value: Go defaults to false, which IS the desired default for RAG.
-	// No presence check needed — "rag.enabled" absent means false (disabled).
+	// RAG is always enabled. No "enabled" toggle needed.
+	// When Ollama is unavailable, falls back to BM25 full-text search.
 	if cfg.RAG.OllamaBaseURL == "" {
 		cfg.RAG.OllamaBaseURL = "http://localhost:11434"
 	}
@@ -200,6 +200,9 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	}
 	if cfg.RAG.SearchLimit <= 0 {
 		cfg.RAG.SearchLimit = 5
+	}
+	if cfg.RAG.SearchPoolSize <= 0 {
+		cfg.RAG.SearchPoolSize = 20
 	}
 	if cfg.RAG.RetentionDays <= 0 {
 		cfg.RAG.RetentionDays = 90

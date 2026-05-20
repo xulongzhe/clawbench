@@ -820,9 +820,6 @@ export default {
       ragSearchLimit: 'Search Limit',
       ragSearchPoolSize: 'Search Pool Size',
       ragRetentionDays: 'Retention Days',
-      sshHeader: 'SSH',
-      sshEnabled: 'Enable SSH',
-      sshPort: 'SSH Port',
       proxyEnabled: 'Enable Port Forward',
       proxyAllowedPorts: 'Allowed Ports Range',
       portForwardEnabled: 'Enable Port Forward',
@@ -879,6 +876,7 @@ export default {
     restartLater: 'Later',
     restartTimeout: 'Server did not come back in time. Please refresh the page manually.',
     saveFailed: 'Save failed',
+    passwordDiscarded: 'Password input discarded',
   },
   terminal: {
     title: 'Terminal',

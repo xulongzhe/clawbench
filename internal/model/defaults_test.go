@@ -160,6 +160,9 @@ func TestApplyDefaultsEmptyConfig(t *testing.T) {
 	if cfg.TTS.Speed != 1.0 {
 		t.Errorf("TTS.Speed = %v, want 1.0", cfg.TTS.Speed)
 	}
+	if cfg.RAG.SearchPoolSize != 20 {
+		t.Errorf("RAG.SearchPoolSize = %d, want 20", cfg.RAG.SearchPoolSize)
+	}
 }
 
 func TestApplyDefaultsPartialConfig(t *testing.T) {

@@ -114,7 +114,16 @@ func (p *OpenCodeStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 		inputStr := "{}"
 		if part.State != nil && len(part.State.Input) > 0 {
 			// Normalize input field names from OpenCode's camelCase to canonical snake_case
-			inputStr = normalizeOpenCodeInput(part.Tool, part.State.Input)
+			inputStr = func() string {
+				normalized, err := normalizeToolInput(part.State.Input, map[string]string{
+					"oldString": "old_string",
+					"newString": "new_string",
+				})
+				if err != nil {
+					return string(part.State.Input)
+				}
+				return string(normalized)
+			}()
 		}
 		done := part.State != nil && part.State.Status == "completed"
 		output := ""
@@ -126,7 +135,7 @@ func (p *OpenCodeStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 			}
 		}
 		ch <- StreamEvent{Type: "tool_use", Tool: &ToolCall{
-			Name:   normalizeOpenCodeToolName(part.Tool),
+			Name:   normalizeToolName(part.Tool),
 			ID:     part.CallID,
 			Input:  inputStr,
 			Done:   done,
@@ -200,21 +209,4 @@ func buildOpenCodeStreamArgs(req ChatRequest) []string {
 	}
 
 	return args
-}
-
-// normalizeOpenCodeToolName maps OpenCode tool names to canonical names.
-// Deprecated: use normalizeToolName instead. Retained for backward compatibility.
-func normalizeOpenCodeToolName(name string) string { return normalizeToolName(name) }
-
-// normalizeOpenCodeInput remaps OpenCode's camelCase input fields to canonical snake_case.
-// Deprecated: use normalizeToolInput instead. Retained for backward compatibility.
-func normalizeOpenCodeInput(toolName string, rawInput json.RawMessage) string {
-	normalized, err := normalizeToolInput(rawInput, map[string]string{
-		"oldString": "old_string",
-		"newString": "new_string",
-	})
-	if err != nil {
-		return string(rawInput)
-	}
-	return string(normalized)
 }

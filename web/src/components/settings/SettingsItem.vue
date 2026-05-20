@@ -115,7 +115,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Eye, EyeOff } from 'lucide-vue-next'
 
@@ -151,15 +151,31 @@ const emit = defineEmits<{
   'update:modelValue': [value: any]
   click: []
   editToggle: [open: boolean]
+  discard: []
 }>()
 
 const editing = ref(false)
 const editValue = ref<any>(null)
 const showPassword = ref(false)
 
+// Slider debounce: only emit final value after 300ms of inactivity
+let sliderDebounceTimer: ReturnType<typeof setTimeout> | null = null
+const SLIDER_DEBOUNCE_MS = 300
+
+onUnmounted(() => {
+  if (sliderDebounceTimer) {
+    clearTimeout(sliderDebounceTimer)
+    sliderDebounceTimer = null
+  }
+})
+
 // Close editor when parent forces close (another editor opened)
 watch(() => props.forceClose, (val) => {
   if (val && editing.value) {
+    // Password editor with unsaved input: notify parent so it can show feedback
+    if (props.type === 'password' && editValue.value !== '' && editValue.value !== null && editValue.value !== undefined) {
+      emit('discard')
+    }
     editing.value = false
     emit('editToggle', false)
   }
@@ -189,7 +205,12 @@ function onSwitchChange(e: Event) {
 
 function onSliderInput(e: Event) {
   const value = Number((e.target as HTMLInputElement).value)
-  emit('update:modelValue', value)
+  // Debounce: cancel previous timer, only emit after user stops dragging
+  if (sliderDebounceTimer) clearTimeout(sliderDebounceTimer)
+  sliderDebounceTimer = setTimeout(() => {
+    emit('update:modelValue', value)
+    sliderDebounceTimer = null
+  }, SLIDER_DEBOUNCE_MS)
 }
 
 function handleClick() {

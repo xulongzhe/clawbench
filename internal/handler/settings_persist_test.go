@@ -455,14 +455,14 @@ func TestPersist_APIModel(t *testing.T) {
 
 // ─── RAG section ──────────────────────────────────────
 
-func TestPersist_RAGEnabled(t *testing.T) {
+func TestPersist_RAGSearchPoolSize(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"rag":{"enabled":true}}`)
-	assert.Equal(t, true, getNestedValue(cfg, "rag.enabled"))
+	cfg := patchAndReadConfig(t, `{"rag":{"search_pool_size":30}}`)
+	assert.Equal(t, 30, getNestedValue(cfg, "rag.search_pool_size"))
 }
 
 func TestPersist_RAGOllamaBaseURL(t *testing.T) {
@@ -537,26 +537,26 @@ func TestPersist_ProxyAllowedPorts(t *testing.T) {
 	assert.Equal(t, "8080,9090", getNestedValue(cfg, "proxy.allowed_ports"))
 }
 
-// ─── SSH section ──────────────────────────────────────
+// ─── Port Forward section ──────────────────────────────────────
 
-func TestPersist_SSHEnabled(t *testing.T) {
+func TestPersist_PortForwardEnabled(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"ssh":{"enabled":false}}`)
-	assert.Equal(t, false, getNestedValue(cfg, "ssh.enabled"))
+	cfg := patchAndReadConfig(t, `{"port_forward":{"enabled":false}}`)
+	assert.Equal(t, false, getNestedValue(cfg, "port_forward.enabled"))
 }
 
-func TestPersist_SSHPort(t *testing.T) {
+func TestPersist_PortForwardPort(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"ssh":{"port":2222}}`)
-	assert.Equal(t, 2222, getNestedValue(cfg, "ssh.port"))
+	cfg := patchAndReadConfig(t, `{"port_forward":{"port":2222}}`)
+	assert.Equal(t, 2222, getNestedValue(cfg, "port_forward.port"))
 }
 
 // ─── Push section ──────────────────────────────────────
@@ -623,7 +623,7 @@ func TestPersist_MultipleFieldsInOnePatch(t *testing.T) {
 		"default_agent": "claude",
 		"chat": {"initial_messages": 30, "page_size": 50},
 		"tts": {"engine": "minimax", "speed": 2.0},
-		"rag": {"enabled": true, "chunk_size": 1024},
+		"rag": {"chunk_size": 1024, "search_pool_size": 30},
 		"terminal": {"enabled": false, "idle_timeout": "5m"}
 	}`
 
@@ -634,8 +634,8 @@ func TestPersist_MultipleFieldsInOnePatch(t *testing.T) {
 	assert.Equal(t, 50, getNestedValue(cfg, "chat.page_size"))
 	assert.Equal(t, "minimax", getNestedValue(cfg, "tts.engine"))
 	assert.InDelta(t, 2.0, getNestedValue(cfg, "tts.speed"), 0.01)
-	assert.Equal(t, true, getNestedValue(cfg, "rag.enabled"))
 	assert.Equal(t, 1024, getNestedValue(cfg, "rag.chunk_size"))
+	assert.Equal(t, 30, getNestedValue(cfg, "rag.search_pool_size"))
 	assert.Equal(t, false, getNestedValue(cfg, "terminal.enabled"))
 	assert.Equal(t, "5m", getNestedValue(cfg, "terminal.idle_timeout"))
 }
@@ -703,7 +703,7 @@ func TestPersist_GetMatchesDiskAfterPatch(t *testing.T) {
 	model.ConfigInstance = model.Config{}
 
 	// PATCH
-	patchAndReadConfig(t, `{"rag":{"enabled":true,"chunk_size":768},"terminal":{"max_sessions":3}}`)
+	patchAndReadConfig(t, `{"rag":{"chunk_size":768,"search_pool_size":15},"terminal":{"max_sessions":3}}`)
 
 	// GET
 	req := newRequest(t, http.MethodGet, "/api/config", nil)
@@ -715,8 +715,8 @@ func TestPersist_GetMatchesDiskAfterPatch(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 
 	rag, _ := resp["rag"].(map[string]any)
-	assert.Equal(t, true, rag["enabled"])
 	assert.Equal(t, float64(768), rag["chunk_size"])
+	assert.Equal(t, float64(15), rag["search_pool_size"])
 
 	terminal, _ := resp["terminal"].(map[string]any)
 	assert.Equal(t, float64(3), terminal["max_sessions"])

@@ -9,7 +9,7 @@ import (
 	"clawbench/internal/service"
 )
 
-// ServeRAGSearch handles POST /api/rag/search — vector similarity search.
+// ServeRAGSearch handles POST /api/rag/search — hybrid/FTS/vector search.
 // Auth: localhost bypasses auth (CLI); remote requires cookie.
 // Project isolation: uses cookie-derived project path, ignoring client-supplied project field.
 func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
@@ -60,7 +60,8 @@ func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
 		ToTime:           req.ToTime,
 	}
 
-	result, err := rag.RAGSearch(r.Context(), rag.GlobalStore, rag.GlobalEmbedder, params, defaultLimit)
+	searchPoolSize := model.ConfigInstance.RAG.SearchPoolSize
+	result, err := rag.RAGSearch(r.Context(), rag.GlobalStore, rag.GlobalEmbedder, params, defaultLimit, searchPoolSize)
 	if err != nil {
 		writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "RAGSearchFailed")
 		return

@@ -246,10 +246,13 @@ port_forward:
 # When enabled, chat messages are automatically indexed into a vector database (DuckDB + BGE-M3),
 # and AI agents can search historical conversations via the RAG API.
 # 启用后，聊天消息自动索引到向量数据库（DuckDB + BGE-M3），AI 智能体可通过 RAG API 搜索历史对话。
-# Prerequisite: Ollama must be running with the bge-m3 model pulled (ollama pull bge-m3)
-# 前提条件：Ollama 需运行并拉取 bge-m3 模型（ollama pull bge-m3）
+# RAG history memory — always enabled. Without Ollama, uses FTS-only search.
+# When Ollama is available, uses hybrid vector + FTS search with RRF fusion.
+# RAG 历史记忆 — 始终启用。无 Ollama 时使用纯全文检索。
+# Ollama 可用时，使用向量 + 全文混合检索（RRF 融合）。
+# Prerequisite for vector search: Ollama must be running with the bge-m3 model pulled (ollama pull bge-m3)
+# 向量搜索前提条件：Ollama 需运行并拉取 bge-m3 模型（ollama pull bge-m3）
 # rag:
-#   enabled: false                  # Enable RAG history memory (default: false) / 启用 RAG 历史记忆（默认: false）
 #   ollama_base_url: "http://localhost:11434"  # Ollama API URL / Ollama API 地址
 #   ollama_model: "bge-m3"          # Embedding model name / Embedding 模型名
 #   chunk_size: 512                  # Chunk size in tokens (default: 512) / 分块大小（token，默认: 512）
@@ -257,6 +260,7 @@ port_forward:
 #   poll_interval: "10s"             # Indexer poll interval (default: 10s) / 索引轮询间隔（默认: 10s）
 #   batch_size: 10                   # Messages per indexer batch (default: 10) / 每轮索引消息数（默认: 10）
 #   search_limit: 5                  # Default search result limit (default: 5) / 默认搜索结果数量（默认: 5）
+#   search_pool_size: 20            # RRF candidate pool size per source (default: 20) / RRF 候选池大小（默认: 20）
 #   retention_days: 90               # Soft-deleted data retention days, 0=keep forever (default: 90) / 软删除数据保留天数，0=永久保留（默认: 90）
 
 # Terminal configuration / 终端配置

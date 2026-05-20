@@ -1,17 +1,19 @@
 import { ref, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettingsConfig } from '@/composables/useSettingsConfig'
+import { useToast } from '@/composables/useToast'
 
 const MAX_POLL_ATTEMPTS = 60 // 2 minutes at 2s interval
 const POLL_INTERVAL_MS = 2000
 
 /**
  * Shared composable for settings page navigation, restart logic, and state.
- * Used by both SettingsPage.vue and SettingsDrawer.vue to avoid code duplication.
+ * Used by SettingsPage.vue to avoid code duplication.
  */
 export function useSettingsNavigation() {
   const { t } = useI18n()
   const { loadConfig, restartServer } = useSettingsConfig()
+  const toast = useToast()
 
   const navStack = ref<string[]>([])
   const restartDialogVisible = ref(false)
@@ -71,6 +73,7 @@ export function useSettingsNavigation() {
         pollTimer = null
         restartingOverlay.value = false
         restarting.value = false
+        toast.show(t('settings.restartTimeout'), { icon: '⚠️', type: 'error', duration: 5000 })
         return
       }
 

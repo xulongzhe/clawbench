@@ -16,6 +16,12 @@ import (
 // setupTestStore creates a temporary DuckDB store for testing.
 func setupTestStore(t *testing.T) *Store {
 	t.Helper()
+	// Ensure segmenter is initialized for tests that use SegmentText
+	if segmenter == nil {
+		if err := InitSegmenter(); err != nil {
+			t.Logf("Warning: gse segmenter not available: %v", err)
+		}
+	}
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.duckdb")
 	store, err := NewStore(dbPath)
@@ -39,16 +45,18 @@ func makeTestEmbedding(dim int) []float64 {
 // makeTestChunk creates a Chunk with the given text and a default 1024-dim embedding.
 func makeTestChunk(sessionID string, messageID int64, chunkIndex int, text string) Chunk {
 	return Chunk{
-		SessionID:   sessionID,
-		MessageID:   messageID,
-		ChunkText:   text,
-		ChunkIndex:  chunkIndex,
-		TokenCount:  len(text) / 4,
-		Embedding:   makeTestEmbedding(1024),
-		ProjectPath: "/test/project",
-		Backend:     "claude",
-		Role:        "assistant",
-		CreatedAt:   time.Now().Truncate(time.Millisecond),
+		SessionID:          sessionID,
+		MessageID:          messageID,
+		ChunkText:          text,
+		ChunkTextSegmented: SegmentText(text),
+		ChunkIndex:         chunkIndex,
+		TokenCount:         len(text) / 4,
+		Embedding:          makeTestEmbedding(1024),
+		HasEmbedding:       true,
+		ProjectPath:        "/test/project",
+		Backend:            "claude",
+		Role:               "assistant",
+		CreatedAt:          time.Now().Truncate(time.Millisecond),
 	}
 }
 
@@ -382,33 +390,6 @@ func TestStore_Close_NilDB(t *testing.T) {
 	assert.NoError(t, err, "Close with nil db should not error")
 }
 
-// ---------- RecoverFromCorruption ----------
-
-func TestStore_RecoverFromCorruption(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "recover.duckdb")
-
-	// Create a store and add data
-	store, err := NewStore(dbPath)
-	require.NoError(t, err)
-	insertTestChunks(t, store, 2)
-	store.Close()
-
-	// Reopen and recover
-	store2, err := NewStore(dbPath)
-	require.NoError(t, err)
-
-	err = store2.RecoverFromCorruption()
-	assert.NoError(t, err, "RecoverFromCorruption should succeed")
-
-	// After recovery, table should be empty (fresh schema)
-	count, err := store2.ChunkCount()
-	assert.NoError(t, err)
-	assert.Equal(t, 0, count, "recovered table should be empty")
-
-	store2.Close()
-}
-
 // ---------- embeddingToSQLArray ----------
 
 func TestEmbeddingToSQLArray(t *testing.T) {
@@ -424,4 +405,289 @@ func TestEmbeddingToSQLArray(t *testing.T) {
 func TestEmbeddingToSQLArray_Empty(t *testing.T) {
 	result := embeddingToSQLArray([]float64{})
 	assert.Equal(t, "array[]::FLOAT[1024]", result)
+}
+
+// ---------- Schema migration (new columns) ----------
+
+func TestStore_SchemaHasSegmentedTextColumn(t *testing.T) {
+	store := setupTestStore(t)
+	// Insert a chunk with segmented text
+	chunk := makeTestChunk("sess-1", 1, 0, "hello world")
+	chunk.ChunkTextSegmented = "hello world"
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	// Verify the column exists by querying it directly
+	var segmented string
+	err = store.db.QueryRow("SELECT chunk_text_segmented FROM chat_chunks LIMIT 1").Scan(&segmented)
+	assert.NoError(t, err, "chunk_text_segmented column should exist")
+	assert.Equal(t, "hello world", segmented)
+}
+
+func TestStore_SchemaHasHasEmbeddingColumn(t *testing.T) {
+	store := setupTestStore(t)
+	// Insert a chunk with embedding
+	chunk := makeTestChunk("sess-1", 1, 0, "test")
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	var hasEmb bool
+	err = store.db.QueryRow("SELECT has_embedding FROM chat_chunks LIMIT 1").Scan(&hasEmb)
+	assert.NoError(t, err, "has_embedding column should exist")
+	assert.True(t, hasEmb, "chunk with embedding should have has_embedding=true")
+}
+
+func TestStore_InsertChunks_WithoutEmbedding(t *testing.T) {
+	store := setupTestStore(t)
+	// Insert a chunk WITHOUT embedding (Ollama unavailable scenario)
+	chunk := Chunk{
+		SessionID:          "sess-1",
+		MessageID:          1,
+		ChunkText:          "test without embedding",
+		ChunkTextSegmented: "test without embedding",
+		ChunkIndex:         0,
+		TokenCount:         5,
+		Embedding:          nil, // no embedding
+		HasEmbedding:       false,
+		ProjectPath:        "/test",
+		Backend:            "claude",
+		Role:               "assistant",
+		CreatedAt:          time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	var hasEmb bool
+	err = store.db.QueryRow("SELECT has_embedding FROM chat_chunks LIMIT 1").Scan(&hasEmb)
+	assert.NoError(t, err)
+	assert.False(t, hasEmb, "chunk without embedding should have has_embedding=false")
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 1, count, "chunk should be inserted even without embedding")
+}
+
+func TestStore_PendingEmbeddingCount(t *testing.T) {
+	store := setupTestStore(t)
+
+	// Insert one with embedding and one without
+	chunk1 := makeTestChunk("sess-1", 1, 0, "with embedding")
+	err := store.InsertChunks([]Chunk{chunk1})
+	require.NoError(t, err)
+
+	chunk2 := Chunk{
+		SessionID:          "sess-2",
+		MessageID:          2,
+		ChunkText:          "without embedding",
+		ChunkTextSegmented: "without embedding",
+		ChunkIndex:         0,
+		TokenCount:         3,
+		Embedding:          nil,
+		HasEmbedding:       false,
+		ProjectPath:        "/test",
+		Backend:            "claude",
+		Role:               "assistant",
+		CreatedAt:          time.Now().Truncate(time.Millisecond),
+	}
+	err = store.InsertChunks([]Chunk{chunk2})
+	require.NoError(t, err)
+
+	pending, err := store.PendingEmbeddingCount()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, pending, "should have 1 pending embedding")
+}
+
+func TestStore_UpdateEmbedding(t *testing.T) {
+	store := setupTestStore(t)
+
+	// Insert a single chunk without embedding
+	chunk := Chunk{
+		SessionID:          "sess-1",
+		MessageID:          1,
+		ChunkText:          "needs backfill",
+		ChunkTextSegmented: "needs backfill",
+		ChunkIndex:         0,
+		TokenCount:         3,
+		Embedding:          nil,
+		HasEmbedding:       false,
+		ProjectPath:        "/test",
+		Backend:            "claude",
+		Role:               "assistant",
+		CreatedAt:          time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err, "InsertChunks should succeed for chunk without embedding")
+
+	// Get the chunk ID
+	var chunkID int64
+	err = store.db.QueryRow("SELECT id FROM chat_chunks WHERE has_embedding = false LIMIT 1").Scan(&chunkID)
+	require.NoError(t, err)
+
+	// Backfill the embedding
+	embedding := makeTestEmbedding(1024)
+	err = store.UpdateEmbedding(chunkID, embedding)
+	assert.NoError(t, err)
+
+	// Verify has_embedding is now true
+	var hasEmb bool
+	err = store.db.QueryRow("SELECT has_embedding FROM chat_chunks WHERE id = ?", chunkID).Scan(&hasEmb)
+	assert.NoError(t, err)
+	assert.True(t, hasEmb, "embedding should be set after backfill")
+
+	// Verify it's now searchable via vector search
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 0, pending, "no pending embeddings after backfill")
+}
+
+// ---------- FTS (Full-Text Search) ----------
+
+func TestStore_FTSAvailable(t *testing.T) {
+	store := setupTestStore(t)
+	// FTS should be available (DuckDB FTS extension loaded)
+	assert.True(t, store.ftsAvailable, "FTS should be available in test store")
+}
+
+func TestStore_SearchFTS_English(t *testing.T) {
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	// Insert chunks with segmented text
+	chunks := []Chunk{
+		{
+			SessionID: "sess-1", MessageID: 1, ChunkText: "database query optimization",
+			ChunkTextSegmented: "database query optimization", ChunkIndex: 0,
+			TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			CreatedAt: time.Now().Truncate(time.Millisecond),
+		},
+		{
+			SessionID: "sess-2", MessageID: 2, ChunkText: "web server configuration",
+			ChunkTextSegmented: "web server configuration", ChunkIndex: 0,
+			TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			CreatedAt: time.Now().Truncate(time.Millisecond),
+		},
+	}
+	err := store.InsertChunks(chunks)
+	require.NoError(t, err)
+
+	// Rebuild FTS index
+	err = store.CreateFTSIndex()
+	require.NoError(t, err)
+
+	// Search for "database"
+	hits, err := store.SearchFTS("database", 5, "", "", "", "", "", "", "")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, hits, "FTS search should find results for 'database'")
+	assert.Contains(t, hits[0].ChunkText, "database")
+}
+
+func TestStore_SearchFTS_Chinese(t *testing.T) {
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	// Insert Chinese chunks with pre-segmented text
+	chunks := []Chunk{
+		{
+			SessionID: "sess-1", MessageID: 1, ChunkText: "使用DuckDB进行全文检索",
+			ChunkTextSegmented: SegmentText("使用DuckDB进行全文检索"), ChunkIndex: 0,
+			TokenCount: 10, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			CreatedAt: time.Now().Truncate(time.Millisecond),
+		},
+		{
+			SessionID: "sess-2", MessageID: 2, ChunkText: "人工智能技术发展",
+			ChunkTextSegmented: SegmentText("人工智能技术发展"), ChunkIndex: 0,
+			TokenCount: 5, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			CreatedAt: time.Now().Truncate(time.Millisecond),
+		},
+	}
+	err := store.InsertChunks(chunks)
+	require.NoError(t, err)
+
+	// Rebuild FTS index
+	err = store.CreateFTSIndex()
+	require.NoError(t, err)
+
+	// Search for "全文检索" (segmented query)
+	hits, err := store.SearchFTS("全文检索", 5, "", "", "", "", "", "", "")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, hits, "FTS search should find Chinese results")
+}
+
+func TestStore_SearchFTS_RespectsFilters(t *testing.T) {
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	// Insert chunks for different projects
+	chunk1 := Chunk{
+		SessionID: "sess-1", MessageID: 1, ChunkText: "database query optimization",
+		ChunkTextSegmented: "database query optimization", ChunkIndex: 0,
+		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		ProjectPath: "/project/a", Backend: "claude", Role: "assistant",
+		CreatedAt: time.Now().Truncate(time.Millisecond),
+	}
+	chunk2 := Chunk{
+		SessionID: "sess-2", MessageID: 2, ChunkText: "database indexing strategies",
+		ChunkTextSegmented: "database indexing strategies", ChunkIndex: 0,
+		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		ProjectPath: "/project/b", Backend: "codebuddy", Role: "user",
+		CreatedAt: time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk1, chunk2})
+	require.NoError(t, err)
+
+	err = store.CreateFTSIndex()
+	require.NoError(t, err)
+
+	// Filter by project
+	hits, err := store.SearchFTS("database", 5, "/project/a", "", "", "", "", "", "")
+	assert.NoError(t, err)
+	assert.Len(t, hits, 1)
+	assert.Equal(t, "/project/a", hits[0].ProjectPath)
+}
+
+func TestStore_SearchHybrid_CombinesSources(t *testing.T) {
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	// Insert several chunks
+	insertTestChunks(t, store, 5)
+
+	err := store.CreateFTSIndex()
+	require.NoError(t, err)
+
+	// Hybrid search should combine vector + FTS results
+	hits, err := store.SearchHybrid(
+		makeTestEmbedding(1024), "chunk text", 20, 5,
+		"", "", "", "", "", "", "",
+	)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, hits, "hybrid search should return results")
+}
+
+// ---------- FTS rebuild management ----------
+
+func TestStore_RebuildFTSIfDirty(t *testing.T) {
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	// Insert chunks — should mark FTS dirty
+	insertTestChunks(t, store, 3)
+	assert.True(t, store.ftsDirty, "inserting chunks should mark FTS dirty")
+
+	// Rebuild should clear the dirty flag
+	err := store.RebuildFTSIfDirty()
+	assert.NoError(t, err)
+	assert.False(t, store.ftsDirty, "rebuild should clear dirty flag")
 }

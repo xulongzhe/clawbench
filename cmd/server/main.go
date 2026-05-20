@@ -120,8 +120,6 @@ func main() {
 	// Search for config in priority order:
 	// 1. <BinDir>/config/config.yaml (green portable: next to binary)
 	// 2. config/config.yaml (CWD-relative, standard layout)
-	// 3. <BinDir>/config.yaml (legacy: next to binary)
-	// 4. config.yaml (legacy: CWD root)
 	configPath := cli.FindConfigPath(model.BinDir)
 
 	data, err := os.ReadFile(configPath)
@@ -435,13 +433,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize RAG history memory system (if enabled)
-	if cfg.RAG.Enabled {
-		if err := rag.Init(cfg.RAG); err != nil {
-			slog.Warn("failed to initialize RAG system, RAG will be disabled", slog.String("err", err.Error()))
-			cfg.RAG.Enabled = false
-			model.ConfigInstance.RAG.Enabled = false
-		}
+	// Initialize RAG history memory system (always enabled)
+	if err := rag.Init(cfg.RAG); err != nil {
+		slog.Warn("failed to initialize RAG system, search will be limited", slog.String("err", err.Error()))
 	}
 	// Always defer shutdown — cleanup worker may be running even without RAG
 	defer rag.Shutdown()
@@ -572,7 +566,7 @@ func main() {
 	}
 
 	// Initialize RAG indexer (needs final port number)
-	if cfg.RAG.Enabled && rag.GlobalStore != nil {
+	if rag.GlobalStore != nil {
 		// Start RAG indexer
 		rag.StartIndexer(cfg.RAG)
 	}

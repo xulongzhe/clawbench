@@ -27,6 +27,19 @@ import (
 // PATCH acquires a full lock; GET acquires a read lock to allow concurrent reads.
 var configMutex sync.RWMutex
 
+// hotReloadFields is the set of config dot-paths that take effect immediately
+// via applyHotReloadGlobals() and do NOT require a server restart.
+var hotReloadFields = map[string]bool{
+	"chat.collapsed_height":      true,
+	"chat.initial_messages":      true,
+	"chat.page_size":             true,
+	"chat.system_prompt_interval": true,
+	"session.max_count":          true,
+	"upload.max_size_mb":        true,
+	"upload.max_files":          true,
+	"tts.max_cache_files":       true,
+}
+
 // restartGracePeriod is the delay before shutting down the server after a restart
 // request, giving the HTTP response time to reach the client.
 const restartGracePeriod = 200 * time.Millisecond
@@ -125,12 +138,12 @@ type configAPI struct {
 }
 
 type configRAG struct {
-	Enabled       bool   `json:"enabled"`
-	OllamaBaseURL string `json:"ollama_base_url"`
-	OllamaModel   string `json:"ollama_model"`
-	ChunkSize     int    `json:"chunk_size"`
-	SearchLimit   int    `json:"search_limit"`
-	RetentionDays int    `json:"retention_days"`
+	OllamaBaseURL  string `json:"ollama_base_url"`
+	OllamaModel    string `json:"ollama_model"`
+	ChunkSize      int    `json:"chunk_size"`
+	SearchLimit    int    `json:"search_limit"`
+	SearchPoolSize int    `json:"search_pool_size"`
+	RetentionDays  int    `json:"retention_days"`
 }
 
 type configProxy struct {
@@ -195,16 +208,16 @@ var PatchableConfigPaths = map[string]bool{
 	"tts.api.key":                  true,
 	"tts.api.format":              true,
 	"tts.api.model":               true,
-	"rag.enabled":                  true,
 	"rag.ollama_base_url":         true,
 	"rag.ollama_model":            true,
 	"rag.chunk_size":              true,
 	"rag.search_limit":            true,
+	"rag.search_pool_size":        true,
 	"rag.retention_days":          true,
 	"proxy.enabled":               true,
 	"proxy.allowed_ports":         true,
-	"ssh.enabled":                 true,
-	"ssh.port":                    true,
+	"port_forward.enabled":                 true,
+	"port_forward.port":                    true,
 	"push.jpush.enabled":          true,
 	"push.jpush.app_key":          true,
 	"tasks.summarize_backend":     true,
@@ -344,12 +357,12 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 			MaxCacheFiles:    cfg.TTS.MaxCacheFiles,
 		},
 		RAG: configRAG{
-			Enabled:       cfg.RAG.Enabled,
-			OllamaBaseURL: cfg.RAG.OllamaBaseURL,
-			OllamaModel:   cfg.RAG.OllamaModel,
-			ChunkSize:     cfg.RAG.ChunkSize,
-			SearchLimit:   cfg.RAG.SearchLimit,
-			RetentionDays: cfg.RAG.RetentionDays,
+			OllamaBaseURL:  cfg.RAG.OllamaBaseURL,
+			OllamaModel:    cfg.RAG.OllamaModel,
+			ChunkSize:      cfg.RAG.ChunkSize,
+			SearchLimit:    cfg.RAG.SearchLimit,
+			SearchPoolSize: cfg.RAG.SearchPoolSize,
+			RetentionDays:  cfg.RAG.RetentionDays,
 		},
 		Proxy: configProxy{
 			Enabled:      cfg.Proxy.Enabled,
@@ -472,9 +485,18 @@ func serveConfigPatch(w http.ResponseWriter, r *http.Request) {
 	// Sort changed fields for deterministic response
 	sort.Strings(changedFields)
 
+	// Classify fields into hot (no restart) and cold (needs restart)
+	coldFields := make([]string, 0) // always non-nil so JSON serializes as [] not null
+	for _, f := range changedFields {
+		if !hotReloadFields[f] {
+			coldFields = append(coldFields, f)
+		}
+	}
+	sort.Strings(coldFields)
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"needs_restart":       true,
-		"changed_cold_fields": changedFields,
+		"needs_restart":       len(coldFields) > 0,
+		"changed_cold_fields": coldFields,
 	})
 }
 
@@ -834,9 +856,6 @@ func applyConfigPatch(patch map[string]any) error {
 	}
 
 	if rag, ok := patch["rag"].(map[string]any); ok {
-		if v, ok := rag["enabled"].(bool); ok {
-			cfg.RAG.Enabled = v
-		}
 		if v, ok := rag["ollama_base_url"].(string); ok {
 			cfg.RAG.OllamaBaseURL = v
 		}
@@ -848,6 +867,9 @@ func applyConfigPatch(patch map[string]any) error {
 		}
 		if v, ok := rag["search_limit"].(float64); ok {
 			cfg.RAG.SearchLimit = int(v)
+		}
+		if v, ok := rag["search_pool_size"].(float64); ok {
+			cfg.RAG.SearchPoolSize = int(v)
 		}
 		if v, ok := rag["retention_days"].(float64); ok {
 			cfg.RAG.RetentionDays = int(v)

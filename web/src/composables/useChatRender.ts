@@ -26,10 +26,12 @@ import {
   hasImagesInContent,
   formatMessageTime,
   formatDetailTime,
-  humanizeCron,
-  repeatLabel,
   truncate,
 } from '@/utils/chatBlocks.ts'
+import {
+  humanizeCron,
+  repeatLabel,
+} from '@/utils/format.ts'
 
 export function useChatRender(options) {
   const { messages, theme, currentSessionId } = options

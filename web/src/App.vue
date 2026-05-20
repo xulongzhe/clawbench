@@ -240,6 +240,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { MessageSquare, FolderOpen, FileText, GitBranch, EthernetPort, Terminal as TerminalIcon, CalendarClock, MoreHorizontal, Settings } from 'lucide-vue-next'
 import AppHeader from './components/common/AppHeader.vue'
 import TabPanel from './components/common/TabPanel.vue'
@@ -325,7 +326,10 @@ provide('toast', toast)
 
 const sessionIdentity = useSessionIdentity()
 
-const showHidden = ref(JSON.parse(localStorage.getItem('clawbenchShowHidden') || 'false'))
+const showHidden = ref(false)
+const { localConfig, setLocalConfig: setSetting } = useSettingsConfig()
+// Initialize from settings config (which handles legacy key migration)
+showHidden.value = !!localConfig.showHidden
 const sortField = ref(null)
 const sortDir = ref('asc')
 
@@ -401,8 +405,9 @@ function handleOpenProjectDialog() {
     projectDialogOpen.value = true
 }
 
-const theme = ref(localStorage.getItem('theme') ||
-    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))
+const theme = ref(localConfig.theme === 'auto'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : (localConfig.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')))
 
 const dirEntries = computed(() => store.state.dirEntries)
 const currentDir = computed(() => store.state.currentDir)
@@ -441,7 +446,7 @@ watch(() => currentFile.value, (f) => {
 
 function toggleHidden() {
     showHidden.value = !showHidden.value
-    localStorage.setItem('clawbenchShowHidden', JSON.stringify(showHidden.value))
+    setSetting('showHidden', showHidden.value)
     store.loadFiles(store.state.currentDir)
 }
 
@@ -599,7 +604,7 @@ function toggleTheme() {
 
 function applyTheme(t) {
     document.documentElement.setAttribute('data-theme', t)
-    localStorage.setItem('theme', t)
+    setSetting('theme', t)
     document.documentElement.setAttribute('data-hljs-theme', t)
     initMermaid()
     reRenderMermaid()

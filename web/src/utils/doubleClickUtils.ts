@@ -39,18 +39,6 @@ export function stripLeadingNumbering(text: string): string {
 }
 
 /**
- * Classify an anchor href and return its type.
- * - 'anchor': # links
- * - 'external': http/https, mailto, tel, protocol-relative
- * - 'local': everything else (relative file paths)
- */
-function classifyLink(href: string): 'anchor' | 'external' | 'local' {
-  if (isAnchorLink(href)) return 'anchor'
-  if (isExternalLink(href)) return 'external'
-  return 'local'
-}
-
-/**
  * Build the quote message text for a code selection.
  * Formats as: <userMessage>\n\n```<language>:<filePath>:<lineRange>\n<text>\n```
  */

@@ -8,6 +8,15 @@ import (
 	"clawbench/internal/service"
 )
 
+// SearchMode indicates which search strategy was used.
+type SearchMode string
+
+const (
+	SearchModeHybrid SearchMode = "hybrid" // Vector + FTS with RRF fusion
+	SearchModeVector SearchMode = "vector" // Vector similarity only
+	SearchModeFTS    SearchMode = "fts"    // Full-text search only (BM25)
+)
+
 // SearchParams holds the parameters for a RAG search request.
 type SearchParams struct {
 	Query             string `json:"q"`
@@ -16,7 +25,7 @@ type SearchParams struct {
 	Backend           string `json:"backend"`
 	Role              string `json:"role"`                // Filter by role: "user" or "assistant"
 	SessionID         string `json:"session_id"`          // Limit search to this session
-	ExcludeSessionID  string `json:"exclude_session_id"`  // Exclude this session from results (e.g., current session)
+	ExcludeSessionID  string `json:"exclude_session_id"` // Exclude this session from results (e.g., current session)
 	FromTime          string `json:"from"`
 	ToTime            string `json:"to"`
 }
@@ -25,16 +34,20 @@ type SearchParams struct {
 type SearchResult struct {
 	Results []SearchHit `json:"results"`
 	Total   int         `json:"total"`
+	Mode    SearchMode  `json:"mode"` // Which search strategy was used
 }
 
-// RAGSearch performs a vector similarity search using the given parameters.
-func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, params SearchParams, defaultLimit int) (*SearchResult, error) {
+// RAGSearch performs a search using the best available strategy:
+//   - Hybrid (vector + FTS with RRF) when both Ollama and FTS are available
+//   - Vector-only when Ollama is available but FTS is not
+//   - FTS-only when Ollama is unavailable
+func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, params SearchParams, defaultLimit int, searchPoolSize int) (*SearchResult, error) {
 	if params.Query == "" {
-		return &SearchResult{}, nil
+		return &SearchResult{Mode: SearchModeFTS}, nil
 	}
 
-	if store == nil || embedder == nil {
-		return nil, fmt.Errorf("RAG not initialized: store and embedder must not be nil")
+	if store == nil {
+		return nil, fmt.Errorf("RAG not initialized: store is nil")
 	}
 
 	limit := params.Limit
@@ -42,14 +55,60 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 		limit = defaultLimit
 	}
 
-	// Generate embedding for the query
-	queryEmbedding, err := embedder.Embed(ctx, params.Query)
-	if err != nil {
-		return nil, fmt.Errorf("embed query: %w", err)
+	poolSize := searchPoolSize
+	if poolSize <= 0 {
+		poolSize = 20
 	}
 
-	// Perform vector search
-	hits, err := store.SearchSimple(queryEmbedding, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
+	// Determine search strategy using cached Ollama health state
+	// (avoids per-request HTTP probe — indexer refreshes on every polling cycle)
+	ollamaHealthy := OllamaHealthy()
+	// If no cached state and embedder is available, do a fresh probe
+	if !ollamaHealthy && embedder != nil {
+		reachable, modelAvailable, _ := embedder.IsHealthy(ctx)
+		ollamaHealthy = reachable && modelAvailable
+	}
+
+	ftsAvailable := store.ftsAvailable
+
+	var hits []SearchHit
+	var mode SearchMode
+	var err error
+
+	switch {
+	case ollamaHealthy && ftsAvailable:
+		// Hybrid: vector + FTS with RRF fusion
+		mode = SearchModeHybrid
+		var queryEmbedding []float64
+		queryEmbedding, err = embedder.Embed(ctx, params.Query)
+		if err != nil {
+			// Embedding failed — fall back to FTS-only
+			slog.Warn("rag: query embedding failed, falling back to FTS", slog.String("err", err.Error()))
+			hits, err = store.SearchFTS(params.Query, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
+			mode = SearchModeFTS
+		} else {
+			hits, err = store.SearchHybrid(queryEmbedding, params.Query, poolSize, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
+		}
+
+	case ollamaHealthy && !ftsAvailable:
+		// Vector-only
+		mode = SearchModeVector
+		var queryEmbedding []float64
+		queryEmbedding, err = embedder.Embed(ctx, params.Query)
+		if err != nil {
+			return nil, fmt.Errorf("embed query: %w", err)
+		}
+		hits, err = store.SearchSimple(queryEmbedding, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
+
+	default:
+		// FTS-only (Ollama unavailable or no embedding)
+		mode = SearchModeFTS
+		if !ftsAvailable {
+			return nil, fmt.Errorf("no search available: Ollama not reachable and FTS not loaded")
+		}
+		hits, err = store.SearchFTS(params.Query, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
@@ -70,6 +129,7 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 
 	slog.Info("rag search completed",
 		slog.String("query", params.Query),
+		slog.String("mode", string(mode)),
 		slog.Int("results", len(hits)),
 		slog.Int("limit", limit),
 	)
@@ -77,16 +137,29 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 	return &SearchResult{
 		Results: hits,
 		Total:   len(hits),
+		Mode:    mode,
 	}, nil
 }
 
 // getSessionTitles fetches session titles for a set of session IDs from SQLite.
+// Uses a single batched query with IN clause instead of N individual queries.
 func getSessionTitles(sessionIDs map[string]bool) map[string]string {
-	titles := make(map[string]string, len(sessionIDs))
+	if len(sessionIDs) == 0 {
+		return map[string]string{}
+	}
+	ids := make([]string, 0, len(sessionIDs))
 	for id := range sessionIDs {
-		title, err := service.GetSessionTitle(id)
-		if err == nil && title != "" {
-			titles[id] = title
+		ids = append(ids, id)
+	}
+	titles, err := service.GetSessionTitlesBatch(ids)
+	if err != nil {
+		// Fallback to individual queries if batch fails
+		titles = make(map[string]string, len(sessionIDs))
+		for id := range sessionIDs {
+			title, err := service.GetSessionTitle(id)
+			if err == nil && title != "" {
+				titles[id] = title
+			}
 		}
 	}
 	return titles

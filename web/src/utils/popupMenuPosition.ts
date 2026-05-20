@@ -25,10 +25,6 @@ export function computeMenuStyle(
     maxWidth?: number
     maxHeight?: number
     edgeMargin?: number
-    /** @deprecated Ignored — auto-detected from anchor position */
-    anchor?: 'left' | 'right'
-    /** @deprecated Ignored — always prefers above, flips below when needed */
-    direction?: 'above' | 'below'
     menuItemsCount?: number
     viewportWidth?: number
     viewportHeight?: number

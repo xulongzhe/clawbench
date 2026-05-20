@@ -67,10 +67,10 @@ func WriteError(w http.ResponseWriter, err error) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: appErr.Message, Code: appErr.Code})
 		return
 	}
-	WriteErrorf(w, http.StatusInternalServerError, "Internal server error")
+	writeErrorf(w, http.StatusInternalServerError, "Internal server error")
 }
 
-func WriteErrorf(w http.ResponseWriter, status int, msg string) {
+func writeErrorf(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(ErrorResponse{Error: msg, Code: status})

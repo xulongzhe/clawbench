@@ -162,4 +162,52 @@ describe('useSettingsConfig', () => {
       expect(mockUpdateAgentField).toHaveBeenCalledWith('test-agent', 'preferredThinkingEffort', 'high')
     })
   })
+
+  describe('concurrent setServerValue', () => {
+    it('preserves first optimistic update when second call resolves', async () => {
+      // Simulate: user changes chat.collapsed_height then chat.page_size quickly
+      // Both are under the "chat" key in serverConfig
+      const { serverConfig, setServerValue, loadConfig } = useSettingsConfig()
+
+      // Initialize serverConfig with chat sub-object
+      mockedApiGet.mockResolvedValue({
+        chat: { collapsed_height: 150, page_size: 20, initial_messages: 20 },
+      })
+      await loadConfig()
+
+      // First PATCH resolves immediately
+      // Second PATCH resolves after a tick
+      let resolveFirst: (v: any) => void
+      let resolveSecond: (v: any) => void
+      const firstPromise = new Promise(r => { resolveFirst = r })
+      const secondPromise = new Promise(r => { resolveSecond = r })
+
+      mockedApiPatch.mockImplementationOnce(() => firstPromise)
+      mockedApiPatch.mockImplementationOnce(() => secondPromise)
+
+      // Fire both updates concurrently
+      const p1 = setServerValue('chat.collapsed_height', 300)
+      const p2 = setServerValue('chat.page_size', 50)
+
+      // Before API resolves, both should be optimistically applied
+      expect(serverConfig.value.chat.collapsed_height).toBe(300)
+      expect(serverConfig.value.chat.page_size).toBe(50)
+
+      // Resolve second call first (out of order)
+      resolveSecond!({ needs_restart: false, changed_cold_fields: [] })
+      await p2
+
+      // page_size should still be 50, collapsed_height should still be 300
+      expect(serverConfig.value.chat.collapsed_height).toBe(300)
+      expect(serverConfig.value.chat.page_size).toBe(50)
+
+      // Now resolve first call
+      resolveFirst!({ needs_restart: false, changed_cold_fields: [] })
+      await p1
+
+      // Both values should be preserved
+      expect(serverConfig.value.chat.collapsed_height).toBe(300)
+      expect(serverConfig.value.chat.page_size).toBe(50)
+    })
+  })
 })

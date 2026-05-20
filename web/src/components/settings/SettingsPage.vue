@@ -21,7 +21,7 @@
       />
     </div>
     <footer class="settings-page__footer">
-      <button class="settings-restart-btn" :class="{ 'settings-restart-btn--pending': needsRestart }" :disabled="restarting" @click="handleRestart">
+      <button class="settings-restart-btn" :class="{ 'settings-restart-btn--pending': needsRestart, 'settings-restart-btn--idle': !needsRestart && !restarting }" :disabled="restarting" @click="handleRestart">
         <RefreshCw :size="14" class="settings-restart-btn__icon" :class="{ 'settings-restart-btn__icon--spin': restarting }" />
         <span>{{ restarting ? t('settings.restarting') : (needsRestart ? t('settings.restartPending') : t('settings.restartServer')) }}</span>
       </button>
@@ -164,6 +164,10 @@ watch(() => props.active, (val) => {
 .settings-restart-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.settings-restart-btn--idle {
+  opacity: 0.5;
 }
 
 .settings-restart-btn--pending {
