@@ -1295,6 +1295,7 @@ public class BackgroundService extends Service {
             String text;
             String sessionId = null;
             String taskId = null;
+            String projectPath = null;
 
             if ("session_update".equals(eventType)) {
                 sessionId = data.optString("session_id", "");
@@ -1308,6 +1309,7 @@ public class BackgroundService extends Service {
                 }
             } else if ("task_update".equals(eventType)) {
                 taskId = data.optString("task_id", "");
+                sessionId = data.optString("session_id", null);
                 if ("completed".equals(status)) {
                     title = "计划任务完成";
                     text = "任务已完成";
@@ -1332,6 +1334,10 @@ public class BackgroundService extends Service {
             }
             if (taskId != null && !taskId.isEmpty()) {
                 intent.putExtra("task_id", taskId);
+            }
+            projectPath = data.optString("project_path", "");
+            if (projectPath != null && !projectPath.isEmpty()) {
+                intent.putExtra("project_path", projectPath);
             }
 
             PendingIntent pendingIntent = PendingIntent.getActivity(

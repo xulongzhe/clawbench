@@ -168,6 +168,10 @@ public class MainActivity extends AppCompatActivity {
     // during the window between JPush config fetch and SDK initialization.
     volatile boolean jpushEnabledOnServer = false;
 
+    // Pending navigation from a notification tap that occurred before the WebView
+    // was loaded (cold start). Consumed by WebAppInterface.getPendingNavigation().
+    public org.json.JSONObject pendingNavigation = null;
+
     // Fullscreen video state: managed by WebChromeClient.onShowCustomView/onHideCustomView
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -665,25 +669,26 @@ public class MainActivity extends AppCompatActivity {
     private void handleNotificationIntent(Intent intent) {
         if (intent == null) return;
         String sessionId = intent.getStringExtra("session_id");
-        String taskId = intent.getStringExtra("task_id");
-        if (sessionId != null || taskId != null) {
-            // Use the same openSession pattern as JPushReceiver
-            if (webView != null) {
-                try {
-                    org.json.JSONObject detail = new org.json.JSONObject();
-                    if (sessionId != null) detail.put("sessionId", sessionId);
-                    if (taskId != null) detail.put("taskId", taskId);
+        String projectPath = intent.getStringExtra("project_path");
+        if (sessionId != null) {
+            try {
+                org.json.JSONObject detail = new org.json.JSONObject();
+                detail.put("sessionId", sessionId);
+                if (projectPath != null) detail.put("projectPath", projectPath);
+                // Store as pending navigation for cold-start fallback
+                pendingNavigation = detail;
+                if (webView != null) {
                     webView.evaluateJavascript(
                         "window.dispatchEvent(new CustomEvent('clawbench-open-session', { detail: " + detail.toString() + " }))",
                         null
                     );
-                } catch (Exception e) {
-                    Log.w(TAG, "Failed to dispatch open-session event from notification", e);
                 }
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to dispatch open-session event from notification", e);
             }
             // Clear extras so we don't re-dispatch on subsequent onResume
             intent.removeExtra("session_id");
-            intent.removeExtra("task_id");
+            intent.removeExtra("project_path");
         }
     }
 
@@ -1234,6 +1239,18 @@ public class MainActivity extends AppCompatActivity {
                     null
                 );
             });
+        }
+
+        /**
+         * Returns pending navigation data from a notification tap that occurred
+         * before the WebView was loaded (cold start). Returns null if none pending.
+         * Called by the frontend on mount to handle deferred deep links.
+         */
+        @JavascriptInterface
+        public String getPendingNavigation() {
+            org.json.JSONObject nav = activity.pendingNavigation;
+            activity.pendingNavigation = null;
+            return nav != null ? nav.toString() : null;
         }
 
         /**
