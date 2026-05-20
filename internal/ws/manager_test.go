@@ -921,6 +921,119 @@ func TestManager_BroadcastEvent_JPushDedupSameRegID(t *testing.T) {
 	}
 }
 
+func TestManager_BroadcastEvent_JPushExtras_SessionWithProjectPath(t *testing.T) {
+	var receivedExtras map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			if n, ok := payload["notification"].(map[string]any); ok {
+				if a, ok := n["android"].(map[string]any); ok {
+					receivedExtras, _ = a["extras"].(map[string]any)
+				}
+			}
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID:      "s1",
+			Status:         "completed",
+			HasNewMessages: true,
+			ProjectPath:    "/home/user/project",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if receivedExtras == nil {
+		t.Fatal("expected extras in JPush payload")
+	}
+	if receivedExtras["session_id"] != "s1" {
+		t.Errorf("expected session_id 's1', got %v", receivedExtras["session_id"])
+	}
+	if receivedExtras["project_path"] != "/home/user/project" {
+		t.Errorf("expected project_path '/home/user/project', got %v", receivedExtras["project_path"])
+	}
+	if receivedExtras["event_type"] != "session_update" {
+		t.Errorf("expected event_type 'session_update', got %v", receivedExtras["event_type"])
+	}
+}
+
+func TestManager_BroadcastEvent_JPushExtras_TaskWithSessionAndProjectPath(t *testing.T) {
+	var receivedExtras map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			if n, ok := payload["notification"].(map[string]any); ok {
+				if a, ok := n["android"].(map[string]any); ok {
+					receivedExtras, _ = a["extras"].(map[string]any)
+				}
+			}
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "task_update",
+		Data: &TaskUpdateData{
+			TaskID:      "t1",
+			Status:      "completed",
+			ExecutionID: "e1",
+			SessionID:   "s1",
+			ProjectPath: "/home/user/project",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if receivedExtras == nil {
+		t.Fatal("expected extras in JPush payload")
+	}
+	if receivedExtras["task_id"] != "t1" {
+		t.Errorf("expected task_id 't1', got %v", receivedExtras["task_id"])
+	}
+	if receivedExtras["session_id"] != "s1" {
+		t.Errorf("expected session_id 's1', got %v", receivedExtras["session_id"])
+	}
+	if receivedExtras["project_path"] != "/home/user/project" {
+		t.Errorf("expected project_path '/home/user/project', got %v", receivedExtras["project_path"])
+	}
+}
+
 func TestManager_BroadcastEvent_JPushWhenNoWS(t *testing.T) {
 	// When all subscriptions for a regID are disconnected, JPush should fire.
 	pushCalled := false
