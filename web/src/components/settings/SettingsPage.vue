@@ -173,21 +173,12 @@ watch(() => props.active, (val) => {
 .settings-restart-btn--pending {
   background: var(--accent-color);
   color: #fff;
-  animation: restart-pulse 2s ease-in-out infinite;
+  animation: restart-pulse 0.8s ease-in-out infinite;
 }
 
 @keyframes restart-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 144, 217, 0.4); }
-  50% { box-shadow: 0 0 12px 4px rgba(74, 144, 217, 0.2); }
-}
-
-[data-theme="dark"] .settings-restart-btn--pending {
-  animation: restart-pulse-dark 2s ease-in-out infinite;
-}
-
-@keyframes restart-pulse-dark {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.4); }
-  50% { box-shadow: 0 0 12px 4px rgba(88, 166, 255, 0.2); }
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color, #0066cc) 0%, transparent); }
+  50% { box-shadow: 0 0 8px 3px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent); }
 }
 
 @media (hover: hover) {
