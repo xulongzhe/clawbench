@@ -8,12 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"clawbench/internal/model"
@@ -1037,44 +1035,7 @@ func ServeConfigRestart(w http.ResponseWriter, r *http.Request) {
 // LaunchSentinelProcess starts a sentinel process that waits for the current
 // process to exit, then starts a new one. Returns the sentinel cmd on success.
 func LaunchSentinelProcess() (*exec.Cmd, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get executable path: %w", err)
-	}
-	args := os.Args[1:]
-	pid := os.Getpid()
-
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		sentinelScript := fmt.Sprintf(
-			"timeout /t 2 /nobreak >nul & %s %s",
-			shellQuote(exe), joinArgs(args),
-		)
-		cmd = exec.Command("cmd", "/c", sentinelScript)
-	} else {
-		sentinelScript := fmt.Sprintf(
-			"PID=%d; EXE=%s; "+
-				"while kill -0 $PID 2>/dev/null; do sleep 0.1; done; "+
-				"for i in 1 2 3 4 5; do sleep 0.2; exec \"$EXE\" %s && exit 0; done; "+
-				"echo 'restart-failed' > %s/.clawbench/restart-status",
-			pid, shellQuote(exe), joinArgs(args), shellQuote(model.BinDir),
-		)
-		cmd = exec.Command("/bin/sh", "-c", sentinelScript)
-		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Setpgid: true,
-		}
-	}
-
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ()
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to start sentinel process: %w", err)
-	}
-
-	slog.Info("sentinel process started", "pid", cmd.Process.Pid, "parent_pid", pid)
-	return cmd, nil
+	return launchSentinel()
 }
 
 // IsRunningUnderSupervisor detects if the process is managed by systemd, Docker, etc.
