@@ -212,6 +212,10 @@ func ForceCancelSession(sessionID string) {
 	if cancel, ok := val.(context.CancelFunc); ok {
 		cancel()
 	}
+	// ISS-120: Clear activeSessions to prevent zombie entries that block new messages.
+	// Skip the "completed" event (true) — ForceCancelSession is for disconnected clients
+	// that won't see it anyway, and we don't want to emit a stale event on reconnection.
+	SetSessionRunning(sessionID, false, true)
 }
 
 // RegisterSessionStream creates and registers a stream channel for a session
