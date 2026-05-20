@@ -12,6 +12,7 @@ import (
 	"github.com/coder/websocket"
 
 	"clawbench/internal/push"
+	"unicode/utf8"
 )
 
 // ClientSubscription tracks a single client's WS connection and push state.
@@ -29,6 +30,11 @@ type ClientSubscription struct {
 // maxSubscriptions limits the number of concurrent WS subscriptions to prevent
 // resource exhaustion. Matches the original SSE limit of 20.
 const maxSubscriptions = 20
+
+// pushAlertMaxRunes is the maximum number of runes used for the JPush alert text.
+// OPPO (the most restrictive vendor channel) limits alert to 50 characters;
+// we use 40 to leave room for the "…" ellipsis and a safety margin.
+const pushAlertMaxRunes = 40
 
 // Manager manages all client subscriptions.
 type Manager struct {
@@ -272,11 +278,17 @@ func (m *Manager) broadcastToSubscription(key string, msg ServerMessage, deliver
 		if msg.Event == "task_update" {
 			alert = "计划任务已完成"
 		}
-		// Use session title as alert text when available (more informative than response preview)
-		if d, ok := msg.Data.(*SessionUpdateData); ok && d.SessionTitle != "" {
-			alert = d.SessionTitle
+		// Use session title as alert text when available (more informative than response preview),
+		// then fall back to response preview. Both are truncated for push channel limits.
+		if d, ok := msg.Data.(*SessionUpdateData); ok {
+			if d.SessionTitle != "" {
+				alert = truncateForPush(d.SessionTitle)
+			} else if d.ResponsePreview != "" {
+				alert = truncateForPush(d.ResponsePreview)
+			}
 		}
-		slog.Info("ws: sending jpush notification", "event", msg.Event, "client_id", key, "reg_id", pushRegID, "title", title)
+		}
+		slog.Info("ws: sending jpush notification", "event", msg.Event, "client_id", key, "reg_id", pushRegID, "title", title, "alert", alert)
 		if err := m.jpush.SendNotification(pushRegID, title, alert, extras); err != nil {
 			slog.Warn("ws: jpush notification failed", "error", err, "client_id", key)
 		}
@@ -347,6 +359,14 @@ func (m *Manager) CleanupStale() {
 
 // eventSeq is an atomic counter to ensure unique event IDs.
 var eventSeq atomic.Int64
+
+// truncateForPush truncates s to pushAlertMaxRunes, appending "…" if truncated.
+func truncateForPush(s string) string {
+	if utf8.RuneCountInString(s) <= pushAlertMaxRunes {
+		return s
+	}
+	return string([]rune(s)[:pushAlertMaxRunes]) + "…"
+}
 
 // GenerateEventID creates a unique event ID.
 // Uses an atomic counter instead of exposing server timestamps.
