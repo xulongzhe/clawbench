@@ -51,7 +51,7 @@ func emitSessionEvent(sessionID, status string, hasNewMessages bool) {
 	})
 }
 
-// getSessionResponsePreview returns the first 16 runes of the AI's final reply text.
+// getSessionResponsePreview returns the first 64 runes of the AI's final reply text.
 func getSessionResponsePreview(sessionID string) string {
 	messages, err := GetMessagesBySessionID(sessionID)
 	if err != nil {
@@ -72,8 +72,8 @@ func getSessionResponsePreview(sessionID string) string {
 		// Extract text from text-type blocks
 		for _, b := range content.Blocks {
 			if b.Type == "text" && b.Text != "" {
-				if utf8.RuneCountInString(b.Text) > 16 {
-					return string([]rune(b.Text)[:16]) + "…"
+				if utf8.RuneCountInString(b.Text) > 64 {
+					return string([]rune(b.Text)[:64]) + "…"
 				}
 				return b.Text
 			}

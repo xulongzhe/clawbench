@@ -76,6 +76,9 @@ export default {
     websocket: 'WebSocket',
     jpush: '极光推送',
     debugLog: '调试日志',
+    uploadLogs: '上传日志',
+    logUploadSuccess: '日志上传成功',
+    logUploadFailed: '日志上传失败',
   },
   chat: {
     title: 'AI 对话',

@@ -274,6 +274,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	// This endpoint only accepts log entries (write-only, no read); the data is
 	// non-sensitive debug logs. Auth is unnecessary and would block the feature.
 	register("/api/android-log", ServeAndroidLog)
+	register("/api/android-log/upload", ServeAndroidLogUpload)
 
 	// File watch SSE (auto-refresh on file changes)
 	register("/api/file/watch", middleware.Auth(FileWatchSSE))

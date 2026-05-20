@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -95,4 +96,62 @@ func ServeAndroidLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"written": len(req.Entries)})
+}
+
+// ServeAndroidLogUpload handles POST /api/android-log/upload.
+// It receives a multipart file upload from the Android app's "collect logs"
+// feature and saves it to .clawbench/logs/android-{timestamp}.log.
+// Unauthenticated (same as /api/android-log) — Android native HTTP has no WebView cookies.
+func ServeAndroidLogUpload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
+		return
+	}
+
+	// Parse multipart form (max 10MB)
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+		return
+	}
+	defer file.Close()
+
+	// Read file content
+	data, err := io.ReadAll(file)
+	if err != nil {
+		model.WriteError(w, model.Internal(fmt.Errorf("read upload: %w", err)))
+		return
+	}
+
+	// Cap at 5MB
+	if len(data) > 5<<20 {
+		data = data[:5<<20]
+	}
+
+	// Save to .clawbench/logs/android-{timestamp}.log
+	logDir := filepath.Join(model.ConfigInstance.LogDir)
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		model.WriteError(w, model.Internal(fmt.Errorf("create log dir: %w", err)))
+		return
+	}
+
+	filename := fmt.Sprintf("android-%s.log", time.Now().Format("20060102-150405"))
+	path := filepath.Join(logDir, filename)
+
+	// Sanitize: avoid path traversal from header filename
+	safeName := filepath.Base(header.Filename)
+	_ = safeName // we use our own timestamped name, ignore client filename
+
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		model.WriteError(w, model.Internal(fmt.Errorf("write log file: %w", err)))
+		return
+	}
+
+	relPath := filepath.Join(".clawbench", "logs", filename)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": relPath, "size": len(data)})
 }

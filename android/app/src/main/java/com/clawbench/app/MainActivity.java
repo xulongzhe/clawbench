@@ -1256,5 +1256,34 @@ public class MainActivity extends AppCompatActivity {
         public void stopLogCapture() {
             AppLog.stopCapture();
         }
+
+        /**
+         * Collect device info, AppLog buffer, and logcat, then upload as a file
+         * to the server. Called from the "Upload Logs" button in settings.
+         * Returns result via JS callback: window._logUploadResult(true|false).
+         */
+        @JavascriptInterface
+        public void collectLogs() {
+            new Thread(() -> {
+                String baseUrl = activity.prefs.getString(KEY_SERVER_URL, "");
+                if (baseUrl.isEmpty()) {
+                    activity.runOnUiThread(() ->
+                            activity.webView.evaluateJavascript("if(window._logUploadResult)window._logUploadResult(false)", null));
+                    return;
+                }
+                // Build device info string
+                String deviceInfo = Build.MODEL + " (android " + Build.VERSION.RELEASE
+                        + ", SDK " + Build.VERSION.SDK_INT + ")";
+                try {
+                    String versionName = activity.getPackageManager()
+                            .getPackageInfo(activity.getPackageName(), 0).versionName;
+                    deviceInfo += ", app " + versionName;
+                } catch (Exception ignored) {}
+                boolean ok = AppLog.collectAndUploadLogs(baseUrl, deviceInfo);
+                activity.runOnUiThread(() ->
+                        activity.webView.evaluateJavascript(
+                                "if(window._logUploadResult)window._logUploadResult(" + ok + ")", null));
+            }).start();
+        }
     }
 }

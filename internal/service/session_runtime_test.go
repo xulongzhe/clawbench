@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -463,7 +464,9 @@ func TestGetSessionResponsePreview_Truncation(t *testing.T) {
 	DB = db
 	defer func() { DB = origDB }()
 
-	longText := "这是一段超过十六个字符的长回复内容用于测试截断"
+	// 80 runes — should be truncated to 64 + …
+	longText := strings.Repeat("这是一段测试", 10) // 6*10 = 60 + more
+	longText += "追加更多文字直到超过六十四个字符的截断限制边界" // total > 64
 	content := model.ContentBlock{Type: "text", Text: longText}
 	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
 	contentJSON, _ := json.Marshal(blocks)
@@ -471,7 +474,9 @@ func TestGetSessionResponsePreview_Truncation(t *testing.T) {
 	insertTestMessage(t, db, "session-preview-2", "assistant", string(contentJSON))
 
 	result := getSessionResponsePreview("session-preview-2")
-	assert.Equal(t, "这是一段超过十六个字符的长回复内…", result)
+	runes := []rune(longText)
+	assert.Equal(t, string(runes[:64])+"…", result)
+	assert.Equal(t, 65, utf8.RuneCountInString(result)) // 64 + ellipsis
 }
 
 func TestGetSessionResponsePreview_NoAssistantMessage(t *testing.T) {
@@ -564,14 +569,14 @@ func TestGetSessionResponsePreview_NoTextBlocks(t *testing.T) {
 	assert.Equal(t, "", result)
 }
 
-func TestGetSessionResponsePreview_Exact16Runes(t *testing.T) {
+func TestGetSessionResponsePreview_Exact64Runes(t *testing.T) {
 	origDB := DB
 	db := setupChatTestDB(t)
 	DB = db
 	defer func() { DB = origDB }()
 
-	// Exactly 16 runes — should NOT be truncated
-	exactText := "一二三四五六七八九零一二三四五六" // 16 chars
+	// Exactly 64 runes — should NOT be truncated
+	exactText := strings.Repeat("一二三四", 16) // 4*16 = 64 chars
 	content := model.ContentBlock{Type: "text", Text: exactText}
 	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
 	contentJSON, _ := json.Marshal(blocks)
@@ -580,17 +585,17 @@ func TestGetSessionResponsePreview_Exact16Runes(t *testing.T) {
 
 	result := getSessionResponsePreview("session-preview-8")
 	assert.Equal(t, exactText, result)
-	assert.Equal(t, 16, utf8.RuneCountInString(result))
+	assert.Equal(t, 64, utf8.RuneCountInString(result))
 }
 
-func TestGetSessionResponsePreview_17Runes(t *testing.T) {
+func TestGetSessionResponsePreview_65Runes(t *testing.T) {
 	origDB := DB
 	db := setupChatTestDB(t)
 	DB = db
 	defer func() { DB = origDB }()
 
-	// 17 runes — should be truncated to 16 + …
-	longText := "一二三四五六七八九零一二三四五六七" // 17 chars
+	// 65 runes — should be truncated to 64 + …
+	longText := strings.Repeat("一二三四", 16) + "五" // 64+1 = 65 chars
 	content := model.ContentBlock{Type: "text", Text: longText}
 	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
 	contentJSON, _ := json.Marshal(blocks)
@@ -598,7 +603,7 @@ func TestGetSessionResponsePreview_17Runes(t *testing.T) {
 	insertTestMessage(t, db, "session-preview-9", "assistant", string(contentJSON))
 
 	result := getSessionResponsePreview("session-preview-9")
-	assert.Equal(t, "一二三四五六七八九零一二三四五六…", result)
+	assert.Equal(t, strings.Repeat("一二三四", 16)+"…", result)
 }
 
 // --- emitSessionEvent with response preview ---

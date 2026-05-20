@@ -76,6 +76,9 @@ export default {
     websocket: 'WebSocket',
     jpush: 'Push Notifications',
     debugLog: 'Debug Log',
+    uploadLogs: 'Upload Logs',
+    logUploadSuccess: 'Logs uploaded successfully',
+    logUploadFailed: 'Log upload failed',
   },
   chat: {
     title: 'AI Chat',

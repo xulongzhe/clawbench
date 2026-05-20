@@ -7,13 +7,18 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -113,6 +118,112 @@ public class AppLog {
     /** Returns whether log capture is currently active. */
     public static boolean isCapturing() {
         return capturing;
+    }
+
+    /**
+     * Collect device info, AppLog buffer, and logcat dump into a single text file,
+     * then upload to the server via multipart POST.
+     * Must be called from a background thread.
+     *
+     * @param baseUrl     server base URL (e.g. "https://localhost:20000")
+     * @param deviceInfo  device info string (model, android version, app version)
+     * @return true if upload succeeded, false otherwise
+     */
+    public static boolean collectAndUploadLogs(String baseUrl, String deviceInfo) {
+        try {
+            StringBuilder sb = new StringBuilder();
+
+            // Header with device info and timestamp
+            String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date());
+            sb.append("=== ClawBench Android Log Dump ===\n");
+            sb.append("Time: ").append(timestamp).append("\n");
+            sb.append("Device: ").append(deviceInfo).append("\n");
+            sb.append("Server: ").append(baseUrl).append("\n\n");
+
+            // AppLog buffer snapshot
+            sb.append("--- AppLog Buffer ---\n");
+            synchronized (buffer) {
+                if (buffer.isEmpty()) {
+                    sb.append("(empty)\n");
+                } else {
+                    SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS", Locale.US);
+                    for (LogEntry e : buffer) {
+                        sb.append(fmt.format(new Date(e.ts)))
+                          .append(' ').append(e.level)
+                          .append('/').append(e.tag)
+                          .append(": ").append(e.msg).append('\n');
+                    }
+                }
+            }
+            sb.append('\n');
+
+            // logcat dump (last 500 lines)
+            sb.append("--- logcat (last 500 lines) ---\n");
+            try {
+                Process proc = Runtime.getRuntime().exec(new String[]{
+                        "logcat", "-d", "-v", "time", "-t", "500"
+                });
+                BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(new BufferedInputStream(proc.getInputStream())));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append('\n');
+                }
+                reader.close();
+                proc.destroy();
+            } catch (Exception e) {
+                sb.append("(logcat unavailable: ").append(e.getMessage()).append(")\n");
+            }
+
+            // Upload via multipart POST
+            byte[] content = sb.toString().getBytes("UTF-8");
+            String boundary = "----ClawBenchLogUpload" + System.currentTimeMillis();
+
+            URL url = new URL(baseUrl + "/api/android-log/upload");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            try {
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+                conn.setConnectTimeout(10000);
+                conn.setReadTimeout(30000);
+                conn.setDoOutput(true);
+
+                // Trust self-signed certs
+                if (conn instanceof HttpsURLConnection) {
+                    ((HttpsURLConnection) conn).setSSLSocketFactory(trustAllSSL.getSocketFactory());
+                    ((HttpsURLConnection) conn).setHostnameVerifier((hostname, session) -> true);
+                }
+
+                ByteArrayOutputStream body = new ByteArrayOutputStream();
+                // Part header
+                body.write(("--" + boundary + "\r\n").getBytes("UTF-8"));
+                body.write(("Content-Disposition: form-data; name=\"file\"; filename=\"android-log.txt\"\r\n").getBytes("UTF-8"));
+                body.write(("Content-Type: text/plain\r\n\r\n").getBytes("UTF-8"));
+                body.write(content);
+                body.write(("\r\n--" + boundary + "--\r\n").getBytes("UTF-8"));
+
+                byte[] bodyBytes = body.toByteArray();
+                conn.setFixedLengthStreamingMode(bodyBytes.length);
+                OutputStream os = conn.getOutputStream();
+                os.write(bodyBytes);
+                os.flush();
+                os.close();
+
+                int code = conn.getResponseCode();
+                if (code == 200) {
+                    Log.i(TAG, "Log dump uploaded successfully");
+                    return true;
+                } else {
+                    Log.w(TAG, "Log dump upload failed: HTTP " + code);
+                    return false;
+                }
+            } finally {
+                conn.disconnect();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Log dump upload error: " + e.getMessage(), e);
+            return false;
+        }
     }
 
     // --- Internal ---

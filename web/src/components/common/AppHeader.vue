@@ -79,6 +79,11 @@
           <span>{{ t('appHeader.debugLog') }}</span>
         </button>
         <div class="settings-menu-divider"></div>
+        <button class="settings-menu-item" @click="handleUploadLogs" :disabled="uploadingLogs">
+          <Upload :size="14" />
+          <span>{{ uploadingLogs ? t('common.loading') : t('appHeader.uploadLogs') }}</span>
+        </button>
+        <div class="settings-menu-divider"></div>
       </template>
       <button class="settings-menu-item" :class="{ active: currentLocale === 'zh' }" @click="handleLocaleSwitch('zh')">
           <Check v-if="currentLocale === 'zh'" :size="14" />
@@ -109,7 +114,7 @@
 </template>
 
 <script setup>
-import { Projector, ChevronDown, Search, Moon, Sun, Settings, Check, Server, Bug, GitBranch } from 'lucide-vue-next'
+import { Projector, ChevronDown, Search, Moon, Sun, Settings, Check, Server, Bug, Upload, GitBranch } from 'lucide-vue-next'
 import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useLocale } from '@/composables/useLocale'
@@ -215,6 +220,34 @@ function toggleDebugLog() {
     // Don't close menu so user can see the toggle state
 }
 
+// Upload logs state
+const uploadingLogs = ref(false)
+let uploadLogsTimer = null
+
+function handleUploadLogs() {
+    if (uploadingLogs.value) return
+    if (!window.AndroidNative || !window.AndroidNative.collectLogs) return
+
+    // 3-second debounce
+    uploadingLogs.value = true
+    if (uploadLogsTimer) clearTimeout(uploadLogsTimer)
+    uploadLogsTimer = setTimeout(() => { uploadingLogs.value = false }, 3000)
+
+    // Register callback for result
+    window._logUploadResult = (ok) => {
+        uploadingLogs.value = false
+        if (uploadLogsTimer) clearTimeout(uploadLogsTimer)
+        toast?.show(
+            ok ? t('appHeader.logUploadSuccess') : t('appHeader.logUploadFailed'),
+            { icon: ok ? '✅' : '❌', type: ok ? 'success' : 'error', duration: 3000 }
+        )
+        delete window._logUploadResult
+    }
+
+    window.AndroidNative.collectLogs()
+    settingsMenuOpen.value = false
+}
+
 // Restore debug log capture state on mount
 function restoreDebugLogState() {
     if (!isAppMode.value || !window.AndroidNative) return
@@ -232,7 +265,7 @@ const settingsItemCount = computed(() => {
     // 4 interactive items: zh + en + dark + light (divider height negligible)
     let count = 4
     if (isAppMode.value) {
-        count += 4 // reconfigure item + divider + debug log item + divider
+        count += 6 // reconfigure item + divider + debug log item + divider + upload logs item + divider
     }
     return count
 })
