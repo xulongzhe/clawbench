@@ -33,6 +33,11 @@ func NewJPushClient(cfg JPushConfig) *JPushClient {
 	}
 }
 
+// SetBaseURL overrides the JPush API base URL. For testing only.
+func (c *JPushClient) SetBaseURL(url string) {
+	c.baseURL = url
+}
+
 func (c *JPushClient) Enabled() bool {
 	return c.enabled && c.appKey != "" && c.masterSecret != ""
 }

@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"sync"
+	"unicode/utf8"
 
 	"clawbench/internal/ai"
+	"clawbench/internal/model"
 	"clawbench/internal/ws"
 )
 
@@ -28,16 +31,55 @@ func emitSessionEvent(sessionID, status string, hasNewMessages bool) {
 	if mgr == nil {
 		return
 	}
+
+	data := &ws.SessionUpdateData{
+		SessionID:      sessionID,
+		Status:         status,
+		HasNewMessages: hasNewMessages,
+	}
+
+	// On completion, include a preview of the AI's final reply
+	if status == "completed" {
+		data.ResponsePreview = getSessionResponsePreview(sessionID)
+	}
+
 	mgr.BroadcastEvent(ws.ServerMessage{
 		Type:  "event",
 		ID:    ws.GenerateEventID(),
 		Event: "session_update",
-		Data: &ws.SessionUpdateData{
-			SessionID:      sessionID,
-			Status:         status,
-			HasNewMessages: hasNewMessages,
-		},
+		Data:  data,
 	})
+}
+
+// getSessionResponsePreview returns the first 16 runes of the AI's final reply text.
+func getSessionResponsePreview(sessionID string) string {
+	messages, err := GetMessagesBySessionID(sessionID)
+	if err != nil {
+		slog.Debug("session_event: failed to get messages for preview", "session_id", sessionID, "error", err)
+		return ""
+	}
+	// Walk backwards to find the last assistant message
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role != "assistant" {
+			continue
+		}
+		var content struct {
+			Blocks []model.ContentBlock `json:"blocks"`
+		}
+		if err := json.Unmarshal([]byte(messages[i].Content), &content); err != nil {
+			continue
+		}
+		// Extract text from text-type blocks
+		for _, b := range content.Blocks {
+			if b.Type == "text" && b.Text != "" {
+				if utf8.RuneCountInString(b.Text) > 16 {
+					return string([]rune(b.Text)[:16]) + "…"
+				}
+				return b.Text
+			}
+		}
+	}
+	return ""
 }
 
 // IsSessionRunning checks if a session is currently running.

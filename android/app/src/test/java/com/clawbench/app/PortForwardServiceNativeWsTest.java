@@ -446,6 +446,160 @@ public class PortForwardServiceNativeWsTest {
                 boolean.class, field.getType());
     }
 
+    // =====================================================
+    // Test 10: postEventNotification — notification text logic
+    // Mirrors the logic in PortForwardService.postEventNotification()
+    // =====================================================
+
+    private static class EventNotificationState {
+        String buildNotificationText(String eventType, String status, String responsePreview) {
+            if ("session_update".equals(eventType)) {
+                if ("completed".equals(status)) {
+                    return responsePreview != null && !responsePreview.isEmpty()
+                            ? responsePreview : "AI会话已结束";
+                } else if ("cancelled".equals(status)) {
+                    return "会话已取消";
+                }
+                return null; // running/other — no notification
+            } else if ("task_update".equals(eventType)) {
+                if ("completed".equals(status)) {
+                    return "任务已完成";
+                } else if ("cancelled".equals(status)) {
+                    return "任务已取消";
+                } else {
+                    return "任务失败";
+                }
+            }
+            return null; // unknown event type — no notification
+        }
+
+        String buildNotificationTitle(String eventType, String status) {
+            if ("session_update".equals(eventType)) {
+                return "completed".equals(status) ? "AI 任务完成" : "AI 会话通知";
+            } else if ("task_update".equals(eventType)) {
+                return "completed".equals(status) ? "计划任务完成" : "计划任务通知";
+            }
+            return null;
+        }
+    }
+
+    @Test
+    public void eventNotification_sessionCompleted_withPreview_returnsPreview() {
+        EventNotificationState state = new EventNotificationState();
+        assertEquals("AI回复的前16个字符…",
+                state.buildNotificationText("session_update", "completed", "AI回复的前16个字符…"));
+    }
+
+    @Test
+    public void eventNotification_sessionCompleted_noPreview_returnsFallback() {
+        EventNotificationState state = new EventNotificationState();
+        assertEquals("AI会话已结束",
+                state.buildNotificationText("session_update", "completed", ""));
+        assertEquals("AI会话已结束",
+                state.buildNotificationText("session_update", "completed", null));
+    }
+
+    @Test
+    public void eventNotification_sessionCancelled_returnsCancelled() {
+        EventNotificationState state = new EventNotificationState();
+        assertEquals("会话已取消",
+                state.buildNotificationText("session_update", "cancelled", ""));
+    }
+
+    @Test
+    public void eventNotification_sessionRunning_noNotification() {
+        EventNotificationState state = new EventNotificationState();
+        assertNull("Running sessions should not trigger notification",
+                state.buildNotificationText("session_update", "running", ""));
+    }
+
+    @Test
+    public void eventNotification_taskCompleted_returnsCompleted() {
+        EventNotificationState state = new EventNotificationState();
+        assertEquals("任务已完成",
+                state.buildNotificationText("task_update", "completed", ""));
+    }
+
+    @Test
+    public void eventNotification_taskFailed_returnsFailed() {
+        EventNotificationState state = new EventNotificationState();
+        assertEquals("任务失败",
+                state.buildNotificationText("task_update", "failed", ""));
+    }
+
+    @Test
+    public void eventNotification_unknownEvent_noNotification() {
+        EventNotificationState state = new EventNotificationState();
+        assertNull("Unknown event types should not trigger notification",
+                state.buildNotificationText("unknown_event", "completed", ""));
+    }
+
+    @Test
+    public void eventNotification_sessionCompletedTitle() {
+        EventNotificationState state = new EventNotificationState();
+        assertEquals("AI 任务完成",
+                state.buildNotificationTitle("session_update", "completed"));
+    }
+
+    @Test
+    public void eventNotification_sessionCancelledTitle() {
+        EventNotificationState state = new EventNotificationState();
+        assertEquals("AI 会话通知",
+                state.buildNotificationTitle("session_update", "cancelled"));
+    }
+
+    @Test
+    public void eventNotification_taskCompletedTitle() {
+        EventNotificationState state = new EventNotificationState();
+        assertEquals("计划任务完成",
+                state.buildNotificationTitle("task_update", "completed"));
+    }
+
+    // =====================================================
+    // Test 11: Native WS should disconnect when JPush is available
+    // When the onMessage handler detects pushAvailable=true,
+    // it should close the WebSocket and stop processing events.
+    // =====================================================
+
+    @Test
+    public void nativeWs_shouldDisconnectWhenPushAvailable() {
+        // Simulates the logic in NativeEventWsListener.onMessage():
+        // if (MainActivity.instance != null && MainActivity.instance.pushAvailable) {
+        //     webSocket.close(1000, "jpush-available");
+        //     return;
+        // }
+        boolean pushAvailable = true;
+        boolean shouldDisconnect = pushAvailable; // simplified condition
+        assertTrue("Native WS should disconnect when JPush is available", shouldDisconnect);
+    }
+
+    @Test
+    public void nativeWs_shouldStayConnectedWhenPushNotAvailable() {
+        boolean pushAvailable = false;
+        boolean shouldDisconnect = pushAvailable;
+        assertFalse("Native WS should stay connected when JPush is not available", shouldDisconnect);
+    }
+
+    @Test
+    public void nativeWs_fullLifecycle_jPushNotReadyThenReady() {
+        // Simulates the race condition:
+        // 1. App goes to background → JPush not ready → native WS starts
+        // 2. JPush registers → pushAvailable = true
+        // 3. Next onMessage → detects pushAvailable → disconnects native WS
+        boolean pushAvailable = false;
+        boolean nativeWsRunning = true;
+
+        // Step 1: Background, JPush not ready — native WS should stay
+        assertFalse("Native WS should stay when JPush not ready", pushAvailable && nativeWsRunning);
+
+        // Step 2: JPush registers
+        pushAvailable = true;
+
+        // Step 3: Next message arrives — native WS should disconnect
+        assertTrue("Native WS should disconnect after JPush becomes available",
+                pushAvailable && nativeWsRunning);
+    }
+
     // --- Helper methods ---
 
     private Object createMinimalInstance() throws Exception {

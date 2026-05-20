@@ -7,6 +7,18 @@ import (
 	"testing"
 )
 
+func TestJPushClient_SetBaseURL(t *testing.T) {
+	client := NewJPushClient(JPushConfig{Enabled: true, AppKey: "key", MasterSecret: "secret"})
+	originalURL := client.baseURL
+	client.SetBaseURL("http://localhost:9999")
+	if client.baseURL != "http://localhost:9999" {
+		t.Errorf("expected baseURL to be overridden, got %q", client.baseURL)
+	}
+	if originalURL == client.baseURL {
+		t.Error("baseURL should have changed")
+	}
+}
+
 func TestJPushClient_SendNotification_Disabled(t *testing.T) {
 	client := NewJPushClient(JPushConfig{Enabled: false})
 	err := client.SendNotification("test-reg-id", "Title", "Alert", map[string]string{"event_type": "task_update"})

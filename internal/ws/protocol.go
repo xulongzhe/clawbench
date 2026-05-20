@@ -18,8 +18,9 @@ type ClientMessage struct {
 // SessionUpdateData is the data payload for "session_update" events.
 type SessionUpdateData struct {
 	SessionID      string `json:"session_id"`
-	Status         string `json:"status"`           // "running", "completed", "cancelled"
+	Status         string `json:"status"`                    // "running", "completed", "cancelled"
 	HasNewMessages bool   `json:"has_new_messages"`
+	ResponsePreview string `json:"response_preview,omitempty"` // first 16 chars of AI's final reply (completed only)
 }
 
 // TaskUpdateData is the data payload for "task_update" events.

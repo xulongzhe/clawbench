@@ -1199,6 +1199,21 @@ public class PortForwardService extends Service {
 
                 if (!"event".equals(type)) return;
 
+                // If JPush is available, native WS is no longer needed —
+                // disconnect and let JPush handle notifications going forward.
+                // Also check jpushEnabledOnServer: even if JPush SDK hasn't finished
+                // initializing (pushAvailable=false), the server will send JPush
+                // notifications, so we must not show duplicate notifications.
+                if (MainActivity.instance != null &&
+                        (MainActivity.instance.pushAvailable || MainActivity.instance.jpushEnabledOnServer)) {
+                    AppLog.i(TAG, "NativeWS: JPush available (pushAvailable=" + MainActivity.instance.pushAvailable
+                            + ", jpushEnabledOnServer=" + MainActivity.instance.jpushEnabledOnServer
+                            + "), disconnecting native WS");
+                    nativeWsIntentionalStop = true;
+                    webSocket.close(1000, "jpush-available");
+                    return;
+                }
+
                 String eventId = msg.optString("id", "");
                 String event = msg.optString("event", "");
                 JSONObject data = msg.optJSONObject("data");
@@ -1278,9 +1293,10 @@ public class PortForwardService extends Service {
 
             if ("session_update".equals(eventType)) {
                 sessionId = data.optString("session_id", "");
+                String responsePreview = data.optString("response_preview", "");
                 if ("completed".equals(status)) {
-                    title = "AI 会话完成";
-                    text = "会话已结束";
+                    title = "AI 任务完成";
+                    text = responsePreview.isEmpty() ? "AI会话已结束" : responsePreview;
                 } else {
                     title = "AI 会话通知";
                     text = "会话已取消";

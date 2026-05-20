@@ -2,13 +2,20 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"clawbench/internal/ai"
+	"clawbench/internal/model"
+	"clawbench/internal/ws"
 
 	"github.com/stretchr/testify/assert"
+
+	_ "modernc.org/sqlite"
 )
 
 // --- RegisterSessionCancel / UnregisterSessionCancel ---
@@ -395,4 +402,264 @@ func cleanupAllSessionState() {
 	cleanupCancels()
 	cleanupCancelReasons()
 	cleanupStreams()
+}
+
+// --- getSessionResponsePreview tests ---
+
+func setupChatTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS chat_history (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		project_path TEXT NOT NULL,
+		role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+		content TEXT NOT NULL,
+		files TEXT,
+		session_id TEXT,
+		backend TEXT NOT NULL DEFAULT 'claude',
+		streaming INTEGER NOT NULL DEFAULT 0,
+		indexed INTEGER NOT NULL DEFAULT 0,
+		deleted INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	if err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	return db
+}
+
+func insertTestMessage(t *testing.T, db *sql.DB, sessionID, role, content string) {
+	t.Helper()
+	_, err := db.Exec("INSERT INTO chat_history (project_path, role, content, session_id, backend, streaming) VALUES (?, ?, ?, ?, 'claude', 0)",
+		"/test", role, content, sessionID)
+	if err != nil {
+		t.Fatalf("insert message: %v", err)
+	}
+}
+
+func TestGetSessionResponsePreview_WithTextBlock(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	content := model.ContentBlock{Type: "text", Text: "你好，这是AI的回复内容"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-1", "user", "问题")
+	insertTestMessage(t, db, "session-preview-1", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-1")
+	assert.Equal(t, "你好，这是AI的回复内容", result)
+}
+
+func TestGetSessionResponsePreview_Truncation(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	longText := "这是一段超过十六个字符的长回复内容用于测试截断"
+	content := model.ContentBlock{Type: "text", Text: longText}
+	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-2", "user", "问题")
+	insertTestMessage(t, db, "session-preview-2", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-2")
+	assert.Equal(t, "这是一段超过十六个字符的长回复内…", result)
+}
+
+func TestGetSessionResponsePreview_NoAssistantMessage(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	insertTestMessage(t, db, "session-preview-3", "user", "只有用户消息")
+
+	result := getSessionResponsePreview("session-preview-3")
+	assert.Equal(t, "", result)
+}
+
+func TestGetSessionResponsePreview_NoMessages(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	result := getSessionResponsePreview("session-nonexistent")
+	assert.Equal(t, "", result)
+}
+
+func TestGetSessionResponsePreview_SkipsToolUseBlocks(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
+	textBlock := model.ContentBlock{Type: "text", Text: "工具执行后的文本"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{toolBlock, textBlock}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-4", "user", "问题")
+	insertTestMessage(t, db, "session-preview-4", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-4")
+	assert.Equal(t, "工具执行后的文本", result)
+}
+
+func TestGetSessionResponsePreview_UsesLastAssistantMessage(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	firstContent := model.ContentBlock{Type: "text", Text: "第一次回复"}
+	firstBlocks := map[string]any{"blocks": []model.ContentBlock{firstContent}}
+	firstJSON, _ := json.Marshal(firstBlocks)
+	insertTestMessage(t, db, "session-preview-5", "user", "问题1")
+	insertTestMessage(t, db, "session-preview-5", "assistant", string(firstJSON))
+
+	secondContent := model.ContentBlock{Type: "text", Text: "第二次回复"}
+	secondBlocks := map[string]any{"blocks": []model.ContentBlock{secondContent}}
+	secondJSON, _ := json.Marshal(secondBlocks)
+	insertTestMessage(t, db, "session-preview-5", "user", "问题2")
+	insertTestMessage(t, db, "session-preview-5", "assistant", string(secondJSON))
+
+	result := getSessionResponsePreview("session-preview-5")
+	assert.Equal(t, "第二次回复", result)
+}
+
+func TestGetSessionResponsePreview_InvalidJSON(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	insertTestMessage(t, db, "session-preview-6", "user", "问题")
+	insertTestMessage(t, db, "session-preview-6", "assistant", "not valid json {{{")
+
+	result := getSessionResponsePreview("session-preview-6")
+	assert.Equal(t, "", result)
+}
+
+func TestGetSessionResponsePreview_NoTextBlocks(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{toolBlock}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-7", "user", "问题")
+	insertTestMessage(t, db, "session-preview-7", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-7")
+	assert.Equal(t, "", result)
+}
+
+func TestGetSessionResponsePreview_Exact16Runes(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	// Exactly 16 runes — should NOT be truncated
+	exactText := "一二三四五六七八九零一二三四五六" // 16 chars
+	content := model.ContentBlock{Type: "text", Text: exactText}
+	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-8", "user", "问题")
+	insertTestMessage(t, db, "session-preview-8", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-8")
+	assert.Equal(t, exactText, result)
+	assert.Equal(t, 16, utf8.RuneCountInString(result))
+}
+
+func TestGetSessionResponsePreview_17Runes(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	// 17 runes — should be truncated to 16 + …
+	longText := "一二三四五六七八九零一二三四五六七" // 17 chars
+	content := model.ContentBlock{Type: "text", Text: longText}
+	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-9", "user", "问题")
+	insertTestMessage(t, db, "session-preview-9", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-9")
+	assert.Equal(t, "一二三四五六七八九零一二三四五六…", result)
+}
+
+// --- emitSessionEvent with response preview ---
+
+func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
+	origDB := DB
+	db := setupChatTestDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	// Insert assistant message for preview
+	content := model.ContentBlock{Type: "text", Text: "AI完成了任务"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-emit-1", "user", "问题")
+	insertTestMessage(t, db, "session-emit-1", "assistant", string(contentJSON))
+
+	// Set up ws manager and a subscriber to capture the event
+	mgr := ws.NewManagerForTest(nil)
+	ws.SetManagerForTest(mgr)
+	defer ws.SetManagerForTest(nil)
+
+	var writeMu sync.Mutex
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit")
+	_ = sub
+
+	emitSessionEvent("session-emit-1", "completed", true)
+
+	// Verify the buffered event has response_preview
+	buffered := sub.GetBufferedEvents()
+	if len(buffered) == 0 {
+		t.Fatal("expected at least one buffered event")
+	}
+	data, ok := buffered[0].Data.(*ws.SessionUpdateData)
+	if !ok {
+		t.Fatal("expected SessionUpdateData")
+	}
+	assert.Equal(t, "completed", data.Status)
+	assert.Equal(t, "session-emit-1", data.SessionID)
+	assert.Equal(t, "AI完成了任务", data.ResponsePreview)
+}
+
+func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
+	mgr := ws.NewManagerForTest(nil)
+	ws.SetManagerForTest(mgr)
+	defer ws.SetManagerForTest(nil)
+
+	var writeMu sync.Mutex
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit2")
+	_ = sub
+
+	emitSessionEvent("session-emit-2", "running", false)
+
+	buffered := sub.GetBufferedEvents()
+	if len(buffered) == 0 {
+		t.Fatal("expected at least one buffered event")
+	}
+	data, ok := buffered[0].Data.(*ws.SessionUpdateData)
+	if !ok {
+		t.Fatal("expected SessionUpdateData")
+	}
+	assert.Equal(t, "running", data.Status)
+	assert.Equal(t, "", data.ResponsePreview)
 }

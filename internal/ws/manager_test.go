@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -390,6 +391,33 @@ func TestCleanupStale_RecentNotCleaned(t *testing.T) {
 	}
 }
 
+func TestSetManagerForTest(t *testing.T) {
+	orig := defaultManager
+	defer func() { defaultManager = orig }()
+
+	mgr := NewManagerForTest(nil)
+	SetManagerForTest(mgr)
+
+	if GetManager() != mgr {
+		t.Error("expected GetManager to return the test manager")
+	}
+
+	SetManagerForTest(nil)
+	if GetManager() != nil {
+		t.Error("expected GetManager to return nil after reset")
+	}
+}
+
+func TestNewManagerForTest(t *testing.T) {
+	mgr := NewManagerForTest(nil)
+	if mgr == nil {
+		t.Fatal("expected non-nil manager")
+	}
+	if len(mgr.subscriptions) != 0 {
+		t.Errorf("expected empty subscriptions, got %d", len(mgr.subscriptions))
+	}
+}
+
 func TestClientSubscription_GetBufferedEvents_Empty(t *testing.T) {
 	sub := &ClientSubscription{}
 	events := sub.GetBufferedEvents()
@@ -430,5 +458,412 @@ func TestBroadcastEvent_BufferWindow(t *testing.T) {
 	buffered2 := sub.GetBufferedEvents()
 	if len(buffered2) != 0 {
 		t.Errorf("expected 0 buffered events outside window, got %d", len(buffered2))
+	}
+}
+
+func TestManager_BroadcastEvent_JPushAlert_WithResponsePreview(t *testing.T) {
+	var receivedAlert string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			if n, ok := payload["notification"].(map[string]any); ok {
+				if a, ok := n["android"].(map[string]any); ok {
+					receivedAlert, _ = a["alert"].(string)
+				}
+			}
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID:      "s1",
+			Status:         "completed",
+			HasNewMessages: true,
+			ResponsePreview: "AI回复的前16个字符…",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if receivedAlert != "AI回复的前16个字符…" {
+		t.Errorf("expected alert to be response preview, got %q", receivedAlert)
+	}
+}
+
+func TestManager_BroadcastEvent_JPushAlert_WithoutResponsePreview(t *testing.T) {
+	var receivedAlert string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			if n, ok := payload["notification"].(map[string]any); ok {
+				if a, ok := n["android"].(map[string]any); ok {
+					receivedAlert, _ = a["alert"].(string)
+				}
+			}
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID:      "s1",
+			Status:         "completed",
+			HasNewMessages: true,
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if receivedAlert != "AI会话已结束" {
+		t.Errorf("expected default alert, got %q", receivedAlert)
+	}
+}
+
+func TestManager_BroadcastEvent_JPushAlert_TaskUpdate(t *testing.T) {
+	var receivedAlert string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			if n, ok := payload["notification"].(map[string]any); ok {
+				if a, ok := n["android"].(map[string]any); ok {
+					receivedAlert, _ = a["alert"].(string)
+				}
+			}
+		}
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "task_update",
+		Data: &TaskUpdateData{
+			TaskID: "t1",
+			Status: "completed",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if receivedAlert != "计划任务已完成" {
+		t.Errorf("expected task alert, got %q", receivedAlert)
+	}
+}
+
+func TestManager_BroadcastEvent_JPushNotSentForRunning(t *testing.T) {
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// session_update with status "running" — should NOT trigger JPush
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID: "s1",
+			Status:    "running",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if pushCalled {
+		t.Error("JPush should NOT be called for running status")
+	}
+
+	// But the event should still be buffered
+	mgr.mu.Lock()
+	sub := mgr.subscriptions["client-1"]
+	mgr.mu.Unlock()
+	if len(sub.GetBufferedEvents()) != 1 {
+		t.Errorf("running event should still be buffered, got %d events", len(sub.GetBufferedEvents()))
+	}
+}
+
+func TestManager_BroadcastEvent_JPushSentForCompleted(t *testing.T) {
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// session_update with status "completed" — SHOULD trigger JPush
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID: "s1",
+			Status:    "completed",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if !pushCalled {
+		t.Error("JPush should be called for completed status")
+	}
+}
+
+func TestManager_BroadcastEvent_JPushNotSentForTaskRunning(t *testing.T) {
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// task_update with status "running" — should NOT trigger JPush
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "task_update",
+		Data: &TaskUpdateData{
+			TaskID: "t1",
+			Status: "running",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if pushCalled {
+		t.Error("JPush should NOT be called for task running status")
+	}
+}
+
+func TestManager_BroadcastEvent_JPushSentForCancelled(t *testing.T) {
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+	var writeMu sync.Mutex
+	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// session_update with status "cancelled" — SHOULD trigger JPush
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID: "s1",
+			Status:    "cancelled",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if !pushCalled {
+		t.Error("JPush should be called for cancelled status")
+	}
+}
+
+func TestManager_BroadcastEvent_JPushDedupSameRegID(t *testing.T) {
+	// Two disconnected subscriptions with the same pushRegID (same device)
+	// should only result in one JPush notification.
+	pushCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCount++
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+
+	// Client-1: disconnected, has pushRegID
+	var writeMu1 sync.Mutex
+	mgr.Subscribe(nil, &writeMu1, "client-1")
+	mgr.RegisterPushID("reg-shared", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// Client-2: disconnected, manually set same pushRegID
+	var writeMu2 sync.Mutex
+	mgr.Subscribe(nil, &writeMu2, "client-2")
+	mgr.DisconnectClient("client-2")
+	mgr.mu.Lock()
+	s2 := mgr.subscriptions["client-2"]
+	mgr.mu.Unlock()
+	s2.mu.Lock()
+	s2.pushRegID = "reg-shared"
+	s2.mu.Unlock()
+
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID: "s1",
+			Status:    "completed",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if pushCount != 1 {
+		t.Errorf("expected exactly 1 JPush call for same regID, got %d", pushCount)
+	}
+}
+
+func TestManager_BroadcastEvent_JPushWhenNoWS(t *testing.T) {
+	// When all subscriptions for a regID are disconnected, JPush should fire.
+	pushCalled := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pushCalled = true
+		w.WriteHeader(200)
+		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+	}))
+	defer server.Close()
+
+	jpush := push.NewJPushClient(push.JPushConfig{
+		Enabled:      true,
+		AppKey:       "test-key",
+		MasterSecret: "test-secret",
+	})
+	jpush.SetBaseURL(server.URL)
+
+	mgr := newTestManager(jpush)
+
+	// Client-1: disconnected, has pushRegID
+	var writeMu1 sync.Mutex
+	mgr.Subscribe(nil, &writeMu1, "client-1")
+	mgr.RegisterPushID("reg-123", "client-1")
+	mgr.DisconnectClient("client-1")
+
+	// Client-2: disconnected, same pushRegID (simulating same device)
+	var writeMu2 sync.Mutex
+	mgr.Subscribe(nil, &writeMu2, "client-2")
+	mgr.DisconnectClient("client-2")
+	mgr.mu.Lock()
+	s2 := mgr.subscriptions["client-2"]
+	mgr.mu.Unlock()
+	s2.mu.Lock()
+	s2.pushRegID = "reg-123"
+	s2.mu.Unlock()
+
+	msg := ServerMessage{
+		Type:  "event",
+		ID:    "evt_1",
+		Event: "session_update",
+		Data: &SessionUpdateData{
+			SessionID: "s1",
+			Status:    "completed",
+		},
+	}
+	mgr.BroadcastEvent(msg)
+
+	if !pushCalled {
+		t.Error("JPush should be called when no WS is connected")
 	}
 }

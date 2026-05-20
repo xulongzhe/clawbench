@@ -163,6 +163,10 @@ public class MainActivity extends AppCompatActivity {
     // When true, WebSocket can be disconnected on background (push will notify the user).
     // When false, WebSocket stays alive in background for real-time events.
     volatile boolean pushAvailable = false;
+    // When true, the server has JPush enabled (even if JPush SDK hasn't finished
+    // initializing yet). Used by native WS to suppress duplicate notifications
+    // during the window between JPush config fetch and SDK initialization.
+    volatile boolean jpushEnabledOnServer = false;
 
     // Fullscreen video state: managed by WebChromeClient.onShowCustomView/onHideCustomView
     private View customView;
@@ -630,7 +634,9 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
         // App going to background — if JPush is not available, start native WS
         // so we still get notifications when Android kills the WebView process.
-        if (!pushAvailable && webViewConnected) {
+        // Check both pushAvailable (SDK ready) and jpushEnabledOnServer (config fetched)
+        // to avoid starting native WS when JPush will handle notifications anyway.
+        if (!pushAvailable && !jpushEnabledOnServer && webViewConnected) {
             PortForwardService.startNativeEventWs(this);
         }
     }
@@ -766,7 +772,10 @@ public class MainActivity extends AppCompatActivity {
                 boolean jpushEnabled = json.optBoolean("jpush_enabled", false);
                 String jpushAppKey = json.optString("jpush_app_key", "");
 
+                // Mark server-side JPush status immediately, even before SDK init.
+                // This lets native WS suppress notifications during the init window.
                 if (jpushEnabled && !jpushAppKey.isEmpty()) {
+                    jpushEnabledOnServer = true;
                     Log.i(TAG, "JPush enabled on server, initializing with AppKey: " + jpushAppKey.substring(0, 4) + "...");
                     runOnUiThread(() -> {
                         JPushInterface.setDebugMode(false);
