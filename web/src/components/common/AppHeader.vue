@@ -70,6 +70,7 @@ import { useI18n } from 'vue-i18n'
 import { useGlobalEvents } from '@/composables/useGlobalEvents'
 import { baseName, toRelativePath } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
+import { setPendingManageNavigation } from '@/composables/useCommitNavigation.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
 
 const { t } = useI18n()
@@ -130,6 +131,7 @@ const projectName = computed(() => {
 const gitBranch = computed(() => store.state.gitBranch)
 
 function openHistory() {
+    setPendingManageNavigation()
     switchTab?.('history')
 }
 
