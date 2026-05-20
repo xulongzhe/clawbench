@@ -312,6 +312,32 @@ function switchTab(tab) {
   }
 }
 
+/** Handle clawbench-open-session event from Android push notification tap */
+function handleOpenSession(e) {
+  const detail = (e).detail
+  if (!detail?.sessionId) return
+  const { sessionId, projectPath } = detail
+  if (projectPath && projectPath !== store.state.projectRoot) {
+    // Cross-project: switch project, store pending session, then reload
+    localStorage.setItem('clawbenchPendingNav', JSON.stringify({ sessionId }))
+    fetch('/api/project', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: projectPath }),
+    }).then(() => {
+      window.location.reload()
+    }).catch(() => {
+      // If project switch fails, try same-project switch as fallback
+      switchTab('chat')
+      sessionIdentity.switchSession(sessionId)
+    })
+  } else {
+    // Same project: lightweight switch
+    switchTab('chat')
+    sessionIdentity.switchSession(sessionId)
+  }
+}
+
 const detailsOpen = ref(false)
 const tocOpen = ref(false)
 const searchOpen = ref(false)
@@ -711,6 +737,7 @@ onMounted(async () => {
     window.addEventListener('open-file-manager', handleOpenFileManager)
     window.addEventListener('navigate-to-commit', handleNavigateToCommit)
     window.addEventListener('quote-sent', playQuoteEmitAnimation)
+    window.addEventListener('clawbench-open-session', handleOpenSession)
     document.addEventListener('click', handleOverflowOutsideClick)
     // Sync reactive state from Settings page changes
     window.addEventListener('clawbench-theme-change', (e) => {
@@ -775,6 +802,53 @@ onMounted(async () => {
     try { await store.loadFiles('') } catch (_) {
         toast.show(t('toast.fileListLoadFailed'), { icon: '⚠️', type: 'error', duration: 6000 })
     }
+    // Handle pending navigation from push notification deep link
+    // (cross-project reload or cold start via AndroidNative bridge)
+    const processPendingNav = (navSessionId) => {
+      // Wait for sessions to load before switching
+      const checkReady = () => {
+        if (sessionIdentity.currentSessionId.value) {
+          switchTab('chat')
+          sessionIdentity.switchSession(navSessionId)
+        } else {
+          setTimeout(checkReady, 100)
+        }
+      }
+      checkReady()
+    }
+
+    // Check localStorage for pending navigation (cross-project reload)
+    const pendingNav = localStorage.getItem('clawbenchPendingNav')
+    if (pendingNav) {
+      localStorage.removeItem('clawbenchPendingNav')
+      try {
+        const { sessionId } = JSON.parse(pendingNav)
+        if (sessionId) processPendingNav(sessionId)
+      } catch (_) {}
+    }
+
+    // Check AndroidNative bridge for cold-start pending navigation
+    if (isAppMode.value && window.AndroidNative?.getPendingNavigation) {
+      try {
+        const nav = window.AndroidNative.getPendingNavigation()
+        if (nav) {
+          const { sessionId, projectPath } = JSON.parse(nav)
+          if (sessionId) {
+            if (projectPath && projectPath !== store.state.projectRoot) {
+              // Need to switch project first
+              localStorage.setItem('clawbenchPendingNav', JSON.stringify({ sessionId }))
+              fetch('/api/project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: projectPath }),
+              }).then(() => window.location.reload())
+            } else {
+              processPendingNav(sessionId)
+            }
+          }
+        }
+      } catch (_) {}
+    }
     const lastFile = localStorage.getItem('clawbenchLastFile_' + store.state.projectRoot)
     if (lastFile && lastFile !== store.state.currentFile?.path) {
         const lastSlash = lastFile.lastIndexOf('/')
@@ -794,6 +868,7 @@ onUnmounted(() => {
     window.removeEventListener('open-file-manager', handleOpenFileManager)
     window.removeEventListener('navigate-to-commit', handleNavigateToCommit)
     window.removeEventListener('quote-sent', playQuoteEmitAnimation)
+    window.removeEventListener('clawbench-open-session', handleOpenSession)
     document.removeEventListener('click', handleOverflowOutsideClick)
 })
 </script>
