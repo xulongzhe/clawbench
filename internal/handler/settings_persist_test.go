@@ -219,7 +219,7 @@ func TestPersist_TTSEngine(t *testing.T) {
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"tts":{"engine":"piper"}}`)
+	cfg := patchAndReadConfig(t, `{"tts":{"engine":"piper","piper":{"model_path":"/tmp/test.onnx"}}}`)
 	assert.Equal(t, "piper", getNestedValue(cfg, "tts.engine"))
 }
 

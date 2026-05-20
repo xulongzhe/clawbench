@@ -44,7 +44,7 @@ describe('useSettingsConfig', () => {
   })
 
   it('patchConfig calls API and returns restart info', async () => {
-    const mockResult = { needsRestart: true, changedColdFields: ['ssh.enabled'] }
+    const mockResult = { needs_restart: true, changed_cold_fields: ['ssh.enabled'] }
     mockedApiPatch.mockResolvedValue(mockResult)
 
     const { patchConfig } = useSettingsConfig()
