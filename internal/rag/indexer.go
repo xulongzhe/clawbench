@@ -23,6 +23,7 @@ type Indexer struct {
 	running       bool
 	modelWarn     bool // Whether we've warned about missing model
 	ollamaHealthy bool // Current Ollama health state
+	batchCancel   context.CancelFunc // cancels in-flight indexBatch on Stop
 }
 
 // NewIndexer creates a new RAG indexer.
@@ -55,6 +56,7 @@ func (idx *Indexer) Start() {
 }
 
 // Stop signals the indexer to stop and waits for it to finish.
+// Cancels any in-flight batch and waits up to 5s for the goroutine to exit.
 func (idx *Indexer) Stop() {
 	idx.mu.Lock()
 	if !idx.running {
@@ -63,8 +65,19 @@ func (idx *Indexer) Stop() {
 	}
 	idx.mu.Unlock()
 
+	// Cancel any in-flight batch so indexBatch returns quickly
+	if idx.batchCancel != nil {
+		idx.batchCancel()
+	}
+
 	close(idx.stopCh)
-	<-idx.doneCh
+
+	// Wait with timeout to avoid blocking forever on a stuck goroutine
+	select {
+	case <-idx.doneCh:
+	case <-time.After(5 * time.Second):
+		slog.Warn("rag: indexer did not stop within timeout, continuing shutdown")
+	}
 
 	idx.mu.Lock()
 	idx.running = false
@@ -94,21 +107,38 @@ func (idx *Indexer) run() {
 		case <-idx.stopCh:
 			return
 		case <-ticker.C:
+			// Check stop again before starting a new batch
+			select {
+			case <-idx.stopCh:
+				return
+			default:
+			}
 			idx.indexBatch()
 		}
 	}
 }
 
 // indexBatch processes one batch of unindexed messages and backfills embeddings.
+// Uses a stop-aware context so Stop() can cancel in-flight work.
 func (idx *Indexer) indexBatch() {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
+
+	// Store cancel so Stop() can abort this batch
+	idx.mu.Lock()
+	idx.batchCancel = cancel
+	idx.mu.Unlock()
 
 	// Check Ollama health (startup probe + periodic retry)
 	idx.checkOllamaHealth(ctx)
 
 	// Phase 1: Index new messages from SQLite
 	idx.indexNewMessages(ctx)
+
+	// Exit early if stopped
+	if ctx.Err() != nil {
+		return
+	}
 
 	// Phase 2: Backfill embeddings for chunks that were indexed without them
 	if idx.ollamaHealthy {
