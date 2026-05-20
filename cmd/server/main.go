@@ -636,7 +636,7 @@ func main() {
 			slog.Info("sentinel process launched for restart", "sentinel_pid", cmd.Process.Pid)
 		}
 		// Trigger graceful shutdown (same path as SIGINT)
-		syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+		selfSignalInterrupt()
 	})
 
 	srv := &http.Server{Addr: addr, Handler: mux}
