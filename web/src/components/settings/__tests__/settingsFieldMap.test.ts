@@ -10,7 +10,7 @@ describe('settingsFieldMap', () => {
     expect(map['terminal.enabled']).toBeTruthy()
     expect(map['tts.engine']).toBeTruthy()
     expect(map['rag.ollama_base_url']).toBeTruthy()
-    expect(map['proxy.enabled']).toBeTruthy()
+    expect(map['port_forward.allowed_ports']).toBeTruthy()
     expect(map['port_forward.enabled']).toBeTruthy()
     expect(map['push.jpush.enabled']).toBeTruthy()
 

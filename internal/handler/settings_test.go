@@ -38,15 +38,14 @@ func TestServeConfig_Get(t *testing.T) {
 	cfg.TTS.Speed = 1.5
 	cfg.TTS.Voice = "zh-CN-XiaoxiaoNeural"
 	cfg.TTS.MaxCacheFiles = 50
-	cfg.RAG.OllamaBaseURL = "http://localhost:11434"
-	cfg.RAG.OllamaModel = "bge-m3"
+	cfg.RAG.BaseURL = "http://localhost:11434"
+	cfg.RAG.Model = "bge-m3"
 	cfg.RAG.ChunkSize = 512
 	cfg.RAG.SearchLimit = 5
 	cfg.RAG.RetentionDays = 30
-	cfg.Proxy.Enabled = true
-	cfg.Proxy.AllowedPorts = "1024-65535"
 	cfg.PortForward.Enabled = true
 	cfg.PortForward.Port = 20001
+	cfg.PortForward.AllowedPorts = "1024-65535"
 	cfg.Push.JPush.Enabled = true
 	cfg.Push.JPush.AppKey = "test-app-key"
 	cfg.Tasks.SummarizeBackend = "simple"
@@ -74,7 +73,6 @@ func TestServeConfig_Get(t *testing.T) {
 	assert.Contains(t, resp, "terminal")
 	assert.Contains(t, resp, "tts")
 	assert.Contains(t, resp, "rag")
-	assert.Contains(t, resp, "proxy")
 	assert.Contains(t, resp, "port_forward")
 	assert.Contains(t, resp, "push")
 	assert.Contains(t, resp, "tasks")

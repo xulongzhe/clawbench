@@ -46,8 +46,8 @@ type Config struct {
 		MossNano          MossNanoConfig `yaml:"moss_nano"`          // MOSS-TTS-Nano-specific configuration (only used when engine: "moss-nano")
 		API               APIConfig      `yaml:"api"`               // API-based summarization (only used when summarize_backend: "api")
 	} `yaml:"tts"`
-	Proxy       ProxyConfig       `yaml:"proxy"`          // Port forwarding configuration
-	PortForward PortForwardConfig `yaml:"port_forward"`   // Port forward (SSH tunnel) server configuration
+	Proxy       ProxyConfig       `yaml:"proxy"`          // Legacy: only allowed_ports for backward compat; see PortForward
+	PortForward PortForwardConfig `yaml:"port_forward"`   // SSH tunnel server + port forwarding configuration
 	RAG      RAGConfig      `yaml:"rag"`       // RAG history memory configuration
 	Terminal TerminalConfig `yaml:"terminal"`  // Interactive web terminal configuration
 	Tasks    TasksConfig    `yaml:"tasks"`     // Scheduled task configuration
@@ -83,10 +83,13 @@ type JPushConfig struct {
 }
 
 // RAGConfig holds configuration for the RAG history memory system.
-// RAG is always enabled. When Ollama is unavailable, falls back to BM25 full-text search.
+// RAG is always enabled. When the embedding API is unavailable, falls back to BM25 full-text search.
 type RAGConfig struct {
-	OllamaBaseURL  string `yaml:"ollama_base_url"`   // Ollama API base URL (default: "http://localhost:11434")
-	OllamaModel    string `yaml:"ollama_model"`      // Embedding model name (default: "bge-m3")
+	BaseURL        string `yaml:"base_url"`         // OpenAI-compatible API base URL (default: "http://localhost:11434")
+	Model          string `yaml:"model"`             // Embedding model name (default: "bge-m3")
+	APIKey         string `yaml:"api_key"`           // API key for the embedding service (optional, for cloud providers)
+	OllamaBaseURL  string `yaml:"ollama_base_url"`   // Deprecated: use base_url
+	OllamaModel    string `yaml:"ollama_model"`       // Deprecated: use model
 	ChunkSize      int    `yaml:"chunk_size"`        // Chunk size in tokens (default: 512)
 	ChunkOverlap   int    `yaml:"chunk_overlap"`     // Overlap between chunks in tokens (default: 64)
 	PollInterval   string `yaml:"poll_interval"`     // Indexer poll interval (default: "10s")

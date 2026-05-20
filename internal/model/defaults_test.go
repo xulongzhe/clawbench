@@ -142,14 +142,11 @@ func TestApplyDefaultsEmptyConfig(t *testing.T) {
 	if cfg.Session.MaxCount != 10 {
 		t.Errorf("Session.MaxCount = %d, want 10", cfg.Session.MaxCount)
 	}
-	if !cfg.Proxy.Enabled {
-		t.Error("Proxy.Enabled should default to true when not in config")
-	}
-	if cfg.Proxy.AllowedPorts != "1024-65535" {
-		t.Errorf("Proxy.AllowedPorts = %q, want %q", cfg.Proxy.AllowedPorts, "1024-65535")
-	}
 	if !cfg.PortForward.Enabled {
 		t.Error("PortForward.Enabled should default to true when not in config")
+	}
+	if cfg.PortForward.AllowedPorts != "1024-65535" {
+		t.Errorf("PortForward.AllowedPorts = %q, want %q", cfg.PortForward.AllowedPorts, "1024-65535")
 	}
 	if cfg.TTS.Engine != "edge" {
 		t.Errorf("TTS.Engine = %q, want %q", cfg.TTS.Engine, "edge")
@@ -201,52 +198,43 @@ func TestApplyDefaultsPartialConfig(t *testing.T) {
 	}
 }
 
-func TestApplyDefaultsBoolPresenceProxyEnabledTrue(t *testing.T) {
+func TestApplyDefaults_ProxyAllowedPortsMigratedToPortForward(t *testing.T) {
 	cfg := Config{}
-	presence := map[string]bool{
-		"proxy":               true,
-		"proxy.enabled":       true,
-		"proxy.allowed_ports": true,
-	}
-	// Set Enabled to true explicitly in config
-	cfg.Proxy.Enabled = true
-
-	ApplyDefaults(&cfg, presence)
-
-	if !cfg.Proxy.Enabled {
-		t.Error("Proxy.Enabled should stay true when explicitly set to true")
-	}
-}
-
-func TestApplyDefaultsBoolPresenceProxyEnabledFalse(t *testing.T) {
-	cfg := Config{}
-	presence := map[string]bool{
-		"proxy":         true,
-		"proxy.enabled": true,
-	}
-	// User explicitly wrote "enabled: false"
-	cfg.Proxy.Enabled = false
-
-	ApplyDefaults(&cfg, presence)
-
-	if cfg.Proxy.Enabled {
-		t.Error("Proxy.Enabled should stay false when explicitly set to false")
-	}
-}
-
-func TestApplyDefaultsBoolPresenceProxySectionNoEnabled(t *testing.T) {
-	cfg := Config{}
-	// User wrote a proxy section but didn't include "enabled" key
 	presence := map[string]bool{
 		"proxy":               true,
 		"proxy.allowed_ports": true,
 	}
+	cfg.Proxy.AllowedPorts = "3000-4000"
 
 	ApplyDefaults(&cfg, presence)
 
-	// When proxy section exists but enabled key is absent, should still default to true
-	if !cfg.Proxy.Enabled {
-		t.Error("Proxy.Enabled should default to true when proxy section exists but enabled key is absent")
+	if cfg.PortForward.AllowedPorts != "3000-4000" {
+		t.Errorf("PortForward.AllowedPorts = %q, want %q (migrated from proxy)", cfg.PortForward.AllowedPorts, "3000-4000")
+	}
+}
+
+func TestApplyDefaults_PortForwardAllowedPortsNotOverwritten(t *testing.T) {
+	cfg := Config{}
+	presence := map[string]bool{
+		"port_forward":                true,
+		"port_forward.allowed_ports":  true,
+	}
+	cfg.PortForward.AllowedPorts = "5000-6000"
+	cfg.Proxy.AllowedPorts = "3000-4000"
+
+	ApplyDefaults(&cfg, presence)
+
+	if cfg.PortForward.AllowedPorts != "5000-6000" {
+		t.Errorf("PortForward.AllowedPorts = %q, want %q (should not be overwritten)", cfg.PortForward.AllowedPorts, "5000-6000")
+	}
+}
+
+func TestApplyDefaults_PortForwardAllowedPortsDefault(t *testing.T) {
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.PortForward.AllowedPorts != "1024-65535" {
+		t.Errorf("PortForward.AllowedPorts = %q, want %q (default)", cfg.PortForward.AllowedPorts, "1024-65535")
 	}
 }
 

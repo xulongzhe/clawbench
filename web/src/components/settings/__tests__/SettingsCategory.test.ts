@@ -35,8 +35,7 @@ const serverConfig = ref<Record<string, any>>({
   terminal: { enabled: true, idle_timeout: '10m', max_sessions: 10, buffer_lines: 2000 },
   tts: { engine: 'edge', voice: '', speed: 1.0, max_cache_files: 100, summarize_backend: 'simple', summarize_model: '', format: '' },
   rag: { enabled: false, ollama_base_url: 'http://localhost:11434', ollama_model: 'bge-m3', chunk_size: 512, search_limit: 5, retention_days: 90 },
-  proxy: { enabled: true, allowed_ports: '1024-65535' },
-  port_forward: { enabled: true, port: 0 },
+  port_forward: { enabled: true, port: 0, allowed_ports: '1024-65535' },
   push: { jpush: { enabled: false, app_key: '' } },
   tasks: { summarize_backend: '', summarize_model: '' },
 })
@@ -128,14 +127,12 @@ const i18n = createI18n({
           tasksHeader: '定时任务',
           ragSearchPoolSize: '搜索池大小',
           ragOllamaUrl: 'Ollama地址',
-          proxyEnabled: '启用代理',
-          proxyAllowedPorts: '允许端口',
-          portForwardEnabled: '启用端口转发',
-          portForwardPort: '端口转发端口',
+          portForwardEnabled: '启用 SSH 隧道',
+          portForwardPort: 'SSH 隧道端口',
+          portForwardAllowedPorts: '允许的端口范围',
           pushEnabled: '启用推送',
           pushAppKey: 'AppKey',
-          proxyHeader: '代理',
-          portForwardHeader: '端口转发',
+          portForwardHeader: 'SSH 隧道',
           pushHeader: '推送',
           ttsSummarizeHeader: '摘要',
           ttsCacheHeader: '缓存',
@@ -524,34 +521,10 @@ describe('SettingsCategory', () => {
 
   // ─── Network category ──────────────────────────────
   describe('network category', () => {
-    it('PATCHes proxy.enabled when toggled', async () => {
-      const wrapper = mountCategory('network')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用代理')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', false)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('proxy.enabled', false)
-    })
-
-    it('PATCHes proxy.allowed_ports when changed', async () => {
-      const wrapper = mountCategory('network')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '允许端口')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', '8080,9090')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('proxy.allowed_ports', '8080,9090')
-    })
-
     it('PATCHes port_forward.enabled when toggled', async () => {
       const wrapper = mountCategory('network')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用端口转发')
+      const item = allItems.find(i => i.props().label === '启用 SSH 隧道')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', false)
@@ -560,10 +533,22 @@ describe('SettingsCategory', () => {
       expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.enabled', false)
     })
 
+    it('PATCHes port_forward.allowed_ports when changed', async () => {
+      const wrapper = mountCategory('network')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '允许的端口范围')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', '8080,9090')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.allowed_ports', '8080,9090')
+    })
+
     it('PATCHes port_forward.port when changed', async () => {
       const wrapper = mountCategory('network')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '端口转发端口')
+      const item = allItems.find(i => i.props().label === 'SSH 隧道端口')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', 2222)

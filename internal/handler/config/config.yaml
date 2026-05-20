@@ -13,12 +13,12 @@ log_max_days: 0
 password: ""
 port: 0
 port_forward:
+    allowed_ports: ""
     enabled: false
     host_key: ""
     port: 0
 proxy:
     allowed_ports: ""
-    enabled: false
 push:
     jpush:
         app_key: ""

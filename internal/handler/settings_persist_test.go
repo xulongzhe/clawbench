@@ -465,24 +465,24 @@ func TestPersist_RAGSearchPoolSize(t *testing.T) {
 	assert.Equal(t, 30, getNestedValue(cfg, "rag.search_pool_size"))
 }
 
-func TestPersist_RAGOllamaBaseURL(t *testing.T) {
+func TestPersist_RAGBaseURL(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"rag":{"ollama_base_url":"http://ollama:11434"}}`)
-	assert.Equal(t, "http://ollama:11434", getNestedValue(cfg, "rag.ollama_base_url"))
+	cfg := patchAndReadConfig(t, `{"rag":{"base_url":"http://ollama:11434"}}`)
+	assert.Equal(t, "http://ollama:11434", getNestedValue(cfg, "rag.base_url"))
 }
 
-func TestPersist_RAGOllamaModel(t *testing.T) {
+func TestPersist_RAGModel(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"rag":{"ollama_model":"nomic-embed"}}`)
-	assert.Equal(t, "nomic-embed", getNestedValue(cfg, "rag.ollama_model"))
+	cfg := patchAndReadConfig(t, `{"rag":{"model":"nomic-embed"}}`)
+	assert.Equal(t, "nomic-embed", getNestedValue(cfg, "rag.model"))
 }
 
 func TestPersist_RAGChunkSize(t *testing.T) {
@@ -517,24 +517,14 @@ func TestPersist_RAGRetentionDays(t *testing.T) {
 
 // ─── Proxy section ──────────────────────────────────────
 
-func TestPersist_ProxyEnabled(t *testing.T) {
+func TestPersist_PortForwardAllowedPorts(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"proxy":{"enabled":false}}`)
-	assert.Equal(t, false, getNestedValue(cfg, "proxy.enabled"))
-}
-
-func TestPersist_ProxyAllowedPorts(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"proxy":{"allowed_ports":"8080,9090"}}`)
-	assert.Equal(t, "8080,9090", getNestedValue(cfg, "proxy.allowed_ports"))
+	cfg := patchAndReadConfig(t, `{"port_forward":{"allowed_ports":"8080,9090"}}`)
+	assert.Equal(t, "8080,9090", getNestedValue(cfg, "port_forward.allowed_ports"))
 }
 
 // ─── Port Forward section ──────────────────────────────────────

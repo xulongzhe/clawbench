@@ -35,20 +35,12 @@ var ProxyService *ProxyRegistry
 
 // NewProxyRegistry creates a new port registry and starts background health checks.
 // It also restores any previously persisted ports from the database.
-func NewProxyRegistry(cfg model.ProxyConfig, selfPort int) *ProxyRegistry {
-	if !cfg.Enabled {
-		slog.Info("proxy service disabled by config")
-		return &ProxyRegistry{
-			ports:    make(map[int]*model.ForwardedPort),
-			cfg:      cfg,
-			selfPort: selfPort,
-		}
-	}
-
+// The caller (main.go) decides whether to create this based on port_forward.enabled.
+func NewProxyRegistry(allowedPorts string, selfPort int) *ProxyRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &ProxyRegistry{
 		ports:    make(map[int]*model.ForwardedPort),
-		cfg:      cfg,
+		cfg:      model.ProxyConfig{AllowedPorts: allowedPorts},
 		selfPort: selfPort,
 		cancel:   cancel,
 	}

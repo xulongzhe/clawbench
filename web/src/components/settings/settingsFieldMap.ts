@@ -184,10 +184,9 @@ export const categoryItems: Record<string, ItemSpec[]> = {
     { labelKey: 'settings.items.ragRetentionDays', descriptionKey: 'settings.items.ragRetentionDaysDesc', key: 'rag.retention_days', type: 'number', source: 'server' },
   ],
   network: [
-    { labelKey: 'settings.items.proxyEnabled', descriptionKey: 'settings.items.proxyEnabledDesc', key: 'proxy.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.proxyHeader' },
-    { labelKey: 'settings.items.proxyAllowedPorts', descriptionKey: 'settings.items.proxyAllowedPortsDesc', key: 'proxy.allowed_ports', type: 'text', source: 'server' },
     { labelKey: 'settings.items.portForwardEnabled', descriptionKey: 'settings.items.portForwardEnabledDesc', key: 'port_forward.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.portForwardHeader' },
     { labelKey: 'settings.items.portForwardPort', descriptionKey: 'settings.items.portForwardPortDesc', key: 'port_forward.port', type: 'number', source: 'server', needsRestart: true },
+    { labelKey: 'settings.items.portForwardAllowedPorts', descriptionKey: 'settings.items.portForwardAllowedPortsDesc', key: 'port_forward.allowed_ports', type: 'text', source: 'server' },
     { labelKey: 'settings.items.pushEnabled', descriptionKey: 'settings.items.pushEnabledDesc', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.pushHeader' },
     { labelKey: 'settings.items.pushAppKey', descriptionKey: 'settings.items.pushAppKeyDesc', key: 'push.jpush.app_key', type: 'text', source: 'server' },
   ],

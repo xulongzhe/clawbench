@@ -222,46 +222,47 @@ default_agent: "codebuddy"
 log_dir: ".clawbench/logs"
 log_max_days: 7            # Log retention in days (default/默认: 7) / 日志保留天数，默认 7
 
-# Port forwarding configuration (Android WebView accessing server local ports)
-# 端口转发配置（Android WebView 访问服务器本地端口）
-# Default: enabled with port range 1024-65535 / 默认：启用，端口范围 1024-65535
-proxy:
-  enabled: true             # Enable port forwarding (default: true) / 启用端口转发代理（默认: true）
-  allowed_ports: "1024-65535"  # Allowed port range (supports ranges and discrete ports, e.g. "3000,5173,8080")
-                                # 允许转发的端口范围（支持范围和离散端口，如 "3000,5173,8080"）
-
-# Port forward configuration (SSH tunnel for remote development)
-# 端口转发配置（远程开发的 SSH 隧道）
+# SSH tunnel configuration for remote port forwarding
+# SSH 隧道远程端口转发配置
+# When enabled, Android app connects via SSH tunnel to access server local ports transparently.
+# The proxy section has been merged into port_forward — proxy.enabled is no longer used.
+# 启用后，Android App 通过 SSH 隧道访问服务器本地端口，对应用完全透明。
+# 旧版 proxy 配置已合并到 port_forward，proxy.enabled 不再生效。
 # Default: enabled / 默认：启用
-# Android app connects via SSH tunnel to access server local ports transparently
-# Android App 通过 SSH 隧道访问服务器本地端口，对应用完全透明
 port_forward:
-  enabled: true             # Enable port forward / SSH tunnel server (default: true) / 启用端口转发服务（默认: true）
+  enabled: true             # Enable SSH tunnel server (default: true) / 启用 SSH 隧道服务（默认: true）
   port: 0                   # SSH port (0 = auto = main_port + 1, e.g. production 20001; or specify like 20020)
                             # SSH 端口（0 = 自动 = 主端口+1，如生产环境 20001；也可指定如 20020）
   host_key: ""              # Host key file path (empty = auto-generate ephemeral key; set a path for persistence across restarts)
                             # Host key 文件路径（空 = 自动生成临时密钥，重启后变更；建议指定路径以持久化）
+  allowed_ports: "1024-65535"  # Allowed port range for SSH tunnel forwarding (supports ranges and discrete ports, e.g. "3000,5173,8080")
+                               # 允许通过 SSH 隧道转发的端口范围（支持范围和离散端口，如 "3000,5173,8080"）
 
 # RAG history memory configuration / RAG 历史记忆配置
-# When enabled, chat messages are automatically indexed into a vector database (DuckDB + BGE-M3),
+# When enabled, chat messages are automatically indexed into a vector database (DuckDB),
 # and AI agents can search historical conversations via the RAG API.
-# 启用后，聊天消息自动索引到向量数据库（DuckDB + BGE-M3），AI 智能体可通过 RAG API 搜索历史对话。
-# RAG history memory — always enabled. Without Ollama, uses FTS-only search.
-# When Ollama is available, uses hybrid vector + FTS search with RRF fusion.
-# RAG 历史记忆 — 始终启用。无 Ollama 时使用纯全文检索。
-# Ollama 可用时，使用向量 + 全文混合检索（RRF 融合）。
-# Prerequisite for vector search: Ollama must be running with the bge-m3 model pulled (ollama pull bge-m3)
-# 向量搜索前提条件：Ollama 需运行并拉取 bge-m3 模型（ollama pull bge-m3）
+# 启用后，聊天消息自动索引到向量数据库（DuckDB），AI 智能体可通过 RAG API 搜索历史对话。
+# RAG history memory — always enabled. Without embedding API, uses FTS-only search.
+# When embedding API is available, uses hybrid vector + FTS search with RRF fusion.
+# RAG 历史记忆 — 始终启用。无嵌入 API 时使用纯全文检索。
+# 嵌入 API 可用时，使用向量 + 全文混合检索（RRF 融合）。
+# Compatible with any OpenAI /v1/embeddings endpoint: Ollama, vLLM, LM Studio, LocalAI,
+# LiteLLM, OpenAI, Azure OpenAI, etc.
+# 兼容任何 OpenAI /v1/embeddings 端点：Ollama、vLLM、LM Studio、LocalAI、LiteLLM、OpenAI、Azure OpenAI 等。
+# Prerequisite for vector search: an embedding service must be running with the model loaded
+# (e.g., for Ollama: ollama pull bge-m3)
+# 向量搜索前提条件：嵌入服务需运行并加载模型（如 Ollama: ollama pull bge-m3）
 # rag:
-#   ollama_base_url: "http://localhost:11434"  # Ollama API URL / Ollama API 地址
-#   ollama_model: "bge-m3"          # Embedding model name / Embedding 模型名
-#   chunk_size: 512                  # Chunk size in tokens (default: 512) / 分块大小（token，默认: 512）
-#   chunk_overlap: 64                # Overlap between chunks in tokens (default: 64) / 分块重叠（token，默认: 64）
-#   poll_interval: "10s"             # Indexer poll interval (default: 10s) / 索引轮询间隔（默认: 10s）
-#   batch_size: 10                   # Messages per indexer batch (default: 10) / 每轮索引消息数（默认: 10）
-#   search_limit: 5                  # Default search result limit (default: 5) / 默认搜索结果数量（默认: 5）
-#   search_pool_size: 20            # RRF candidate pool size per source (default: 20) / RRF 候选池大小（默认: 20）
-#   retention_days: 90               # Soft-deleted data retention days, 0=keep forever (default: 90) / 软删除数据保留天数，0=永久保留（默认: 90）
+#   base_url: "http://localhost:11434"     # OpenAI-compatible API base URL / OpenAI 兼容 API 地址
+#   model: "bge-m3"                        # Embedding model name / Embedding 模型名
+#   api_key: ""                            # API key (optional, for cloud providers like OpenAI) / API 密钥（可选，云服务如 OpenAI 需要）
+#   chunk_size: 512                        # Chunk size in tokens (default: 512) / 分块大小（token，默认: 512）
+#   chunk_overlap: 64                      # Overlap between chunks in tokens (default: 64) / 分块重叠（token，默认: 64）
+#   poll_interval: "10s"                   # Indexer poll interval (default: 10s) / 索引轮询间隔（默认: 10s）
+#   batch_size: 10                         # Messages per indexer batch (default: 10) / 每轮索引消息数（默认: 10）
+#   search_limit: 5                        # Default search result limit (default: 5) / 默认搜索结果数量（默认: 5）
+#   search_pool_size: 20                   # RRF candidate pool size per source (default: 20) / RRF 候选池大小（默认: 20）
+#   retention_days: 90                     # Soft-deleted data retention days, 0=keep forever (default: 90) / 软删除数据保留天数，0=永久保留（默认: 90）
 
 # Terminal configuration / 终端配置
 # Interactive web terminal with PTY + WebSocket + xterm.js

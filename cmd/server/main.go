@@ -617,13 +617,14 @@ func main() {
 	// Start cleanup worker for soft-deleted data (runs even without RAG)
 	rag.StartCleanupWorker(cfg.RAG)
 
-	// Initialize proxy service (port forwarding) — needs the final port number
-	proxyService := service.NewProxyRegistry(cfg.Proxy, port)
-	service.ProxyService = proxyService
-	defer proxyService.Stop()
-
-	// Initialize SSH tunnel server (port forward)
+	// Initialize proxy service (port forwarding) and SSH tunnel server.
+	// ProxyRegistry is only created when SSH tunnel is enabled — it has no
+	// standalone purpose without the SSH tunnel to transport traffic.
 	if cfg.PortForward.Enabled {
+		proxyService := service.NewProxyRegistry(cfg.PortForward.AllowedPorts, port)
+		service.ProxyService = proxyService
+		defer proxyService.Stop()
+
 		sshServer := ssh.NewServer(cfg.PortForward, port, cfg.Password, proxyService)
 		handler.SetSSHServer(sshServer)
 		go func() {
@@ -632,6 +633,8 @@ func main() {
 			}
 		}()
 		defer sshServer.Close()
+	} else {
+		slog.Info("SSH tunnel and port forwarding disabled by config")
 	}
 
 	// Initialize file watcher for auto-refresh (non-critical — continue on failure)
