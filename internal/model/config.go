@@ -46,8 +46,8 @@ type Config struct {
 		MossNano          MossNanoConfig `yaml:"moss_nano"`          // MOSS-TTS-Nano-specific configuration (only used when engine: "moss-nano")
 		API               APIConfig      `yaml:"api"`               // API-based summarization (only used when summarize_backend: "api")
 	} `yaml:"tts"`
-	Proxy    ProxyConfig    `yaml:"proxy"`     // Port forwarding configuration
-	SSH      SSHConfig      `yaml:"ssh"`       // SSH tunnel server configuration
+	Proxy       ProxyConfig       `yaml:"proxy"`          // Port forwarding configuration
+	PortForward PortForwardConfig `yaml:"port_forward"`   // Port forward (SSH tunnel) server configuration
 	RAG      RAGConfig      `yaml:"rag"`       // RAG history memory configuration
 	Terminal TerminalConfig `yaml:"terminal"`  // Interactive web terminal configuration
 	Tasks    TasksConfig    `yaml:"tasks"`     // Scheduled task configuration
@@ -83,16 +83,17 @@ type JPushConfig struct {
 }
 
 // RAGConfig holds configuration for the RAG history memory system.
+// RAG is always enabled. When Ollama is unavailable, falls back to BM25 full-text search.
 type RAGConfig struct {
-	Enabled       bool   `yaml:"enabled"`          // Enable RAG history memory (default: false)
-	OllamaBaseURL string `yaml:"ollama_base_url"`  // Ollama API base URL (default: "http://localhost:11434")
-	OllamaModel   string `yaml:"ollama_model"`     // Embedding model name (default: "bge-m3")
-	ChunkSize     int    `yaml:"chunk_size"`        // Chunk size in tokens (default: 512)
-	ChunkOverlap  int    `yaml:"chunk_overlap"`     // Overlap between chunks in tokens (default: 64)
-	PollInterval  string `yaml:"poll_interval"`     // Indexer poll interval (default: "10s")
-	BatchSize     int    `yaml:"batch_size"`        // Messages per indexer batch (default: 10)
-	SearchLimit   int    `yaml:"search_limit"`      // Default search result limit (default: 5)
-	RetentionDays int    `yaml:"retention_days"`    // Soft-deleted data retention days (0=keep forever, default: 90)
+	OllamaBaseURL  string `yaml:"ollama_base_url"`   // Ollama API base URL (default: "http://localhost:11434")
+	OllamaModel    string `yaml:"ollama_model"`      // Embedding model name (default: "bge-m3")
+	ChunkSize      int    `yaml:"chunk_size"`        // Chunk size in tokens (default: 512)
+	ChunkOverlap   int    `yaml:"chunk_overlap"`     // Overlap between chunks in tokens (default: 64)
+	PollInterval   string `yaml:"poll_interval"`     // Indexer poll interval (default: "10s")
+	BatchSize      int    `yaml:"batch_size"`        // Messages per indexer batch (default: 10)
+	SearchLimit    int    `yaml:"search_limit"`      // Default search result limit (default: 5)
+	SearchPoolSize int    `yaml:"search_pool_size"`  // Candidates per search source before RRF fusion (default: 20)
+	RetentionDays  int    `yaml:"retention_days"`    // Soft-deleted data retention days (0=keep forever, default: 90)
 }
 
 // PiperConfig holds configuration for the Piper TTS engine.

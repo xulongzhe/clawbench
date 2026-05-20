@@ -1,5 +1,5 @@
 <template>
-  <BottomSheet :open="open" compact :title="t('chat.quickSend.title')" @close="$emit('close')">
+  <BottomSheet :open="open" auto :title="t('chat.quickSend.title')" @close="$emit('close')">
     <template #header>
       <SendIcon :size="16" class="bs-header-icon" />
       <span class="bs-header-title">{{ t('chat.quickSend.title') }}</span>

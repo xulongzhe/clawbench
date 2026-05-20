@@ -1,5 +1,5 @@
 import { ref, reactive, computed, type Ref } from 'vue'
-import { apiGet, apiPut } from '@/utils/api.ts'
+import { apiGet, apiPut } from '@/utils/api'
 import { useToast } from '@/composables/useToast.ts'
 import { useDialog } from '@/composables/useDialog.ts'
 import { useTaskTab } from '@/composables/useTaskTab.ts'

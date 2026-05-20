@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { apiGet } from '@/utils/api.ts'
+import { apiGet } from '@/utils/api'
 import { gt } from '@/composables/useLocale'
 
 // Singleton state — shared across the whole app
@@ -7,9 +7,9 @@ const agents = ref<any[]>([])
 const defaultAgentId = ref('')
 let loadPromise: Promise<void> | null = null
 
-async function loadAgents(): Promise<void> {
-    if (agents.value.length > 0) return // already loaded
-    if (loadPromise) return loadPromise  // load in progress
+async function loadAgents(force = false): Promise<void> {
+    if (!force && agents.value.length > 0) return // already loaded
+    if (!force && loadPromise) return loadPromise  // load in progress
 
     loadPromise = (async () => {
         try {
@@ -41,9 +41,10 @@ function isDefaultAgent(agentId: string): boolean {
     return agentId === defaultAgentId.value
 }
 
-/** Get the default model ID for an agent (first model with default:true, or first in list). */
+/** Get the default model ID for an agent. Priority: preferredModel > first model with default:true > first in list. */
 function getDefaultModelId(agentId: string): string {
     const agent = agents.value.find(a => a.id === agentId)
+    if (agent?.preferredModel) return agent.preferredModel
     if (!agent?.models?.length) return ''
     const defaultModel = agent.models.find(m => m.default)
     return defaultModel ? defaultModel.id : agent.models[0].id
@@ -112,6 +113,20 @@ function hasThinkingEffortLevels(agentId: string): boolean {
     return getAgentThinkingEffortLevels(agentId).length > 0
 }
 
+/** Get the effective thinking effort for interactive sessions (preferred > agent default). */
+function getEffectiveThinkingEffort(agentId: string): string {
+    const agent = agents.value.find(a => a.id === agentId)
+    return agent?.preferredThinkingEffort || agent?.thinkingEffort || ''
+}
+
+/** Update a single field on an agent in the reactive store (for immediate UI feedback after PATCH). */
+function updateAgentField(agentId: string, field: string, value: any): void {
+    const agent = agents.value.find(a => a.id === agentId)
+    if (agent) {
+        (agent as any)[field] = value
+    }
+}
+
 export function useAgents() {
     return {
         agents,
@@ -130,5 +145,7 @@ export function useAgents() {
         syncModelFromAgent,
         getAgentThinkingEffortLevels,
         hasThinkingEffortLevels,
+        getEffectiveThinkingEffort,
+        updateAgentField,
     }
 }

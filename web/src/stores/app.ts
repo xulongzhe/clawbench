@@ -1,6 +1,6 @@
 // Global application state (singleton reactive store)
 import { reactive } from 'vue'
-import { apiGet, apiPost } from '@/utils/api.ts'
+import { apiGet, apiPost } from '@/utils/api'
 import { baseName, dirName } from '@/utils/path.ts'
 import { gt } from '@/composables/useLocale'
 import { useToast } from '@/composables/useToast'
@@ -66,8 +66,6 @@ interface AppState {
     // File browser
     currentDir: string
     dirEntries: DirEntry[]
-    allItems: DirEntry[]
-    currentFileList: unknown[]
     dirLoading: boolean
 
     // Current file
@@ -84,7 +82,6 @@ interface AppState {
     gitBranch: string
     gitHead: string
     gitDirty: boolean
-    isGitRepo: boolean
 
 }
 
@@ -114,8 +111,6 @@ const state = reactive<AppState>({
     // File browser
     currentDir: '',
     dirEntries: [],
-    allItems: [],
-    currentFileList: [],
     dirLoading: false,
 
     // Current file
@@ -132,7 +127,6 @@ const state = reactive<AppState>({
     gitBranch: '',
     gitHead: '',
     gitDirty: false,
-    isGitRepo: false,
 
 })
 
@@ -179,13 +173,11 @@ async function setProject(path: string): Promise<void> {
 async function loadGitBranch(): Promise<{ isGit: boolean; branch: string; head: string; dirty: boolean }> {
     try {
         const data = await apiGet<{ isGit: boolean; branch: string; head: string; dirty: boolean }>('/api/git/branch')
-        state.isGitRepo = data.isGit
         state.gitBranch = data.branch || ''
         state.gitHead = data.head || ''
         state.gitDirty = !!data.dirty
         return data
     } catch (_) {
-        state.isGitRepo = false
         state.gitBranch = ''
         state.gitHead = ''
         state.gitDirty = false
@@ -203,7 +195,6 @@ async function loadFiles(dir = ''): Promise<void> {
     const seq = ++loadFilesSeq // this call supersedes any earlier in-flight call
     const prevDir = state.currentDir
     const prevEntries = state.dirEntries.slice()
-    const prevAllItems = state.allItems.slice()
     state.dirLoading = true
     try {
         const url = dir ? `/api/dir?path=${encodeURIComponent(dir)}` : '/api/dir?path='
@@ -212,14 +203,12 @@ async function loadFiles(dir = ''): Promise<void> {
         if (seq !== loadFilesSeq) return
         state.currentDir = dir
         state.dirEntries = data.items || []
-        state.allItems = state.dirEntries.slice()
     } catch (err) {
         // A newer loadFiles call started — don't corrupt its state
         if (seq !== loadFilesSeq) return
         // Roll back to previous state on failure
         state.currentDir = prevDir
         state.dirEntries = prevEntries
-        state.allItems = prevAllItems
         useToast().show(gt('file.toast.dirLoadFailed'), { type: 'error', icon: '⚠️' })
     } finally {
         // Only clear loading if we are still the latest call
@@ -403,15 +392,6 @@ async function navigateToDir(dirPath: string): Promise<void> {
     await loadFiles(dirPath)
 }
 
-async function navigateUp(): Promise<void> {
-    if (!state.currentDir) return
-    await loadFiles(dirName(state.currentDir))
-}
-
-async function navigateToRoot(): Promise<void> {
-    await loadFiles('')
-}
-
 // =============================================
 // File Navigation (Browser-like history)
 // =============================================
@@ -455,8 +435,6 @@ export const store = {
     deleteFiles,
     renameFile,
     navigateToDir,
-    navigateUp,
-    navigateToRoot,
     navigateToNextFile,
     navigateToPrevFile,
     canNavigateBack,

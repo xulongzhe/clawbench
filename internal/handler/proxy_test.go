@@ -12,6 +12,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// isProxyPortRegistered is a test helper that checks if a port is registered via ListPorts.
+func isProxyPortRegistered(r *service.ProxyRegistry, port int) bool {
+	for _, p := range r.ListPorts() {
+		if p.Port == port {
+			return true
+		}
+	}
+	return false
+}
+
+// getProxyPortProtocol is a test helper that returns the protocol for a registered port.
+func getProxyPortProtocol(r *service.ProxyRegistry, port int) string {
+	for _, p := range r.ListPorts() {
+		if p.Port == port {
+			return p.Protocol
+		}
+	}
+	return "http"
+}
+
 // setupProxyTest creates a ProxyService for testing and returns a teardown func.
 func setupProxyTest(t *testing.T) func() {
 	t.Helper()
@@ -65,7 +85,7 @@ func TestRegisterPort_Valid(t *testing.T) {
 
 	assertOK(t, w)
 	assertJSONField(t, w, "status", "ok")
-	assert.True(t, service.ProxyService.IsPortRegistered(5173))
+	assert.True(t, isProxyPortRegistered(service.ProxyService, 5173))
 }
 
 func TestRegisterPort_InvalidPort(t *testing.T) {
@@ -136,7 +156,7 @@ func TestUnregisterPort_Valid(t *testing.T) {
 
 	assertOK(t, w)
 	assertJSONField(t, w, "status", "ok")
-	assert.False(t, service.ProxyService.IsPortRegistered(9090))
+	assert.False(t, isProxyPortRegistered(service.ProxyService, 9090))
 }
 
 func TestUnregisterPort_NotRegistered(t *testing.T) {
@@ -205,7 +225,7 @@ func TestRegisterPort_EmptyName(t *testing.T) {
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertOK(t, w)
-	assert.True(t, service.ProxyService.IsPortRegistered(4000))
+	assert.True(t, isProxyPortRegistered(service.ProxyService, 4000))
 }
 
 func TestRegisterPort_MissingBody(t *testing.T) {
@@ -250,7 +270,7 @@ func TestRegisterPort_WithProtocol(t *testing.T) {
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertOK(t, w)
-	assert.Equal(t, "https", service.ProxyService.GetPortProtocol(4443))
+	assert.Equal(t, "https", getProxyPortProtocol(service.ProxyService, 4443))
 }
 
 func TestRegisterPort_DefaultProtocol(t *testing.T) {
@@ -264,5 +284,5 @@ func TestRegisterPort_DefaultProtocol(t *testing.T) {
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertOK(t, w)
-	assert.Equal(t, "http", service.ProxyService.GetPortProtocol(8080))
+	assert.Equal(t, "http", getProxyPortProtocol(service.ProxyService, 8080))
 }

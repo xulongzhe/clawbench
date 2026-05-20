@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Note: Basic codexSplitThinking tests (tag pairs, newline, no separator, open tag only)
-// are in codex_stream_test.go. This file covers additional edge cases.
+// This file covers edge cases for codexSplitThinking not covered by
+// the tag-pair tests in codex_stream_test.go (TestCodexSplitThinking_*).
 
 func TestCodexSplitThinkingEdge_EmptyInput(t *testing.T) {
 	thinking, content := codexSplitThinking("")

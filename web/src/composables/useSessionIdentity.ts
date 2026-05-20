@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { useAgents } from '@/composables/useAgents.ts'
+import { useAgents } from '@/composables/useAgents'
 import { gt } from '@/composables/useLocale'
 
 // ───────────────────────────────────────────────────────────
@@ -23,31 +23,39 @@ const runningSessions = ref(new Set<string>())
 const runningSessionsVersion = ref(0)
 
 // ───────────────────────────────────────────────────────────
-// LocalStorage persistence for model & thinking effort prefs.
-// Keyed per agent so each agent remembers its own selections.
+// Agent preference persistence — stored in agent YAML files via PATCH /api/agents.
+// preferredModel / preferredThinkingEffort are the source of truth for
+// interactive sessions. Scheduled tasks use BaseModelID() and ThinkingEffort
+// (the agent's original defaults) instead.
 // ───────────────────────────────────────────────────────────
 
-const LS_MODEL_PREFIX = 'clawbench_model_'
-const LS_THINKING_PREFIX = 'clawbench_thinking_'
-
-function saveModelPref(agentId: string, modelId: string) {
+async function saveModelPref(agentId: string, modelId: string) {
   if (!agentId || !modelId) return
-  try { localStorage.setItem(LS_MODEL_PREFIX + agentId, modelId) } catch {}
+  // Save to server (agent YAML) via PATCH /api/agents
+  const { patchAgentPref } = await import('@/composables/useSettingsConfig')
+  patchAgentPref(agentId, 'preferred_model', modelId).catch(() => {})
 }
 
 function loadModelPref(agentId: string): string | null {
   if (!agentId) return null
-  try { return localStorage.getItem(LS_MODEL_PREFIX + agentId) } catch { return null }
+  // Read from agent's server-side preference (preferredModel)
+  const { getAgent } = useAgents()
+  const agent = getAgent(agentId)
+  return agent?.preferredModel || null
 }
 
-function saveThinkingPref(agentId: string, level: string) {
+async function saveThinkingPref(agentId: string, level: string) {
   if (!agentId) return
-  try { localStorage.setItem(LS_THINKING_PREFIX + agentId, level) } catch {}
+  // Save to server (agent YAML) via PATCH /api/agents
+  const { patchAgentPref } = await import('@/composables/useSettingsConfig')
+  patchAgentPref(agentId, 'preferred_thinking_effort', level).catch(() => {})
 }
 
 function loadThinkingPref(agentId: string): string | null {
   if (!agentId) return null
-  try { return localStorage.getItem(LS_THINKING_PREFIX + agentId) } catch { return null }
+  // Read from agent's server-side preference (preferredThinkingEffort > thinkingEffort)
+  const { getEffectiveThinkingEffort } = useAgents()
+  return getEffectiveThinkingEffort(agentId) || null
 }
 
 // ───────────────────────────────────────────────────────────

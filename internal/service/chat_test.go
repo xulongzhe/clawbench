@@ -1545,10 +1545,8 @@ func TestGetSessionsPaged_CursorSecondPage(t *testing.T) {
 	setupDB(t)
 
 	// Create 5 sessions with staggered updated_at times
-	var ids []string
 	for i := 0; i < 5; i++ {
 		sid := helperCreateSession(t, "/project", "claude", fmt.Sprintf("S%d", i))
-		ids = append(ids, sid)
 		// Stagger updated_at so ordering is deterministic
 		_, err := service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now', ? || ' seconds') WHERE id = ?", fmt.Sprintf("-%d", (4-i)*60), sid)
 		assert.NoError(t, err)
@@ -1772,3 +1770,75 @@ func TestGetSessionsPaged_SameTimestampTiebreaker(t *testing.T) {
 		assert.False(t, page1IDs[s.ID], "session %s should not appear in both pages", s.ID)
 	}
 }
+
+// ---------- GetSessionTitlesBatch ----------
+
+func TestGetSessionTitlesBatch_Empty(t *testing.T) {
+	setupDB(t)
+
+	titles, err := service.GetSessionTitlesBatch(nil)
+	assert.NoError(t, err)
+	assert.Empty(t, titles)
+
+	titles, err = service.GetSessionTitlesBatch([]string{})
+	assert.NoError(t, err)
+	assert.Empty(t, titles)
+}
+
+func TestGetSessionTitlesBatch_SingleSession(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "My Title")
+
+	titles, err := service.GetSessionTitlesBatch([]string{sid})
+	assert.NoError(t, err)
+	assert.Equal(t, "My Title", titles[sid])
+}
+
+func TestGetSessionTitlesBatch_MultipleSessions(t *testing.T) {
+	setupDB(t)
+
+	sid1 := helperCreateSession(t, "/project", "claude", "Title 1")
+	sid2 := helperCreateSession(t, "/project", "codebuddy", "Title 2")
+
+	titles, err := service.GetSessionTitlesBatch([]string{sid1, sid2})
+	assert.NoError(t, err)
+	assert.Equal(t, "Title 1", titles[sid1])
+	assert.Equal(t, "Title 2", titles[sid2])
+}
+
+func TestGetSessionTitlesBatch_ExcludesEmptyTitles(t *testing.T) {
+	setupDB(t)
+
+	// Create session with a title, then set it to empty
+	sid := helperCreateSession(t, "/project", "claude", "Has Title")
+	_, err := service.DB.Exec("UPDATE chat_sessions SET title = '' WHERE id = ?", sid)
+	assert.NoError(t, err)
+
+	titles, err := service.GetSessionTitlesBatch([]string{sid})
+	assert.NoError(t, err)
+	_, ok := titles[sid]
+	assert.False(t, ok, "empty title should not be included")
+}
+
+func TestGetSessionTitlesBatch_ExcludesDeletedSessions(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "To Delete")
+	_ = service.DeleteSession("/project", "claude", sid)
+
+	titles, err := service.GetSessionTitlesBatch([]string{sid})
+	assert.NoError(t, err)
+	_, ok := titles[sid]
+	assert.False(t, ok, "deleted session should not appear in batch titles")
+}
+
+func TestGetSessionTitlesBatch_NonExistentID(t *testing.T) {
+	setupDB(t)
+
+	titles, err := service.GetSessionTitlesBatch([]string{"non-existent-id"})
+	assert.NoError(t, err)
+	_, ok := titles["non-existent-id"]
+	assert.False(t, ok, "non-existent ID should not appear in titles")
+}
+

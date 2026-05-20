@@ -1,5 +1,5 @@
 <template>
-  <BottomSheet :open="open" compact :title="t('terminal.quickCommands')" @close="$emit('close')">
+  <BottomSheet :open="open" auto :title="t('terminal.quickCommands')" @close="$emit('close')">
     <template #header>
       <ZapIcon :size="16" class="bs-header-icon" />
       <span class="bs-header-title">{{ t('terminal.quickCommands') }}</span>

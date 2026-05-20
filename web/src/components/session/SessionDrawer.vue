@@ -1,5 +1,5 @@
 <template>
-  <BottomSheet ref="bottomSheetRef" :open="open" compact :title="t('session.title')" @close="$emit('close')">
+  <BottomSheet ref="bottomSheetRef" :open="open" auto :title="t('session.title')" @close="$emit('close')">
     <template #header>
       <Bot :size="16" class="bs-header-icon" />
       <span class="bs-header-title">{{ t('session.title') }}</span>
@@ -87,7 +87,7 @@ import { Bot, Plus, Trash2 } from 'lucide-vue-next'
 import { ref, watch, computed, onUnmounted, nextTick } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import ModalDialog from '@/components/common/ModalDialog.vue'
-import { useAgents } from '@/composables/useAgents.ts'
+import { useAgents } from '@/composables/useAgents'
 import { useDialog } from '@/composables/useDialog.ts'
 import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
 import { formatRelativeTime } from '@/utils/format.ts'

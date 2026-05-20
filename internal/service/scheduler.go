@@ -627,9 +627,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 
 	// Build content JSON for the assistant message
 	contentMap := map[string]any{"blocks": blocks}
-	if responseMetadata != nil {
-		contentMap["metadata"] = responseMetadata
-	}
+	contentMap["metadata"] = responseMetadata
 	contentJSON, _ := json.Marshal(contentMap)
 
 	// Write assistant message to chat_history

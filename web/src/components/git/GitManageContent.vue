@@ -34,7 +34,7 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { store } from '@/stores/app.ts'
-import { apiGet, apiPost } from '@/utils/api.ts'
+import { apiGet, apiPost } from '@/utils/api'
 import { useDialog } from '@/composables/useDialog.ts'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import GitWorktreeList from './GitWorktreeList.vue'

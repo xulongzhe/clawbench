@@ -6,10 +6,7 @@ import {
   canReconnect,
   errorDisplayMessage,
   showErrorOverlay,
-  FONT_SIZE_KEY,
   DEFAULT_FONT_SIZE,
-  MIN_FONT_SIZE,
-  MAX_FONT_SIZE,
 } from '@/utils/terminalFontUtils'
 
 describe('loadFontSize', () => {
@@ -34,11 +31,11 @@ describe('loadFontSize', () => {
   })
 
   it('returns minimum boundary value', () => {
-    expect(loadFontSize(() => String(MIN_FONT_SIZE))).toBe(MIN_FONT_SIZE)
+    expect(loadFontSize(() => '8')).toBe(8)
   })
 
   it('returns maximum boundary value', () => {
-    expect(loadFontSize(() => String(MAX_FONT_SIZE))).toBe(MAX_FONT_SIZE)
+    expect(loadFontSize(() => '28')).toBe(28)
   })
 
   it('parses integer from float string', () => {
@@ -50,15 +47,15 @@ describe('applyFontSize', () => {
   it('clamps to minimum and persists', () => {
     const stored: string[] = []
     const setItem = (_k: string, v: string) => stored.push(v)
-    expect(applyFontSize(3, setItem)).toBe(MIN_FONT_SIZE)
-    expect(stored).toEqual([String(MIN_FONT_SIZE)])
+    expect(applyFontSize(3, setItem)).toBe(8)
+    expect(stored).toEqual(['8'])
   })
 
   it('clamps to maximum and persists', () => {
     const stored: string[] = []
     const setItem = (_k: string, v: string) => stored.push(v)
-    expect(applyFontSize(100, setItem)).toBe(MAX_FONT_SIZE)
-    expect(stored).toEqual([String(MAX_FONT_SIZE)])
+    expect(applyFontSize(100, setItem)).toBe(28)
+    expect(stored).toEqual(['28'])
   })
 
   it('keeps value within range and persists', () => {
@@ -69,23 +66,23 @@ describe('applyFontSize', () => {
   })
 
   it('preserves boundary values exactly', () => {
-    expect(applyFontSize(MIN_FONT_SIZE, () => {})).toBe(MIN_FONT_SIZE)
-    expect(applyFontSize(MAX_FONT_SIZE, () => {})).toBe(MAX_FONT_SIZE)
+    expect(applyFontSize(8, () => {})).toBe(8)
+    expect(applyFontSize(28, () => {})).toBe(28)
   })
 
   it('handles negative input', () => {
-    expect(applyFontSize(-5, () => {})).toBe(MIN_FONT_SIZE)
+    expect(applyFontSize(-5, () => {})).toBe(8)
   })
 
   it('handles zero', () => {
-    expect(applyFontSize(0, () => {})).toBe(MIN_FONT_SIZE)
+    expect(applyFontSize(0, () => {})).toBe(8)
   })
 
   it('stores correct key', () => {
     let storedKey = ''
-    const setItem = (k: string, v: string) => { storedKey = k }
+    const setItem = (k: string, _v: string) => { storedKey = k }
     applyFontSize(14, setItem)
-    expect(storedKey).toBe(FONT_SIZE_KEY)
+    expect(storedKey).toBe('clawbench-terminal-font-size')
   })
 })
 
@@ -211,17 +208,5 @@ describe('showErrorOverlay', () => {
 describe('constants', () => {
   it('DEFAULT_FONT_SIZE is 12', () => {
     expect(DEFAULT_FONT_SIZE).toBe(12)
-  })
-
-  it('MIN_FONT_SIZE is 8', () => {
-    expect(MIN_FONT_SIZE).toBe(8)
-  })
-
-  it('MAX_FONT_SIZE is 28', () => {
-    expect(MAX_FONT_SIZE).toBe(28)
-  })
-
-  it('FONT_SIZE_KEY has expected value', () => {
-    expect(FONT_SIZE_KEY).toBe('clawbench-terminal-font-size')
   })
 })

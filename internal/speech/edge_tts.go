@@ -1,9 +1,6 @@
 package speech
 
 const (
-	// edgeTTSCmd is the path to the edge-tts executable.
-	edgeTTSCmd = ".venv/bin/edge-tts"
-
 	// edgeDefaultVoice is the default Chinese voice for edge-tts.
 	edgeDefaultVoice = "zh-CN-XiaoxiaoNeural"
 )

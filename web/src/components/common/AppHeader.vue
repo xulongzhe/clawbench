@@ -59,84 +59,30 @@
         <span class="status-value">{{ pushStatusLabel }}</span>
       </div>
     </PopupMenu>
-
-    <button ref="settingsBtnRef" class="settings-toggle" @click="toggleSettingsMenu" :title="t('appHeader.settings')">
-      <Settings :size="20" />
-    </button>
-    <PopupMenu v-model:show="settingsMenuOpen" :target-element="settingsBtnRef" :max-width="200" :max-height="320" :menu-items-count="settingsItemCount">
-      <div class="settings-menu-title">{{ t('appHeader.settings') }}</div>
-      <!-- Reconfigure server — always available in app mode -->
-      <template v-if="isAppMode">
-        <button class="settings-menu-item reconfigure-item" @click="handleReconfigure">
-          <Server :size="14" />
-          <span>{{ t('appHeader.reconfigureServer') }}</span>
-        </button>
-        <div class="settings-menu-divider"></div>
-        <button class="settings-menu-item" :class="{ active: debugLogEnabled }" @click="toggleDebugLog">
-          <Check v-if="debugLogEnabled" :size="14" />
-          <span v-else class="settings-menu-check-spacer"></span>
-          <Bug :size="14" />
-          <span>{{ t('appHeader.debugLog') }}</span>
-        </button>
-        <div class="settings-menu-divider"></div>
-      </template>
-      <button class="settings-menu-item" :class="{ active: currentLocale === 'zh' }" @click="handleLocaleSwitch('zh')">
-          <Check v-if="currentLocale === 'zh'" :size="14" />
-          <span v-else class="settings-menu-check-spacer"></span>
-          <span>中文</span>
-        </button>
-        <button class="settings-menu-item" :class="{ active: currentLocale === 'en' }" @click="handleLocaleSwitch('en')">
-          <Check v-if="currentLocale === 'en'" :size="14" />
-          <span v-else class="settings-menu-check-spacer"></span>
-          <span>English</span>
-        </button>
-        <div class="settings-menu-divider"></div>
-        <button class="settings-menu-item" :class="{ active: theme === 'dark' }" @click="handleThemeSwitch('dark')">
-          <Check v-if="theme === 'dark'" :size="14" />
-          <span v-else class="settings-menu-check-spacer"></span>
-          <Moon :size="14" />
-          <span>{{ t('appHeader.darkMode') }}</span>
-        </button>
-        <button class="settings-menu-item" :class="{ active: theme === 'light' }" @click="handleThemeSwitch('light')">
-          <Check v-if="theme === 'light'" :size="14" />
-          <span v-else class="settings-menu-check-spacer"></span>
-          <Sun :size="14" />
-        <span>{{ t('appHeader.lightMode') }}</span>
-      </button>
-    </PopupMenu>
   </header>
   </Teleport>
 </template>
 
 <script setup>
-import { Projector, ChevronDown, Search, Moon, Sun, Settings, Check, Server, Bug, GitBranch } from 'lucide-vue-next'
+import { Projector, ChevronDown, Search, GitBranch } from 'lucide-vue-next'
 import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useLocale } from '@/composables/useLocale'
-import { useAppMode } from '@/composables/useAppMode'
 import { useGlobalEvents } from '@/composables/useGlobalEvents'
 import { baseName, toRelativePath } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
 
 const { t } = useI18n()
-const { currentLocale, setLocale } = useLocale()
-const { isAppMode } = useAppMode()
 const { wsStatus, pushRegistered } = useGlobalEvents()
 const switchTab = inject('switchTab')
 
 const props = defineProps({
     projectRoot: String,
-    theme: String,
     hidden: Boolean,
 })
-const emit = defineEmits(['toggleTheme', 'openProjectDialog', 'reconfigureServer'])
+const emit = defineEmits(['openProjectDialog'])
 
 const toast = inject('toast')
-
-// Settings menu state
-const settingsBtnRef = ref(null)
-const settingsMenuOpen = ref(false)
 
 // Connection status menu state
 const statusBtnRef = ref(null)
@@ -173,68 +119,6 @@ const pushDotClass = computed(() => {
 
 const pushStatusLabel = computed(() => {
     return pushRegistered.value ? t('appHeader.pushRegistered') : t('appHeader.pushNotEnabled')
-})
-
-// Debug log capture state (Android only, persisted in localStorage)
-const debugLogEnabled = ref(false)
-
-function toggleSettingsMenu() {
-    settingsMenuOpen.value = !settingsMenuOpen.value
-}
-
-function handleLocaleSwitch(lang) {
-    if (currentLocale.value !== lang) {
-        setLocale(lang)
-    }
-    settingsMenuOpen.value = false
-}
-
-function handleThemeSwitch(mode) {
-    if (props.theme !== mode) {
-        emit('toggleTheme')
-    }
-    settingsMenuOpen.value = false
-}
-
-function handleReconfigure() {
-    settingsMenuOpen.value = false
-    emit('reconfigureServer')
-}
-
-// Debug log capture toggle
-function toggleDebugLog() {
-    debugLogEnabled.value = !debugLogEnabled.value
-    localStorage.setItem('android_log_capture', debugLogEnabled.value ? 'true' : 'false')
-    if (window.AndroidNative) {
-        if (debugLogEnabled.value) {
-            window.AndroidNative.startLogCapture()
-        } else {
-            window.AndroidNative.stopLogCapture()
-        }
-    }
-    // Don't close menu so user can see the toggle state
-}
-
-// Restore debug log capture state on mount
-function restoreDebugLogState() {
-    if (!isAppMode.value || !window.AndroidNative) return
-    const saved = localStorage.getItem('android_log_capture')
-    if (saved === 'true') {
-        debugLogEnabled.value = true
-        try {
-            window.AndroidNative.startLogCapture()
-        } catch (_) {}
-    }
-}
-
-// Calculate menu item count for PopupMenu positioning
-const settingsItemCount = computed(() => {
-    // 4 interactive items: zh + en + dark + light (divider height negligible)
-    let count = 4
-    if (isAppMode.value) {
-        count += 4 // reconfigure item + divider + debug log item + divider
-    }
-    return count
 })
 
 const projectName = computed(() => {
@@ -397,7 +281,6 @@ function onPathClick(e) {
 
 onMounted(() => {
     document.addEventListener('click', onClickOutside)
-    restoreDebugLogState()
 })
 
 onUnmounted(() => {
@@ -513,17 +396,6 @@ onUnmounted(() => {
     min-width: 0;
 }
 
-.settings-toggle {
-    padding: 6px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    color: var(--text-primary);
-    border-radius: var(--radius-sm);
-    transition: background 0.15s;
-    flex-shrink: 0;
-}
-
 /* Connection status button */
 .status-toggle {
     padding: 6px;
@@ -569,78 +441,10 @@ onUnmounted(() => {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.4; }
 }
-
-.settings-toggle svg {
-    width: 20px;
-    height: 20px;
-}
 </style>
 
-<!-- Unscoped styles for teleported settings menu content (PopupMenu uses Teleport to body, scoped styles won't reach it) -->
+<!-- Unscoped styles for teleported status menu content (PopupMenu uses Teleport to body, scoped styles won't reach it) -->
 <style>
-.settings-menu-title {
-    padding: 4px 10px 1px;
-    font-size: 10px;
-    color: var(--text-muted, #999);
-    font-weight: 500;
-    letter-spacing: 0.3px;
-}
-
-.settings-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    width: 100%;
-    border: none;
-    background: none;
-    color: var(--text-primary);
-    font-size: 12px;
-    cursor: pointer;
-    white-space: nowrap;
-    text-align: left;
-}
-
-.settings-menu-item:hover {
-    background: var(--accent-color, #0066cc);
-    color: #fff;
-}
-
-.settings-menu-item.active {
-    color: var(--accent-color, #0066cc);
-    font-weight: 500;
-}
-
-.settings-menu-item.active:hover {
-    color: #fff;
-}
-
-.settings-menu-item.reconfigure-item {
-    color: var(--color-red, #dc2626);
-}
-
-.settings-menu-item.reconfigure-item:hover {
-    background: color-mix(in srgb, var(--color-red, #dc2626) 10%, transparent);
-    color: var(--color-red, #dc2626);
-}
-
-.settings-menu-item svg {
-    flex-shrink: 0;
-    width: 14px;
-    height: 14px;
-}
-
-.settings-menu-check-spacer {
-    width: 14px;
-    flex-shrink: 0;
-}
-
-.settings-menu-divider {
-    height: 1px;
-    background: var(--border-color, #e5e5e5);
-    margin: 3px 6px;
-}
-
 /* Connection status menu (teleported to body, needs unscoped styles) */
 .status-menu-title {
     padding: 4px 10px 1px;

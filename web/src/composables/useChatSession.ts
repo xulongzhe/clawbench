@@ -3,7 +3,7 @@ import { gt } from '@/composables/useLocale'
 import { useToast } from '@/composables/useToast.ts'
 import { useNotification } from '@/composables/useNotification.ts'
 import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
-import { useAgents } from '@/composables/useAgents.ts'
+import { useAgents } from '@/composables/useAgents'
 import { store } from '@/stores/app.ts'
 import { buildMessageSnapshot, parseMessages } from '@/utils/chatSessionUtils.ts'
 
@@ -413,10 +413,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     if (msgCountInterval) { clearInterval(msgCountInterval); msgCountInterval = null }
   }
 
-  function stopGlobalPolling() {
-    // Replaced by WS events — kept as no-op for compatibility
-  }
-
   // Called from WS session_update event
   function onSessionEvent(data: { session_id?: string; status?: string; has_new_messages?: boolean } | undefined) {
     if (!data) return
@@ -445,10 +441,6 @@ export function useChatSession(options: UseChatSessionOptions) {
   // prevents runningSessions from being updated.
   const notifiedSessions = new Set<string>()
 
-  function startGlobalPolling() {
-    // Replaced by WS events — kept as no-op for compatibility
-  }
-
   function handleVisibilityChange() {
     if (document.visibilityState === 'visible' && loading.value) {
       // Page became visible while streaming - reconnect
@@ -462,8 +454,7 @@ export function useChatSession(options: UseChatSessionOptions) {
   }
 
   return {
-    // Identity refs — from singleton, but still returned for backward compat
-    // (ChatPanel uses session.currentSessionTitle.value, etc.)
+    // Exposed refs (consumed by ChatPanelContent etc.)
     currentSessionId,
     currentSessionTitle,
     currentBackend,
@@ -485,8 +476,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     openSessionTab,
     onSessionEvent,
     loadSessionsOnce: loadSessionsOnceInner,
-    startGlobalPolling,
-    stopGlobalPolling,
     startMsgCountPolling,
     stopMsgCountPolling,
     handleVisibilityChange,

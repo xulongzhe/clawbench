@@ -296,3 +296,74 @@ func TestMockOllamaEmbedEndpoint(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, emb, 1024)
 }
+
+// ---------- StartCleanupWorker ----------
+
+func TestStartCleanupWorker_ZeroRetention(t *testing.T) {
+	origCleanup := GlobalCleanupWorker
+	t.Cleanup(func() {
+		GlobalCleanupWorker = origCleanup
+	})
+
+	// Zero retention days should skip starting the worker
+	StartCleanupWorker(model.RAGConfig{RetentionDays: 0})
+	assert.Nil(t, GlobalCleanupWorker, "should not start cleanup worker with zero retention")
+}
+
+func TestStartCleanupWorker_WithRetention(t *testing.T) {
+	origStore := GlobalStore
+	origCleanup := GlobalCleanupWorker
+	t.Cleanup(func() {
+		if GlobalCleanupWorker != nil {
+			GlobalCleanupWorker.Stop()
+		}
+		GlobalCleanupWorker = origCleanup
+		GlobalStore = origStore
+	})
+
+	origBinDir := model.BinDir
+	t.Cleanup(func() { model.BinDir = origBinDir })
+	model.BinDir = t.TempDir()
+
+	// Need a store for cleanup worker
+	store, err := InitStore()
+	require.NoError(t, err)
+	GlobalStore = store
+
+	StartCleanupWorker(model.RAGConfig{RetentionDays: 30})
+	assert.NotNil(t, GlobalCleanupWorker, "should start cleanup worker with positive retention")
+
+	GlobalCleanupWorker.Stop()
+	GlobalStore.Close()
+	GlobalStore = origStore
+	GlobalCleanupWorker = nil
+}
+
+// ---------- Init with segmenter warning ----------
+
+func TestInit_SegmenterWarningContinues(t *testing.T) {
+	origBinDir := model.BinDir
+	origStore := GlobalStore
+	origEmbedder := GlobalEmbedder
+	t.Cleanup(func() {
+		model.BinDir = origBinDir
+		GlobalStore = origStore
+		GlobalEmbedder = origEmbedder
+	})
+
+	model.BinDir = t.TempDir()
+
+	cfg := model.RAGConfig{
+		OllamaBaseURL: "http://localhost:11434",
+		OllamaModel:  "bge-m3",
+	}
+
+	// Init should succeed even if segmenter is not available
+	err := Init(cfg)
+	require.NoError(t, err)
+	assert.NotNil(t, GlobalStore)
+
+	GlobalStore.Close()
+	GlobalStore = nil
+	GlobalEmbedder = nil
+}

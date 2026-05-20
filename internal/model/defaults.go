@@ -144,14 +144,14 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 		cfg.Proxy.AllowedPorts = "1024-65535"
 	}
 
-	// --- SSH ---
+	// --- Port Forward (SSH Tunnel) ---
 	// Same bool zero-value trap as Proxy.
-	if !presence["ssh.enabled"] {
-		cfg.SSH.Enabled = true
+	if !presence["port_forward.enabled"] {
+		cfg.PortForward.Enabled = true
 	}
 	// Persist host key to avoid SSH fingerprint mismatch after server restart
-	if cfg.SSH.HostKey == "" {
-		cfg.SSH.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
+	if cfg.PortForward.HostKey == "" {
+		cfg.PortForward.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
 	}
 
 	// --- TTS ---
@@ -178,8 +178,8 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	}
 
 	// --- RAG ---
-	// Bool zero-value: Go defaults to false, which IS the desired default for RAG.
-	// No presence check needed — "rag.enabled" absent means false (disabled).
+	// RAG is always enabled. No "enabled" toggle needed.
+	// When Ollama is unavailable, falls back to BM25 full-text search.
 	if cfg.RAG.OllamaBaseURL == "" {
 		cfg.RAG.OllamaBaseURL = "http://localhost:11434"
 	}
@@ -201,12 +201,15 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	if cfg.RAG.SearchLimit <= 0 {
 		cfg.RAG.SearchLimit = 5
 	}
+	if cfg.RAG.SearchPoolSize <= 0 {
+		cfg.RAG.SearchPoolSize = 20
+	}
 	if cfg.RAG.RetentionDays <= 0 {
 		cfg.RAG.RetentionDays = 90
 	}
 
 	// --- Terminal ---
-	// Bool zero-value trap: same as proxy/ssh — default to true when absent.
+	// Bool zero-value trap: same as proxy/port_forward — default to true when absent.
 	if !presence["terminal.enabled"] {
 		cfg.Terminal.Enabled = true
 	}

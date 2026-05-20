@@ -126,6 +126,7 @@ func TestIndexer_StartStop(t *testing.T) {
 		ChunkSize:    512,
 		ChunkOverlap: 64,
 	})
+	t.Cleanup(func() { SetOllamaHealthy(false) })
 
 	idx.Start()
 	assert.True(t, idx.running)
@@ -142,6 +143,7 @@ func TestIndexer_DoubleStart(t *testing.T) {
 	defer cleanup()
 
 	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: "24h"})
+	t.Cleanup(func() { SetOllamaHealthy(false) })
 
 	idx.Start()
 	idx.Start() // should be no-op
@@ -157,6 +159,7 @@ func TestIndexer_DoubleStop(t *testing.T) {
 	defer cleanup()
 
 	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: "24h"})
+	t.Cleanup(func() { SetOllamaHealthy(false) })
 
 	// Stop before start — should be no-op
 	idx.Stop()
@@ -177,6 +180,7 @@ func TestIndexer_indexBatch_OllamaNotReachable(t *testing.T) {
 	embedder := NewEmbeddingClient("http://127.0.0.1:1", "bge-m3")
 
 	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: "10s"})
+	t.Cleanup(func() { SetOllamaHealthy(false) })
 
 	// indexBatch should return early when Ollama is unreachable
 	idx.indexBatch()
@@ -200,6 +204,7 @@ func TestIndexer_indexBatch_ModelNotAvailable(t *testing.T) {
 	embedder.HTTPClient = server.Client()
 
 	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: "10s"})
+	t.Cleanup(func() { SetOllamaHealthy(false) })
 	idx.indexBatch()
 
 	// Should skip without indexing
@@ -258,4 +263,473 @@ func TestIndexer_indexMessage_Success(t *testing.T) {
 
 	count, _ := store.ChunkCount()
 	assert.Equal(t, 1, count, "should have indexed 1 chunk")
+}
+
+// ---------- checkOllamaHealth ----------
+
+func TestIndexer_checkOllamaHealth_HealthyTransition(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{})
+	assert.False(t, idx.ollamaHealthy)
+	t.Cleanup(func() { SetOllamaHealthy(false) })
+
+	idx.checkOllamaHealth(context.Background())
+	assert.True(t, idx.ollamaHealthy)
+	assert.True(t, OllamaHealthy())
+}
+
+func TestIndexer_checkOllamaHealth_Error(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+
+	// Server that returns 500 on /api/tags
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	embedder := NewEmbeddingClient(server.URL, "bge-m3")
+	embedder.HTTPClient = server.Client()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{})
+	idx.ollamaHealthy = true
+
+	idx.checkOllamaHealth(context.Background())
+	assert.False(t, idx.ollamaHealthy)
+	assert.False(t, OllamaHealthy())
+}
+
+func TestIndexer_checkOllamaHealth_UnreachableBecomesReachable(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{})
+	idx.ollamaHealthy = false
+	t.Cleanup(func() { SetOllamaHealthy(false) })
+
+	idx.checkOllamaHealth(context.Background())
+	assert.True(t, idx.ollamaHealthy, "should transition to healthy")
+}
+
+func TestIndexer_checkOllamaHealth_ReachableBecomesUnreachable(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+
+	// Unreachable server
+	embedder := NewEmbeddingClient("http://127.0.0.1:1", "bge-m3")
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{})
+	idx.ollamaHealthy = true
+
+	idx.checkOllamaHealth(context.Background())
+	assert.False(t, idx.ollamaHealthy, "should transition to unhealthy")
+}
+
+func TestIndexer_checkOllamaHealth_ModelNotAvailable(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := ollamaTagsResponse{
+			Models: []ollamaModelInfo{{Name: "other-model:latest"}},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	embedder := NewEmbeddingClient(server.URL, "bge-m3")
+	embedder.HTTPClient = server.Client()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{})
+	idx.checkOllamaHealth(context.Background())
+
+	assert.False(t, idx.ollamaHealthy)
+	assert.True(t, idx.modelWarn, "should set modelWarn flag")
+}
+
+// ---------- indexNewMessages ----------
+
+func TestIndexer_indexNewMessages_WithMessages(t *testing.T) {
+	db := setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{
+		ChunkSize:    512,
+		ChunkOverlap: 64,
+		BatchSize:    10,
+	})
+	idx.ollamaHealthy = true
+
+	// Insert unindexed messages into SQLite
+	now := time.Now().Truncate(time.Millisecond)
+	_, err := db.Exec(`INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		"/test", "user", "Hello, this is a test message", "sess-1", "claude", now)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		"/test", "assistant", `{"blocks":[{"type":"text","text":"This is the response"}]}`, "sess-1", "claude", now)
+	require.NoError(t, err)
+
+	idx.indexNewMessages(context.Background())
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 2, count, "should index both messages")
+
+	// Verify messages are marked as indexed
+	var indexedCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM chat_history WHERE indexed = 1").Scan(&indexedCount)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, indexedCount, "messages should be marked as indexed")
+}
+
+func TestIndexer_indexNewMessages_NoMessages(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{BatchSize: 10})
+	idx.ollamaHealthy = true
+
+	// No messages — should not panic
+	idx.indexNewMessages(context.Background())
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 0, count)
+}
+
+func TestIndexer_indexNewMessages_EmptyContentSkipped(t *testing.T) {
+	db := setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{ChunkSize: 512, BatchSize: 10})
+	idx.ollamaHealthy = true
+
+	// Insert a message with only tool_use blocks (no text content)
+	_, err := db.Exec(`INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		"/test", "assistant", `{"blocks":[{"type":"tool_use","name":"Read","id":"t1"}]}`, "sess-1", "claude", time.Now())
+	require.NoError(t, err)
+
+	idx.indexNewMessages(context.Background())
+
+	// The message should be marked indexed but no chunks should be stored
+	var indexedCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM chat_history WHERE indexed = 1").Scan(&indexedCount)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, indexedCount, "message should be marked indexed")
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 0, count, "no chunks for text-less message")
+}
+
+func TestIndexer_indexNewMessages_WithoutOllama(t *testing.T) {
+	db := setupIndexerDB(t)
+	store := setupTestStore(t)
+
+	embedder := NewEmbeddingClient("http://127.0.0.1:1", "bge-m3")
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{ChunkSize: 512, BatchSize: 10})
+	idx.ollamaHealthy = false // Ollama not healthy — text-only indexing
+
+	// Insert a message
+	_, err := db.Exec(`INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		"/test", "user", "Text-only indexing test", "sess-1", "claude", time.Now())
+	require.NoError(t, err)
+
+	idx.indexNewMessages(context.Background())
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 1, count, "should still index text-only when Ollama is down")
+
+	// Verify chunk has no embedding
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 1, pending, "chunk should need embedding backfill")
+}
+
+// ---------- backfillEmbeddings ----------
+
+func TestIndexer_backfillEmbeddings_Success(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{BatchSize: 10})
+	idx.ollamaHealthy = true
+
+	// Insert a chunk without embedding (simulating text-only indexing)
+	chunk := Chunk{
+		SessionID:          "sess-1",
+		MessageID:          1,
+		ChunkText:          "needs backfill",
+		ChunkTextSegmented: "needs backfill",
+		ChunkIndex:         0,
+		TokenCount:         3,
+		Embedding:          nil,
+		HasEmbedding:       false,
+		ProjectPath:        "/test",
+		Backend:            "claude",
+		Role:               "assistant",
+		CreatedAt:          time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 1, pending, "should have 1 pending before backfill")
+
+	idx.backfillEmbeddings(context.Background())
+
+	pending, _ = store.PendingEmbeddingCount()
+	assert.Equal(t, 0, pending, "all embeddings should be backfilled")
+}
+
+func TestIndexer_backfillEmbeddings_NoPending(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{BatchSize: 10})
+	idx.ollamaHealthy = true
+
+	// No pending embeddings — should be a no-op
+	idx.backfillEmbeddings(context.Background())
+}
+
+func TestIndexer_backfillEmbeddings_EmbeddingFails(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+
+	// Server that returns 500 on embeddings endpoint
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaModelInfo{{Name: "bge-m3:latest"}}})
+		} else if r.URL.Path == "/api/embeddings" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	embedder := NewEmbeddingClient(server.URL, "bge-m3")
+	embedder.HTTPClient = server.Client()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{BatchSize: 10})
+	idx.ollamaHealthy = true
+
+	// Insert a chunk without embedding
+	chunk := Chunk{
+		SessionID:          "sess-1",
+		MessageID:          1,
+		ChunkText:          "needs backfill",
+		ChunkTextSegmented: "needs backfill",
+		ChunkIndex:         0,
+		TokenCount:         3,
+		Embedding:          nil,
+		HasEmbedding:       false,
+		ProjectPath:        "/test",
+		Backend:            "claude",
+		Role:               "assistant",
+		CreatedAt:          time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	// backfill should not panic when embedding fails
+	idx.backfillEmbeddings(context.Background())
+
+	// Pending count should remain the same
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 1, pending, "embedding should still be pending after failure")
+}
+
+// ---------- run (invalid poll interval) ----------
+
+func TestIndexer_run_InvalidPollInterval(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{
+		PollInterval: "not-a-duration",
+		BatchSize:    10,
+		ChunkSize:    512,
+	})
+
+	// Start and stop — should use 10s default and not panic
+	idx.Start()
+	assert.True(t, idx.running)
+	idx.Stop()
+	assert.False(t, idx.running)
+}
+
+// ---------- indexMessage with embedding failure ----------
+
+func TestIndexer_indexMessage_EmbeddingFails(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+
+	// Server where embedding endpoint returns 500
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/tags" {
+			json.NewEncoder(w).Encode(ollamaTagsResponse{Models: []ollamaModelInfo{{Name: "bge-m3:latest"}}})
+		} else if r.URL.Path == "/api/embeddings" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	embedder := NewEmbeddingClient(server.URL, "bge-m3")
+	embedder.HTTPClient = server.Client()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{ChunkSize: 512})
+	idx.ollamaHealthy = true
+
+	msg := service.UnindexedMessage{
+		ID:          1,
+		Content:     "Test message when embedding fails",
+		Role:        "user",
+		SessionID:   "sess-1",
+		ProjectPath: "/test",
+		Backend:     "claude",
+		CreatedAt:   time.Now(),
+	}
+
+	err := idx.indexMessage(context.Background(), msg)
+	assert.NoError(t, err, "should not error when embedding fails — stores text-only")
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 1, count, "should store chunk even without embedding")
+
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 1, pending, "chunk should need embedding backfill")
+}
+
+func TestIndexer_indexMessage_AssistantWithText(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{ChunkSize: 512})
+	idx.ollamaHealthy = true
+
+	// Assistant message with text blocks
+	msg := service.UnindexedMessage{
+		ID:          1,
+		Content:     `{"blocks":[{"type":"text","text":"Here is the answer."},{"type":"tool_use","name":"Read","id":"t1"}]}`,
+		Role:        "assistant",
+		SessionID:   "sess-1",
+		ProjectPath: "/test",
+		Backend:     "claude",
+		CreatedAt:   time.Now(),
+	}
+
+	err := idx.indexMessage(context.Background(), msg)
+	assert.NoError(t, err)
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 1, count, "should index text from assistant message")
+}
+
+func TestIndexer_indexMessage_LargeMessage(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{ChunkSize: 20, ChunkOverlap: 5})
+	idx.ollamaHealthy = true
+
+	// Generate a message that will produce many chunks
+	longText := ""
+	for i := 0; i < 100; i++ {
+		longText += "This is sentence number that adds to the total content. "
+	}
+
+	msg := service.UnindexedMessage{
+		ID:          1,
+		Content:     longText,
+		Role:        "user",
+		SessionID:   "sess-1",
+		ProjectPath: "/test",
+		Backend:     "claude",
+		CreatedAt:   time.Now(),
+	}
+
+	err := idx.indexMessage(context.Background(), msg)
+	assert.NoError(t, err)
+
+	count, _ := store.ChunkCount()
+	assert.Greater(t, count, 0, "should index chunks from large message")
+}
+
+// ---------- backfillEmbeddings edge cases ----------
+
+func TestIndexer_backfillEmbeddings_ZeroBatchSize(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{BatchSize: 0})
+	idx.ollamaHealthy = true
+
+	// Insert a chunk without embedding
+	chunk := Chunk{
+		SessionID: "sess-1", MessageID: 1, ChunkText: "test backfill",
+		ChunkTextSegmented: "test backfill", ChunkIndex: 0, TokenCount: 3,
+		Embedding: nil, HasEmbedding: false,
+		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		CreatedAt: time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	// Should use default batch size (10) when configured batch size is 0
+	idx.backfillEmbeddings(context.Background())
+
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 0, pending, "should backfill even with batch size 0 (uses default)")
+}
+
+func TestIndexer_backfillEmbeddings_LargeBatchSize(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	// Batch size > 50 should be capped at 50
+	idx := NewIndexer(store, embedder, model.RAGConfig{BatchSize: 100})
+	idx.ollamaHealthy = true
+
+	// Insert a single chunk without embedding
+	chunk := Chunk{
+		SessionID: "sess-1", MessageID: 1, ChunkText: "test cap",
+		ChunkTextSegmented: "test cap", ChunkIndex: 0, TokenCount: 3,
+		Embedding: nil, HasEmbedding: false,
+		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		CreatedAt: time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	idx.backfillEmbeddings(context.Background())
+
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 0, pending, "should backfill with capped batch size")
 }

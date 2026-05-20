@@ -26,10 +26,12 @@ type Agent struct {
 	Specialty    string       `yaml:"specialty" json:"specialty"`
 	Backend      string       `yaml:"backend" json:"backend"`
 	Models       []AgentModel `yaml:"models,omitempty" json:"models"`
-	Command              string       `yaml:"command,omitempty" json:"command"`                         // optional: custom command path for the AI backend CLI
-	ThinkingEffort       string       `yaml:"thinking_effort,omitempty" json:"thinkingEffort"`           // e.g., "high"; empty = auto (don't pass flag)
-	ThinkingEffortLevels []string     `yaml:"thinking_effort_levels,omitempty" json:"thinkingEffortLevels"` // valid levels for this backend, e.g. ["low","medium","high","xhigh"]
-	SystemPrompt         string       `yaml:"system_prompt,omitempty" json:"systemPrompt"`
+	Command                      string   `yaml:"command,omitempty" json:"command"`                                       // optional: custom command path for the AI backend CLI
+	ThinkingEffort               string   `yaml:"thinking_effort,omitempty" json:"thinkingEffort"`                       // agent's default thinking effort (from YAML); not modified by user preference
+	ThinkingEffortLevels         []string `yaml:"thinking_effort_levels,omitempty" json:"thinkingEffortLevels"`         // valid levels for this backend, e.g. ["low","medium","high","xhigh"]
+	PreferredModel               string   `yaml:"preferred_model,omitempty" json:"preferredModel"`                       // user's preferred model; empty = use BaseModelID()
+	PreferredThinkingEffort      string   `yaml:"preferred_thinking_effort,omitempty" json:"preferredThinkingEffort"`   // user's preferred thinking effort; empty = use ThinkingEffort
+	SystemPrompt                 string   `yaml:"system_prompt,omitempty" json:"systemPrompt"`
 
 	// ModelsAutoDetected indicates whether Models were filled by auto-discovery
 	// (from cache) rather than user-defined in YAML. Used by AsyncRefreshModelCache
@@ -38,8 +40,18 @@ type Agent struct {
 }
 
 // DefaultModelID returns the default model ID for this agent.
-// Returns the first model with Default:true, or the first model in the list, or empty string.
+// Priority: PreferredModel (user preference) > first model with Default:true > first model in list > empty string.
 func (a *Agent) DefaultModelID() string {
+	if a.PreferredModel != "" {
+		return a.PreferredModel
+	}
+	return a.BaseModelID()
+}
+
+// BaseModelID returns the base default model ID without considering user preference.
+// Used by scheduled tasks which should always use the agent's original default model.
+// Priority: first model with Default:true > first model in list > empty string.
+func (a *Agent) BaseModelID() string {
 	for _, m := range a.Models {
 		if m.Default {
 			return m.ID
@@ -49,6 +61,15 @@ func (a *Agent) DefaultModelID() string {
 		return a.Models[0].ID
 	}
 	return ""
+}
+
+// EffectiveThinkingEffort returns the thinking effort for interactive sessions.
+// Priority: PreferredThinkingEffort (user preference) > ThinkingEffort (agent default).
+func (a *Agent) EffectiveThinkingEffort() string {
+	if a.PreferredThinkingEffort != "" {
+		return a.PreferredThinkingEffort
+	}
+	return a.ThinkingEffort
 }
 
 var (
@@ -120,6 +141,57 @@ func LoadAgents(dir string) error {
 		} else if commonPrompt != "" {
 			agent.SystemPrompt = commonPrompt
 		}
+	}
+
+	return nil
+}
+
+// WriteAgentYAML writes the agent's user-editable fields back to its YAML file.
+// It uses atomic write (tmp + rename) to avoid partial writes.
+// Only preferred_model and thinking_effort are written; all other fields are preserved as-is.
+func WriteAgentYAML(agent *Agent) error {
+	if agentsDir == "" {
+		return fmt.Errorf("agents directory not initialized")
+	}
+	yamlPath := filepath.Join(agentsDir, agent.ID+".yaml")
+
+	// Read existing YAML to preserve all fields
+	data, err := os.ReadFile(yamlPath)
+	if err != nil {
+		return fmt.Errorf("read agent YAML %s: %w", yamlPath, err)
+	}
+
+	// Parse into generic map to preserve unknown fields
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("parse agent YAML %s: %w", yamlPath, err)
+	}
+
+	// Patch only the user-editable fields
+	if agent.PreferredModel != "" {
+		raw["preferred_model"] = agent.PreferredModel
+	} else {
+		delete(raw, "preferred_model")
+	}
+	if agent.PreferredThinkingEffort != "" {
+		raw["preferred_thinking_effort"] = agent.PreferredThinkingEffort
+	} else {
+		delete(raw, "preferred_thinking_effort")
+	}
+
+	// Marshal back to YAML
+	out, err := yaml.Marshal(raw)
+	if err != nil {
+		return fmt.Errorf("marshal agent YAML %s: %w", yamlPath, err)
+	}
+
+	// Atomic write: tmp + rename
+	tmpPath := yamlPath + ".tmp"
+	if err := os.WriteFile(tmpPath, out, 0644); err != nil {
+		return fmt.Errorf("write temp agent YAML %s: %w", tmpPath, err)
+	}
+	if err := os.Rename(tmpPath, yamlPath); err != nil {
+		return fmt.Errorf("rename temp agent YAML: %w", err)
 	}
 
 	return nil

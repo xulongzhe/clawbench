@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -395,5 +396,135 @@ func TestDeepSeekInputFieldNormalization(t *testing.T) {
 	evt = <-ch
 	if !strings.Contains(evt.Tool.Input, `"file_path"`) {
 		t.Errorf("list_dir: expected 'file_path' in input, got '%s'", evt.Tool.Input)
+	}
+}
+
+func TestDeepSeekStreamParser_EmptyContentSkipped(t *testing.T) {
+	parser := &DeepSeekStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"content","content":""}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("empty content should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestDeepSeekStreamParser_EmptyThinkingSkipped(t *testing.T) {
+	parser := &DeepSeekStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"thinking","content":""}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("empty thinking should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestDeepSeekStreamParser_ToolResultEmptyIDSkipped(t *testing.T) {
+	parser := &DeepSeekStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"tool_result","id":"","output":"some output","status":"success"}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("tool_result with empty ID should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestDeepSeekStreamParser_MetadataNilMetaSkipped(t *testing.T) {
+	parser := &DeepSeekStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"metadata"}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("metadata with nil Meta should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestDeepSeekStreamParser_ErrorEmptyMessageSkipped(t *testing.T) {
+	parser := &DeepSeekStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"error","error":""}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("error with empty message should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestBuildDeepSeekStreamArgs_ContinueFallback(t *testing.T) {
+	// Resume without SessionID → --continue fallback
+	req := ChatRequest{
+		Prompt: "keep going",
+		Resume: true,
+	}
+	args := buildDeepSeekStreamArgs(req)
+
+	found := false
+	for _, arg := range args {
+		if arg == "--continue" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected --continue in args when Resume=true but SessionID is empty, got %v", args)
+	}
+
+	// Should NOT have --resume
+	for _, arg := range args {
+		if arg == "--resume" {
+			t.Error("--resume should NOT appear when SessionID is empty")
+		}
+	}
+}
+
+func TestDeepSeekInputFieldNormalization_GrepFilesPathNotRemapped(t *testing.T) {
+	// grep_files: 'path' field should NOT be remapped to 'file_path'
+	// because Grep's canonical field is 'path', not 'file_path'
+	parser := &DeepSeekStreamParser{}
+	ch := make(chan StreamEvent, 10)
+
+	parser.ParseLine(`{"type":"tool_use","name":"grep_files","id":"g1","input":{"path":"/tmp","pattern":"TODO"},"done":true}`, ch)
+	evt := <-ch
+	if !strings.Contains(evt.Tool.Input, `"path"`) {
+		t.Errorf("grep_files: 'path' should NOT be remapped for Grep, got '%s'", evt.Tool.Input)
+	}
+	if strings.Contains(evt.Tool.Input, `"file_path"`) {
+		t.Errorf("grep_files: 'path' should not become 'file_path' for Grep, got '%s'", evt.Tool.Input)
+	}
+}
+
+func TestDeepSeekInputFieldNormalization_InvalidJSON(t *testing.T) {
+	// When tool input is invalid JSON, normalizeDeepSeekInput returns the raw string.
+	// We can't test this through ParseLine because the outer line itself must be valid JSON
+	// (the input field is parsed from json.RawMessage which just captures the raw bytes).
+	// Instead, test normalizeDeepSeekInput directly.
+	result := normalizeDeepSeekInput("read_file", json.RawMessage(`{invalid}`))
+	if result == "" {
+		t.Error("expected non-empty result for invalid JSON input")
+	}
+	if result != "{invalid}" {
+		t.Errorf("expected raw input returned on parse error, got '%s'", result)
+	}
+}
+
+func TestDeepSeekInputFieldNormalization_EmptyInput(t *testing.T) {
+	// Empty raw input should produce empty result
+	result := normalizeDeepSeekInput("read_file", json.RawMessage(``))
+	if result != "" {
+		t.Errorf("expected empty string for empty input, got '%s'", result)
 	}
 }

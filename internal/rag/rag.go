@@ -3,6 +3,7 @@ package rag
 import (
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 
 	"clawbench/internal/model"
 )
@@ -12,14 +13,23 @@ var (
 	GlobalStore *Store
 	// GlobalIndexer is the singleton indexer instance.
 	GlobalIndexer *Indexer
-	// GlobalEmbedder is the singleton embedding client instance.
+	// GlobalEmbedder is the singleton embedding client instance (may be nil if Ollama not configured).
 	GlobalEmbedder *EmbeddingClient
 	// GlobalCleanupWorker is the singleton cleanup worker instance.
 	GlobalCleanupWorker *CleanupWorker
+	// ollamaHealthyFlag is the cached Ollama health state, updated by the indexer.
+	// RAGSearch reads this to avoid per-request health probes.
+	ollamaHealthyFlag atomic.Bool
 )
 
-// Init initializes the RAG system: DuckDB store, embedding client, and dimension check.
+// Init initializes the RAG system: segmenter, DuckDB store, embedding client, and dimension check.
+// RAG is always enabled — if Ollama is unavailable, FTS-only search is used.
 func Init(cfg model.RAGConfig) error {
+	// Initialize Chinese segmenter (non-critical — FTS falls back to raw text)
+	if err := InitSegmenter(); err != nil {
+		slog.Warn("rag: gse segmenter not available, Chinese FTS may be limited", slog.String("err", err.Error()))
+	}
+
 	// Initialize DuckDB store
 	store, err := InitStore()
 	if err != nil {
@@ -42,7 +52,7 @@ func Init(cfg model.RAGConfig) error {
 		}
 	}
 
-	// Initialize embedding client
+	// Initialize embedding client (may be nil if Ollama not configured)
 	embedder := NewEmbeddingClient(cfg.OllamaBaseURL, cfg.OllamaModel)
 
 	GlobalStore = store
@@ -52,15 +62,17 @@ func Init(cfg model.RAGConfig) error {
 		slog.String("ollama_url", cfg.OllamaBaseURL),
 		slog.String("model", cfg.OllamaModel),
 		slog.Int("chunk_size", cfg.ChunkSize),
+		slog.Bool("fts_available", store.ftsAvailable),
 	)
 
 	return nil
 }
 
 // StartIndexer creates and starts the RAG indexer.
+// Starts even without embedder (FTS-only mode) — indexer will detect Ollama health.
 func StartIndexer(cfg model.RAGConfig) {
-	if GlobalStore == nil || GlobalEmbedder == nil {
-		slog.Warn("rag: cannot start indexer, store or embedder not initialized")
+	if GlobalStore == nil {
+		slog.Warn("rag: cannot start indexer, store not initialized")
 		return
 	}
 	GlobalIndexer = NewIndexer(GlobalStore, GlobalEmbedder, cfg)
@@ -95,4 +107,16 @@ func Shutdown() {
 	}
 	GlobalEmbedder = nil
 	slog.Info("rag shutdown complete")
+}
+
+// OllamaHealthy returns the cached Ollama health state from the indexer.
+// This avoids per-search HTTP health probes — the indexer refreshes the state
+// on every polling cycle.
+func OllamaHealthy() bool {
+	return ollamaHealthyFlag.Load()
+}
+
+// SetOllamaHealthy updates the cached Ollama health state (called by the indexer).
+func SetOllamaHealthy(healthy bool) {
+	ollamaHealthyFlag.Store(healthy)
 }

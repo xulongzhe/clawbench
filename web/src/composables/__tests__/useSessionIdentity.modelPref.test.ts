@@ -3,6 +3,22 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 // Mock useAgents before importing useSessionIdentity
 const mockGetAgentModel = vi.fn()
 const mockSyncModelFromAgent = vi.fn()
+
+// Track agent preferences in-memory so getAgent returns them
+const agentPrefs: Record<string, { preferredModel?: string; preferredThinkingEffort?: string }> = {}
+
+const mockGetAgent = vi.fn((agentId: string) => {
+  const pref = agentPrefs[agentId]
+  if (!pref) return null
+  return { id: agentId, preferredModel: pref.preferredModel || '', preferredThinkingEffort: pref.preferredThinkingEffort || '' }
+})
+
+const mockGetEffectiveThinkingEffort = vi.fn((agentId: string) => {
+  const pref = agentPrefs[agentId]
+  if (!pref) return ''
+  return pref.preferredThinkingEffort || ''
+})
+
 vi.mock('@/composables/useAgents', () => ({
   useAgents: () => ({
     agents: { value: [{ id: 'codebuddy' }, { id: 'claude' }] },
@@ -12,8 +28,21 @@ vi.mock('@/composables/useAgents', () => ({
     syncModelFromAgent: mockSyncModelFromAgent,
     getAgentIcon: vi.fn().mockReturnValue('🤖'),
     agentHeaderTitle: vi.fn().mockReturnValue('🤖 Test'),
+    getAgent: mockGetAgent,
+    getEffectiveThinkingEffort: mockGetEffectiveThinkingEffort,
   }),
 }))
+
+// Mock useSettingsConfig.patchAgentPref to update in-memory agentPrefs
+vi.mock('@/composables/useSettingsConfig', () => ({
+  patchAgentPref: (agentId: string, field: 'preferred_model' | 'preferred_thinking_effort', value: string) => {
+    if (!agentPrefs[agentId]) agentPrefs[agentId] = {}
+    if (field === 'preferred_model') agentPrefs[agentId].preferredModel = value
+    if (field === 'preferred_thinking_effort') agentPrefs[agentId].preferredThinkingEffort = value
+    return Promise.resolve()
+  },
+}))
+
 vi.mock('@/composables/useLocale', () => ({
   gt: (key: string) => key,
 }))
@@ -30,6 +59,10 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.clearAllMocks()
+    // Reset in-memory agent preferences
+    for (const key of Object.keys(agentPrefs)) {
+      delete agentPrefs[key]
+    }
     const identity = useSessionIdentity()
     saveModelPref = identity.saveModelPref
     loadModelPref = identity.loadModelPref
@@ -42,8 +75,8 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
   })
 
   describe('saveModelPref / loadModelPref', () => {
-    it('saves and loads model preference per agent', () => {
-      saveModelPref('codebuddy', 'glm-5.1')
+    it('saves and loads model preference per agent', async () => {
+      await saveModelPref('codebuddy', 'glm-5.1')
       expect(loadModelPref('codebuddy')).toBe('glm-5.1')
     })
 
@@ -51,43 +84,43 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
       expect(loadModelPref('claude')).toBeNull()
     })
 
-    it('keeps different preferences for different agents', () => {
-      saveModelPref('codebuddy', 'glm-5.1')
-      saveModelPref('claude', 'claude-sonnet-4-6')
+    it('keeps different preferences for different agents', async () => {
+      await saveModelPref('codebuddy', 'glm-5.1')
+      await saveModelPref('claude', 'claude-sonnet-4-6')
       expect(loadModelPref('codebuddy')).toBe('glm-5.1')
       expect(loadModelPref('claude')).toBe('claude-sonnet-4-6')
     })
 
-    it('overwrites previous preference for same agent', () => {
-      saveModelPref('codebuddy', 'glm-5.1')
-      saveModelPref('codebuddy', 'glm-4')
+    it('overwrites previous preference for same agent', async () => {
+      await saveModelPref('codebuddy', 'glm-5.1')
+      await saveModelPref('codebuddy', 'glm-4')
       expect(loadModelPref('codebuddy')).toBe('glm-4')
     })
 
-    it('persists across simulated project switches (localStorage survives)', () => {
+    it('persists across simulated project switches (localStorage survives)', async () => {
       // User sets model in "project A"
-      saveModelPref('codebuddy', 'claude-sonnet-4-6')
+      await saveModelPref('codebuddy', 'claude-sonnet-4-6')
 
       // Simulate project switch — localStorage is NOT cleared
       // (unlike session DB which is per-project)
       expect(loadModelPref('codebuddy')).toBe('claude-sonnet-4-6')
     })
 
-    it('handles empty agentId gracefully', () => {
-      saveModelPref('', 'glm-5.1')
+    it('handles empty agentId gracefully', async () => {
+      await saveModelPref('', 'glm-5.1')
       expect(loadModelPref('')).toBeNull()
     })
 
-    it('handles empty modelId gracefully', () => {
-      saveModelPref('codebuddy', '')
+    it('handles empty modelId gracefully', async () => {
+      await saveModelPref('codebuddy', '')
       // Empty modelId should not be saved
       expect(loadModelPref('codebuddy')).toBeNull()
     })
   })
 
   describe('saveThinkingPref / loadThinkingPref', () => {
-    it('saves and loads thinking preference per agent', () => {
-      saveThinkingPref('codebuddy', 'high')
+    it('saves and loads thinking preference per agent', async () => {
+      await saveThinkingPref('codebuddy', 'high')
       expect(loadThinkingPref('codebuddy')).toBe('high')
     })
 
@@ -101,9 +134,9 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
     // implements using useSessionIdentity's helpers.
     // Priority: server modelId > localStorage pref > agent default
 
-    it('when server modelId is empty, localStorage preference is used', () => {
+    it('when server modelId is empty, localStorage preference is used', async () => {
       // Set global preference
-      saveModelPref('codebuddy', 'claude-sonnet-4-6')
+      await saveModelPref('codebuddy', 'claude-sonnet-4-6')
 
       // Simulate syncModelFromData with empty server modelId (new session)
       const serverModelId = ''
@@ -123,9 +156,9 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
       expect(resolvedModelId).toBe('claude-sonnet-4-6')
     })
 
-    it('when server modelId is set, it takes priority over localStorage', () => {
+    it('when server modelId is set, it takes priority over localStorage', async () => {
       // Set global preference
-      saveModelPref('codebuddy', 'glm-5.1')
+      await saveModelPref('codebuddy', 'glm-5.1')
 
       // Simulate existing session with a different model in DB
       const serverModelId = 'claude-sonnet-4-6'
@@ -144,9 +177,9 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
       expect(resolvedModelId).toBe('claude-sonnet-4-6')
     })
 
-    it('new session in different project uses global localStorage preference', () => {
+    it('new session in different project uses global localStorage preference', async () => {
       // User sets model in "project A"
-      saveModelPref('codebuddy', 'glm-5.1')
+      await saveModelPref('codebuddy', 'glm-5.1')
 
       // Simulate creating a new session in "project B"
       // Server returns empty modelId because we no longer pre-fill

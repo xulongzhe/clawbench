@@ -159,11 +159,11 @@ func TestServeLogin(t *testing.T) {
 		assertJSONField(t, w, "ok", false)
 	})
 
-	t.Run("POST_SHA256Fallback_Returns200", func(t *testing.T) {
+	t.Run("POST_NilPasswordHash_Returns500", func(t *testing.T) {
 		_, teardown := setupTestEnv(t)
 		defer teardown()
 
-		// PasswordHash is nil — should fall back to SHA-256
+		// PasswordHash is nil — should reject login (no insecure SHA-256 fallback)
 		model.SessionToken = hashPassword("testpass")
 		model.PasswordHash = nil
 
@@ -172,8 +172,7 @@ func TestServeLogin(t *testing.T) {
 		})
 		w := callHandler(ServeLogin, req)
 
-		assert.Equal(t, http.StatusOK, w.Code)
-		assertJSONField(t, w, "ok", true)
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 
 	t.Run("POST_EmptyBody_Returns401", func(t *testing.T) {

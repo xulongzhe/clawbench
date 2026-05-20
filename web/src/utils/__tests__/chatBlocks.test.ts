@@ -5,10 +5,12 @@ import {
   hasImagesInContent,
   formatDetailTime,
   formatMessageTime,
-  humanizeCron,
-  repeatLabel,
   truncate,
 } from '@/utils/chatBlocks.ts'
+import {
+  humanizeCron,
+  repeatLabel,
+} from '@/utils/format.ts'
 
 // Mock i18n to return the key for predictable assertions
 vi.mock('@/i18n', () => ({
@@ -410,36 +412,29 @@ describe('humanizeCron', () => {
 describe('repeatLabel', () => {
   it('renders "once" mode', () => {
     const result = repeatLabel('once')
-    expect(result).toContain('task.repeat.onceExecute')
+    expect(result).toContain('task.repeat.once')
   })
 
   it('renders "limited" mode with count', () => {
     const result = repeatLabel('limited', 5)
-    expect(result).toContain('task.repeat.timesThenStop')
+    expect(result).toContain('task.repeat.times')
     expect(result).toContain('count=5')
   })
 
   it('renders "unlimited" mode (default)', () => {
     const result = repeatLabel('unlimited')
-    expect(result).toContain('task.repeat.unlimitedTimes')
+    expect(result).toContain('task.repeat.unlimited')
   })
 
   it('renders unknown mode as unlimited fallback', () => {
     const result = repeatLabel('unknown')
-    expect(result).toContain('task.repeat.unlimitedTimes')
+    expect(result).toContain('task.repeat.unlimited')
   })
 
   it('renders limited mode with count=1', () => {
     const result = repeatLabel('limited', 1)
-    expect(result).toContain('task.repeat.timesThenStop')
+    expect(result).toContain('task.repeat.times')
     expect(result).toContain('count=1')
-  })
-
-  it('renders limited mode without maxRuns as unlimited', () => {
-    const result = repeatLabel('limited')
-    // maxRuns is undefined → gt('task.repeat.timesThenStop', { count: undefined })
-    // Still calls the limited key
-    expect(result).toContain('task.repeat.timesThenStop')
   })
 })
 

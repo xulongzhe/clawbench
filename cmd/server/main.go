@@ -71,6 +71,58 @@ func (h *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: newHandlers}
 }
 
+// buildLogHandlers constructs the list of slog handlers for the multi-handler.
+// If fileHandler is nil (e.g., file logging failed to initialize), only the
+// text handler is used; otherwise both are included.
+func buildLogHandlers(textHandler, fileHandler slog.Handler) []slog.Handler {
+	handlers := []slog.Handler{textHandler}
+	if fileHandler != nil {
+		handlers = append(handlers, fileHandler)
+	}
+	return handlers
+}
+
+// ensureWatchDir creates the watch directory if it doesn't exist.
+// Logs a warning on failure instead of exiting, since the server can still
+// function without file watching.
+func ensureWatchDir(dir string) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		slog.Warn("failed to create watch directory", slog.String("dir", dir), slog.String("err", err.Error()))
+	}
+}
+
+// generateBcryptHash creates a bcrypt hash of the given password.
+// If bcrypt generation fails (e.g., password too long), it logs a warning
+// and returns nil, causing the auth system to fall back to SHA256.
+func generateBcryptHash(password string) []byte {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		slog.Warn("failed to generate bcrypt hash, password verification will use SHA256 fallback", slog.String("err", err.Error()))
+		return nil
+	}
+	return hash
+}
+
+// makeRestartFunc returns the function called when a server restart is requested.
+// Under a supervisor (systemd/Docker), it just triggers graceful shutdown and
+// lets the supervisor restart the process. Otherwise, it launches a sentinel
+// process that waits for this process to exit, then starts a new one.
+func makeRestartFunc(shutdown func()) func() {
+	return func() {
+		if handler.IsRunningUnderSupervisor() {
+			slog.Info("running under supervisor, triggering graceful shutdown for restart")
+		} else {
+			cmd, err := handler.LaunchSentinelProcess()
+			if err != nil {
+				slog.Error("failed to launch sentinel process for restart", "err", err)
+				return
+			}
+			slog.Info("sentinel process launched for restart", "sentinel_pid", cmd.Process.Pid)
+		}
+		shutdown()
+	}
+}
+
 func main() {
 	// Root --help handler
 	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
@@ -120,8 +172,6 @@ func main() {
 	// Search for config in priority order:
 	// 1. <BinDir>/config/config.yaml (green portable: next to binary)
 	// 2. config/config.yaml (CWD-relative, standard layout)
-	// 3. <BinDir>/config.yaml (legacy: next to binary)
-	// 4. config.yaml (legacy: CWD root)
 	configPath := cli.FindConfigPath(model.BinDir)
 
 	data, err := os.ReadFile(configPath)
@@ -354,10 +404,10 @@ func main() {
 
 	fileHandler, err := service.NewFileHandler(cfg.LogDir, "clawbench", cfg.LogMaxDays)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize file logger: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Warning: failed to initialize file logger, logging to stderr only: %v\n", err)
+	} else {
+		defer fileHandler.Close()
 	}
-	defer fileHandler.Close()
 
 	// Log level from config (default: "info")
 	logLevel := slog.LevelInfo
@@ -373,7 +423,7 @@ func main() {
 	// Create a multi-writer for both stderr and file
 	textHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})
 	multiHandler := &multiHandler{
-		handlers: []slog.Handler{textHandler, fileHandler},
+		handlers: buildLogHandlers(textHandler, fileHandler),
 	}
 	slog.SetDefault(slog.New(multiHandler))
 	slog.Info("server starting")
@@ -413,19 +463,12 @@ func main() {
 
 	// Generate bcrypt hash for secure password verification (ISS-003a)
 	if cfg.Password != "" {
-		bcryptHash, err := bcrypt.GenerateFromPassword([]byte(cfg.Password), bcrypt.DefaultCost)
-		if err != nil {
-			slog.Error("failed to generate bcrypt hash", slog.String("err", err.Error()))
-			os.Exit(1)
-		}
+		bcryptHash := generateBcryptHash(cfg.Password)
 		model.PasswordHash = bcryptHash
 	}
 
 	// Ensure the watch directory exists
-	if err := os.MkdirAll(model.WatchDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create watch directory: %v\n", err)
-		os.Exit(1)
-	}
+	ensureWatchDir(model.WatchDir)
 
 	// Initialize SQLite database (runFromServer=true: clean up orphaned streaming messages)
 	if err := service.InitDB(true); err != nil {
@@ -433,12 +476,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize RAG history memory system (if enabled)
-	if cfg.RAG.Enabled {
-		if err := rag.Init(cfg.RAG); err != nil {
-			slog.Error("failed to initialize RAG system", slog.String("err", err.Error()))
-			os.Exit(1)
-		}
+	// Initialize RAG history memory system (always enabled)
+	if err := rag.Init(cfg.RAG); err != nil {
+		slog.Warn("failed to initialize RAG system, search will be limited", slog.String("err", err.Error()))
 	}
 	// Always defer shutdown — cleanup worker may be running even without RAG
 	defer rag.Shutdown()
@@ -569,7 +609,7 @@ func main() {
 	}
 
 	// Initialize RAG indexer (needs final port number)
-	if cfg.RAG.Enabled && rag.GlobalStore != nil {
+	if rag.GlobalStore != nil {
 		// Start RAG indexer
 		rag.StartIndexer(cfg.RAG)
 	}
@@ -582,9 +622,9 @@ func main() {
 	service.ProxyService = proxyService
 	defer proxyService.Stop()
 
-	// Initialize SSH tunnel server
-	if cfg.SSH.Enabled {
-		sshServer := ssh.NewServer(cfg.SSH, port, cfg.Password, proxyService)
+	// Initialize SSH tunnel server (port forward)
+	if cfg.PortForward.Enabled {
+		sshServer := ssh.NewServer(cfg.PortForward, port, cfg.Password, proxyService)
 		handler.SetSSHServer(sshServer)
 		go func() {
 			if err := sshServer.ListenAndServe(); err != nil {
@@ -622,6 +662,11 @@ func main() {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux)
 
+	// Wire up the restart function for POST /api/config/restart
+	// The sentinel process approach: launch a watcher that starts a new process
+	// after this one exits, then trigger graceful shutdown.
+	handler.SetRestartFunc(makeRestartFunc(selfSignalInterrupt))
+
 	srv := &http.Server{Addr: addr, Handler: mux}
 
 	// Optional localhost-only HTTP dev listener (for Vite dev proxy)
@@ -652,6 +697,7 @@ func main() {
 		}
 	}()
 
+httpServer:
 	if !cfg.TLS.Enabled {
 		// TLS disabled: plain HTTP
 		slog.Info("starting with HTTP")
@@ -670,8 +716,8 @@ func main() {
 			keyFile = os.Getenv("KEY_FILE")
 		}
 		if certFile == "" || keyFile == "" {
-			slog.Error("TLS enabled but cert_file and key_file are not configured")
-			os.Exit(1)
+			slog.Warn("TLS enabled but cert_file and key_file are not configured, falling back to HTTP")
+			goto httpServer
 		}
 		slog.Info("starting with TLS", slog.String("cert", certFile))
 

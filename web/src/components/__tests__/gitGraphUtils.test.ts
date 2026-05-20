@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeGraphData, LANE_COLORS, refLabelWidth, refLabelText, refLabelBg } from '@/utils/gitGraph'
+import { computeGraphData, refLabelText } from '@/utils/gitGraph'
 
 const ROW_HEIGHT = 64
 
@@ -476,29 +476,9 @@ describe('graph dimensions', () => {
 })
 
 describe('ref label helpers', () => {
-  it('refLabelWidth calculates based on text length', () => {
-    expect(refLabelWidth('main')).toBe(4 * 6 + 8) // 32
-    expect(refLabelWidth('tag: v1.0')).toBe(4 * 6 + 8) // strips "tag: "
-  })
-
   it('refLabelText strips tag prefix', () => {
     expect(refLabelText('main')).toBe('main')
     expect(refLabelText('tag: v1.0')).toBe('v1.0')
-  })
-
-  it('refLabelBg returns correct colors', () => {
-    expect(refLabelBg('HEAD')).toBe('#1a1a2e')
-    expect(refLabelBg('tag: v1.0')).toBe('#555')
-    expect(refLabelBg('main')).toBe('#4a90d9')
-  })
-})
-
-describe('lane colors', () => {
-  it('cycles through colors for high lane numbers', () => {
-    expect(LANE_COLORS).toHaveLength(8)
-    // Lane 8 should use the same color as lane 0
-    const color8 = LANE_COLORS[8 % LANE_COLORS.length]
-    expect(color8).toBe(LANE_COLORS[0])
   })
 })
 

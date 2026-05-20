@@ -21,18 +21,10 @@ import (
 // FindConfigPath searches for config.yaml in priority order:
 //  1. <BinDir>/config/config.yaml (green portable: next to binary)
 //  2. config/config.yaml (CWD-relative, standard layout)
-//  3. <BinDir>/config.yaml (legacy: next to binary)
-//  4. config.yaml (legacy: CWD root)
 func FindConfigPath(binDir string) string {
 	configPath := filepath.Join(binDir, "config", "config.yaml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		configPath = filepath.Join("config", "config.yaml")
-		if _, err := os.Stat(configPath); os.IsNotExist(err) {
-			configPath = filepath.Join(binDir, "config.yaml")
-			if _, err := os.Stat(configPath); os.IsNotExist(err) {
-				configPath = "config.yaml"
-			}
-		}
 	}
 	return configPath
 }

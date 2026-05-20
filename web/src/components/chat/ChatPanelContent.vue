@@ -13,6 +13,7 @@
       :hasMore="session.hasMore.value"
       :loadingMore="session.loadingMore.value"
       :totalMessages="session.totalMessages.value"
+      :active="props.active"
       :pendingMessages="manager.pendingMessages.value"
       @touchstart="swipeSession.onTouchStart"
       @touchend="swipeSession.onTouchEnd"
@@ -154,7 +155,7 @@ import { useChatStream } from '@/composables/useChatStream.ts'
 import { useChatSession, loadSessionsOnce } from '@/composables/useChatSession.ts'
 import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
 import { useSessionManager } from '@/composables/useSessionManager.ts'
-import { useAgents } from '@/composables/useAgents.ts'
+import { useAgents } from '@/composables/useAgents'
 import { useToast } from '@/composables/useToast.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useNotification } from '@/composables/useNotification.ts'

@@ -148,8 +148,8 @@ func TestApplyDefaultsEmptyConfig(t *testing.T) {
 	if cfg.Proxy.AllowedPorts != "1024-65535" {
 		t.Errorf("Proxy.AllowedPorts = %q, want %q", cfg.Proxy.AllowedPorts, "1024-65535")
 	}
-	if !cfg.SSH.Enabled {
-		t.Error("SSH.Enabled should default to true when not in config")
+	if !cfg.PortForward.Enabled {
+		t.Error("PortForward.Enabled should default to true when not in config")
 	}
 	if cfg.TTS.Engine != "edge" {
 		t.Errorf("TTS.Engine = %q, want %q", cfg.TTS.Engine, "edge")
@@ -159,6 +159,9 @@ func TestApplyDefaultsEmptyConfig(t *testing.T) {
 	}
 	if cfg.TTS.Speed != 1.0 {
 		t.Errorf("TTS.Speed = %v, want 1.0", cfg.TTS.Speed)
+	}
+	if cfg.RAG.SearchPoolSize != 20 {
+		t.Errorf("RAG.SearchPoolSize = %d, want 20", cfg.RAG.SearchPoolSize)
 	}
 }
 
@@ -247,28 +250,28 @@ func TestApplyDefaultsBoolPresenceProxySectionNoEnabled(t *testing.T) {
 	}
 }
 
-func TestApplyDefaultsBoolPresenceSSHEnabledFalse(t *testing.T) {
+func TestApplyDefaultsBoolPresencePortForwardEnabledFalse(t *testing.T) {
 	cfg := Config{}
 	presence := map[string]bool{
-		"ssh":         true,
-		"ssh.enabled": true,
+		"port_forward":         true,
+		"port_forward.enabled": true,
 	}
-	cfg.SSH.Enabled = false
+	cfg.PortForward.Enabled = false
 
 	ApplyDefaults(&cfg, presence)
 
-	if cfg.SSH.Enabled {
-		t.Error("SSH.Enabled should stay false when explicitly set to false")
+	if cfg.PortForward.Enabled {
+		t.Error("PortForward.Enabled should stay false when explicitly set to false")
 	}
 }
 
-func TestApplyDefaultsBoolPresenceSSHNoSection(t *testing.T) {
+func TestApplyDefaultsBoolPresencePortForwardNoSection(t *testing.T) {
 	cfg := Config{}
-	// No ssh section at all in config
+	// No port_forward section at all in config
 	ApplyDefaults(&cfg, nil)
 
-	if !cfg.SSH.Enabled {
-		t.Error("SSH.Enabled should default to true when ssh section is absent from config")
+	if !cfg.PortForward.Enabled {
+		t.Error("PortForward.Enabled should default to true when port_forward section is absent from config")
 	}
 }
 

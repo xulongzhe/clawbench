@@ -7,13 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// --- CLIBackend Name ---
-
-func TestCLIBackend_Name(t *testing.T) {
-	b := &CLIBackend{name: "test-backend"}
-	assert.Equal(t, "test-backend", b.Name())
-}
-
 // --- CLIBackend ExecuteStream ---
 
 func TestCLIBackend_ExecuteStream_CommandFailure(t *testing.T) {
@@ -46,18 +39,17 @@ func TestCLIBackend_ExecuteStream_ContextCancellation(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	// Cancel before calling ExecuteStream — the command start should fail
+	cancel()
 
 	_, err := b.ExecuteStream(ctx, ChatRequest{
 		Prompt:    "test",
 		SessionID: "test-session",
 		WorkDir:   t.TempDir(),
 	})
-	// Context already cancelled — command start may or may not fail
-	// depending on scheduling, but it should not hang
-	if err != nil {
-		assert.Contains(t, err.Error(), "test stream:")
-	}
+	// With context already cancelled, either the command fails to start
+	// or starts and is immediately killed. Either way, an error is expected.
+	assert.Error(t, err, "pre-cancelled context should produce an error")
 }
 
 // --- CLIBackend filterLine helpers ---
@@ -65,61 +57,14 @@ func TestCLIBackend_ExecuteStream_ContextCancellation(t *testing.T) {
 func TestFilterSkipNonJSON(t *testing.T) {
 	f := filterSkipNonJSON()
 
-	line, ok := f("")
+	_, ok := f("")
 	assert.False(t, ok)
 
-	line, ok = f("not json")
+	_, ok = f("not json")
 	assert.False(t, ok)
 
-	line, ok = f(`{"type":"content"}`)
+	line, ok := f(`{"type":"content"}`)
 	assert.True(t, ok)
 	assert.Equal(t, `{"type":"content"}`, line)
 }
 
-// --- Factory returns CLIBackend instances ---
-
-func TestNewBackend_ReturnsCLIBackend(t *testing.T) {
-	// Verify that the backends returned by the factory implement AIBackend
-	// and have the correct Name
-	for _, name := range []string{"claude", "codebuddy", "opencode", "gemini"} {
-		backend, err := NewBackend(name)
-		assert.NoError(t, err, "NewBackend(%q) should not error", name)
-		assert.Equal(t, name, backend.Name(), "backend name should match")
-	}
-}
-
-func TestNewBackend_CodexIsNotCLIBackend(t *testing.T) {
-	// Codex still uses its own struct
-	backend, err := NewBackend("codex")
-	assert.NoError(t, err)
-	assert.Equal(t, "codex", backend.Name())
-	// Verify it's NOT a *CLIBackend
-	_, ok := backend.(*CLIBackend)
-	assert.False(t, ok, "codex should NOT be a CLIBackend")
-}
-
-func TestNewBackend_ClaudeIsAutoResumeBackend(t *testing.T) {
-	backend, err := NewBackend("claude")
-	assert.NoError(t, err)
-	wrapper, ok := backend.(*AutoResumeBackend)
-	assert.True(t, ok, "claude should be an AutoResumeBackend")
-	assert.Equal(t, "claude", wrapper.Name())
-}
-
-func TestNewBackend_CodebuddyIsAutoResumeBackend(t *testing.T) {
-	backend, err := NewBackend("codebuddy")
-	assert.NoError(t, err)
-	wrapper, ok := backend.(*AutoResumeBackend)
-	assert.True(t, ok, "codebuddy should be an AutoResumeBackend")
-	assert.Equal(t, "codebuddy", wrapper.Name())
-}
-
-func TestNewBackend_VecliIsNotCLIBackend(t *testing.T) {
-	// VeCLI uses its own VeCLIBackend wrapper, not a raw CLIBackend
-	backend, err := NewBackend("vecli")
-	assert.NoError(t, err)
-	assert.Equal(t, "vecli", backend.Name())
-	// Verify it's NOT a raw *CLIBackend (it's a *VeCLIBackend wrapper)
-	_, ok := backend.(*CLIBackend)
-	assert.False(t, ok, "vecli should NOT be a raw CLIBackend")
-}

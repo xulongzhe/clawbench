@@ -4,7 +4,6 @@ import {
   isAnchorLink,
   slugifyForHeading,
   stripLeadingNumbering,
-  classifyLink,
   buildQuoteMessage,
 } from '@/utils/doubleClickUtils'
 
@@ -142,42 +141,6 @@ describe('doubleClickUtils', () => {
 
     it('strips "1.2.3 " prefix', () => {
       expect(stripLeadingNumbering('1.2.3 Deep section')).toBe('Deep section')
-    })
-  })
-
-  // --- classifyLink ---
-
-  describe('classifyLink', () => {
-    it('classifies anchor links', () => {
-      expect(classifyLink('#section')).toBe('anchor')
-    })
-
-    it('classifies http links as external', () => {
-      expect(classifyLink('http://example.com')).toBe('external')
-    })
-
-    it('classifies https links as external', () => {
-      expect(classifyLink('https://example.com')).toBe('external')
-    })
-
-    it('classifies mailto as external', () => {
-      expect(classifyLink('mailto:test@test.com')).toBe('external')
-    })
-
-    it('classifies protocol-relative as external', () => {
-      expect(classifyLink('//cdn.example.com')).toBe('external')
-    })
-
-    it('classifies relative paths as local', () => {
-      expect(classifyLink('src/main.go')).toBe('local')
-    })
-
-    it('classifies ./ paths as local', () => {
-      expect(classifyLink('./src/main.go')).toBe('local')
-    })
-
-    it('classifies ../ paths as local', () => {
-      expect(classifyLink('../parent.go')).toBe('local')
     })
   })
 

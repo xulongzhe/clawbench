@@ -156,24 +156,6 @@ func (r *ProxyRegistry) IsPortAllowed(port int) bool {
 	return isPortInRange(port, r.cfg.AllowedPorts)
 }
 
-// IsPortRegistered checks whether a port has been explicitly registered.
-func (r *ProxyRegistry) IsPortRegistered(port int) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	_, exists := r.ports[port]
-	return exists
-}
-
-// GetPortProtocol returns the protocol for a registered port, defaults to "http".
-func (r *ProxyRegistry) GetPortProtocol(port int) string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if p, ok := r.ports[port]; ok && p.Protocol != "" {
-		return p.Protocol
-	}
-	return "http"
-}
-
 // DetectedPort represents an auto-detected listening port with its protocol and process.
 type DetectedPort struct {
 	Port        int    `json:"port"`

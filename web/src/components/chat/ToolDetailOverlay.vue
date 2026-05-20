@@ -53,13 +53,14 @@ const category = computed(() => getToolIcon(props.toolName).category)
 const headerIcon = computed(() => getToolIcon(props.toolName).icon)
 
 const { isAppMode } = useAppMode()
-const { ensurePortRegistered, openPort } = usePortForward()
+const { ensurePortRegistered, openPort, sshInfo } = usePortForward()
 const toast = useToast()
 const { t } = useI18n()
 let urlOpening = false
 
 async function openLocalhostUrl(element, port, protocol) {
   if (urlOpening) return
+  if (sshInfo.value?.enabled === false) return
   urlOpening = true
   element.classList.add('loading')
 

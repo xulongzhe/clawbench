@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseHunkHeader, parseDiffLines, detectLang, highlightLine, renderDiff } from '@/utils/diff.ts'
+import { parseHunkHeader, detectLang, highlightLine, renderDiff } from '@/utils/diff.ts'
 
 // ────────────────────────────────────────────────────────────
 // parseHunkHeader — imported from source, no copy-paste
@@ -59,81 +59,6 @@ describe('parseHunkHeader', () => {
     const result = parseHunkHeader('@@ -1,1 +1,1 @@  ')
     expect(result).not.toBeNull()
     expect(result!.text).toBe('') // trimmed
-  })
-})
-
-// ────────────────────────────────────────────────────────────
-// parseDiffLines — imported from source, no copy-paste
-// ────────────────────────────────────────────────────────────
-
-describe('parseDiffLines', () => {
-  it('parses context lines', () => {
-    const diff = '@@ -1,3 +1,3 @@\n line1\n line2\n line3'
-    const lines = parseDiffLines(diff)
-    expect(lines).toHaveLength(3)
-    expect(lines.every(l => l.type === 'ctx')).toBe(true)
-  })
-
-  it('parses added lines', () => {
-    const diff = '@@ -1,1 +1,2 @@\n existing\n+added line'
-    const lines = parseDiffLines(diff)
-    expect(lines).toHaveLength(2)
-    expect(lines[1].type).toBe('add')
-    expect(lines[1].content).toBe('added line')
-    expect(lines[1].newLine).toBe(2)
-    expect(lines[1].oldLine).toBeNull()
-  })
-
-  it('parses deleted lines', () => {
-    const diff = '@@ -1,2 +1,1 @@\n kept\n-removed'
-    const lines = parseDiffLines(diff)
-    expect(lines).toHaveLength(2)
-    expect(lines[1].type).toBe('del')
-    expect(lines[1].content).toBe('removed')
-    expect(lines[1].oldLine).toBe(2)
-    expect(lines[1].newLine).toBeNull()
-  })
-
-  it('ignores meta lines (+++, ---)', () => {
-    const diff = '--- a/file.go\n+++ b/file.go\n@@ -1,1 +1,1 @@\n old\n+new'
-    const lines = parseDiffLines(diff)
-    expect(lines).toHaveLength(2)
-  })
-
-  it('handles empty diff', () => {
-    expect(parseDiffLines('')).toEqual([])
-  })
-
-  it('handles diff with no hunks', () => {
-    const diff = 'some text\nno hunk headers'
-    expect(parseDiffLines(diff)).toEqual([])
-  })
-
-  it('tracks line numbers correctly', () => {
-    const diff = '@@ -1,3 +1,4 @@\n ctx1\n-del\n+add1\n+add2\n ctx2'
-    const lines = parseDiffLines(diff)
-    expect(lines).toHaveLength(5)
-    // ctx1: old=1, new=1
-    expect(lines[0].oldLine).toBe(1)
-    expect(lines[0].newLine).toBe(1)
-    // del: old=2
-    expect(lines[1].oldLine).toBe(2)
-    // add1: new=2
-    expect(lines[2].newLine).toBe(2)
-    // add2: new=3
-    expect(lines[3].newLine).toBe(3)
-    // ctx2: old=3, new=4
-    expect(lines[4].oldLine).toBe(3)
-    expect(lines[4].newLine).toBe(4)
-  })
-
-  it('handles multiple hunks', () => {
-    const diff = '@@ -1,2 +1,2 @@\n a\n-b\n+c\n@@ -10,2 +10,2 @@\n x\n-y\n+z'
-    const lines = parseDiffLines(diff)
-    expect(lines).toHaveLength(6)
-    // Second hunk starts at line 10
-    expect(lines[3].oldLine).toBe(10)
-    expect(lines[3].newLine).toBe(10)
   })
 })
 

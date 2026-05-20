@@ -17,8 +17,7 @@ import { ref } from 'vue'
 import { useToast } from '@/composables/useToast.ts'
 import { gt } from '@/composables/useLocale'
 import i18n from '@/i18n'
-
-const STORAGE_KEY = 'clawbench-auto-speech'
+import { localConfig, setLocalConfig } from '@/composables/useSettingsConfig'
 
 /**
  * Extract speakable text from chat message blocks.
@@ -64,12 +63,14 @@ let abortController: AbortController | null = null
 let currentEventSource: EventSource | null = null
 let currentAudioEl: HTMLAudioElement | null = null
 
-// Load persisted state once at module level
-try {
-  const saved = localStorage.getItem(STORAGE_KEY)
-  if (saved !== null) enabled.value = saved === 'true'
-} catch {
-  // localStorage may be unavailable (e.g. private browsing)
+// Initialize from settings config (which handles legacy key migration)
+enabled.value = !!localConfig.autoSpeech
+
+// Sync from Settings page changes
+if (typeof window !== 'undefined') {
+  window.addEventListener('clawbench-autospeech-change', (e: Event) => {
+    enabled.value = (e as CustomEvent).detail as boolean
+  })
 }
 
 // Module-level toast instance (shared, not per-component)
@@ -78,11 +79,7 @@ const toast = useToast()
 export function useAutoSpeech() {
   // --- Persistence ---
   function saveState() {
-    try {
-      localStorage.setItem(STORAGE_KEY, String(enabled.value))
-    } catch {
-      // Silently ignore
-    }
+    setLocalConfig('autoSpeech', enabled.value)
   }
 
   function toggle() {

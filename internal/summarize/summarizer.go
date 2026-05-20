@@ -210,14 +210,6 @@ func prepareTextForSummarization(text string, preserveMarkdown bool) (string, bo
 	return cleaned, true
 }
 
-// NeedsSummarization returns true if the text is long enough to require
-// AI-based summarization before TTS synthesis. Short texts (<300 chars
-// after markdown stripping) can be synthesized directly.
-func NeedsSummarization(text string) bool {
-	_, needs := prepareTextForSummarization(text, false)
-	return needs
-}
-
 // needsReSummarization returns true if the summarization result is still
 // too long (in bytes) and a second pass would be beneficial.
 func needsReSummarization(result string, pass int) bool {
