@@ -464,8 +464,8 @@ func TestGetSessionResponsePreview_Truncation(t *testing.T) {
 	DB = db
 	defer func() { DB = origDB }()
 
-	// 80+ runes — should be truncated to responsePreviewMaxRunes + …
-	longText := strings.Repeat("这是一段测试", 10) + "追加更多文字直到超过截断限制边界"
+	// responsePreviewMaxRunes+1 runes — should be truncated
+	longText := strings.Repeat("测", responsePreviewMaxRunes+1)
 	content := model.ContentBlock{Type: "text", Text: longText}
 	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
 	contentJSON, _ := json.Marshal(blocks)

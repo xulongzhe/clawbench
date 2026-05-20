@@ -589,8 +589,8 @@ func TestManager_BroadcastEvent_JPushAlert_TruncatesLongTitle(t *testing.T) {
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
-	// 80+ rune session title — should be truncated to pushAlertMaxRunes + "…"
-	longTitle := strings.Repeat("这是一段测试", 10) + "追加更多文字"
+	// pushAlertMaxRunes+1 rune title — should be truncated
+	longTitle := strings.Repeat("测", pushAlertMaxRunes+1)
 	msg := ServerMessage{
 		Type:  "event",
 		ID:    "evt_1",
