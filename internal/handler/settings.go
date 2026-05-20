@@ -54,7 +54,7 @@ type configResponse struct {
 	TTS           configTTS      `json:"tts"`
 	RAG           configRAG      `json:"rag"`
 	Proxy         configProxy    `json:"proxy"`
-	SSH           configSSH      `json:"ssh"`
+	PortForward    configPortForward `json:"port_forward"`
 	Push          configPush     `json:"push"`
 	Tasks         configTasks    `json:"tasks"`
 }
@@ -138,7 +138,7 @@ type configProxy struct {
 	AllowedPorts string `json:"allowed_ports"`
 }
 
-type configSSH struct {
+type configPortForward struct {
 	Enabled bool `json:"enabled"`
 	Port    int  `json:"port"`
 }
@@ -355,9 +355,9 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 			Enabled:      cfg.Proxy.Enabled,
 			AllowedPorts: cfg.Proxy.AllowedPorts,
 		},
-		SSH: configSSH{
-			Enabled: cfg.SSH.Enabled,
-			Port:    cfg.SSH.Port,
+		PortForward: configPortForward{
+			Enabled: cfg.PortForward.Enabled,
+			Port:    cfg.PortForward.Port,
 		},
 		Push: configPush{
 			JPush: configJPush{
@@ -863,12 +863,12 @@ func applyConfigPatch(patch map[string]any) error {
 		}
 	}
 
-	if ssh, ok := patch["ssh"].(map[string]any); ok {
-		if v, ok := ssh["enabled"].(bool); ok {
-			cfg.SSH.Enabled = v
+	if pf, ok := patch["port_forward"].(map[string]any); ok {
+		if v, ok := pf["enabled"].(bool); ok {
+			cfg.PortForward.Enabled = v
 		}
-		if v, ok := ssh["port"].(float64); ok {
-			cfg.SSH.Port = int(v)
+		if v, ok := pf["port"].(float64); ok {
+			cfg.PortForward.Port = int(v)
 		}
 	}
 

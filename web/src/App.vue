@@ -215,7 +215,7 @@
             <GitBranch :size="16" />
             <span>{{ t('git.history.projectHistory') }}</span>
           </button>
-          <button class="dock-overflow-item" :class="{ active: activeTab === 'proxy' }" @click.stop="handleOverflowSelect('proxy')">
+          <button v-if="!isSSHDisabled" class="dock-overflow-item" :class="{ active: activeTab === 'proxy' }" @click.stop="handleOverflowSelect('proxy')">
             <EthernetPort :size="16" />
             <span>{{ t('nav.portForward') }}</span>
           </button>
@@ -304,7 +304,7 @@ function switchTab(tab) {
     store.state.taskUnread = false
   }
   // Close overflow menu when switching to a main tab
-  if (!overflowTabs.includes(tab)) {
+  if (!overflowTabs.value.includes(tab)) {
     overflowMenuOpen.value = false
   }
 }
@@ -336,7 +336,13 @@ useFileWatch({
 })
 
 const { isAppMode } = useAppMode()
-const { syncToNative } = usePortForward()
+const { syncToNative, sshInfo, loadSSHInfo } = usePortForward()
+const isSSHDisabled = computed(() => sshInfo.value?.enabled === false)
+watch(isSSHDisabled, (disabled) => {
+  if (disabled && activeTab.value === 'proxy') {
+    switchTab('chat')
+  }
+})
 const { navigateToTaskSettings, loadTasks } = useTaskTab()
 registerSwitchTab(switchTab)
 
@@ -501,7 +507,11 @@ function handleDockTerminal() {
 // Overflow menu state
 const overflowMenuOpen = ref(false)
 const overflowBtnRef = ref(null)
-const overflowTabs = ['history', 'proxy', 'terminal', 'settings']
+const overflowTabs = computed(() => {
+  const tabs = ['history', 'terminal', 'settings']
+  if (!isSSHDisabled.value) tabs.splice(1, 0, 'proxy')
+  return tabs
+})
 const overflowTabMeta = {
   history: { icon: GitBranch, titleKey: 'git.history.projectHistory' },
   proxy:   { icon: EthernetPort, titleKey: 'nav.portForward' },
@@ -509,7 +519,7 @@ const overflowTabMeta = {
   settings:{ icon: Settings, titleKey: 'nav.settings' },
 }
 
-const isOverflowTabActive = computed(() => overflowTabs.includes(activeTab.value))
+const isOverflowTabActive = computed(() => overflowTabs.value.includes(activeTab.value))
 
 const overflowPopupStyle = computed(() => {
   const btn = overflowBtnRef.value
@@ -713,6 +723,7 @@ onMounted(async () => {
         if (sr.ok) { const sd = await sr.json(); if (sd.sessions?.some(s => s.unreadCount > 0 && s.id !== sessionIdentity.currentSessionId.value)) store.state.chatUnread = true }
     } catch (_) {}
     if (isAppMode.value) syncToNative().catch(() => {})
+    loadSSHInfo().catch(() => {})
     try { await store.loadProject() } catch (_) {
         toast.show(t('toast.projectLoadFailed'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() }); return
     }

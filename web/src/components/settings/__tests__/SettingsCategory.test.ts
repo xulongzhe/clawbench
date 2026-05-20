@@ -36,7 +36,7 @@ const serverConfig = ref<Record<string, any>>({
   tts: { engine: 'edge', voice: '', speed: 1.0, max_cache_files: 100, summarize_backend: 'simple', summarize_model: '', format: '' },
   rag: { enabled: false, ollama_base_url: 'http://localhost:11434', ollama_model: 'bge-m3', chunk_size: 512, search_limit: 5, retention_days: 90 },
   proxy: { enabled: true, allowed_ports: '1024-65535' },
-  ssh: { enabled: true, port: 0 },
+  port_forward: { enabled: true, port: 0 },
   push: { jpush: { enabled: false, app_key: '' } },
   tasks: { summarize_backend: '', summarize_model: '' },
 })
@@ -129,12 +129,12 @@ const i18n = createI18n({
           ragEnabled: '启用RAG',
           proxyEnabled: '启用代理',
           proxyAllowedPorts: '允许端口',
-          sshEnabled: '启用SSH',
-          sshPort: 'SSH端口',
+          portForwardEnabled: '启用端口转发',
+          portForwardPort: '端口转发端口',
           pushEnabled: '启用推送',
           pushAppKey: 'AppKey',
           proxyHeader: '代理',
-          sshHeader: 'SSH',
+          portForwardHeader: '端口转发',
           pushHeader: '推送',
           ttsSummarizeHeader: '摘要',
           ttsCacheHeader: '缓存',
@@ -550,28 +550,28 @@ describe('SettingsCategory', () => {
       expect(mockSetServerValue).toHaveBeenCalledWith('proxy.allowed_ports', '8080,9090')
     })
 
-    it('PATCHes ssh.enabled when toggled', async () => {
+    it('PATCHes port_forward.enabled when toggled', async () => {
       const wrapper = mountCategory('network')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用SSH')
+      const item = allItems.find(i => i.props().label === '启用端口转发')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', false)
       await wrapper.vm.$nextTick()
 
-      expect(mockSetServerValue).toHaveBeenCalledWith('ssh.enabled', false)
+      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.enabled', false)
     })
 
-    it('PATCHes ssh.port when changed', async () => {
+    it('PATCHes port_forward.port when changed', async () => {
       const wrapper = mountCategory('network')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === 'SSH端口')
+      const item = allItems.find(i => i.props().label === '端口转发端口')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', 2222)
       await wrapper.vm.$nextTick()
 
-      expect(mockSetServerValue).toHaveBeenCalledWith('ssh.port', 2222)
+      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.port', 2222)
     })
 
     it('PATCHes push.jpush.enabled when toggled', async () => {

@@ -14,7 +14,7 @@ const i18n = createI18n({
         restartNow: '立即重启',
         restartLater: '稍后',
         items: {
-          sshEnabled: '启用SSH隧道',
+          portForwardEnabled: '启用端口转发',
           terminalEnabled: '启用终端',
         },
       },
@@ -37,11 +37,11 @@ describe('SettingsRestartDialog', () => {
   })
 
   it('displays translated field labels instead of raw keys', () => {
-    const wrapper = mountDialog(['ssh.enabled', 'terminal.enabled'])
+    const wrapper = mountDialog(['port_forward.enabled', 'terminal.enabled'])
     const listItems = wrapper.findAll('li')
     expect(listItems).toHaveLength(2)
     // Should show translated labels, not raw dot-paths
-    expect(listItems[0].text()).toBe('启用SSH隧道')
+    expect(listItems[0].text()).toBe('启用端口转发')
     expect(listItems[1].text()).toBe('启用终端')
   })
 

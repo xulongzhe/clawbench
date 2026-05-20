@@ -144,14 +144,14 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 		cfg.Proxy.AllowedPorts = "1024-65535"
 	}
 
-	// --- SSH ---
+	// --- Port Forward (SSH Tunnel) ---
 	// Same bool zero-value trap as Proxy.
-	if !presence["ssh.enabled"] {
-		cfg.SSH.Enabled = true
+	if !presence["port_forward.enabled"] {
+		cfg.PortForward.Enabled = true
 	}
 	// Persist host key to avoid SSH fingerprint mismatch after server restart
-	if cfg.SSH.HostKey == "" {
-		cfg.SSH.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
+	if cfg.PortForward.HostKey == "" {
+		cfg.PortForward.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
 	}
 
 	// --- TTS ---
@@ -206,7 +206,7 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	}
 
 	// --- Terminal ---
-	// Bool zero-value trap: same as proxy/ssh — default to true when absent.
+	// Bool zero-value trap: same as proxy/port_forward — default to true when absent.
 	if !presence["terminal.enabled"] {
 		cfg.Terminal.Enabled = true
 	}

@@ -45,8 +45,8 @@ func TestServeConfig_Get(t *testing.T) {
 	cfg.RAG.RetentionDays = 30
 	cfg.Proxy.Enabled = true
 	cfg.Proxy.AllowedPorts = "1024-65535"
-	cfg.SSH.Enabled = true
-	cfg.SSH.Port = 20001
+	cfg.PortForward.Enabled = true
+	cfg.PortForward.Port = 20001
 	cfg.Push.JPush.Enabled = true
 	cfg.Push.JPush.AppKey = "test-app-key"
 	cfg.Tasks.SummarizeBackend = "simple"
@@ -75,7 +75,7 @@ func TestServeConfig_Get(t *testing.T) {
 	assert.Contains(t, resp, "tts")
 	assert.Contains(t, resp, "rag")
 	assert.Contains(t, resp, "proxy")
-	assert.Contains(t, resp, "ssh")
+	assert.Contains(t, resp, "port_forward")
 	assert.Contains(t, resp, "push")
 	assert.Contains(t, resp, "tasks")
 
@@ -116,9 +116,9 @@ func TestServeConfig_Get(t *testing.T) {
 	assert.NotContains(t, resp, "watch_dir")
 	assert.NotContains(t, resp, "dev_port")
 
-	// Verify SSH doesn't expose host_key
-	ssh, _ := resp["ssh"].(map[string]any)
-	assert.NotContains(t, ssh, "host_key")
+	// Verify port_forward doesn't expose host_key
+	pf, _ := resp["port_forward"].(map[string]any)
+	assert.NotContains(t, pf, "host_key")
 
 	// Verify Push doesn't expose master_secret
 	push, _ := resp["push"].(map[string]any)

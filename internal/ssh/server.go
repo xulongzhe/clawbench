@@ -129,7 +129,7 @@ type Server struct {
 	done           chan struct{}
 	fingerprint    string
 	addr           string
-	cfg            model.SSHConfig
+	cfg            model.PortForwardConfig
 	connCount      int
 	activeChannels int
 	lastConnected  time.Time
@@ -139,7 +139,7 @@ type Server struct {
 // NewServer creates a new SSH tunnel server.
 // When cfg.Port is 0 (unset), defaults to mainPort+1 so SSH runs on an
 // adjacent port without requiring explicit configuration.
-func NewServer(cfg model.SSHConfig, mainPort int, password string, portReg *service.ProxyRegistry) *Server {
+func NewServer(cfg model.PortForwardConfig, mainPort int, password string, portReg *service.ProxyRegistry) *Server {
 	sshPort := cfg.Port
 	if sshPort == 0 {
 		sshPort = mainPort + 1

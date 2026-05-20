@@ -232,8 +232,8 @@ const categoryItems: Record<string, ItemSpec[]> = {
   network: [
     { labelKey: 'settings.items.proxyEnabled', key: 'proxy.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.proxyHeader' },
     { labelKey: 'settings.items.proxyAllowedPorts', key: 'proxy.allowed_ports', type: 'text', source: 'server' },
-    { labelKey: 'settings.items.sshEnabled', key: 'ssh.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.sshHeader' },
-    { labelKey: 'settings.items.sshPort', key: 'ssh.port', type: 'number', source: 'server', needsRestart: true },
+    { labelKey: 'settings.items.portForwardEnabled', key: 'port_forward.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.portForwardHeader' },
+    { labelKey: 'settings.items.portForwardPort', key: 'port_forward.port', type: 'number', source: 'server', needsRestart: true },
     { labelKey: 'settings.items.pushEnabled', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.pushHeader' },
     { labelKey: 'settings.items.pushAppKey', key: 'push.jpush.app_key', type: 'text', source: 'server' },
   ],

@@ -110,7 +110,7 @@ const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-deta
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()
 const { openFilePath } = useFilePathAnnotation()
-const { ensurePortRegistered, openPort, isAppMode } = usePortForward()
+const { ensurePortRegistered, openPort, isAppMode, sshInfo } = usePortForward()
 const toast = useToast()
 
 // Track whether a localhost URL open is in progress (prevent double-click)
@@ -251,6 +251,7 @@ function handleChatClick(event) {
  */
 async function openLocalhostUrl(element, port, protocol) {
   if (urlOpening.value) return
+  if (sshInfo.value?.enabled === false) return
   urlOpening.value = true
   element.classList.add('loading')
 

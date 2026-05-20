@@ -46,8 +46,8 @@ type Config struct {
 		MossNano          MossNanoConfig `yaml:"moss_nano"`          // MOSS-TTS-Nano-specific configuration (only used when engine: "moss-nano")
 		API               APIConfig      `yaml:"api"`               // API-based summarization (only used when summarize_backend: "api")
 	} `yaml:"tts"`
-	Proxy    ProxyConfig    `yaml:"proxy"`     // Port forwarding configuration
-	SSH      SSHConfig      `yaml:"ssh"`       // SSH tunnel server configuration
+	Proxy       ProxyConfig       `yaml:"proxy"`          // Port forwarding configuration
+	PortForward PortForwardConfig `yaml:"port_forward"`   // Port forward (SSH tunnel) server configuration
 	RAG      RAGConfig      `yaml:"rag"`       // RAG history memory configuration
 	Terminal TerminalConfig `yaml:"terminal"`  // Interactive web terminal configuration
 	Tasks    TasksConfig    `yaml:"tasks"`     // Scheduled task configuration

@@ -1,5 +1,6 @@
 import { escapeHtml } from '@/utils/html.ts'
 import { useAppMode } from '@/composables/useAppMode.ts'
+import { usePortForward } from '@/composables/usePortForward.ts'
 
 /**
  * Localhost URL annotation composable.
@@ -70,6 +71,10 @@ export function annotateLocalhostUrls(html: string): string {
     // no port forwarding or built-in WebView needed
     const { isAppMode } = useAppMode()
     if (!isAppMode.value) return html
+
+    // Skip annotation when SSH is disabled (no port forwarding available)
+    const { sshInfo } = usePortForward()
+    if (sshInfo.value?.enabled === false) return html
 
     // Protect <pre> blocks from annotation (code blocks should not get buttons)
     const preBlocks: string[] = []

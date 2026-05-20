@@ -230,13 +230,13 @@ proxy:
   allowed_ports: "1024-65535"  # Allowed port range (supports ranges and discrete ports, e.g. "3000,5173,8080")
                                 # 允许转发的端口范围（支持范围和离散端口，如 "3000,5173,8080"）
 
-# SSH tunnel configuration (remote development port forwarding)
-# SSH 隧道配置（远程开发端口转发）
+# Port forward configuration (SSH tunnel for remote development)
+# 端口转发配置（远程开发的 SSH 隧道）
 # Default: enabled / 默认：启用
 # Android app connects via SSH tunnel to access server local ports transparently
 # Android App 通过 SSH 隧道访问服务器本地端口，对应用完全透明
-ssh:
-  enabled: true             # Enable SSH tunnel server (default: true) / 启用 SSH 隧道服务（默认: true）
+port_forward:
+  enabled: true             # Enable port forward / SSH tunnel server (default: true) / 启用端口转发服务（默认: true）
   port: 0                   # SSH port (0 = auto = main_port + 1, e.g. production 20001; or specify like 20020)
                             # SSH 端口（0 = 自动 = 主端口+1，如生产环境 20001；也可指定如 20020）
   host_key: ""              # Host key file path (empty = auto-generate ephemeral key; set a path for persistence across restarts)

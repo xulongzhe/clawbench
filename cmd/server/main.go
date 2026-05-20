@@ -585,9 +585,9 @@ func main() {
 	service.ProxyService = proxyService
 	defer proxyService.Stop()
 
-	// Initialize SSH tunnel server
-	if cfg.SSH.Enabled {
-		sshServer := ssh.NewServer(cfg.SSH, port, cfg.Password, proxyService)
+	// Initialize SSH tunnel server (port forward)
+	if cfg.PortForward.Enabled {
+		sshServer := ssh.NewServer(cfg.PortForward, port, cfg.Password, proxyService)
 		handler.SetSSHServer(sshServer)
 		go func() {
 			if err := sshServer.ListenAndServe(); err != nil {

@@ -18,7 +18,7 @@ import (
 // testServerHelper creates and starts an SSH server on a random port for testing.
 func testServerHelper(t *testing.T, password string, portReg *service.ProxyRegistry) *Server {
 	t.Helper()
-	srv := NewServer(model.SSHConfig{Enabled: true, Port: 0}, 0, password, portReg)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, password, portReg)
 
 	// Find an available port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -358,7 +358,7 @@ func TestSSHServer_HostKeyPersistence(t *testing.T) {
 	portReg := newTestRegistry(t)
 
 	// First server: generates and saves host key
-	srv1 := NewServer(model.SSHConfig{Enabled: true, Port: 0, HostKey: keyPath}, 0, "test", portReg)
+	srv1 := NewServer(model.PortForwardConfig{Enabled: true, Port: 0, HostKey: keyPath}, 0, "test", portReg)
 
 	// Find port
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
@@ -381,7 +381,7 @@ func TestSSHServer_HostKeyPersistence(t *testing.T) {
 	}
 
 	// Second server: loads existing host key
-	srv2 := NewServer(model.SSHConfig{Enabled: true, Port: 0, HostKey: keyPath}, 0, "test", portReg)
+	srv2 := NewServer(model.PortForwardConfig{Enabled: true, Port: 0, HostKey: keyPath}, 0, "test", portReg)
 	listener2, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr2 := listener2.Addr().String()
 	listener2.Close()
@@ -405,7 +405,7 @@ func TestSSHServer_EphemeralKeyChangesOnRestart(t *testing.T) {
 	portReg := newTestRegistry(t)
 
 	// First server with ephemeral key
-	srv1 := NewServer(model.SSHConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+	srv1 := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr := listener.Addr().String()
 	listener.Close()
@@ -421,7 +421,7 @@ func TestSSHServer_EphemeralKeyChangesOnRestart(t *testing.T) {
 	srv1.Close()
 
 	// Second server with ephemeral key (should be different)
-	srv2 := NewServer(model.SSHConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+	srv2 := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
 	listener2, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr2 := listener2.Addr().String()
 	listener2.Close()
@@ -447,13 +447,13 @@ func TestSSHServer_AutoPortAssignment(t *testing.T) {
 	portReg := newTestRegistry(t)
 
 	// Port 0 should auto-assign to mainPort+1
-	srv := NewServer(model.SSHConfig{Enabled: true, Port: 0}, 20000, "test", portReg)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 20000, "test", portReg)
 	if srv.Port() != 20001 {
 		t.Errorf("expected auto-assigned port 20001, got %d", srv.Port())
 	}
 
 	// Explicit port should be used as-is
-	srv2 := NewServer(model.SSHConfig{Enabled: true, Port: 22222}, 20000, "test", portReg)
+	srv2 := NewServer(model.PortForwardConfig{Enabled: true, Port: 22222}, 20000, "test", portReg)
 	if srv2.Port() != 22222 {
 		t.Errorf("expected explicit port 22222, got %d", srv2.Port())
 	}
