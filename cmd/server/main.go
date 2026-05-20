@@ -354,10 +354,10 @@ func main() {
 
 	fileHandler, err := service.NewFileHandler(cfg.LogDir, "clawbench", cfg.LogMaxDays)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize file logger: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Warning: failed to initialize file logger, logging to stderr only: %v\n", err)
+	} else {
+		defer fileHandler.Close()
 	}
-	defer fileHandler.Close()
 
 	// Log level from config (default: "info")
 	logLevel := slog.LevelInfo
@@ -372,8 +372,12 @@ func main() {
 
 	// Create a multi-writer for both stderr and file
 	textHandler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: logLevel})
+	var logHandlers []slog.Handler = []slog.Handler{textHandler}
+	if fileHandler != nil {
+		logHandlers = append(logHandlers, fileHandler)
+	}
 	multiHandler := &multiHandler{
-		handlers: []slog.Handler{textHandler, fileHandler},
+		handlers: logHandlers,
 	}
 	slog.SetDefault(slog.New(multiHandler))
 	slog.Info("server starting")
@@ -415,16 +419,14 @@ func main() {
 	if cfg.Password != "" {
 		bcryptHash, err := bcrypt.GenerateFromPassword([]byte(cfg.Password), bcrypt.DefaultCost)
 		if err != nil {
-			slog.Error("failed to generate bcrypt hash", slog.String("err", err.Error()))
-			os.Exit(1)
+			slog.Warn("failed to generate bcrypt hash, password verification will use SHA256 fallback", slog.String("err", err.Error()))
 		}
 		model.PasswordHash = bcryptHash
 	}
 
 	// Ensure the watch directory exists
 	if err := os.MkdirAll(model.WatchDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create watch directory: %v\n", err)
-		os.Exit(1)
+		slog.Warn("failed to create watch directory", slog.String("dir", model.WatchDir), slog.String("err", err.Error()))
 	}
 
 	// Initialize SQLite database (runFromServer=true: clean up orphaned streaming messages)
@@ -436,8 +438,9 @@ func main() {
 	// Initialize RAG history memory system (if enabled)
 	if cfg.RAG.Enabled {
 		if err := rag.Init(cfg.RAG); err != nil {
-			slog.Error("failed to initialize RAG system", slog.String("err", err.Error()))
-			os.Exit(1)
+			slog.Warn("failed to initialize RAG system, RAG will be disabled", slog.String("err", err.Error()))
+			cfg.RAG.Enabled = false
+			model.ConfigInstance.RAG.Enabled = false
 		}
 	}
 	// Always defer shutdown — cleanup worker may be running even without RAG
@@ -672,6 +675,7 @@ func main() {
 		}
 	}()
 
+httpServer:
 	if !cfg.TLS.Enabled {
 		// TLS disabled: plain HTTP
 		slog.Info("starting with HTTP")
@@ -690,8 +694,8 @@ func main() {
 			keyFile = os.Getenv("KEY_FILE")
 		}
 		if certFile == "" || keyFile == "" {
-			slog.Error("TLS enabled but cert_file and key_file are not configured")
-			os.Exit(1)
+			slog.Warn("TLS enabled but cert_file and key_file are not configured, falling back to HTTP")
+			goto httpServer
 		}
 		slog.Info("starting with TLS", slog.String("cert", certFile))
 

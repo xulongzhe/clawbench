@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"clawbench/internal/model"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestServeConfig_Get(t *testing.T) {
@@ -352,6 +355,7 @@ func TestServeConfig_Patch_PiperSubConfig(t *testing.T) {
 
 	cfg := model.Config{}
 	cfg.TTS.Engine = "piper"
+	cfg.TTS.Piper.ModelPath = "/path/to/model.onnx" // required when engine=piper
 	model.ConfigInstance = cfg
 
 	body := `{"tts":{"piper":{"noise_scale":0.5,"length_scale":1.2,"sentence_silence":0.3}}}`
@@ -651,4 +655,143 @@ func TestServeConfig_Patch_DefaultAgent(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "claude", model.ConfigInstance.DefaultAgent)
 	assert.Equal(t, "claude", model.DefaultAgentID)
+}
+
+func TestServeConfig_Patch_SummarizeAPIWithoutBaseURL(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Set up config with empty api.base_url
+	cfg := model.Config{}
+	cfg.TTS.SummarizeBackend = "simple" // current value is not "api"
+	cfg.TTS.API.BaseURL = ""           // no base URL configured
+	model.ConfigInstance = cfg
+
+	// Try to patch summarize_backend to "api" without providing base_url
+	body := `{"tts":{"summarize_backend":"api"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "base_url is required")
+}
+
+func TestServeConfig_Patch_SummarizeAPIWithBaseURL(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Set up config with base_url already configured
+	cfg := model.Config{}
+	cfg.TTS.SummarizeBackend = "simple"
+	cfg.TTS.API.BaseURL = "https://api.openai.com/v1"
+	model.ConfigInstance = cfg
+
+	// Patch summarize_backend to "api" — should succeed because base_url exists
+	body := `{"tts":{"summarize_backend":"api"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestServeConfig_Patch_TasksAPIWithoutBaseURL(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Tasks.SummarizeBackend = "simple"
+	cfg.TTS.API.BaseURL = ""
+	model.ConfigInstance = cfg
+
+	body := `{"tasks":{"summarize_backend":"api"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "base_url is required")
+}
+
+func TestServeConfig_Patch_PiperEngineWithoutModelPath(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	cfg.TTS.Piper.ModelPath = ""
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"engine":"piper"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "piper.model_path is required")
+}
+
+func TestServeConfig_Patch_KokoroEngineWithoutPaths(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"engine":"kokoro"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "kokoro.model_path is required")
+}
+
+func TestServeConfig_Patch_MossNanoEngineWithoutModelDir(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"engine":"moss-nano"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "moss_nano.model_dir is required")
+}
+
+func TestServeConfig_Patch_InvalidDefaultAgent(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Set up agents so we can validate
+	agentsDir := filepath.Join(t.TempDir(), "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test.yaml"), []byte("id: test\nname: Test\nbackend: test\n"), 0644))
+	require.NoError(t, model.LoadAgents(agentsDir))
+	defer func() { model.Agents = nil; model.AgentList = nil }()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"default_agent":"nonexistent"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "not found")
 }

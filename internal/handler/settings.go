@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -21,8 +22,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// configMutex protects ConfigInstance from concurrent PATCH writes.
-var configMutex sync.Mutex
+// configMutex protects ConfigInstance from concurrent access.
+// PATCH acquires a full lock; GET acquires a read lock to allow concurrent reads.
+var configMutex sync.RWMutex
+
+// restartGracePeriod is the delay before shutting down the server after a restart
+// request, giving the HTTP response time to reach the client.
+const restartGracePeriod = 200 * time.Millisecond
 
 // restartFunc is the function called to trigger a server restart.
 // Set by main.go via SetRestartFunc(). Defaults to a no-op for tests.
@@ -219,8 +225,9 @@ var validSummarizeBackends = map[string]bool{
 }
 
 // validTTSFormats is the set of valid TTS output format values.
+// Empty string is accepted separately (means "use default"), not as a format value.
 var validTTSFormats = map[string]bool{
-	"": true, "mp3": true, "wav": true, "pcm": true,
+	"mp3": true, "wav": true, "pcm": true,
 }
 
 // validAPIFormats is the set of valid API format values.
@@ -285,7 +292,9 @@ func ServeConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveConfigGet(w http.ResponseWriter, r *http.Request) {
+	configMutex.RLock()
 	cfg := model.ConfigInstance
+	configMutex.RUnlock()
 
 	resp := configResponse{
 		Version:      getBuildVersion(),
@@ -385,7 +394,7 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func serveConfigPatch(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1MB max
 	if err != nil {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequest")
 		return
@@ -420,7 +429,11 @@ func serveConfigPatch(w http.ResponseWriter, r *http.Request) {
 	configMutex.Lock()
 	defer configMutex.Unlock()
 
+	// Snapshot current config for rollback on write failure
+	snapshot := model.ConfigInstance
+
 	if err := applyConfigPatch(patch); err != nil {
+		model.ConfigInstance = snapshot
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
 			"error":   "apply_failed",
 			"message": err.Error(),
@@ -428,7 +441,11 @@ func serveConfigPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := writeConfigYAML(); err != nil {
+	if err := writeConfigYAML(patch); err != nil {
+		// Rollback memory state — disk write failed
+		model.ConfigInstance = snapshot
+		// Re-apply hot-reload globals from snapshot
+		applyHotReloadGlobals()
 		slog.Error("failed to write config.yaml after patch", "err", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]any{
 			"error":   "write_failed",
@@ -436,6 +453,9 @@ func serveConfigPatch(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Sort changed fields for deterministic response
+	sort.Strings(changedFields)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"needs_restart":       true,
@@ -481,7 +501,7 @@ func validatePatchValues(patch map[string]any) error {
 			}
 		}
 		if format, ok := tts["format"].(string); ok {
-			if !validTTSFormats[format] {
+			if format != "" && !validTTSFormats[format] {
 				return fmt.Errorf("tts.format must be one of: mp3,wav,pcm")
 			}
 		}
@@ -523,6 +543,103 @@ func validatePatchValues(patch map[string]any) error {
 			}
 			if v, ok := api["key"].(string); ok && strings.Contains(v, "***") {
 				return fmt.Errorf("tts.api.key must not contain '***' — please provide the full key value")
+			}
+		}
+	}
+
+	// ── Cross-field consistency checks ──────────────────────────
+	cfg := model.ConfigInstance
+
+	// 1. When tts.summarize_backend or tasks.summarize_backend is "api",
+	//    tts.api.base_url must not be empty.
+	effectiveSummarizeBackend := cfg.TTS.SummarizeBackend
+	if tts, ok := patch["tts"].(map[string]any); ok {
+		if v, ok := tts["summarize_backend"].(string); ok {
+			effectiveSummarizeBackend = v
+		}
+	}
+	effectiveTasksBackend := cfg.Tasks.SummarizeBackend
+	if tasks, ok := patch["tasks"].(map[string]any); ok {
+		if v, ok := tasks["summarize_backend"].(string); ok {
+			effectiveTasksBackend = v
+		}
+	}
+	if effectiveSummarizeBackend == "api" || effectiveTasksBackend == "api" {
+		effectiveBaseURL := cfg.TTS.API.BaseURL
+		if tts, ok := patch["tts"].(map[string]any); ok {
+			if api, ok := tts["api"].(map[string]any); ok {
+				if v, ok := api["base_url"].(string); ok {
+					effectiveBaseURL = v
+				}
+			}
+		}
+		if effectiveBaseURL == "" {
+			return fmt.Errorf("tts.api.base_url is required when summarize_backend is \"api\"")
+		}
+	}
+
+	// 2. Engine-specific model path requirements.
+	effectiveEngine := cfg.TTS.Engine
+	if tts, ok := patch["tts"].(map[string]any); ok {
+		if v, ok := tts["engine"].(string); ok {
+			effectiveEngine = v
+		}
+	}
+	switch effectiveEngine {
+	case "piper":
+		effectiveModelPath := cfg.TTS.Piper.ModelPath
+		if tts, ok := patch["tts"].(map[string]any); ok {
+			if piper, ok := tts["piper"].(map[string]any); ok {
+				if v, ok := piper["model_path"].(string); ok {
+					effectiveModelPath = v
+				}
+			}
+		}
+		if effectiveModelPath == "" {
+			return fmt.Errorf("tts.piper.model_path is required when tts.engine is \"piper\"")
+		}
+	case "kokoro":
+		effectiveKokoroModel := cfg.TTS.Kokoro.ModelPath
+		effectiveVoicesPath := cfg.TTS.Kokoro.VoicesPath
+		if tts, ok := patch["tts"].(map[string]any); ok {
+			if kokoro, ok := tts["kokoro"].(map[string]any); ok {
+				if v, ok := kokoro["model_path"].(string); ok {
+					effectiveKokoroModel = v
+				}
+				if v, ok := kokoro["voices_path"].(string); ok {
+					effectiveVoicesPath = v
+				}
+			}
+		}
+		if effectiveKokoroModel == "" {
+			return fmt.Errorf("tts.kokoro.model_path is required when tts.engine is \"kokoro\"")
+		}
+		if effectiveVoicesPath == "" {
+			return fmt.Errorf("tts.kokoro.voices_path is required when tts.engine is \"kokoro\"")
+		}
+	case "moss-nano":
+		effectiveModelDir := cfg.TTS.MossNano.ModelDir
+		if tts, ok := patch["tts"].(map[string]any); ok {
+			if mossNano, ok := tts["moss_nano"].(map[string]any); ok {
+				if v, ok := mossNano["model_dir"].(string); ok {
+					effectiveModelDir = v
+				}
+			}
+		}
+		if effectiveModelDir == "" {
+			return fmt.Errorf("tts.moss_nano.model_dir is required when tts.engine is \"moss-nano\"")
+		}
+	}
+
+	// 3. default_agent must be an existing agent ID.
+	if v, ok := patch["default_agent"].(string); ok && v != "" {
+		if model.Agents != nil {
+			if _, exists := model.Agents[v]; !exists {
+				available := make([]string, 0, len(model.AgentList))
+				for _, a := range model.AgentList {
+					available = append(available, a.ID)
+				}
+				return fmt.Errorf("default_agent \"%s\" not found (available: %s)", v, strings.Join(available, ", "))
 			}
 		}
 	}
@@ -761,6 +878,15 @@ func applyConfigPatch(patch map[string]any) error {
 	}
 
 	// Also update global variables for hot-reloadable fields
+	applyHotReloadGlobals()
+
+	return nil
+}
+
+// applyHotReloadGlobals syncs the package-level "hot-reload" variables from
+// ConfigInstance. Called after a successful patch (and on rollback).
+func applyHotReloadGlobals() {
+	cfg := model.ConfigInstance
 	model.ChatCollapsedHeight = cfg.Chat.CollapsedHeight
 	model.ChatInitialMessages = cfg.Chat.InitialMessages
 	model.ChatPageSize = cfg.Chat.PageSize
@@ -769,12 +895,14 @@ func applyConfigPatch(patch map[string]any) error {
 	model.UploadMaxSizeMB = cfg.Upload.MaxSizeMB
 	model.UploadMaxFiles = cfg.Upload.MaxFiles
 	model.TTSMaxCacheFiles = cfg.TTS.MaxCacheFiles
-
-	return nil
 }
 
-// writeConfigYAML writes the current ConfigInstance to config/config.yaml atomically.
-func writeConfigYAML() error {
+// writeConfigYAML writes the patched fields back to config/config.yaml atomically.
+// Instead of rewriting the entire ConfigInstance (which would expand zero values
+// and break ApplyDefaults presence semantics), it reads the existing YAML into a
+// generic map, patches only the changed fields, and writes back. This preserves
+// user comments, field ordering, and absent-as-default semantics for untouched fields.
+func writeConfigYAML(patch map[string]any) error {
 	configDir := filepath.Join(model.BinDir, "config")
 	configPath := filepath.Join(configDir, "config.yaml")
 	tmpPath := configPath + ".tmp"
@@ -784,13 +912,35 @@ func writeConfigYAML() error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
+	// Read existing YAML content into a generic map
+	var raw map[string]any
+	if data, err := os.ReadFile(configPath); err == nil && len(data) > 0 {
+		if err := yaml.Unmarshal(data, &raw); err != nil {
+			slog.Warn("failed to parse existing config.yaml, starting fresh", "err", err)
+			raw = make(map[string]any)
+		}
+	} else {
+		// No existing file — marshal the full ConfigInstance as base
+		data, err := yaml.Marshal(&model.ConfigInstance)
+		if err != nil {
+			return fmt.Errorf("failed to marshal initial config: %w", err)
+		}
+		if err := yaml.Unmarshal(data, &raw); err != nil {
+			return fmt.Errorf("failed to unmarshal initial config: %w", err)
+		}
+	}
+
+	// Backup existing file before overwriting
 	if _, err := os.Stat(configPath); err == nil {
 		if err := copyFile(configPath, bakPath); err != nil {
 			slog.Warn("failed to backup config.yaml", "err", err)
 		}
 	}
 
-	data, err := yaml.Marshal(&model.ConfigInstance)
+	// Merge patch into raw map (only touched fields are modified)
+	mergePatchIntoRaw(raw, patch)
+
+	data, err := yaml.Marshal(raw)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
@@ -807,6 +957,25 @@ func writeConfigYAML() error {
 	return nil
 }
 
+// mergePatchIntoRaw merges the PATCH payload into the raw YAML map.
+// Only the leaf values present in the patch are updated; all other fields
+// in the raw map are preserved untouched.
+func mergePatchIntoRaw(raw map[string]any, patch map[string]any) {
+	for key, value := range patch {
+		if nested, ok := value.(map[string]any); ok {
+			// Recursively merge nested maps
+			existing, ok := raw[key].(map[string]any)
+			if !ok {
+				existing = make(map[string]any)
+			}
+			mergePatchIntoRaw(existing, nested)
+			raw[key] = existing
+		} else {
+			raw[key] = value
+		}
+	}
+}
+
 // ServeConfigRestart handles POST /api/config/restart — triggers server restart.
 func ServeConfigRestart(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
@@ -814,7 +983,7 @@ func ServeConfigRestart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(restartGracePeriod)
 
 		if restartFunc != nil {
 			restartFunc()
@@ -842,16 +1011,16 @@ func LaunchSentinelProcess() (*exec.Cmd, error) {
 	if runtime.GOOS == "windows" {
 		sentinelScript := fmt.Sprintf(
 			"timeout /t 2 /nobreak >nul & %s %s",
-			exe, joinArgs(args),
+			shellQuote(exe), joinArgs(args),
 		)
 		cmd = exec.Command("cmd", "/c", sentinelScript)
 	} else {
 		sentinelScript := fmt.Sprintf(
-			"PID=%d; EXE='%s'; "+
+			"PID=%d; EXE=%s; "+
 				"while kill -0 $PID 2>/dev/null; do sleep 0.1; done; "+
 				"for i in 1 2 3 4 5; do sleep 0.2; exec \"$EXE\" %s && exit 0; done; "+
-				"echo 'restart-failed' > '%s/.clawbench/restart-status'",
-			pid, exe, joinArgs(args), model.BinDir,
+				"echo 'restart-failed' > %s/.clawbench/restart-status",
+			pid, shellQuote(exe), joinArgs(args), shellQuote(model.BinDir),
 		)
 		cmd = exec.Command("/bin/sh", "-c", sentinelScript)
 		cmd.SysProcAttr = &syscall.SysProcAttr{
@@ -891,11 +1060,21 @@ func IsRunningUnderSupervisor() bool {
 	return false
 }
 
-// joinArgs joins command-line args into a space-separated string with proper quoting.
+// joinArgs joins command-line args into a space-separated string with proper
+// shell quoting. Single quotes within args are escaped using the '\'' idiom.
 func joinArgs(args []string) string {
-	parts := make([]string, len(args))
+	var buf strings.Builder
 	for i, arg := range args {
-		parts[i] = fmt.Sprintf("'%s'", arg)
+		if i > 0 {
+			buf.WriteByte(' ')
+		}
+		buf.WriteString(shellQuote(arg))
 	}
-	return fmt.Sprintf("%s", parts)
+	return buf.String()
+}
+
+// shellQuote wraps a string in single quotes, escaping any embedded single
+// quotes using the '\'' idiom safe for POSIX shells.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

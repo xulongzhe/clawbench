@@ -267,7 +267,9 @@ func TestPersist_TTSSummarizeBackend(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
+	// Set up initial config with base_url so the cross-field check passes
 	model.ConfigInstance = model.Config{}
+	model.ConfigInstance.TTS.API.BaseURL = "https://api.openai.com/v1"
 
 	cfg := patchAndReadConfig(t, `{"tts":{"summarize_backend":"api"}}`)
 	assert.Equal(t, "api", getNestedValue(cfg, "tts.summarize_backend"))
