@@ -18,7 +18,6 @@ func TestServeConfig_Get(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	// Set known config values using named types
 	cfg := model.Config{}
 	cfg.Upload.MaxSizeMB = 50
 	cfg.Upload.MaxFiles = 10
@@ -47,6 +46,8 @@ func TestServeConfig_Get(t *testing.T) {
 	cfg.SSH.Port = 20001
 	cfg.Push.JPush.Enabled = true
 	cfg.Push.JPush.AppKey = "test-app-key"
+	cfg.Tasks.SummarizeBackend = "simple"
+	cfg.Tasks.SummarizeModel = ""
 	model.ConfigInstance = cfg
 
 	req := newRequest(t, http.MethodGet, "/api/config", nil)
@@ -59,6 +60,10 @@ func TestServeConfig_Get(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NoError(t, err)
 
+	// Verify version is present
+	assert.Contains(t, resp, "version")
+	assert.NotEmpty(t, resp["version"])
+
 	// Verify allowed sections ARE present
 	assert.Contains(t, resp, "chat")
 	assert.Contains(t, resp, "session")
@@ -69,6 +74,7 @@ func TestServeConfig_Get(t *testing.T) {
 	assert.Contains(t, resp, "proxy")
 	assert.Contains(t, resp, "ssh")
 	assert.Contains(t, resp, "push")
+	assert.Contains(t, resp, "tasks")
 
 	// Verify specific values
 	chat, _ := resp["chat"].(map[string]any)
@@ -82,6 +88,21 @@ func TestServeConfig_Get(t *testing.T) {
 	assert.Equal(t, true, terminal["enabled"])
 	assert.Equal(t, "10m", terminal["idle_timeout"])
 
+	// Verify tasks section
+	tasks, _ := resp["tasks"].(map[string]any)
+	assert.Equal(t, "simple", tasks["summarize_backend"])
+
+	// When engine=edge, engine-specific sub-configs should NOT be present
+	tts, _ := resp["tts"].(map[string]any)
+	assert.NotContains(t, tts, "piper")
+	assert.NotContains(t, tts, "kokoro")
+	assert.NotContains(t, tts, "moss_nano")
+	// When summarize_backend != "api", api sub-config should NOT be present
+	assert.NotContains(t, tts, "api")
+	// Internal fields should never be present
+	assert.NotContains(t, tts, "inline_code_max_len")
+	assert.NotContains(t, tts, "max_summarize_runes")
+
 	// Verify sensitive fields are NOT present
 	assert.NotContains(t, resp, "password")
 	assert.NotContains(t, resp, "tls")
@@ -91,16 +112,6 @@ func TestServeConfig_Get(t *testing.T) {
 	assert.NotContains(t, resp, "log_dir")
 	assert.NotContains(t, resp, "watch_dir")
 	assert.NotContains(t, resp, "dev_port")
-	assert.NotContains(t, resp, "default_agent")
-
-	// Verify TTS doesn't expose API keys or engine-specific advanced configs
-	tts, _ := resp["tts"].(map[string]any)
-	assert.NotContains(t, tts, "piper")
-	assert.NotContains(t, tts, "kokoro")
-	assert.NotContains(t, tts, "moss_nano")
-	assert.NotContains(t, tts, "api")
-	assert.NotContains(t, tts, "inline_code_max_len")
-	assert.NotContains(t, tts, "max_summarize_runes")
 
 	// Verify SSH doesn't expose host_key
 	ssh, _ := resp["ssh"].(map[string]any)
@@ -110,6 +121,175 @@ func TestServeConfig_Get(t *testing.T) {
 	push, _ := resp["push"].(map[string]any)
 	jpush, _ := push["jpush"].(map[string]any)
 	assert.NotContains(t, jpush, "master_secret")
+}
+
+func TestServeConfig_Get_ConditionalPiperSubConfig(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "piper"
+	cfg.TTS.Piper.ModelPath = "/path/to/model.onnx"
+	cfg.TTS.Piper.NoiseScale = 0.667
+	cfg.TTS.Piper.LengthScale = 1.0
+	cfg.TTS.Piper.SentenceSilence = 0.2
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	tts, _ := resp["tts"].(map[string]any)
+	assert.Contains(t, tts, "piper")
+	// Kokoro/MossNano should not be present
+	assert.NotContains(t, tts, "kokoro")
+	assert.NotContains(t, tts, "moss_nano")
+
+	piper, _ := tts["piper"].(map[string]any)
+	assert.Equal(t, "/path/to/model.onnx", piper["model_path"])
+	assert.Equal(t, 0.667, piper["noise_scale"])
+}
+
+func TestServeConfig_Get_ConditionalKokoroSubConfig(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "kokoro"
+	cfg.TTS.Kokoro.ModelPath = "/path/to/kokoro.onnx"
+	cfg.TTS.Kokoro.VoicesPath = "/path/to/voices.bin"
+	cfg.TTS.Kokoro.Lang = "cmn"
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	tts, _ := resp["tts"].(map[string]any)
+	assert.Contains(t, tts, "kokoro")
+	assert.NotContains(t, tts, "piper")
+	assert.NotContains(t, tts, "moss_nano")
+
+	kokoro, _ := tts["kokoro"].(map[string]any)
+	assert.Equal(t, "cmn", kokoro["lang"])
+}
+
+func TestServeConfig_Get_ConditionalMossNanoSubConfig(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "moss-nano"
+	cfg.TTS.MossNano.ModelDir = "/path/to/models"
+	cfg.TTS.MossNano.Voice = "Junhao"
+	cfg.TTS.MossNano.Backend = "onnx"
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	tts, _ := resp["tts"].(map[string]any)
+	assert.Contains(t, tts, "moss_nano")
+	assert.NotContains(t, tts, "piper")
+	assert.NotContains(t, tts, "kokoro")
+
+	mossNano, _ := tts["moss_nano"].(map[string]any)
+	assert.Equal(t, "onnx", mossNano["backend"])
+	assert.Equal(t, "Junhao", mossNano["voice"])
+}
+
+func TestServeConfig_Get_ConditionalAPISubConfig(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	cfg.TTS.SummarizeBackend = "api"
+	cfg.TTS.API.BaseURL = "https://api.openai.com/v1/chat/completions"
+	cfg.TTS.API.Key = "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+	cfg.TTS.API.Format = "openai"
+	cfg.TTS.API.Model = "gpt-4o-mini"
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	tts, _ := resp["tts"].(map[string]any)
+	assert.Contains(t, tts, "api")
+
+	api, _ := tts["api"].(map[string]any)
+	assert.Equal(t, "https://api.openai.com/v1/chat/completions", api["base_url"])
+	// API key must be masked
+	assert.Contains(t, api["key"], "***")
+	assert.NotEqual(t, "sk-1234567890abcdefghijklmnopqrstuvwxyz", api["key"])
+	// Verify mask format: first 4 + *** + last 3
+	assert.Equal(t, "sk-1***xyz", api["key"])
+	assert.Equal(t, "openai", api["format"])
+	assert.Equal(t, "gpt-4o-mini", api["model"])
+}
+
+func TestServeConfig_Get_APIMaskShortKey(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.SummarizeBackend = "api"
+	cfg.TTS.API.Key = "short"
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	tts, _ := resp["tts"].(map[string]any)
+	api, _ := tts["api"].(map[string]any)
+	assert.Equal(t, "****", api["key"])
+}
+
+func TestServeConfig_Get_APIMaskEmptyKey(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.SummarizeBackend = "api"
+	cfg.TTS.API.Key = ""
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	tts, _ := resp["tts"].(map[string]any)
+	api, _ := tts["api"].(map[string]any)
+	assert.Equal(t, "", api["key"])
 }
 
 func TestServeConfig_Get_MethodNotAllowed(t *testing.T) {
@@ -127,11 +307,9 @@ func TestServeConfig_Get_Unauthorized(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	// Set a password so auth is required
 	model.SessionToken = "test-token"
 
 	req := newRequest(t, http.MethodGet, "/api/config", nil)
-	// No auth cookie
 	w := callHandler(middleware.Auth(ServeConfig), req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -143,7 +321,6 @@ func TestServeConfig_Patch_Success(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	// Set initial config
 	cfg := model.Config{}
 	cfg.Chat.CollapsedHeight = 150
 	cfg.Upload.MaxSizeMB = 100
@@ -165,9 +342,131 @@ func TestServeConfig_Patch_Success(t *testing.T) {
 	assert.True(t, ok)
 	assert.True(t, len(changed) >= 2)
 
-	// Verify in-memory config was updated
 	assert.Equal(t, 200, model.ConfigInstance.Chat.CollapsedHeight)
 	assert.Equal(t, 50, model.ConfigInstance.Upload.MaxSizeMB)
+}
+
+func TestServeConfig_Patch_PiperSubConfig(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "piper"
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"piper":{"noise_scale":0.5,"length_scale":1.2,"sentence_silence":0.3}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 0.5, model.ConfigInstance.TTS.Piper.NoiseScale)
+	assert.Equal(t, 1.2, model.ConfigInstance.TTS.Piper.LengthScale)
+	assert.Equal(t, 0.3, model.ConfigInstance.TTS.Piper.SentenceSilence)
+}
+
+func TestServeConfig_Patch_APISubConfig(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"api":{"base_url":"https://api.example.com/v1/chat","format":"openai","model":"gpt-4o-mini"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "https://api.example.com/v1/chat", model.ConfigInstance.TTS.API.BaseURL)
+	assert.Equal(t, "openai", model.ConfigInstance.TTS.API.Format)
+	assert.Equal(t, "gpt-4o-mini", model.ConfigInstance.TTS.API.Model)
+}
+
+func TestServeConfig_Patch_APIKeyMasked(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	// PATCH with masked key containing *** should be rejected
+	body := `{"tts":{"api":{"key":"sk-1***xyz"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_APIKeyFull(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"api":{"key":"sk-1234567890abcdef"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "sk-1234567890abcdef", model.ConfigInstance.TTS.API.Key)
+}
+
+func TestServeConfig_Patch_TasksSection(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tasks":{"summarize_backend":"codebuddy","summarize_model":"codebuddy-latest"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "codebuddy", model.ConfigInstance.Tasks.SummarizeBackend)
+	assert.Equal(t, "codebuddy-latest", model.ConfigInstance.Tasks.SummarizeModel)
+}
+
+func TestServeConfig_Patch_MossNanoInvalidBackend(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"moss_nano":{"backend":"invalid"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeConfig_Patch_APIInvalidFormat(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"api":{"format":"invalid"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestServeConfig_Patch_ForbiddenField_Password(t *testing.T) {
@@ -271,7 +570,6 @@ func TestServeConfig_Patch_EmptyBody(t *testing.T) {
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfig, req)
 
-	// Empty patch should succeed with no changes
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
@@ -281,7 +579,6 @@ func TestServeConfigRestart_Success(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	// Set up a channel to capture the restart trigger
 	restartCh := make(chan struct{}, 1)
 	SetRestartFunc(func() {
 		restartCh <- struct{}{}
@@ -298,10 +595,8 @@ func TestServeConfigRestart_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "restarting", resp["status"])
 
-	// Wait for the goroutine to trigger (with 5s timeout)
 	select {
 	case <-restartCh:
-		// Restart function was called — success
 	case <-time.After(5 * time.Second):
 		t.Fatal("restart function was not called within timeout")
 	}
@@ -316,4 +611,44 @@ func TestServeConfigRestart_MethodNotAllowed(t *testing.T) {
 	w := callHandler(ServeConfigRestart, req)
 
 	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+}
+
+func TestServeConfig_Get_DefaultAgent(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.DefaultAgent = "codebuddy"
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	assert.Contains(t, resp, "default_agent")
+	assert.Equal(t, "codebuddy", resp["default_agent"])
+}
+
+func TestServeConfig_Patch_DefaultAgent(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.DefaultAgent = "codebuddy"
+	model.ConfigInstance = cfg
+
+	body := `{"default_agent":"claude"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "claude", model.ConfigInstance.DefaultAgent)
+	assert.Equal(t, "claude", model.DefaultAgentID)
 }

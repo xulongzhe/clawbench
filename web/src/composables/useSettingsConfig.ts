@@ -1,9 +1,7 @@
 import { reactive, ref } from 'vue'
 import { apiGet, apiPatch, apiPost } from '@/utils/api'
 import i18n, { STORAGE_KEY as LOCALE_KEY, setLocaleCookie } from '@/i18n'
-
-const LS_MODEL_PREFIX = 'clawbench_model_'
-const LS_THINKING_PREFIX = 'clawbench_thinking_'
+import { useAgents } from '@/composables/useAgents'
 
 const LOCAL_PREFIX = 'clawbench-settings-'
 
@@ -143,6 +141,7 @@ const serverDefaults: Record<string, any> = {
   'terminal.idle_timeout': '10m',
   'terminal.max_sessions': 10,
   'terminal.buffer_lines': 2000,
+  'default_agent': '',
   'tts.engine': 'edge',
   'tts.format': '',
   'tts.summarize_backend': 'simple',
@@ -159,6 +158,41 @@ const serverDefaults: Record<string, any> = {
   'ssh.enabled': true,
   'ssh.port': 0,
   'push.jpush.enabled': false,
+  'tts.piper.noise_scale': 0.667,
+  'tts.piper.length_scale': 1.0,
+  'tts.piper.sentence_silence': 0.2,
+  'tts.kokoro.lang': 'cmn',
+  'tts.moss_nano.voice': 'Junhao',
+  'tts.moss_nano.backend': 'onnx',
+  'tts.api.format': 'openai',
+  'tasks.summarize_backend': '',
+  'tasks.summarize_model': '',
+}
+
+// ── Agent preference helpers ──────────────────────────────
+// Agent model and thinking effort preferences are stored server-side
+// in agent YAML files via PATCH /api/agents.
+
+/** Patch an agent's preferred_model or preferred_thinking_effort on the server. */
+async function patchAgentPref(agentId: string, field: 'preferred_model' | 'preferred_thinking_effort', value: string): Promise<void> {
+  await apiPatch('/api/agents', { id: agentId, [field]: value })
+  // Also update the agent object in useAgents so the UI reflects immediately
+  const { updateAgentField } = useAgents()
+  updateAgentField(agentId, field === 'preferred_model' ? 'preferredModel' : 'preferredThinkingEffort', value)
+}
+
+/** Read the preferred model ID for an agent from the server-side agent data. */
+function getAgentModelPref(agentId: string): string | null {
+  const { getAgent } = useAgents()
+  const agent = getAgent(agentId)
+  return agent?.preferredModel || null
+}
+
+/** Read the preferred thinking effort for an agent from the server-side agent data. */
+function getAgentThinkingPref(agentId: string): string | null {
+  const { getAgent } = useAgents()
+  const agent = getAgent(agentId)
+  return agent?.preferredThinkingEffort || null
 }
 
 export function useSettingsConfig() {
@@ -252,30 +286,6 @@ export function useSettingsConfig() {
     return patchConfig(changes)
   }
 
-  // ── Agent preference helpers ──────────────────────────────
-  // Agent model and thinking effort are stored per-agent in localStorage
-  // using keys like `clawbench_model_<agentId>` and `clawbench_thinking_<agentId>`.
-
-  /** Read the preferred model ID for an agent from localStorage. */
-  function getAgentModelPref(agentId: string): string | null {
-    try { return localStorage.getItem(LS_MODEL_PREFIX + agentId) } catch { return null }
-  }
-
-  /** Write the preferred model ID for an agent to localStorage. */
-  function setAgentModelPref(agentId: string, modelId: string) {
-    try { localStorage.setItem(LS_MODEL_PREFIX + agentId, modelId) } catch {}
-  }
-
-  /** Read the preferred thinking effort for an agent from localStorage. */
-  function getAgentThinkingPref(agentId: string): string | null {
-    try { return localStorage.getItem(LS_THINKING_PREFIX + agentId) } catch { return null }
-  }
-
-  /** Write the preferred thinking effort for an agent to localStorage. */
-  function setAgentThinkingPref(agentId: string, level: string) {
-    try { localStorage.setItem(LS_THINKING_PREFIX + agentId, level) } catch {}
-  }
-
   return {
     serverConfig,
     localConfig,
@@ -286,9 +296,8 @@ export function useSettingsConfig() {
     getServerValue,
     getServerValueWithDefault,
     setServerValue,
+    patchAgentPref,
     getAgentModelPref,
-    setAgentModelPref,
     getAgentThinkingPref,
-    setAgentThinkingPref,
   }
 }

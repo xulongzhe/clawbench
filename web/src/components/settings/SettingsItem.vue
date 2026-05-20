@@ -1,5 +1,6 @@
 <template>
-  <div class="settings-item" :class="{ 'settings-item--disabled': disabled }" @click="handleClick">
+  <div v-if="type === 'header'" class="settings-item__header">{{ label }}</div>
+  <div v-else class="settings-item" :class="{ 'settings-item--disabled': disabled }" @click="handleClick">
     <div class="settings-item__left">
       <span class="settings-item__label">{{ label }}</span>
       <span v-if="needsRestart" class="settings-item__badge">{{ t('settings.needsRestart') }}</span>
@@ -30,6 +31,10 @@
           @input="onSliderInput"
           @click.stop
         />
+      </template>
+      <template v-else-if="type === 'password'">
+        <span class="settings-item__value">{{ displayValue }}</span>
+        <span class="settings-item__arrow" :class="{ 'settings-item__arrow--open': editing }">›</span>
       </template>
       <template v-else-if="type === 'select' || type === 'number' || type === 'text'">
         <span class="settings-item__value">{{ displayValue }}</span>
@@ -88,6 +93,23 @@
         <button class="settings-item__editor-confirm" @click="confirmEdit">{{ t('common.ok') }}</button>
       </div>
     </template>
+    <!-- Password editor -->
+    <template v-else-if="type === 'password'">
+      <div class="settings-item__input-row">
+        <input
+          :type="showPassword ? 'text' : 'password'"
+          class="settings-item__text-input"
+          :value="editValue"
+          :placeholder="placeholder"
+          @input="editValue = ($event.target as HTMLInputElement).value"
+          @keydown.enter="confirmEdit"
+        />
+        <button class="settings-item__editor-toggle" @click="showPassword = !showPassword">
+          {{ showPassword ? '🙈' : '👁' }}
+        </button>
+        <button class="settings-item__editor-confirm" @click="confirmEdit">{{ t('common.ok') }}</button>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -99,7 +121,7 @@ const { t } = useI18n()
 
 interface Props {
   label: string
-  type: 'switch' | 'select' | 'number' | 'text' | 'slider' | 'action' | 'info'
+  type: 'switch' | 'select' | 'number' | 'text' | 'slider' | 'action' | 'info' | 'header' | 'password'
   modelValue?: any
   options?: { label: string; value: any }[]
   min?: number
@@ -131,6 +153,7 @@ const emit = defineEmits<{
 
 const editing = ref(false)
 const editValue = ref<any>(null)
+const showPassword = ref(false)
 
 // Close editor when parent forces close (another editor opened)
 watch(() => props.forceClose, (val) => {
@@ -141,6 +164,12 @@ watch(() => props.forceClose, (val) => {
 })
 
 const displayValue = computed(() => {
+  if (props.type === 'password') {
+    if (props.modelValue !== undefined && props.modelValue !== '') {
+      return '••••••'
+    }
+    return props.placeholder
+  }
   if (props.type === 'select' && props.options?.length) {
     const opt = props.options.find(o => o.value === props.modelValue)
     return opt?.label ?? props.modelValue ?? props.placeholder
@@ -162,15 +191,18 @@ function onSliderInput(e: Event) {
 }
 
 function handleClick() {
+  if (props.type === 'header') return
   if (props.type === 'switch' || props.type === 'slider' || props.type === 'info') return
   if (props.type === 'action') {
     emit('click')
     return
   }
-  // select / number / text: toggle inline editor
+  // select / number / text / password: toggle inline editor
   editing.value = !editing.value
   if (editing.value) {
-    editValue.value = props.modelValue
+    // Password editor starts empty so users never accidentally send the masked value back
+    editValue.value = props.type === 'password' ? '' : props.modelValue
+    showPassword.value = false
   }
   emit('editToggle', editing.value)
 }
@@ -267,6 +299,16 @@ function confirmEdit() {
   transform: rotate(90deg);
 }
 
+/* Section header */
+.settings-item__header {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 16px 16px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
 /* iOS-style switch toggle */
 .settings-item__switch {
   position: relative;
@@ -361,7 +403,7 @@ function confirmEdit() {
   font-weight: 600;
 }
 
-/* Input row (number / text) */
+/* Input row (number / text / password) */
 .settings-item__input-row {
   display: flex;
   align-items: center;
@@ -385,6 +427,18 @@ function confirmEdit() {
 .settings-item__number-input:focus,
 .settings-item__text-input:focus {
   border-color: var(--accent-color);
+}
+
+/* Password toggle button */
+.settings-item__editor-toggle {
+  flex-shrink: 0;
+  padding: 8px;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
 }
 
 .settings-item__editor-confirm {

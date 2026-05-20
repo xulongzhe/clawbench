@@ -8,6 +8,16 @@ vi.mock('@/utils/api', () => ({
   apiPost: vi.fn(),
 }))
 
+// Mock useAgents
+const mockGetAgent = vi.fn().mockReturnValue(null)
+const mockUpdateAgentField = vi.fn()
+vi.mock('@/composables/useAgents', () => ({
+  useAgents: () => ({
+    getAgent: mockGetAgent,
+    updateAgentField: mockUpdateAgentField,
+  }),
+}))
+
 import { apiGet, apiPatch, apiPost } from '@/utils/api'
 
 const mockedApiGet = vi.mocked(apiGet)
@@ -104,46 +114,52 @@ describe('useSettingsConfig', () => {
   })
 
   describe('agent preference helpers', () => {
-    it('reads and writes agent model preference', () => {
-      const { getAgentModelPref, setAgentModelPref } = useSettingsConfig()
+    it('reads agent model preference from agent data', () => {
+      const { getAgentModelPref } = useSettingsConfig()
 
-      // Initially null
+      // No agent data → null
+      mockGetAgent.mockReturnValue(null)
       expect(getAgentModelPref('test-agent')).toBeNull()
 
-      // Set and read back
-      setAgentModelPref('test-agent', 'model-1')
+      // Agent with preferredModel set
+      mockGetAgent.mockReturnValue({ id: 'test-agent', preferredModel: 'model-1' })
       expect(getAgentModelPref('test-agent')).toBe('model-1')
 
-      // Clean up
-      localStorage.removeItem('clawbench_model_test-agent')
+      // Agent without preferredModel
+      mockGetAgent.mockReturnValue({ id: 'test-agent', preferredModel: '' })
+      expect(getAgentModelPref('test-agent')).toBeNull()
     })
 
-    it('reads and writes agent thinking preference', () => {
-      const { getAgentThinkingPref, setAgentThinkingPref } = useSettingsConfig()
+    it('reads agent thinking preference from agent data', () => {
+      const { getAgentThinkingPref } = useSettingsConfig()
 
-      // Initially null
+      // No agent data → null
+      mockGetAgent.mockReturnValue(null)
       expect(getAgentThinkingPref('test-agent')).toBeNull()
 
-      // Set and read back
-      setAgentThinkingPref('test-agent', 'high')
+      // Agent with preferredThinkingEffort set
+      mockGetAgent.mockReturnValue({ id: 'test-agent', preferredThinkingEffort: 'high' })
       expect(getAgentThinkingPref('test-agent')).toBe('high')
 
-      // Clean up
-      localStorage.removeItem('clawbench_thinking_test-agent')
+      // Agent without preferredThinkingEffort
+      mockGetAgent.mockReturnValue({ id: 'test-agent', preferredThinkingEffort: '' })
+      expect(getAgentThinkingPref('test-agent')).toBeNull()
     })
 
-    it('per-agent preferences are independent', () => {
-      const { setAgentModelPref, getAgentModelPref } = useSettingsConfig()
+    it('patchAgentPref calls PATCH /api/agents and updates local agent data', async () => {
+      const { patchAgentPref } = useSettingsConfig()
+      mockedApiPatch.mockResolvedValue({})
 
-      setAgentModelPref('agent-a', 'model-x')
-      setAgentModelPref('agent-b', 'model-y')
+      await patchAgentPref('test-agent', 'preferred_model', 'model-1')
 
-      expect(getAgentModelPref('agent-a')).toBe('model-x')
-      expect(getAgentModelPref('agent-b')).toBe('model-y')
+      expect(mockedApiPatch).toHaveBeenCalledWith('/api/agents', { id: 'test-agent', preferred_model: 'model-1' })
+      expect(mockUpdateAgentField).toHaveBeenCalledWith('test-agent', 'preferredModel', 'model-1')
 
-      // Clean up
-      localStorage.removeItem('clawbench_model_agent-a')
-      localStorage.removeItem('clawbench_model_agent-b')
+      // Test preferred_thinking_effort too
+      await patchAgentPref('test-agent', 'preferred_thinking_effort', 'high')
+
+      expect(mockedApiPatch).toHaveBeenCalledWith('/api/agents', { id: 'test-agent', preferred_thinking_effort: 'high' })
+      expect(mockUpdateAgentField).toHaveBeenCalledWith('test-agent', 'preferredThinkingEffort', 'high')
     })
   })
 })

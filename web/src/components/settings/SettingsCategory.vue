@@ -25,18 +25,25 @@ import { useI18n } from 'vue-i18n'
 import SettingsItem from './SettingsItem.vue'
 import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAgents } from '@/composables/useAgents'
-import { useAppMode } from '@/composables/useAppMode'
+
+interface DependsOn {
+  key: string
+  value?: any
+  values?: any[]
+}
 
 interface ItemSpec {
   labelKey: string
   key: string
-  type: 'switch' | 'select' | 'number' | 'text' | 'slider' | 'action' | 'info'
+  type: 'switch' | 'select' | 'number' | 'text' | 'slider' | 'action' | 'info' | 'header' | 'password'
   source: 'server' | 'local'
   needsRestart?: boolean
   options?: { labelKey: string; value: any }[]
   min?: number
   max?: number
   step?: number
+  dependsOn?: DependsOn
+  sectionHeader?: string
 }
 
 const props = defineProps<{
@@ -49,9 +56,8 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
-const { localConfig, setLocalConfig, getServerValueWithDefault, setServerValue, getAgentModelPref, setAgentModelPref, getAgentThinkingPref, setAgentThinkingPref } = useSettingsConfig()
+const { localConfig, serverConfig, setLocalConfig, getServerValueWithDefault, setServerValue, patchAgentPref, getAgentModelPref, getAgentThinkingPref } = useSettingsConfig()
 const { agents, loadAgents, getAgentModels, getAgentThinkingEffortLevels, hasThinkingEffortLevels, getDefaultModelId } = useAgents()
-const { isAppMode } = useAppMode()
 
 const openEditorKey = ref<string | null>(null)
 
@@ -59,6 +65,18 @@ const openEditorKey = ref<string | null>(null)
 watch(() => props.categoryId, (id) => {
   if (id === 'chat' || id === 'agents') loadAgents()
 }, { immediate: true })
+
+function resolveConfigValue(key: string): any {
+  if (key in localConfig) return localConfig[key]
+  return getServerValueWithDefault(key)
+}
+
+function isDependsOnMet(dependsOn: ItemSpec['dependsOn']): boolean {
+  if (!dependsOn) return true
+  const currentValue = resolveConfigValue(dependsOn.key)
+  if ('value' in dependsOn) return currentValue === dependsOn.value
+  return dependsOn.values!.includes(currentValue)
+}
 
 const categoryItems: Record<string, ItemSpec[]> = {
   appearance: [
@@ -73,6 +91,7 @@ const categoryItems: Record<string, ItemSpec[]> = {
     ]},
   ],
   chat: [
+    { labelKey: 'settings.items.defaultAgent', key: 'default_agent', type: 'select', source: 'server', needsRestart: true },
     { labelKey: 'settings.items.autoSpeech', key: 'autoSpeech', type: 'switch', source: 'local' },
     { labelKey: 'settings.items.chatInitialMessages', key: 'chat.initial_messages', type: 'number', source: 'server' },
     { labelKey: 'settings.items.chatPageSize', key: 'chat.page_size', type: 'number', source: 'server' },
@@ -100,6 +119,7 @@ const categoryItems: Record<string, ItemSpec[]> = {
     { labelKey: 'settings.items.terminalBufferLines', key: 'terminal.buffer_lines', type: 'number', source: 'server' },
   ],
   tts: [
+    // Engine selection (always shown)
     { labelKey: 'settings.items.ttsEngine', key: 'tts.engine', type: 'select', source: 'server', needsRestart: true, options: [
       { labelKey: 'settings.items.ttsEngineEdge', value: 'edge' },
       { labelKey: 'settings.items.ttsEngineMinimax', value: 'minimax' },
@@ -107,14 +127,50 @@ const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.ttsEngineKokoro', value: 'kokoro' },
       { labelKey: 'settings.items.ttsEngineMossNano', value: 'moss-nano' },
     ]},
-    { labelKey: 'settings.items.ttsModel', key: 'tts.tts_model', type: 'text', source: 'server' },
-    { labelKey: 'settings.items.ttsFormat', key: 'tts.format', type: 'select', source: 'server', options: [
+    // Common fields (always shown)
+    { labelKey: 'settings.items.ttsVoice', key: 'tts.voice', type: 'text', source: 'server' },
+    { labelKey: 'settings.items.ttsSpeed', key: 'tts.speed', type: 'slider', source: 'server', min: 0.5, max: 3, step: 0.1 },
+    // Minimax-specific
+    { labelKey: 'settings.items.ttsModel', key: 'tts.tts_model', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'minimax' } },
+    { labelKey: 'settings.items.ttsFormat', key: 'tts.format', type: 'select', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'minimax' }, options: [
       { labelKey: 'settings.items.ttsFormatDefault', value: '' },
       { labelKey: 'settings.items.ttsFormatMp3', value: 'mp3' },
       { labelKey: 'settings.items.ttsFormatWav', value: 'wav' },
       { labelKey: 'settings.items.ttsFormatPcm', value: 'pcm' },
     ]},
-    { labelKey: 'settings.items.ttsSummarizeBackend', key: 'tts.summarize_backend', type: 'select', source: 'server', options: [
+    // Piper sub-config
+    { labelKey: 'settings.items.piperModelPath', key: 'tts.piper.model_path', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'piper' }, sectionHeader: 'settings.items.ttsPiperHeader' },
+    { labelKey: 'settings.items.piperNoiseScale', key: 'tts.piper.noise_scale', type: 'number', source: 'server', min: 0, max: 1, step: 0.001,
+      dependsOn: { key: 'tts.engine', value: 'piper' } },
+    { labelKey: 'settings.items.piperLengthScale', key: 'tts.piper.length_scale', type: 'number', source: 'server', min: 0.1, max: 5, step: 0.1,
+      dependsOn: { key: 'tts.engine', value: 'piper' } },
+    { labelKey: 'settings.items.piperSentenceSilence', key: 'tts.piper.sentence_silence', type: 'number', source: 'server', min: 0, max: 5, step: 0.1,
+      dependsOn: { key: 'tts.engine', value: 'piper' } },
+    // Kokoro sub-config
+    { labelKey: 'settings.items.kokoroModelPath', key: 'tts.kokoro.model_path', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'kokoro' }, sectionHeader: 'settings.items.ttsKokoroHeader' },
+    { labelKey: 'settings.items.kokoroVoicesPath', key: 'tts.kokoro.voices_path', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'kokoro' } },
+    { labelKey: 'settings.items.kokoroLang', key: 'tts.kokoro.lang', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'kokoro' } },
+    // MossNano sub-config
+    { labelKey: 'settings.items.mossNanoModelDir', key: 'tts.moss_nano.model_dir', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'moss-nano' }, sectionHeader: 'settings.items.ttsMossNanoHeader' },
+    { labelKey: 'settings.items.mossNanoPromptSpeech', key: 'tts.moss_nano.prompt_speech', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'moss-nano' } },
+    { labelKey: 'settings.items.mossNanoVoice', key: 'tts.moss_nano.voice', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'moss-nano' } },
+    { labelKey: 'settings.items.mossNanoBackend', key: 'tts.moss_nano.backend', type: 'select', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'moss-nano' }, options: [
+      { labelKey: 'settings.items.mossNanoBackendOnnx', value: 'onnx' },
+      { labelKey: 'settings.items.mossNanoBackendPytorch', value: 'pytorch' },
+    ]},
+    // Summarization
+    { labelKey: 'settings.items.ttsSummarizeBackend', key: 'tts.summarize_backend', type: 'select', source: 'server',
+      sectionHeader: 'settings.items.ttsSummarizeHeader', options: [
       { labelKey: 'settings.items.ttsSummarizeSimple', value: 'simple' },
       { labelKey: 'settings.items.ttsSummarizeApi', value: 'api' },
       { labelKey: 'settings.items.ttsSummarizeClaude', value: 'claude' },
@@ -129,9 +185,39 @@ const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.ttsSummarizeMmxcli', value: 'mmx-cli' },
     ]},
     { labelKey: 'settings.items.ttsSummarizeModel', key: 'tts.summarize_model', type: 'text', source: 'server' },
-    { labelKey: 'settings.items.ttsSpeed', key: 'tts.speed', type: 'slider', source: 'server', min: 0.5, max: 3, step: 0.1 },
-    { labelKey: 'settings.items.ttsVoice', key: 'tts.voice', type: 'text', source: 'server' },
-    { labelKey: 'settings.items.ttsMaxCacheFiles', key: 'tts.max_cache_files', type: 'number', source: 'server' },
+    // API sub-config (when summarize_backend=api)
+    { labelKey: 'settings.items.apiBaseUrl', key: 'tts.api.base_url', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' }, sectionHeader: 'settings.items.ttsApiHeader' },
+    { labelKey: 'settings.items.apiKey', key: 'tts.api.key', type: 'password', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
+    { labelKey: 'settings.items.apiFormat', key: 'tts.api.format', type: 'select', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' }, options: [
+      { labelKey: 'settings.items.apiFormatOpenai', value: 'openai' },
+      { labelKey: 'settings.items.apiFormatAnthropic', value: 'anthropic' },
+    ]},
+    { labelKey: 'settings.items.apiModel', key: 'tts.api.model', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
+    // Cache
+    { labelKey: 'settings.items.ttsMaxCacheFiles', key: 'tts.max_cache_files', type: 'number', source: 'server',
+      sectionHeader: 'settings.items.ttsCacheHeader' },
+    // Tasks summarize
+    { labelKey: 'settings.items.tasksSummarizeBackend', key: 'tasks.summarize_backend', type: 'select', source: 'server',
+      sectionHeader: 'settings.items.tasksHeader', options: [
+      { labelKey: 'settings.items.tasksSummarizeDisabled', value: '' },
+      { labelKey: 'settings.items.ttsSummarizeSimple', value: 'simple' },
+      { labelKey: 'settings.items.ttsSummarizeApi', value: 'api' },
+      { labelKey: 'settings.items.ttsSummarizeClaude', value: 'claude' },
+      { labelKey: 'settings.items.ttsSummarizeCodebuddy', value: 'codebuddy' },
+      { labelKey: 'settings.items.ttsSummarizeGemini', value: 'gemini' },
+      { labelKey: 'settings.items.ttsSummarizeOpencode', value: 'opencode' },
+      { labelKey: 'settings.items.ttsSummarizeCodex', value: 'codex' },
+      { labelKey: 'settings.items.ttsSummarizeQoder', value: 'qoder' },
+      { labelKey: 'settings.items.ttsSummarizeVecli', value: 'vecli' },
+      { labelKey: 'settings.items.ttsSummarizeDeepseek', value: 'deepseek' },
+      { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
+      { labelKey: 'settings.items.ttsSummarizeMmxcli', value: 'mmx-cli' },
+    ]},
+    { labelKey: 'settings.items.tasksSummarizeModel', key: 'tasks.summarize_model', type: 'text', source: 'server' },
   ],
   rag: [
     { labelKey: 'settings.items.ragEnabled', key: 'rag.enabled', type: 'switch', source: 'server', needsRestart: true },
@@ -142,11 +228,11 @@ const categoryItems: Record<string, ItemSpec[]> = {
     { labelKey: 'settings.items.ragRetentionDays', key: 'rag.retention_days', type: 'number', source: 'server' },
   ],
   network: [
-    { labelKey: 'settings.items.proxyEnabled', key: 'proxy.enabled', type: 'switch', source: 'server', needsRestart: true },
+    { labelKey: 'settings.items.proxyEnabled', key: 'proxy.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.proxyHeader' },
     { labelKey: 'settings.items.proxyAllowedPorts', key: 'proxy.allowed_ports', type: 'text', source: 'server' },
-    { labelKey: 'settings.items.sshEnabled', key: 'ssh.enabled', type: 'switch', source: 'server', needsRestart: true },
+    { labelKey: 'settings.items.sshEnabled', key: 'ssh.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.sshHeader' },
     { labelKey: 'settings.items.sshPort', key: 'ssh.port', type: 'number', source: 'server', needsRestart: true },
-    { labelKey: 'settings.items.pushEnabled', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true },
+    { labelKey: 'settings.items.pushEnabled', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.pushHeader' },
     { labelKey: 'settings.items.pushAppKey', key: 'push.jpush.app_key', type: 'text', source: 'server' },
   ],
   android: [
@@ -165,6 +251,7 @@ const items = computed(() => {
   // For the 'agents' category, dynamically build items from the agent list
   if (props.categoryId === 'agents') {
     const result: any[] = []
+
     for (const agent of agents.value) {
       // Agent group header — just shows the agent icon + name as a label
       result.push({
@@ -197,7 +284,7 @@ const items = computed(() => {
       if (hasThinkingEffortLevels(agent.id)) {
         const levels = getAgentThinkingEffortLevels(agent.id)
         const savedThinking = getAgentThinkingPref(agent.id)
-        const currentThinking = savedThinking || agent.thinkingEffort || ''
+        const currentThinking = savedThinking || agent.preferredThinkingEffort || agent.thinkingEffort || ''
         result.push({
           key: `agent-thinking-${agent.id}`,
           label: t('settings.items.agentThinking'),
@@ -216,7 +303,22 @@ const items = computed(() => {
   }
 
   const raw = categoryItems[props.categoryId] ?? []
-  return raw.map(item => {
+  // Filter by dependsOn and inject header pseudo-items
+  const expanded: any[] = []
+  for (const item of raw) {
+    if (!isDependsOnMet(item.dependsOn)) continue
+    if (item.sectionHeader) {
+      expanded.push({
+        key: `header-${item.key}`,
+        label: t(item.sectionHeader),
+        labelKey: item.sectionHeader,
+        type: 'header' as const,
+        source: 'local' as const,
+      })
+    }
+    expanded.push(item)
+  }
+  return expanded.map(item => {
     // Dynamically build options for default_agent from the agents list
     let resolvedOptions = item.options
     if (item.key === 'default_agent') {
@@ -229,7 +331,7 @@ const items = computed(() => {
 
     return {
       ...item,
-      label: t(item.labelKey),
+      label: item.label || t(item.labelKey),
       options: resolvedOptions?.map(opt => ({
         ...opt,
         label: opt.label || resolveOptionLabel(item.key, opt),
@@ -268,6 +370,8 @@ function resolveOptionLabel(itemKey: string, opt: { labelKey: string; value: any
 }
 
 function getItemValue(item: any): any {
+  // Header pseudo-items have no value
+  if (item.type === 'header') return undefined
   // Agent model/thinking prefs are handled specially
   if (item.key?.startsWith('agent-model-')) {
     return item.modelValue
@@ -299,14 +403,18 @@ async function handleUpdate(item: any, value: any) {
   // Agent model preference
   if (item.key?.startsWith('agent-model-')) {
     const agentId = item.key.replace('agent-model-', '')
-    setAgentModelPref(agentId, value)
+    try { await patchAgentPref(agentId, 'preferred_model', value) } catch { /* silently ignore */ }
     return
   }
   // Agent thinking preference
   if (item.key?.startsWith('agent-thinking-')) {
     const agentId = item.key.replace('agent-thinking-', '')
-    setAgentThinkingPref(agentId, value)
+    try { await patchAgentPref(agentId, 'preferred_thinking_effort', value) } catch { /* silently ignore */ }
     return
+  }
+  // Password type: skip if empty or still masked (contains bullet chars)
+  if (item.type === 'password') {
+    if (!value || value.includes('•')) return
   }
   if (item.source === 'local') {
     setLocalConfig(item.key, value)
