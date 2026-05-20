@@ -13,6 +13,7 @@
       :hasMore="session.hasMore.value"
       :loadingMore="session.loadingMore.value"
       :totalMessages="session.totalMessages.value"
+      :active="props.active"
       :pendingMessages="manager.pendingMessages.value"
       @touchstart="swipeSession.onTouchStart"
       @touchend="swipeSession.onTouchEnd"

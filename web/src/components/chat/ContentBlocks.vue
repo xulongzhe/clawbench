@@ -161,6 +161,7 @@ const props = defineProps({
   getAgentName: { type: Function, default: () => '' },
   // Performance: static block cache from useChatRender (Problem 6)
   staticBlockCache: { type: Object, default: null },
+  active: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush'])
@@ -213,6 +214,11 @@ const THROTTLE_MS = 300
 function flushBlockHtml() {
   _throttleTimer = null
   if (!_throttlePending) return
+  // Skip rendering when panel not visible
+  if (!props.active) {
+    _throttlePending = false
+    return
+  }
   _throttlePending = false
   const newCache = {}
   for (let i = 0; i < (props.blocks?.length || 0); i++) {
@@ -241,6 +247,10 @@ function getBlockHtml(bi, block) {
     }
     return props.renderTextBlock(block.text, props.msgId, bi, false)
   }
+  // Streaming + panel not visible: skip expensive markdown parsing
+  if (!props.active) {
+    return ''
+  }
   // Streaming: deferred rendering with throttling
   if (blockHtmlCache.value[bi] !== undefined) {
     if (!_throttleTimer) {
@@ -263,6 +273,15 @@ watch(() => props.streaming, (streaming, wasStreaming) => {
     if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null }
     _throttlePending = false
     blockHtmlCache.value = {}
+  }
+})
+
+// Reset cache when panel becomes active — allows re-render with fresh markdown
+watch(() => props.active, (active) => {
+  if (active) {
+    blockHtmlCache.value = {}
+    if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null }
+    _throttlePending = false
   }
 })
 

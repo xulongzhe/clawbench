@@ -88,7 +88,7 @@ function createOptions(overrides: Record<string, any> = {}) {
     onLoadHistory: vi.fn().mockResolvedValue(undefined),
     onMessage: vi.fn(),
     onOpen: vi.fn(),
-    isOpen: ref(false),
+    isOpen: ref(true),
     onParseAssistantContent: vi.fn().mockReturnValue({ blocks: [] }),
     onToast: vi.fn(),
     onNotification: vi.fn(),
@@ -1017,6 +1017,254 @@ describe('useChatStream', () => {
       )
       expect(assistantMsg).toBeDefined()
       expect(assistantMsg.blocks).toEqual([])
+    })
+  })
+
+  describe('isOpen guard — skip render and scroll when panel not visible', () => {
+    it('should skip debouncedRender (onRenderNeeded + onScrollBottom) when isOpen=false', () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      // Clear any calls from connectStream setup
+      options.onRenderNeeded.mockClear()
+      options.onScrollBottom.mockClear()
+
+      es.simulate('content', { content: 'Hello' })
+
+      // Data should be accumulated
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg.blocks[0].text).toBe('Hello')
+      // But render and scroll should NOT be called
+      expect(options.onRenderNeeded).not.toHaveBeenCalled()
+      expect(options.onScrollBottom).not.toHaveBeenCalled()
+    })
+
+    it('should call debouncedRender (onRenderNeeded + onScrollBottom) when isOpen=true', async () => {
+      vi.useFakeTimers()
+      const options = createOptions({ isOpen: ref(true) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onRenderNeeded.mockClear()
+      options.onScrollBottom.mockClear()
+
+      es.simulate('content', { content: 'Hello' })
+
+      // debouncedRender uses 80ms setTimeout
+      await vi.advanceTimersByTimeAsync(100)
+
+      expect(options.onRenderNeeded).toHaveBeenCalled()
+      expect(options.onScrollBottom).toHaveBeenCalled()
+      vi.useRealTimers()
+    })
+
+    it('should skip onScrollBottom on thinking event when isOpen=false', () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onScrollBottom.mockClear()
+
+      es.simulate('thinking', { text: 'Deep thought' })
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg.blocks[0].text).toBe('Deep thought')
+      expect(options.onScrollBottom).not.toHaveBeenCalled()
+    })
+
+    it('should skip onScrollBottom on tool_use event when isOpen=false', () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onScrollBottom.mockClear()
+
+      es.simulate('tool_use', {
+        name: 'Read',
+        id: 'tool-guard-1',
+        input: { file_path: '/tmp/test.txt' },
+      })
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg.blocks.length).toBe(1)
+      expect(options.onScrollBottom).not.toHaveBeenCalled()
+    })
+
+    it('should skip onScrollBottom on tool_result event when isOpen=false', () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      es.simulate('tool_use', {
+        name: 'Read',
+        id: 'tool-guard-2',
+        input: { file_path: '/tmp/test.txt' },
+      })
+
+      options.onScrollBottom.mockClear()
+
+      es.simulate('tool_result', {
+        id: 'tool-guard-2',
+        output: 'file contents',
+      })
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      const toolBlock = assistantMsg.blocks.find(
+        (b: any) => b.type === 'tool_use' && b.id === 'tool-guard-2'
+      )
+      expect(toolBlock.output).toBe('file contents')
+      expect(options.onScrollBottom).not.toHaveBeenCalled()
+    })
+
+    it('should skip onScrollBottom on done event when isOpen=false', () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      options.loading.value = true
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onScrollBottom.mockClear()
+
+      es.simulate('done', {})
+
+      expect(es.readyState).toBe(MockEventSource.CLOSED)
+      expect(options.onLoadHistory).toHaveBeenCalled()
+      expect(options.onScrollBottom).not.toHaveBeenCalled()
+    })
+
+    it('should call onScrollBottom on done event when isOpen=true', async () => {
+      const options = createOptions({ isOpen: ref(true) })
+      const { connectStream } = useChatStream(options)
+
+      options.loading.value = true
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onScrollBottom.mockClear()
+
+      es.simulate('done', {})
+
+      // Wait for onLoadHistory().finally() to resolve
+      await vi.waitFor(() => {
+        expect(options.onScrollBottom).toHaveBeenCalledWith(true)
+      })
+    })
+
+    it('should skip onRenderNeeded on warning event when isOpen=false', () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onRenderNeeded.mockClear()
+
+      es.simulate('warning', { text: 'Rate limited' })
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg.blocks.some((b: any) => b.type === 'warning')).toBe(true)
+      expect(options.onRenderNeeded).not.toHaveBeenCalled()
+    })
+
+    it('should skip onRenderNeeded and onScrollBottom on queue_consume when isOpen=false', () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onRenderNeeded.mockClear()
+      options.onScrollBottom.mockClear()
+
+      es.simulate('queue_consume', { text: 'Hello' })
+
+      const userMsg = options.messages.value.find((m: any) => m.role === 'user')
+      expect(userMsg).toBeDefined()
+      expect(userMsg.content).toBe('Hello')
+      expect(options.onRenderNeeded).not.toHaveBeenCalled()
+      expect(options.onScrollBottom).not.toHaveBeenCalled()
+    })
+
+    it('should skip onScrollBottom on queue_done when isOpen=false', () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onScrollBottom.mockClear()
+
+      es.simulate('queue_done', {})
+
+      expect(forceCleanupStreamingState).toHaveBeenCalled()
+      expect(options.onScrollBottom).not.toHaveBeenCalled()
+    })
+
+    it('should call onScrollBottom on queue_done when isOpen=true', () => {
+      const options = createOptions({ isOpen: ref(true) })
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onScrollBottom.mockClear()
+
+      es.simulate('queue_done', {})
+
+      expect(options.onScrollBottom).toHaveBeenCalled()
+    })
+
+    it('should still call onToast and onNotification on done when isOpen=false', async () => {
+      const options = createOptions({ isOpen: ref(false) })
+      const { connectStream } = useChatStream(options)
+
+      options.loading.value = true
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      es.simulate('content', { content: 'Done reply' })
+
+      es.simulate('done', {})
+
+      // Wait for onLoadHistory().finally() to resolve
+      await vi.waitFor(() => {
+        expect(options.onToast).toHaveBeenCalled()
+      })
+      expect(options.onNotification).toHaveBeenCalled()
     })
   })
 })
