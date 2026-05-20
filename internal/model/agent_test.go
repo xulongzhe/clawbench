@@ -637,3 +637,37 @@ system_prompt: You test.
 	assert.Contains(t, agent.SystemPrompt, "/usr/local/bin/clawbench")
 	assert.NotContains(t, agent.SystemPrompt, "{{CLAWBENCH_BIN}}")
 }
+
+func TestWriteAgentYAML_WriteFileError(t *testing.T) {
+	// Skip on Windows where permission model differs
+	if os.PathSeparator == '\\' {
+		t.Skip("read-only directory test not reliable on Windows")
+	}
+
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Make the directory read-only so WriteFile fails
+	require.NoError(t, os.Chmod(agentsDir, 0555))
+	defer os.Chmod(agentsDir, 0755) // restore for cleanup
+
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = "new-model"
+	err = model.WriteAgentYAML(agent)
+	assert.Error(t, err, "writing to read-only directory should fail")
+}

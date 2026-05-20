@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func parseOpenCodeLine(line string) []StreamEvent {
@@ -90,6 +92,23 @@ func TestOpenCodeStream_ParseLine_ToolUse(t *testing.T) {
 	if input["file_path"] != "/tmp/test.go" {
 		t.Errorf("unexpected input: %v", input)
 	}
+}
+
+func TestOpenCodeStream_ParseLine_ToolUseNonObjectInput(t *testing.T) {
+	// When tool input is valid JSON but not an object (e.g., an array),
+	// normalizeToolInput should fail and fall back to raw input string
+	line := `{"type":"tool_use","timestamp":1,"sessionID":"ses_abc","part":{"type":"tool","tool":"bash","callID":"call_arr","state":{"status":"completed","input":[1,2,3],"output":"done"}}}`
+	events := parseOpenCodeLine(line)
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	tool := events[0].Tool
+	if tool == nil {
+		t.Fatal("expected tool call, got nil")
+	}
+	// Should fall back to raw input string
+	assert.Equal(t, "[1,2,3]", tool.Input)
 }
 
 func TestOpenCodeStream_ParseLine_ToolUseRunning(t *testing.T) {

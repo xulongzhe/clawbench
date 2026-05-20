@@ -96,6 +96,23 @@ func TestGeminiStream_ParseLine_ToolUse(t *testing.T) {
 	}
 }
 
+func TestGeminiStream_ParseLine_ToolUseNonObjectParams(t *testing.T) {
+	// When parameters is valid JSON but not an object (e.g., an array),
+	// normalizeToolInput should fail and fall back to string(msg.Parameters)
+	line := `{"type":"tool_use","timestamp":"2026-04-25T10:00:02.000Z","tool_name":"list_files","tool_id":"call_arr","parameters":[1,2,3]}`
+	events := parseGeminiLine(line)
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	tool := events[0].Tool
+	if tool == nil {
+		t.Fatal("expected tool call, got nil")
+	}
+	// Should fall back to raw parameter string
+	assert.Equal(t, "[1,2,3]", tool.Input)
+}
+
 func TestGeminiStream_ParseLine_ToolUseEmptyParams(t *testing.T) {
 	line := `{"type":"tool_use","timestamp":"2026-04-25T10:00:02.000Z","tool_name":"list_files","tool_id":"call_456"}`
 	events := parseGeminiLine(line)

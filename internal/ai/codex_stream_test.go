@@ -3,6 +3,7 @@ package ai
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1400,4 +1401,68 @@ func TestCodexSplitThinking_OnlyOpenTag(t *testing.T) {
 	if content != "" {
 		t.Errorf("expected empty content, got %q", content)
 	}
+}
+
+// --- Scanner error (ISS-080) test ---
+
+// errorReader reads a limited number of bytes, then returns an error.
+type errorReader struct {
+	data   []byte
+	err    error
+	offset int
+}
+
+func (r *errorReader) Read(p []byte) (int, error) {
+	if r.offset >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.offset:])
+	r.offset += n
+	if r.offset >= len(r.data) {
+		return n, r.err
+	}
+	return n, nil
+}
+
+func TestCodexResumeOutput_ScannerReadError(t *testing.T) {
+	// Simulate a partial read followed by an I/O error
+	partial := `OpenAI Codex v0.57.0 (research preview)
+--------
+workdir: /tmp
+model: codex-MiniMax-M2.7
+--------
+user
+hello
+codex
+Hi the`
+	reader := &errorReader{data: []byte(partial), err: fmt.Errorf("i/o timeout")}
+	scanner := bufio.NewScanner(reader)
+	ch := make(chan StreamEvent, 64)
+	var rawLines strings.Builder
+	parseCodexResumeOutput(scanner, ch, "", &rawLines)
+	close(ch)
+
+	var events []StreamEvent
+	for ev := range ch {
+		events = append(events, ev)
+	}
+
+	// Should have a warning event for the read error
+	hasWarning := false
+	for _, ev := range events {
+		if ev.Type == "warning" {
+			hasWarning = true
+			assert.Contains(t, ev.Content, "read error", "warning should mention read error")
+		}
+	}
+	assert.True(t, hasWarning, "expected a warning event for scanner.Err()")
+
+	// Should still have a done event so the consumer can finalize
+	hasDone := false
+	for _, ev := range events {
+		if ev.Type == "done" {
+			hasDone = true
+		}
+	}
+	assert.True(t, hasDone, "expected a done event after scanner read error")
 }

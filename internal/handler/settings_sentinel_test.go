@@ -6,6 +6,8 @@ import (
 	"os"
 	"testing"
 
+	"clawbench/internal/model"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -105,6 +107,36 @@ func TestJoinArgs(t *testing.T) {
 	assert.Equal(t, "'hello'", joinArgs([]string{"hello"}))
 	assert.Equal(t, "'hello' 'world'", joinArgs([]string{"hello", "world"}))
 	assert.Equal(t, `'it'\''s' 'nice'`, joinArgs([]string{"it's", "nice"}))
+}
+
+// ---------- LaunchSentinelProcess ----------
+
+func TestLaunchSentinelProcess_StartsAndExits(t *testing.T) {
+	// Set up a minimal BinDir for the sentinel to reference
+	origBinDir := model.BinDir
+	tmpDir := t.TempDir()
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	cmd, err := LaunchSentinelProcess()
+	if err != nil {
+		// In some environments (e.g., containers without /bin/sh), this may fail
+		t.Skipf("launchSentinel failed (expected in some environments): %v", err)
+	}
+	defer cmd.Process.Kill()
+
+	// Verify the sentinel process was started
+	if cmd.Process == nil {
+		t.Fatal("expected process to be non-nil")
+	}
+	if cmd.Process.Pid <= 0 {
+		t.Fatalf("expected valid PID, got %d", cmd.Process.Pid)
+	}
+
+	// Kill the sentinel immediately — we just needed to verify it starts
+	if err := cmd.Process.Kill(); err != nil {
+		t.Logf("warning: failed to kill sentinel process: %v", err)
+	}
 }
 
 // ---------- maskAPIKey ----------
