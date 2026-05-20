@@ -236,9 +236,13 @@ func ForceCancelSession(sessionID string) {
 	SetSessionRunning(sessionID, false, true)
 }
 
+// sessionStreamBufferSize is the buffer capacity for the per-session event channel.
+// Controls backpressure: when the channel is full, SendSessionEvent drops events.
+const sessionStreamBufferSize = 256
+
 // RegisterSessionStream creates and registers a stream channel for a session
 func RegisterSessionStream(sessionID string) chan ai.StreamEvent {
-	ch := make(chan ai.StreamEvent, 256)
+	ch := make(chan ai.StreamEvent, sessionStreamBufferSize)
 	sessionStreams.Store(sessionID, ch)
 	return ch
 }

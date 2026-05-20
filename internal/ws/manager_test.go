@@ -291,12 +291,12 @@ func TestCleanupStale_NoPushRegID(t *testing.T) {
 	mgr.Subscribe(nil, &writeMu, "client-1")
 	mgr.DisconnectClient("client-1")
 
-	// Set bufferStart to 121 seconds ago — should be cleaned up (no pushRegID, >120s)
+	// Set bufferStart to just past staleNoPushTimeout — should be cleaned up (no pushRegID)
 	mgr.mu.Lock()
 	sub := mgr.subscriptions["client-1"]
 	mgr.mu.Unlock()
 	sub.mu.Lock()
-	sub.bufferStart = time.Now().Add(-121 * time.Second)
+	sub.bufferStart = time.Now().Add(-staleNoPushTimeout - time.Second)
 	sub.mu.Unlock()
 
 	mgr.CleanupStale()
@@ -305,7 +305,7 @@ func TestCleanupStale_NoPushRegID(t *testing.T) {
 	_, exists := mgr.subscriptions["client-1"]
 	mgr.mu.Unlock()
 	if exists {
-		t.Error("expected stale subscription (no push) to be cleaned up after 120s")
+		t.Error("expected stale subscription (no push) to be cleaned up after staleNoPushTimeout")
 	}
 }
 
@@ -316,7 +316,7 @@ func TestCleanupStale_NoPushRegID_RecentNotCleaned(t *testing.T) {
 	mgr.Subscribe(nil, &writeMu, "client-1")
 	mgr.DisconnectClient("client-1")
 
-	// Set bufferStart to 60 seconds ago — should NOT be cleaned up (no pushRegID, <120s)
+	// Set bufferStart to well before staleNoPushTimeout — should NOT be cleaned up
 	mgr.mu.Lock()
 	sub := mgr.subscriptions["client-1"]
 	mgr.mu.Unlock()
@@ -330,7 +330,7 @@ func TestCleanupStale_NoPushRegID_RecentNotCleaned(t *testing.T) {
 	_, exists := mgr.subscriptions["client-1"]
 	mgr.mu.Unlock()
 	if !exists {
-		t.Error("expected subscription (no push, <120s) to not be cleaned up")
+		t.Error("expected subscription (no push, before staleNoPushTimeout) to not be cleaned up")
 	}
 }
 
@@ -343,7 +343,7 @@ func TestCleanupStale_WithPushRegID(t *testing.T) {
 	mgr.DisconnectClient("client-1")
 
 	// Set bufferStart to 31 minutes ago, lastActive to 31 minutes ago
-	// Should NOT be cleaned up (has pushRegID, lastActive < 10 days)
+	// Should NOT be cleaned up (has pushRegID, lastActive < staleWithPushTimeout)
 	mgr.mu.Lock()
 	sub := mgr.subscriptions["client-1"]
 	mgr.mu.Unlock()
@@ -358,12 +358,12 @@ func TestCleanupStale_WithPushRegID(t *testing.T) {
 	_, exists := mgr.subscriptions["client-1"]
 	mgr.mu.Unlock()
 	if !exists {
-		t.Error("expected subscription with pushRegID to survive (lastActive < 10 days)")
+		t.Error("expected subscription with pushRegID to survive (lastActive < staleWithPushTimeout)")
 	}
 
-	// Set lastActive to 11 days ago — should be cleaned up (no connection in 10 days)
+	// Set lastActive beyond staleWithPushTimeout — should be cleaned up
 	sub.mu.Lock()
-	sub.lastActive = time.Now().Add(-11 * 24 * time.Hour)
+	sub.lastActive = time.Now().Add(-staleWithPushTimeout - 24*time.Hour)
 	sub.mu.Unlock()
 
 	mgr.CleanupStale()
@@ -372,7 +372,7 @@ func TestCleanupStale_WithPushRegID(t *testing.T) {
 	_, exists = mgr.subscriptions["client-1"]
 	mgr.mu.Unlock()
 	if exists {
-		t.Error("expected subscription with pushRegID to be cleaned up (lastActive > 10 days)")
+		t.Error("expected subscription with pushRegID to be cleaned up (lastActive > staleWithPushTimeout)")
 	}
 }
 

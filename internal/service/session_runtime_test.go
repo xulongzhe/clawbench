@@ -227,8 +227,8 @@ func TestSendSessionEvent_FullChannel(t *testing.T) {
 
 	RegisterSessionStream("session-full")
 
-	// Fill the channel buffer (capacity is 256)
-	for i := 0; i < 256; i++ {
+	// Fill the channel buffer (capacity is sessionStreamBufferSize)
+	for i := 0; i < sessionStreamBufferSize; i++ {
 		sent := SendSessionEvent("session-full", ai.StreamEvent{Type: "content", Content: "x"})
 		assert.True(t, sent)
 	}
@@ -358,7 +358,7 @@ func TestSendSessionEvent_ConcurrentAccess(t *testing.T) {
 	successCount := 0
 	var mu sync.Mutex
 
-	// Send 50 events concurrently (buffer is 64, so most should succeed)
+	// Send 50 events concurrently (buffer is sessionStreamBufferSize, so most should succeed)
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func() {
@@ -373,7 +373,7 @@ func TestSendSessionEvent_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
-	assert.Equal(t, 50, successCount, "All 50 events should be sent (buffer is 64)")
+	assert.Equal(t, 50, successCount, "All 50 events should be sent (buffer is sessionStreamBufferSize)")
 }
 
 // --- Helpers ---
