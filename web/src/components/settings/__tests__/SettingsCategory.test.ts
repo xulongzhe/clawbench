@@ -110,7 +110,6 @@ const i18n = createI18n({
           locale: '语言',
           ttsEngine: 'TTS引擎',
           ttsEngineEdge: 'Edge',
-          ttsEngineMinimax: 'MiniMax',
           ttsEnginePiper: 'Piper',
           ttsEngineKokoro: 'Kokoro',
           ttsEngineMossNano: 'MOSS-Nano',
@@ -326,10 +325,10 @@ describe('SettingsCategory', () => {
       const engineItem = allItems.find(i => i.props().label === 'TTS引擎')
       expect(engineItem).toBeTruthy()
 
-      await engineItem!.vm.$emit('update:modelValue', 'minimax')
+      await engineItem!.vm.$emit('update:modelValue', 'edge')
       await wrapper.vm.$nextTick()
 
-      expect(mockSetServerValue).toHaveBeenCalledWith('tts.engine', 'minimax')
+      expect(mockSetServerValue).toHaveBeenCalledWith('tts.engine', 'edge')
     })
 
     it('PATCHes tts.speed via slider', async () => {

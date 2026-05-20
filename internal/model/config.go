@@ -31,9 +31,9 @@ type Config struct {
 		MaxCount int `yaml:"max_count"` // Maximum number of chat sessions per project (default: 10)
 	} `yaml:"session"`
 	TTS struct {
-		Engine            string         `yaml:"engine"`             // TTS engine: "edge" (default), "minimax", "piper", "kokoro", "moss-nano"
-		SummarizeBackend  string         `yaml:"summarize_backend"`  // Summarization backend: "simple" (default), "mmx-cli", "api", "claude", "codebuddy", "gemini", "opencode", "codex", "qoder", "vecli", "deepseek", "pi"
-		SummarizeModel    string         `yaml:"summarize_model"`    // Model for summarization (default: "MiniMax-M2.7" for mmx-cli; empty = backend default for others)
+		Engine            string         `yaml:"engine"`             // TTS engine: "edge" (default), "piper", "kokoro", "moss-nano"
+		SummarizeBackend  string         `yaml:"summarize_backend"`  // Summarization backend: "simple" (default), "api", "claude", "codebuddy", "gemini", "opencode", "codex", "qoder", "vecli", "deepseek", "pi"
+		SummarizeModel    string         `yaml:"summarize_model"`    // Model for summarization (empty = backend default)
 		TTSModel          string         `yaml:"tts_model"`          // TTS model for speech synthesis (default: "Speech-2.8-Turbo")
 		Voice             string         `yaml:"voice"`              // Voice ID for TTS (default: "female-chengshu")
 		Speed             float64        `yaml:"speed"`              // Speech speed multiplier (default: 1.0)

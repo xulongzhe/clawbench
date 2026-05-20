@@ -78,7 +78,6 @@ export const categoryItems: Record<string, ItemSpec[]> = {
     // Engine selection (always shown)
     { labelKey: 'settings.items.ttsEngine', descriptionKey: 'settings.items.ttsEngineDesc', key: 'tts.engine', type: 'select', source: 'server', needsRestart: true, options: [
       { labelKey: 'settings.items.ttsEngineEdge', value: 'edge' },
-      { labelKey: 'settings.items.ttsEngineMinimax', value: 'minimax' },
       { labelKey: 'settings.items.ttsEnginePiper', value: 'piper' },
       { labelKey: 'settings.items.ttsEngineKokoro', value: 'kokoro' },
       { labelKey: 'settings.items.ttsEngineMossNano', value: 'moss-nano' },
@@ -86,16 +85,6 @@ export const categoryItems: Record<string, ItemSpec[]> = {
     // Common fields (always shown)
     { labelKey: 'settings.items.ttsVoice', descriptionKey: 'settings.items.ttsVoiceDesc', key: 'tts.voice', type: 'text', source: 'server' },
     { labelKey: 'settings.items.ttsSpeed', descriptionKey: 'settings.items.ttsSpeedDesc', key: 'tts.speed', type: 'slider', source: 'server', min: 0.5, max: 3, step: 0.1 },
-    // Minimax-specific
-    { labelKey: 'settings.items.ttsModel', descriptionKey: 'settings.items.ttsModelDesc', key: 'tts.tts_model', type: 'text', source: 'server',
-      dependsOn: { key: 'tts.engine', value: 'minimax' } },
-    { labelKey: 'settings.items.ttsFormat', descriptionKey: 'settings.items.ttsFormatDesc', key: 'tts.format', type: 'select', source: 'server',
-      dependsOn: { key: 'tts.engine', value: 'minimax' }, options: [
-      { labelKey: 'settings.items.ttsFormatDefault', value: '' },
-      { labelKey: 'settings.items.ttsFormatMp3', value: 'mp3' },
-      { labelKey: 'settings.items.ttsFormatWav', value: 'wav' },
-      { labelKey: 'settings.items.ttsFormatPcm', value: 'pcm' },
-    ]},
     // Piper sub-config
     { labelKey: 'settings.items.piperModelPath', descriptionKey: 'settings.items.piperModelPathDesc', key: 'tts.piper.model_path', type: 'text', source: 'server',
       dependsOn: { key: 'tts.engine', value: 'piper' }, sectionHeader: 'settings.items.ttsPiperHeader' },
@@ -138,7 +127,6 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.ttsSummarizeVecli', value: 'vecli' },
       { labelKey: 'settings.items.ttsSummarizeDeepseek', value: 'deepseek' },
       { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
-      { labelKey: 'settings.items.ttsSummarizeMmxcli', value: 'mmx-cli' },
     ]},
     { labelKey: 'settings.items.ttsSummarizeModel', descriptionKey: 'settings.items.ttsSummarizeModelDesc', key: 'tts.summarize_model', type: 'text', source: 'server' },
     // API sub-config (when summarize_backend=api)
@@ -171,7 +159,6 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.ttsSummarizeVecli', value: 'vecli' },
       { labelKey: 'settings.items.ttsSummarizeDeepseek', value: 'deepseek' },
       { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
-      { labelKey: 'settings.items.ttsSummarizeMmxcli', value: 'mmx-cli' },
     ]},
     { labelKey: 'settings.items.tasksSummarizeModel', descriptionKey: 'settings.items.tasksSummarizeModelDesc', key: 'tasks.summarize_model', type: 'text', source: 'server' },
   ],

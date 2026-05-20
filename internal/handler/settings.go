@@ -515,7 +515,7 @@ func validatePatchValues(patch map[string]any) error {
 		}
 		if backend, ok := tts["summarize_backend"].(string); ok {
 			if !validSummarizeBackends[backend] {
-				return fmt.Errorf("tts.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi,mmx-cli")
+				return fmt.Errorf("tts.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi")
 			}
 		}
 		if format, ok := tts["format"].(string); ok {
@@ -666,7 +666,7 @@ func validatePatchValues(patch map[string]any) error {
 	if tasks, ok := patch["tasks"].(map[string]any); ok {
 		if v, ok := tasks["summarize_backend"].(string); ok && v != "" {
 			if !validSummarizeBackends[v] {
-				return fmt.Errorf("tasks.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi,mmx-cli")
+				return fmt.Errorf("tasks.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi")
 			}
 		}
 	}

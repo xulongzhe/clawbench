@@ -226,16 +226,6 @@ func main() {
 		slog.Info("tts summarizer configured",
 			slog.String("backend", "simple"),
 		)
-	} else if summarizeBackend == "mmx-cli" {
-		s := summarize.NewMMX()
-		if cfg.TTS.SummarizeModel != "" {
-			s.Model = cfg.TTS.SummarizeModel
-		}
-		ttsSummarizer = s
-		slog.Info("tts summarizer configured",
-			slog.String("backend", "mmx-cli"),
-			slog.String("model", s.Model),
-		)
 	} else if summarizeBackend == "api" {
 		if cfg.TTS.API.BaseURL == "" {
 			slog.Error("tts summarize_backend is \"api\" but tts.api.base_url is not configured")
@@ -267,15 +257,11 @@ func main() {
 	} else {
 		s, err := summarize.NewAIBackendSummarizer(summarizeBackend)
 		if err != nil {
-			slog.Error("failed to create AI backend summarizer, falling back to mmx-cli",
+			slog.Error("failed to create AI backend summarizer, falling back to simple",
 				slog.String("backend", summarizeBackend),
 				slog.String("error", err.Error()),
 			)
-			fallback := summarize.NewMMX()
-			if cfg.TTS.SummarizeModel != "" {
-				fallback.Model = cfg.TTS.SummarizeModel
-			}
-			ttsSummarizer = fallback
+			ttsSummarizer = summarize.NewSimple()
 		} else {
 			s.Model = cfg.TTS.SummarizeModel // empty = use backend default
 			ttsSummarizer = s
@@ -379,25 +365,24 @@ func main() {
 			slog.String("voice", m.Voice),
 		)
 	default:
-		p := speech.NewMiniMaxProvider()
-		if cfg.TTS.TTSModel != "" {
-			p.TTSModel = cfg.TTS.TTSModel
-		}
+		// Default to Edge TTS when engine is empty or unrecognized
+		p := speech.NewEdgeTTSProvider()
 		if cfg.TTS.Voice != "" {
-			p.TTSVoice = cfg.TTS.Voice
+			p.Voice = cfg.TTS.Voice
 		}
 		if cfg.TTS.Speed > 0 {
-			p.TTSSpeed = cfg.TTS.Speed
-		}
-		if cfg.TTS.Format != "" {
-			p.TTSFormat = cfg.TTS.Format
+			ratePercent := int((cfg.TTS.Speed - 1.0) * 100)
+			if ratePercent > 0 {
+				p.Rate = fmt.Sprintf("+%d%%", ratePercent)
+			} else if ratePercent < 0 {
+				p.Rate = fmt.Sprintf("%d%%", ratePercent)
+			}
 		}
 		ttsProvider = p
 		slog.Info("tts provider configured",
-			slog.String("engine", "minimax"),
-			slog.String("tts_model", p.TTSModel),
-			slog.String("voice", p.TTSVoice),
-			slog.Float64("speed", p.TTSSpeed),
+			slog.String("engine", "edge"),
+			slog.String("voice", p.Voice),
+			slog.String("rate", p.Rate),
 		)
 	}
 	handler.SetSpeechProvider(ttsProvider)
