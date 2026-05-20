@@ -91,7 +91,7 @@
       @toggle-auto-speech="autoSpeech.toggle"
       @create-session="() => { manager.createSession(); sessionDrawerRef.value?.invalidate() }"
       @show-agent-selector="handleShowAgentSelector"
-      @delete-session="(id) => { manager.deleteCurrentSession((draftId) => inputBarRef.value?.deleteDraft(draftId)); sessionDrawerRef.value?.invalidate() }"
+      @delete-session="(id) => { manager.deleteCurrentSession((draftId) => inputBarRef.value?.deleteDraft(draftId)); sessionDrawerRef.value?.invalidate(id) }"
       @switch-model="handleSwitchModel"
       @switch-thinking-effort="handleSwitchThinkingEffort"
     />
