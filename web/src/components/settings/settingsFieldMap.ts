@@ -85,6 +85,16 @@ export const categoryItems: Record<string, ItemSpec[]> = {
     // Common fields (always shown)
     { labelKey: 'settings.items.ttsVoice', descriptionKey: 'settings.items.ttsVoiceDesc', key: 'tts.voice', type: 'text', source: 'server' },
     { labelKey: 'settings.items.ttsSpeed', descriptionKey: 'settings.items.ttsSpeedDesc', key: 'tts.speed', type: 'slider', source: 'server', min: 0.5, max: 3, step: 0.1 },
+    // Minimax-specific
+    { labelKey: 'settings.items.ttsModel', descriptionKey: 'settings.items.ttsModelDesc', key: 'tts.tts_model', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'minimax' } },
+    { labelKey: 'settings.items.ttsFormat', descriptionKey: 'settings.items.ttsFormatDesc', key: 'tts.format', type: 'select', source: 'server',
+      dependsOn: { key: 'tts.engine', value: 'minimax' }, options: [
+      { labelKey: 'settings.items.ttsFormatDefault', value: '' },
+      { labelKey: 'settings.items.ttsFormatMp3', value: 'mp3' },
+      { labelKey: 'settings.items.ttsFormatWav', value: 'wav' },
+      { labelKey: 'settings.items.ttsFormatPcm', value: 'pcm' },
+    ]},
     // Piper sub-config
     { labelKey: 'settings.items.piperModelPath', descriptionKey: 'settings.items.piperModelPathDesc', key: 'tts.piper.model_path', type: 'text', source: 'server',
       dependsOn: { key: 'tts.engine', value: 'piper' }, sectionHeader: 'settings.items.ttsPiperHeader' },
@@ -139,6 +149,8 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.apiFormatOpenai', value: 'openai' },
       { labelKey: 'settings.items.apiFormatAnthropic', value: 'anthropic' },
     ]},
+    { labelKey: 'settings.items.apiModel', descriptionKey: 'settings.items.apiModelDesc', key: 'tts.api.model', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
     // Cache
     { labelKey: 'settings.items.ttsMaxCacheFiles', descriptionKey: 'settings.items.ttsMaxCacheFilesDesc', key: 'tts.max_cache_files', type: 'number', source: 'server',
       sectionHeader: 'settings.items.ttsCacheHeader' },
@@ -169,6 +181,8 @@ export const categoryItems: Record<string, ItemSpec[]> = {
     { labelKey: 'settings.items.ragRetentionDays', descriptionKey: 'settings.items.ragRetentionDaysDesc', key: 'rag.retention_days', type: 'number', source: 'server' },
   ],
   network: [
+    { labelKey: 'settings.items.proxyEnabled', descriptionKey: 'settings.items.proxyEnabledDesc', key: 'proxy.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.proxyHeader' },
+    { labelKey: 'settings.items.proxyAllowedPorts', descriptionKey: 'settings.items.proxyAllowedPortsDesc', key: 'proxy.allowed_ports', type: 'text', source: 'server' },
     { labelKey: 'settings.items.portForwardEnabled', descriptionKey: 'settings.items.portForwardEnabledDesc', key: 'port_forward.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.portForwardHeader' },
     { labelKey: 'settings.items.portForwardPort', descriptionKey: 'settings.items.portForwardPortDesc', key: 'port_forward.port', type: 'number', source: 'server', needsRestart: true },
     { labelKey: 'settings.items.portForwardAllowedPorts', descriptionKey: 'settings.items.portForwardAllowedPortsDesc', key: 'port_forward.allowed_ports', type: 'text', source: 'server' },
