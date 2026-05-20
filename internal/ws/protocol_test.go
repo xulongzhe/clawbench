@@ -110,7 +110,7 @@ func TestDataTypesJSON(t *testing.T) {
 	})
 
 	t.Run("TaskUpdateData", func(t *testing.T) {
-		d := TaskUpdateData{TaskID: "t1", Status: "completed", ExecutionID: "e1"}
+		d := TaskUpdateData{TaskID: "t1", Status: "completed", ExecutionID: "e1", SessionID: "s1", ProjectPath: "/home/user/project"}
 		data, err := json.Marshal(d)
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
@@ -119,7 +119,7 @@ func TestDataTypesJSON(t *testing.T) {
 		if err := json.Unmarshal(data, &decoded); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
-		if decoded.TaskID != "t1" || decoded.Status != "completed" || decoded.ExecutionID != "e1" {
+		if decoded.TaskID != "t1" || decoded.Status != "completed" || decoded.ExecutionID != "e1" || decoded.SessionID != "s1" || decoded.ProjectPath != "/home/user/project" {
 			t.Errorf("roundtrip failed: %+v", decoded)
 		}
 	})
@@ -139,15 +139,17 @@ func TestDataTypesJSON(t *testing.T) {
 		}
 	})
 
-	t.Run("TaskUpdateData_empty_execution_id", func(t *testing.T) {
+	t.Run("TaskUpdateData_empty_optional_fields", func(t *testing.T) {
 		d := TaskUpdateData{TaskID: "t2", Status: "failed"}
 		data, err := json.Marshal(d)
 		if err != nil {
 			t.Fatalf("marshal: %v", err)
 		}
-		// ExecutionID should be omitted when empty
-		if strings.Contains(string(data), "execution_id") {
-			t.Errorf("expected execution_id to be omitted, got %s", data)
+		// ExecutionID, SessionID, ProjectPath should be omitted when empty
+		for _, field := range []string{"execution_id", "session_id", "project_path"} {
+			if strings.Contains(string(data), field) {
+				t.Errorf("expected %s to be omitted, got %s", field, data)
+			}
 		}
 	})
 }

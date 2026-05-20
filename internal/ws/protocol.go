@@ -30,6 +30,8 @@ type TaskUpdateData struct {
 	TaskID      string `json:"task_id"`
 	Status      string `json:"status"`          // "running", "completed", "failed"
 	ExecutionID string `json:"execution_id,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`
+	ProjectPath string `json:"project_path,omitempty"`
 }
 
 // QueueUpdateData is the data payload for "queue_update" events.
