@@ -631,9 +631,13 @@ ERROR: Missing environment variable: MINIMAX_API_KEY`
 
 	// Should have: 1 error event (stops parsing after ERROR)
 	var errorEvents []StreamEvent
+	var doneEvents []StreamEvent
 	for _, ev := range events {
 		if ev.Type == "error" {
 			errorEvents = append(errorEvents, ev)
+		}
+		if ev.Type == "done" {
+			doneEvents = append(doneEvents, ev)
 		}
 	}
 	if len(errorEvents) == 0 {
@@ -641,6 +645,10 @@ ERROR: Missing environment variable: MINIMAX_API_KEY`
 	}
 	if !strings.Contains(errorEvents[0].Error, "Missing environment variable") {
 		t.Errorf("expected error to mention env var, got %q", errorEvents[0].Error)
+	}
+	// ISS-079: ERROR must emit a done event so the SSE stream doesn't hang
+	if len(doneEvents) == 0 {
+		t.Fatal("expected a done event after ERROR line, got none")
 	}
 }
 

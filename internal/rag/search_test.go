@@ -84,6 +84,9 @@ func TestRAGSearch_EmptyQuery(t *testing.T) {
 func TestRAGSearch_DefaultLimit(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
 	embedder, cleanup := newHealthyMockOllama(t)
 	defer cleanup()
 
@@ -100,6 +103,9 @@ func TestRAGSearch_DefaultLimit(t *testing.T) {
 func TestRAGSearch_WithResults(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
 	embedder, cleanup := newHealthyMockOllama(t)
 	defer cleanup()
 
@@ -117,6 +123,9 @@ func TestRAGSearch_WithResults(t *testing.T) {
 func TestRAGSearch_FTSOnly(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
 	SetOllamaHealthy(false) // Ensure cached state doesn't interfere
 
 	// Insert chunks and build FTS index
@@ -231,6 +240,9 @@ func TestRAGSearch_NoSearchAvailable(t *testing.T) {
 func TestRAGSearch_DefaultPoolSize(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
 	embedder, cleanup := newHealthyMockOllama(t)
 	defer cleanup()
 
@@ -280,6 +292,9 @@ func TestRAGSearch_EmbeddingFailsFallsBackToFTS(t *testing.T) {
 func TestRAGSearch_CachedOllamaHealth(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
 
 	// Set cached Ollama health to true
 	SetOllamaHealthy(true)

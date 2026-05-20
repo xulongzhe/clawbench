@@ -916,3 +916,406 @@ func TestServeConfig_Patch_SessionMaxCount_IsHotField(t *testing.T) {
 	assert.True(t, ok)
 	assert.Empty(t, changed)
 }
+
+// --- validatePatchValues additional coverage ---
+
+func TestServeConfig_Patch_TTSFormatInvalid(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"format":"ogg"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.format must be one of")
+}
+
+func TestServeConfig_Patch_TTSFormatEmptyAllowed(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	// Empty format string is allowed (means "use default")
+	body := `{"tts":{"format":""}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestServeConfig_Patch_TTSSpeedTooLow(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"speed":0.1}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.speed must be between 0.5 and 3.0")
+}
+
+func TestServeConfig_Patch_TTSSpeedTooHigh(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"speed":5.0}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.speed must be between 0.5 and 3.0")
+}
+
+func TestServeConfig_Patch_PiperNoiseScaleInvalid(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"piper":{"noise_scale":1.5}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.piper.noise_scale must be between 0 and 1")
+}
+
+func TestServeConfig_Patch_PiperNoiseScaleNegative(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"piper":{"noise_scale":-0.1}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.piper.noise_scale must be between 0 and 1")
+}
+
+func TestServeConfig_Patch_PiperLengthScaleZero(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"piper":{"length_scale":0}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.piper.length_scale must be positive")
+}
+
+func TestServeConfig_Patch_PiperLengthScaleNegative(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"piper":{"length_scale":-1}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.piper.length_scale must be positive")
+}
+
+func TestServeConfig_Patch_PiperSentenceSilenceNegative(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"piper":{"sentence_silence":-0.5}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.piper.sentence_silence must be non-negative")
+}
+
+func TestServeConfig_Patch_KokoroEmptyLang(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"kokoro":{"lang":""}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tts.kokoro.lang must not be empty")
+}
+
+func TestServeConfig_Patch_TasksInvalidSummarizeBackend(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"tasks":{"summarize_backend":"nonexistent"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "tasks.summarize_backend must be one of")
+}
+
+func TestServeConfig_Patch_SessionNegativeMaxCount(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"session":{"max_count":-1}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "session.max_count must be non-negative")
+}
+
+func TestServeConfig_Patch_UploadNegativeMaxSizeMB(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"upload":{"max_size_mb":-1}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "upload.max_size_mb must be non-negative")
+}
+
+func TestServeConfig_Patch_UploadNegativeMaxFiles(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"upload":{"max_files":-1}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "upload.max_files must be non-negative")
+}
+
+func TestServeConfig_Patch_ChatNegativeSystemPromptInterval(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"chat":{"system_prompt_interval":-1}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "chat.system_prompt_interval must be non-negative")
+}
+
+// --- Cross-field consistency: tasks.summarize_backend api with base_url in patch ---
+
+func TestServeConfig_Patch_TasksAPIWithBaseURLInPatch(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.API.BaseURL = ""
+	cfg.Tasks.SummarizeBackend = "simple"
+	model.ConfigInstance = cfg
+
+	// tasks.summarize_backend=api with tts.api.base_url provided in same patch
+	body := `{"tasks":{"summarize_backend":"api"},"tts":{"api":{"base_url":"https://api.openai.com/v1"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// --- Cross-field: piper engine with model_path in same patch ---
+
+func TestServeConfig_Patch_PiperEngineWithModelPathInPatch(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	cfg.TTS.Piper.ModelPath = ""
+	model.ConfigInstance = cfg
+
+	// Engine=piper with model_path provided in same patch
+	body := `{"tts":{"engine":"piper","piper":{"model_path":"/path/to/model.onnx"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "piper", model.ConfigInstance.TTS.Engine)
+	assert.Equal(t, "/path/to/model.onnx", model.ConfigInstance.TTS.Piper.ModelPath)
+}
+
+// --- Cross-field: kokoro engine with both paths in same patch ---
+
+func TestServeConfig_Patch_KokoroEngineWithPathsInPatch(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"engine":"kokoro","kokoro":{"model_path":"/path/to/kokoro.onnx","voices_path":"/path/to/voices.bin"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "kokoro", model.ConfigInstance.TTS.Engine)
+}
+
+func TestServeConfig_Patch_KokoroEngineWithoutVoicesPath(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	cfg.TTS.Kokoro.ModelPath = "/path/to/kokoro.onnx"
+	model.ConfigInstance = cfg
+
+	// Engine=kokoro with model_path set but no voices_path
+	body := `{"tts":{"engine":"kokoro"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "kokoro.voices_path is required")
+}
+
+// --- Cross-field: moss-nano engine with model_dir in same patch ---
+
+func TestServeConfig_Patch_MossNanoEngineWithModelDirInPatch(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"engine":"moss-nano","moss_nano":{"model_dir":"/path/to/models"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "moss-nano", model.ConfigInstance.TTS.Engine)
+}
+
+// --- ServeConfigRestart with nil restartFunc ---
+
+func TestServeConfigRestart_NilRestartFunc(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Ensure restartFunc is nil
+	origRestartFunc := restartFunc
+	restartFunc = nil
+	defer func() { restartFunc = origRestartFunc }()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfigRestart, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "restarting", resp["status"])
+
+	// Give the goroutine time to run (it will just log a warning, not panic)
+	time.Sleep(500 * time.Millisecond)
+}
+
+// --- validatePatchFields nested forbidden field ---
+
+func TestServeConfig_Patch_ForbiddenNestedField(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Nested field that isn't in the patchable paths — e.g. ssh.host_key
+	body := `{"ssh":{"host_key":"secret"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "forbidden_field")
+}

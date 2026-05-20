@@ -721,3 +721,124 @@ func TestPersist_GetMatchesDiskAfterPatch(t *testing.T) {
 	terminal, _ := resp["terminal"].(map[string]any)
 	assert.Equal(t, float64(3), terminal["max_sessions"])
 }
+
+// --- writeConfigYAML fresh file (no existing config.yaml) ---
+
+func TestPersist_FreshFileCreation(t *testing.T) {
+	_, cleanup := setupPersistTestEnv(t)
+	defer cleanup()
+
+	// Don't create config.yaml manually — let writeConfigYAML create it from ConfigInstance
+	model.ConfigInstance = model.Config{}
+	model.ConfigInstance.Chat.CollapsedHeight = 200
+
+	cfg := patchAndReadConfig(t, `{"chat":{"collapsed_height":300}}`)
+	assert.Equal(t, 300, getNestedValue(cfg, "chat.collapsed_height"))
+}
+
+// --- writeConfigYAML with corrupt existing file ---
+
+func TestPersist_CorruptYAMLRecovery(t *testing.T) {
+	_, cleanup := setupPersistTestEnv(t)
+	defer cleanup()
+
+	configDir := filepath.Join(model.BinDir, "config")
+	configPath := filepath.Join(configDir, "config.yaml")
+
+	// Write corrupt YAML
+	require.NoError(t, os.WriteFile(configPath, []byte("::invalid yaml::\n  [bad"), 0644))
+
+	model.ConfigInstance = model.Config{}
+	model.ConfigInstance.Chat.CollapsedHeight = 100
+
+	// Should still succeed — corrupt file is overwritten from ConfigInstance
+	cfg := patchAndReadConfig(t, `{"chat":{"collapsed_height":250}}`)
+	assert.Equal(t, 250, getNestedValue(cfg, "chat.collapsed_height"))
+}
+
+// --- writeConfigYAML with empty existing file ---
+
+func TestPersist_EmptyYAMLRecovery(t *testing.T) {
+	_, cleanup := setupPersistTestEnv(t)
+	defer cleanup()
+
+	configDir := filepath.Join(model.BinDir, "config")
+	configPath := filepath.Join(configDir, "config.yaml")
+
+	// Write empty file
+	require.NoError(t, os.WriteFile(configPath, []byte(""), 0644))
+
+	model.ConfigInstance = model.Config{}
+	model.ConfigInstance.Chat.CollapsedHeight = 100
+
+	cfg := patchAndReadConfig(t, `{"chat":{"collapsed_height":250}}`)
+	assert.Equal(t, 250, getNestedValue(cfg, "chat.collapsed_height"))
+}
+
+// --- mergePatchIntoRaw creates nested map if missing ---
+
+func TestPersist_MergeCreatesNestedMap(t *testing.T) {
+	_, cleanup := setupPersistTestEnv(t)
+	defer cleanup()
+
+	// Create minimal config.yaml with no nested sections
+	configDir := filepath.Join(model.BinDir, "config")
+	configPath := filepath.Join(configDir, "config.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte("default_agent: claude\n"), 0644))
+
+	model.ConfigInstance = model.Config{}
+	model.ConfigInstance.Chat.CollapsedHeight = 100
+
+	// This should create the "chat" nested map and merge into it
+	cfg := patchAndReadConfig(t, `{"chat":{"collapsed_height":300}}`)
+	assert.Equal(t, 300, getNestedValue(cfg, "chat.collapsed_height"))
+	// Original top-level field should be preserved
+	assert.Equal(t, "claude", getNestedValue(cfg, "default_agent"))
+}
+
+// --- Config directory auto-creation ---
+
+func TestPersist_CreatesConfigDir(t *testing.T) {
+	_, cleanup := setupPersistTestEnv(t)
+	defer cleanup()
+
+	// Remove the config directory that setupPersistTestEnv created
+	configDir := filepath.Join(model.BinDir, "config")
+	os.RemoveAll(configDir)
+
+	model.ConfigInstance = model.Config{}
+
+	// PATCH should re-create the config directory
+	cfg := patchAndReadConfig(t, `{"chat":{"collapsed_height":250}}`)
+	assert.Equal(t, 250, getNestedValue(cfg, "chat.collapsed_height"))
+
+	// Verify the directory and file exist
+	_, err := os.Stat(filepath.Join(configDir, "config.yaml"))
+	assert.NoError(t, err)
+}
+
+// --- Incremental patch preserves existing fields ---
+
+func TestPersist_IncrementalPatchPreservesFields(t *testing.T) {
+	_, cleanup := setupPersistTestEnv(t)
+	defer cleanup()
+
+	model.ConfigInstance = model.Config{}
+
+	// First PATCH
+	patchAndReadConfig(t, `{"chat":{"collapsed_height":200}}`)
+
+	// Second PATCH — should preserve the first change
+	patchAndReadConfig(t, `{"upload":{"max_size_mb":50}}`)
+
+	// Verify both values persisted
+	configPath := filepath.Join(model.BinDir, "config", "config.yaml")
+	data, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	var cfg map[string]any
+	require.NoError(t, yaml.Unmarshal(data, &cfg))
+
+	assert.Equal(t, 200, getNestedValue(cfg, "chat.collapsed_height"))
+	assert.Equal(t, 50, getNestedValue(cfg, "upload.max_size_mb"))
+}

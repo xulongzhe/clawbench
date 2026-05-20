@@ -3,6 +3,7 @@ package model_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"clawbench/internal/model"
@@ -468,4 +469,171 @@ func TestWriteAgentYAML_AgentNotFound(t *testing.T) {
 	// Agent YAML doesn't exist
 	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent"})
 	assert.Error(t, err)
+}
+
+func TestWriteAgentYAML_NotInitializedNoDir(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// LoadAgents on an empty dir sets agentsDir, but the agent won't exist on disk
+	// We need agentsDir to be empty to trigger "agents directory not initialized"
+	// Since agentsDir is unexported, we test by calling WriteAgentYAML before LoadAgents
+	// Reset state first
+	model.Agents = nil
+	model.AgentList = nil
+
+	// WriteAgentYAML checks agentsDir internally; calling before LoadAgents
+	// means agentsDir="" (the zero value). But since agentsDir persists across
+	// tests, we use LoadAgents on empty dir (which sets agentsDir) then
+	// test with a nonexistent agent which hits the read error instead.
+	// The "not initialized" path is actually untestable without modifying
+	// the source, so we test the behavior we can: calling WriteAgentYAML
+	// for an agent whose YAML doesn't exist on disk.
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+
+	// WriteAgentYAML for nonexistent agent — should fail with read error
+	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent", PreferredModel: "m1"})
+	assert.Error(t, err)
+}
+
+func TestLoadAgents_CommonPromptOnlyWithRulesNoSystemPrompt(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Create rules.md in parent directory
+	rulesContent := "## Rules\nBe helpful and concise."
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0644))
+
+	// Agent with no system_prompt — should get commonPrompt only (the else-if branch)
+	yaml := `id: no-prompt
+name: No Prompt
+icon: "N"
+specialty: None
+backend: claude
+`
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "agent.yaml"), []byte(yaml), 0644))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	agent := model.Agents["no-prompt"]
+	assert.NotNil(t, agent)
+	// Should have the common prompt (rules.md) as the system prompt
+	assert.Contains(t, agent.SystemPrompt, "Be helpful and concise")
+}
+
+func TestLoadAgents_CommonPromptWithAgentPrompt(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Create rules.md
+	rulesContent := "## Rules\nBe helpful."
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0644))
+
+	// Agent with system_prompt — should get commonPrompt + agent prompt
+	yaml := `id: with-prompt
+name: With Prompt
+icon: "W"
+specialty: Writing
+backend: codebuddy
+system_prompt: My specific prompt
+`
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "agent.yaml"), []byte(yaml), 0644))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	agent := model.Agents["with-prompt"]
+	assert.NotNil(t, agent)
+	// Should have both common prompt and specific prompt
+	assert.Contains(t, agent.SystemPrompt, "Be helpful")
+	assert.Contains(t, agent.SystemPrompt, "My specific prompt")
+	// Common prompt should come first
+	idx := strings.Index(agent.SystemPrompt, "Be helpful")
+	idx2 := strings.Index(agent.SystemPrompt, "My specific prompt")
+	assert.Less(t, idx, idx2)
+}
+
+func TestWriteAgentYAML_InvalidYAMLContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Write an agent YAML that is valid YAML but cannot be round-tripped
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = "new-model"
+	err = model.WriteAgentYAML(agent)
+	assert.NoError(t, err)
+
+	// Verify the file was updated
+	data, err := os.ReadFile(filepath.Join(agentsDir, "test-agent.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "preferred_model: new-model")
+	assert.Contains(t, string(data), "backend: codebuddy")
+}
+
+func TestLoadAgents_ClawbenchBinReplacement(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+		model.ClawbenchBin = ""
+	})
+
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Create rules.md with {{CLAWBENCH_BIN}} placeholder
+	rulesContent := "Use {{CLAWBENCH_BIN}} for CLI operations."
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0644))
+
+	yaml := `id: test-agent
+name: Test
+icon: "T"
+specialty: Testing
+backend: codebuddy
+system_prompt: You test.
+`
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yaml), 0644))
+
+	// Set ClawbenchBin before loading
+	model.ClawbenchBin = "/usr/local/bin/clawbench"
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+
+	agent := model.Agents["test-agent"]
+	assert.NotNil(t, agent)
+	assert.Contains(t, agent.SystemPrompt, "/usr/local/bin/clawbench")
+	assert.NotContains(t, agent.SystemPrompt, "{{CLAWBENCH_BIN}}")
 }

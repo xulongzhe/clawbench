@@ -677,3 +677,59 @@ func TestIndexer_indexMessage_LargeMessage(t *testing.T) {
 	count, _ := store.ChunkCount()
 	assert.Greater(t, count, 0, "should index chunks from large message")
 }
+
+// ---------- backfillEmbeddings edge cases ----------
+
+func TestIndexer_backfillEmbeddings_ZeroBatchSize(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	idx := NewIndexer(store, embedder, model.RAGConfig{BatchSize: 0})
+	idx.ollamaHealthy = true
+
+	// Insert a chunk without embedding
+	chunk := Chunk{
+		SessionID: "sess-1", MessageID: 1, ChunkText: "test backfill",
+		ChunkTextSegmented: "test backfill", ChunkIndex: 0, TokenCount: 3,
+		Embedding: nil, HasEmbedding: false,
+		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		CreatedAt: time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	// Should use default batch size (10) when configured batch size is 0
+	idx.backfillEmbeddings(context.Background())
+
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 0, pending, "should backfill even with batch size 0 (uses default)")
+}
+
+func TestIndexer_backfillEmbeddings_LargeBatchSize(t *testing.T) {
+	setupIndexerDB(t)
+	store := setupTestStore(t)
+	embedder, cleanup := newHealthyMockOllama(t)
+	defer cleanup()
+
+	// Batch size > 50 should be capped at 50
+	idx := NewIndexer(store, embedder, model.RAGConfig{BatchSize: 100})
+	idx.ollamaHealthy = true
+
+	// Insert a single chunk without embedding
+	chunk := Chunk{
+		SessionID: "sess-1", MessageID: 1, ChunkText: "test cap",
+		ChunkTextSegmented: "test cap", ChunkIndex: 0, TokenCount: 3,
+		Embedding: nil, HasEmbedding: false,
+		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		CreatedAt: time.Now().Truncate(time.Millisecond),
+	}
+	err := store.InsertChunks([]Chunk{chunk})
+	require.NoError(t, err)
+
+	idx.backfillEmbeddings(context.Background())
+
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 0, pending, "should backfill with capped batch size")
+}
