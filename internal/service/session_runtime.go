@@ -89,6 +89,18 @@ func IsSessionRunning(sessionID string) bool {
 	return activeSessions[sessionID]
 }
 
+// GetRunningSessionIDs returns all currently running session IDs in a single call.
+// This avoids N separate mutex acquisitions when checking running state for multiple sessions.
+func GetRunningSessionIDs() []string {
+	activeMu.Lock()
+	defer activeMu.Unlock()
+	ids := make([]string, 0, len(activeSessions))
+	for id := range activeSessions {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // SetSessionRunning sets the running state for a session.
 // If skipEvent is true, the session_update event is suppressed (used by CancelSession
 // which emits its own "cancelled" event and should not also emit "completed").

@@ -1842,3 +1842,240 @@ func TestGetSessionTitlesBatch_NonExistentID(t *testing.T) {
 	assert.False(t, ok, "non-existent ID should not appear in titles")
 }
 
+// ---------- GetSessions UnreadCount ----------
+
+func TestGetSessions_UnreadCount_NoMessages(t *testing.T) {
+	setupDB(t)
+
+	helperCreateSession(t, "/project", "claude", "Empty Session")
+
+	sessions, err := service.GetSessions("/project", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, 0, sessions[0].UnreadCount)
+}
+
+func TestGetSessions_UnreadCount_AllUnread(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Unread All")
+
+	// Add assistant messages (no last_read_at set → all unread)
+	_, err := service.AddChatMessage("/project", "claude", sid, "assistant", "reply 1", nil, false, "")
+	assert.NoError(t, err)
+	_, err = service.AddChatMessage("/project", "claude", sid, "assistant", "reply 2", nil, false, "")
+	assert.NoError(t, err)
+
+	sessions, err := service.GetSessions("/project", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, 2, sessions[0].UnreadCount)
+}
+
+func TestGetSessions_UnreadCount_OnlyAssistantCounts(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Mixed Messages")
+
+	// User messages should NOT be counted as unread
+	_, err := service.AddChatMessage("/project", "claude", sid, "user", "hello", nil, false, "")
+	assert.NoError(t, err)
+	// Assistant messages should be counted
+	_, err = service.AddChatMessage("/project", "claude", sid, "assistant", "hi", nil, false, "")
+	assert.NoError(t, err)
+
+	sessions, err := service.GetSessions("/project", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, 1, sessions[0].UnreadCount)
+}
+
+func TestGetSessions_UnreadCount_StreamingExcluded(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Streaming")
+
+	// Streaming assistant message should NOT count as unread
+	_, err := service.AddChatMessage("/project", "claude", sid, "assistant", "partial", nil, true, "")
+	assert.NoError(t, err)
+	// Finalized assistant message should count
+	_, err = service.AddChatMessage("/project", "claude", sid, "assistant", "done", nil, false, "")
+	assert.NoError(t, err)
+
+	sessions, err := service.GetSessions("/project", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, 1, sessions[0].UnreadCount)
+}
+
+func TestGetSessions_UnreadCount_AfterLastRead(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Read Some")
+
+	// Add 3 assistant messages
+	_, err := service.AddChatMessage("/project", "claude", sid, "assistant", "old 1", nil, false, "")
+	assert.NoError(t, err)
+	_, err = service.AddChatMessage("/project", "claude", sid, "assistant", "old 2", nil, false, "")
+	assert.NoError(t, err)
+
+	// Mark as read
+	service.UpdateLastRead(sid)
+
+	// Small sleep to ensure created_at is after last_read_at (SQLite second precision)
+	time.Sleep(1100 * time.Millisecond)
+
+	// Add 1 more assistant message after reading
+	_, err = service.AddChatMessage("/project", "claude", sid, "assistant", "new 1", nil, false, "")
+	assert.NoError(t, err)
+
+	sessions, err := service.GetSessions("/project", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, 1, sessions[0].UnreadCount, "only messages after last_read_at should be unread")
+}
+
+func TestGetSessions_UnreadCount_MultipleSessions(t *testing.T) {
+	setupDB(t)
+
+	sid1 := helperCreateSession(t, "/project", "claude", "Session 1")
+	sid2 := helperCreateSession(t, "/project", "claude", "Session 2")
+
+	// sid1: 3 unread
+	_, _ = service.AddChatMessage("/project", "claude", sid1, "assistant", "a1", nil, false, "")
+	_, _ = service.AddChatMessage("/project", "claude", sid1, "assistant", "a2", nil, false, "")
+	_, _ = service.AddChatMessage("/project", "claude", sid1, "assistant", "a3", nil, false, "")
+
+	// sid2: 1 unread
+	_, _ = service.AddChatMessage("/project", "claude", sid2, "assistant", "b1", nil, false, "")
+
+	sessions, err := service.GetSessions("/project", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 2)
+
+	sessionMap := make(map[string]int)
+	for _, s := range sessions {
+		sessionMap[s.ID] = s.UnreadCount
+	}
+	assert.Equal(t, 3, sessionMap[sid1])
+	assert.Equal(t, 1, sessionMap[sid2])
+}
+
+func TestGetSessions_UnreadCount_DeletedMessagesExcluded(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Deleted Messages")
+
+	_, _ = service.AddChatMessage("/project", "claude", sid, "assistant", "kept", nil, false, "")
+	msgID2, _ := service.AddChatMessage("/project", "claude", sid, "assistant", "deleted", nil, false, "")
+
+	// Soft-delete one message
+	_, err := service.DB.Exec("UPDATE chat_history SET deleted = 1 WHERE id = ?", msgID2)
+	assert.NoError(t, err)
+
+	sessions, err := service.GetSessions("/project", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, 1, sessions[0].UnreadCount, "deleted messages should not count as unread")
+}
+
+// ---------- GetSessionsPaged UnreadCount ----------
+
+func TestGetSessionsPaged_UnreadCount(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Paged Unread")
+
+	_, _ = service.AddChatMessage("/project", "claude", sid, "assistant", "msg", nil, false, "")
+
+	sessions, hasMore, err := service.GetSessionsPaged("/project", "", 10, "", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, 1, sessions[0].UnreadCount)
+	assert.False(t, hasMore)
+}
+
+// ---------- GetRunningSessionIDs ----------
+
+func TestGetRunningSessionIDs_Empty(t *testing.T) {
+	setupDB(t)
+
+	// Clear any leftover state from prior tests
+	for _, id := range service.GetRunningSessionIDs() {
+		service.SetSessionRunning(id, false)
+	}
+
+	ids := service.GetRunningSessionIDs()
+	assert.Empty(t, ids)
+}
+
+func TestGetRunningSessionIDs_MultipleRunning(t *testing.T) {
+	setupDB(t)
+
+	// Clear any leftover state from prior tests
+	for _, id := range service.GetRunningSessionIDs() {
+		service.SetSessionRunning(id, false)
+	}
+
+	service.SetSessionRunning("sess-1", true)
+	service.SetSessionRunning("sess-2", true)
+	service.SetSessionRunning("sess-3", true)
+
+	ids := service.GetRunningSessionIDs()
+	assert.Len(t, ids, 3)
+
+	idSet := make(map[string]bool)
+	for _, id := range ids {
+		idSet[id] = true
+	}
+	assert.True(t, idSet["sess-1"])
+	assert.True(t, idSet["sess-2"])
+	assert.True(t, idSet["sess-3"])
+
+	// Clean up
+	service.SetSessionRunning("sess-1", false)
+	service.SetSessionRunning("sess-2", false)
+	service.SetSessionRunning("sess-3", false)
+}
+
+func TestGetRunningSessionIDs_SomeRunning(t *testing.T) {
+	setupDB(t)
+
+	// Clear any leftover state from prior tests
+	for _, id := range service.GetRunningSessionIDs() {
+		service.SetSessionRunning(id, false)
+	}
+
+	service.SetSessionRunning("sess-1", true)
+	service.SetSessionRunning("sess-2", true)
+
+	ids := service.GetRunningSessionIDs()
+	assert.Len(t, ids, 2)
+
+	// After stopping one
+	service.SetSessionRunning("sess-1", false)
+	ids = service.GetRunningSessionIDs()
+	assert.Len(t, ids, 1)
+	assert.Equal(t, "sess-2", ids[0])
+
+	// Clean up
+	service.SetSessionRunning("sess-2", false)
+}
+
+func TestGetRunningSessionIDs_AfterClearAll(t *testing.T) {
+	setupDB(t)
+
+	// Clear any leftover state from prior tests
+	for _, id := range service.GetRunningSessionIDs() {
+		service.SetSessionRunning(id, false)
+	}
+
+	service.SetSessionRunning("sess-1", true)
+	service.SetSessionRunning("sess-2", true)
+
+	service.SetSessionRunning("sess-1", false)
+	service.SetSessionRunning("sess-2", false)
+
+	ids := service.GetRunningSessionIDs()
+	assert.Empty(t, ids)
+}

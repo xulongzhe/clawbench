@@ -250,9 +250,17 @@ func generateSessionID() string {
 func GetSessions(projectPath, backend string) ([]model.ChatSession, error) {
 	sessions := []model.ChatSession{}
 	query := `SELECT s.id, s.title, s.backend, s.agent_id, s.agent_source, s.model, s.session_type, s.created_at, s.updated_at, s.last_read_at,
-		(SELECT COUNT(*) FROM chat_history h WHERE h.session_id = s.id AND h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
-		 AND (s.last_read_at IS NULL OR h.created_at > s.last_read_at)) AS unread_count
-		FROM chat_sessions s WHERE s.project_path = ? AND s.deleted = 0 AND s.session_type = 'chat'`
+		COALESCE(unread.cnt, 0) AS unread_count
+		FROM chat_sessions s
+		LEFT JOIN (
+			SELECT h.session_id, COUNT(*) AS cnt
+			FROM chat_history h
+			JOIN chat_sessions s2 ON s2.id = h.session_id
+			WHERE h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
+			  AND (s2.last_read_at IS NULL OR h.created_at > s2.last_read_at)
+			GROUP BY h.session_id
+		) unread ON unread.session_id = s.id
+		WHERE s.project_path = ? AND s.deleted = 0 AND s.session_type = 'chat'`
 	args := []interface{}{projectPath}
 	if backend != "" {
 		query += " AND s.backend = ?"
@@ -297,9 +305,17 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 
 	// Build main query with cursor and limit+1
 	query := `SELECT s.id, s.title, s.backend, s.agent_id, s.agent_source, s.model, s.session_type, s.created_at, s.updated_at, s.last_read_at,
-		(SELECT COUNT(*) FROM chat_history h WHERE h.session_id = s.id AND h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
-		 AND (s.last_read_at IS NULL OR h.created_at > s.last_read_at)) AS unread_count
-		FROM chat_sessions s WHERE s.project_path = ? AND s.deleted = 0 AND s.session_type = 'chat'`
+		COALESCE(unread.cnt, 0) AS unread_count
+		FROM chat_sessions s
+		LEFT JOIN (
+			SELECT h.session_id, COUNT(*) AS cnt
+			FROM chat_history h
+			JOIN chat_sessions s2 ON s2.id = h.session_id
+			WHERE h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
+			  AND (s2.last_read_at IS NULL OR h.created_at > s2.last_read_at)
+			GROUP BY h.session_id
+		) unread ON unread.session_id = s.id
+		WHERE s.project_path = ? AND s.deleted = 0 AND s.session_type = 'chat'`
 	args := []interface{}{projectPath}
 	if backend != "" {
 		query += " AND s.backend = ?"

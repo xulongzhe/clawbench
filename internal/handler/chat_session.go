@@ -50,8 +50,14 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to load sessions")))
 			return
 		}
+		// Batch-check running state: single mutex acquisition instead of N
+		runningIDs := service.GetRunningSessionIDs()
+		runningSet := make(map[string]bool, len(runningIDs))
+		for _, id := range runningIDs {
+			runningSet[id] = true
+		}
 		for i := range sessions {
-			sessions[i].Running = service.IsSessionRunning(sessions[i].ID)
+			sessions[i].Running = runningSet[sessions[i].ID]
 		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"sessions": sessions,
