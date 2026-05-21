@@ -1,6 +1,7 @@
 package com.clawbench.app;
 
 import android.content.Context;
+import android.content.Intent;
 import android.util.Log;
 import cn.jpush.android.api.NotificationMessage;
 import cn.jpush.android.service.JPushMessageReceiver;
@@ -40,8 +41,8 @@ public class JPushReceiver extends JPushMessageReceiver {
             Log.w(TAG, "Failed to build JSON for open-session event", e);
             return;
         }
-        // Store as pending navigation for cold-start fallback
         if (MainActivity.instance != null) {
+            // App is alive — store pending navigation and dispatch event to WebView
             try {
                 MainActivity.instance.pendingNavigation = new org.json.JSONObject(jsArg);
             } catch (Exception e) {
@@ -55,6 +56,17 @@ public class JPushReceiver extends JPushMessageReceiver {
                     );
                 }
             });
+        } else {
+            // App is not running — launch MainActivity with navigation extras
+            // so handleNotificationIntent picks them up on resume
+            Log.i(TAG, "JPush: app not running, launching MainActivity with session_id=" + sessionId);
+            Intent launchIntent = new Intent(context, MainActivity.class);
+            launchIntent.setAction(Intent.ACTION_MAIN);
+            launchIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            launchIntent.putExtra("session_id", sessionId);
+            if (projectPath != null) launchIntent.putExtra("project_path", projectPath);
+            context.startActivity(launchIntent);
         }
     }
 

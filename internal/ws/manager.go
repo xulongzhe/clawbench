@@ -302,6 +302,7 @@ func (m *Manager) broadcastToSubscription(key string, msg ServerMessage, deliver
 		}
 		title := "AI任务完成"
 		alert := "AI会话已结束"
+		slog.Info("ws: sending jpush notification", "event", msg.Event, "client_id", key, "reg_id", pushRegID, "title", title, "extras", extras)
 		if msg.Event == "task_update" {
 			alert = "计划任务已完成"
 		}
