@@ -658,7 +658,7 @@ public class BackgroundServiceNativeWsTest {
         setStaticField("isRunning", true);
 
         try {
-            Method method = PortForwardService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
+            Method method = BackgroundService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
             method.setAccessible(true);
             method.invoke(service, "session_update", data);
         } catch (Exception e) {
@@ -689,7 +689,7 @@ public class BackgroundServiceNativeWsTest {
         setStaticField("isRunning", true);
 
         try {
-            Method method = PortForwardService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
+            Method method = BackgroundService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
             method.setAccessible(true);
             method.invoke(service, "task_update", data);
         } catch (Exception e) {
@@ -712,7 +712,7 @@ public class BackgroundServiceNativeWsTest {
         setStaticField("isRunning", true);
 
         try {
-            Method method = PortForwardService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
+            Method method = BackgroundService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
             method.setAccessible(true);
             // Unknown event type should return early (no notification posted)
             method.invoke(service, "unknown_event", data);
