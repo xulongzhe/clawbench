@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -84,7 +85,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		// No specific session requested — use lightweight query to find the most recent session
 		latestID, latestBackend, err := service.GetLatestSessionID(projectPath)
 		if err != nil {
-			if err != sql.ErrNoRows {
+			if !errors.Is(err, sql.ErrNoRows) {
 				model.WriteError(w, model.Internal(fmt.Errorf("failed to find latest session")))
 				return
 			}
@@ -114,6 +115,8 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		service.UpdateLastRead(sessionID)
 
 		// Parse pagination params
+		// Supports both before_id (preferred, integer cursor) and before (legacy, timestamp cursor).
+		// before_id takes priority when both are provided.
 		limit := 0
 		beforeID := 0
 		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
@@ -124,6 +127,15 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		if bid := r.URL.Query().Get("before_id"); bid != "" {
 			if id, err := strconv.Atoi(bid); err == nil && id > 0 {
 				beforeID = id
+			}
+		}
+		// Legacy: accept "before" (timestamp) for backward compatibility with older clients.
+		// When before_id is absent and before is present, fall back to timestamp-based lookup.
+		if beforeID == 0 {
+			if bt := r.URL.Query().Get("before"); bt != "" {
+				if id, err := service.GetMessageIDBeforeTime(projectPath, sessionBackend, sessionID, bt); err == nil && id > 0 {
+					beforeID = id
+				}
 			}
 		}
 

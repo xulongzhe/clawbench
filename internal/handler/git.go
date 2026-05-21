@@ -798,6 +798,13 @@ func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cap SHA count to prevent exceeding OS ARG_MAX (~2MB on Linux).
+	// 500 SHAs × 40 chars each ≈ 20KB — well within safe limits.
+	const maxSHAs = 500
+	if len(body.SHAs) > maxSHAs {
+		body.SHAs = body.SHAs[:maxSHAs]
+	}
+
 	results := make(map[string]interface{}, len(body.SHAs))
 
 	// Batch: use git log --no-walk=sorted to fetch all commit info in one command
@@ -815,13 +822,24 @@ func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 
 	// Parse git log output — only valid commits appear
 	// Map full SHA → requested SHA for key normalization (frontend may send abbreviated SHAs)
+	// Build a prefix lookup map from requested SHAs for O(1) matching instead of O(N×M) scan.
+	reqSHAMap := make(map[string]string, len(body.SHAs)) // prefix→original
+	for _, sha := range body.SHAs {
+		// Index by the minimum unique prefix length (at least 7 chars for abbreviated SHAs)
+		prefixLen := len(sha)
+		if prefixLen > 40 {
+			prefixLen = 40
+		}
+		reqSHAMap[sha[:prefixLen]] = sha
+	}
+
 	fullToRequested := map[string]string{}
 	if len(logOutput) > 0 {
 		commits := parseGitLog(string(logOutput))
 		for _, c := range commits {
-			// Find which requested SHA matches this full SHA (by prefix)
-			for _, reqSHA := range body.SHAs {
-				if strings.HasPrefix(c.SHA, reqSHA) {
+			// Find which requested SHA matches this full SHA (by prefix lookup)
+			for prefixLen := 7; prefixLen <= len(c.SHA); prefixLen++ {
+				if reqSHA, ok := reqSHAMap[c.SHA[:prefixLen]]; ok {
 					fullToRequested[c.SHA] = reqSHA
 					break
 				}

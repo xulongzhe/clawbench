@@ -1008,6 +1008,18 @@ func TestDeleteTaskExecution_RunningExecution(t *testing.T) {
 	err = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE id = ?", execID).Scan(&execCount)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, execCount, "running execution should not be deleted")
+
+	// Verify session is NOT soft-deleted (operation order fix: DELETE runs first,
+	// so if DELETE fails, session must remain intact)
+	var sessionDeleted int
+	err = service.DB.QueryRow("SELECT deleted FROM chat_sessions WHERE id = ?", sessionID).Scan(&sessionDeleted)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, sessionDeleted, "session should NOT be soft-deleted when execution deletion is rejected")
+
+	// Verify run_count is NOT decremented
+	task, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, task.RunCount, "run_count should not be decremented when deletion is rejected")
 }
 
 func TestDeleteTaskExecution_RunCountClampToZero(t *testing.T) {

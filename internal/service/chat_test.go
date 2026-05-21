@@ -924,6 +924,30 @@ func TestGetChatHistory_SameSecondOrdering(t *testing.T) {
 	assert.Equal(t, "assistant", msgs[1].Role, "assistant message must come second")
 }
 
+func TestGetMessageIDBeforeTime(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "BeforeTime")
+
+	// Insert messages with known timestamps
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "user", "msg1", "2025-01-01 10:00:00", 0)
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "assistant", "msg2", "2025-01-01 10:00:01", 0)
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "user", "msg3", "2025-01-01 10:00:02", 0)
+
+	// Query for messages before 10:00:02 — should return max ID of messages before that time
+	id, err := service.GetMessageIDBeforeTime("/project", "claude", sid, "2025-01-01 10:00:02")
+	assert.NoError(t, err)
+	assert.Greater(t, id, 0, "should find a message ID before the given time")
+
+	// Query with a time before all messages — should return 0
+	id, err = service.GetMessageIDBeforeTime("/project", "claude", sid, "2025-01-01 09:00:00")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, id, "should return 0 when no messages before the given time")
+}
+
 // Ensure TestMain-like global DB save/restore works correctly
 func TestGlobalDBPreservedAcrossParallelTests(t *testing.T) {
 	originalDB := service.DB

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"clawbench/internal/model"
 
@@ -211,12 +212,18 @@ func InitDB(runFromServer ...bool) error {
 	// may still be actively streaming, and these are NOT orphaned messages.
 	isServerStartup := len(runFromServer) > 0 && runFromServer[0]
 
-	// Initialize read connection pool for concurrent reads (WAL mode)
+	// Initialize read connection pool for concurrent reads (WAL mode).
+	// WAL contract: DB (MaxOpenConns=1) serializes writes; DBRead (MaxOpenConns=2)
+	// allows concurrent reads that never block writes and vice versa.
+	// Both pools must use WAL mode + busy_timeout for this to work correctly.
 	DBRead, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open read database: %w", err)
 	}
 	DBRead.SetMaxOpenConns(2)
+	DBRead.SetMaxIdleConns(2)           // match MaxOpenConns to avoid churn
+	DBRead.SetConnMaxLifetime(0)        // unlimited — SQLite file DB, no reconnection needed
+	DBRead.SetConnMaxIdleTime(30 * time.Minute) // close idle conns after 30min
 	if _, err := DBRead.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		return fmt.Errorf("failed to set read DB WAL mode: %w", err)
 	}

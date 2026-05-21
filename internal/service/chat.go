@@ -397,6 +397,24 @@ func GetLatestSessionID(projectPath string) (sessionID, backend string, err erro
 	return
 }
 
+// GetMessageIDBeforeTime resolves a legacy "before" (created_at timestamp) cursor
+// to the corresponding message ID. This provides backward compatibility for older
+// clients that still send ?before=<timestamp> instead of ?before_id=<id>.
+// Returns the max ID of messages created before the given timestamp, or 0 if none found.
+func GetMessageIDBeforeTime(projectPath, backend, sessionID, beforeTime string) (int, error) {
+	var id sql.NullInt64
+	err := DBRead.QueryRow(
+		`SELECT MAX(id) FROM chat_history
+		 WHERE project_path = ? AND backend = ? AND session_id = ?
+		 AND created_at < ? AND deleted = 0`,
+		projectPath, backend, sessionID, beforeTime,
+	).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return int(id.Int64), nil
+}
+
 // GetSessionModel returns the model ID of a session, or empty string if not found or deleted.
 func GetSessionModel(sessionID string) string {
 	var modelID string

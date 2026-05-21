@@ -923,7 +923,19 @@ func DeleteTaskExecution(executionID int64) error {
 		return fmt.Errorf("cannot delete a running execution")
 	}
 
-	// Soft-delete the associated chat session
+	// Hard-delete the execution row first (conditional on status to prevent TOCTOU race).
+	// This must happen BEFORE soft-deleting the session: if the conditional DELETE fails
+	// (execution became running between the DBRead check and this DELETE), the session
+	// must remain intact to avoid inconsistent state.
+	result, err := DB.Exec("DELETE FROM task_executions WHERE id = ? AND status != 'running'", executionID)
+	if err != nil {
+		return fmt.Errorf("failed to delete execution: %w", err)
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return fmt.Errorf("cannot delete a running execution")
+	}
+
+	// Only soft-delete the associated chat session AFTER successful execution deletion.
 	var projectPath, backend string
 	err = DBRead.QueryRow(
 		"SELECT project_path, backend FROM chat_sessions WHERE id = ?",
@@ -936,15 +948,6 @@ func DeleteTaskExecution(executionID int64) error {
 				slog.String("err", err.Error()),
 			)
 		}
-	}
-
-	// Hard-delete the execution row (conditional on status to prevent TOCTOU race with DBRead)
-	result, err := DB.Exec("DELETE FROM task_executions WHERE id = ? AND status != 'running'", executionID)
-	if err != nil {
-		return fmt.Errorf("failed to delete execution: %w", err)
-	}
-	if rows, _ := result.RowsAffected(); rows == 0 {
-		return fmt.Errorf("cannot delete a running execution")
 	}
 
 	// Decrement run_count on the parent task (clamp to 0)
