@@ -799,32 +799,34 @@ func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := make(map[string]interface{}, len(body.SHAs))
+
+	// Batch: use git log --no-walk=sorted to fetch all commit info in one command
+	// --ignore-missing skips invalid SHAs instead of erroring out
+	logArgs := []string{
+		"log", "--no-walk=sorted", "--ignore-missing",
+		"--format=%H|%P|%s|%ad|%an%d",
+		"--date=iso",
+	}
+	logArgs = append(logArgs, body.SHAs...)
+
+	logCmd := exec.Command("git", logArgs...)
+	logCmd.Dir = projectPath
+	logOutput, _ := logCmd.Output()
+
+	// Parse git log output — only valid commits appear
+	foundSHAs := map[string]bool{}
+	if len(logOutput) > 0 {
+		commits := parseGitLog(string(logOutput))
+		for _, c := range commits {
+			results[c.SHA] = c
+			foundSHAs[c.SHA] = true
+		}
+	}
+
+	// For SHAs not found in git log, mark as nil (not a valid commit)
 	for _, sha := range body.SHAs {
-		cmd := exec.Command("git", "cat-file", "-t", sha)
-		cmd.Dir = projectPath
-		output, err := cmd.Output()
-		if err != nil {
+		if !foundSHAs[sha] {
 			results[sha] = nil
-		} else {
-			objType := strings.TrimSpace(string(output))
-			if objType == "commit" {
-				// Fetch commit info for breadcrumb display
-				logCmd := exec.Command("git", "log", "-1", "--format=%H|%P|%s|%ad|%an%d", "--date=iso", sha)
-				logCmd.Dir = projectPath
-				logOutput, logErr := logCmd.Output()
-				if logErr == nil && len(logOutput) > 0 {
-					parsed := parseGitLog(string(logOutput))
-					if len(parsed) > 0 {
-						results[sha] = parsed[0]
-					} else {
-						results[sha] = sha // fallback
-					}
-				} else {
-					results[sha] = sha // fallback
-				}
-			} else {
-				results[sha] = nil
-			}
 		}
 	}
 
