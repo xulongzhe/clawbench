@@ -129,7 +129,6 @@ export function useChatSession(options: UseChatSessionOptions) {
   // transition so the user sees immediate feedback instead of a frozen UI.
   const switching = ref(false)
 
-  const sessionDrawerOpen = ref(false)
   const lastMsgCount = ref(0)
   let msgCountInterval: ReturnType<typeof setInterval> | null = null
 
@@ -387,10 +386,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     }
   }
 
-  function openSessionTab() {
-    sessionDrawerOpen.value = true
-  }
-
   function startMsgCountPolling() {
     stopMsgCountPolling()
     if (!currentSessionId.value) return
@@ -477,7 +472,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     currentAgentId,
     runningSessions,
     // UI state — local to this instance
-    sessionDrawerOpen,
     agentHeaderTitle,
     totalMessages,
     hasMore,
@@ -489,7 +483,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     switchSession,
     createSession,
     deleteSession,
-    openSessionTab,
     onSessionEvent,
     loadSessionsOnce: loadSessionsOnceInner,
     startMsgCountPolling,

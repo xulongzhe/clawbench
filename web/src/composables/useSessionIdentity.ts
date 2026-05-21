@@ -22,6 +22,11 @@ const runningSessions = ref(new Set<string>())
 // that depend on the set's contents re-evaluate correctly.
 const runningSessionsVersion = ref(0)
 
+// Whether the global session drawer is open. Lifted from ChatPanelContent
+// to useSessionIdentity so App.vue can render a single SessionDrawer
+// instance that's accessible from any tab (chat, viewer, QuoteQuestionBar).
+const sessionDrawerOpen = ref(false)
+
 // ───────────────────────────────────────────────────────────
 // Agent preference persistence — stored in agent YAML files via PATCH /api/agents.
 // preferredModel / preferredThinkingEffort are the source of truth for
@@ -71,6 +76,9 @@ let _createSession: ((agentId?: string) => Promise<void>) | null = null
 let _deleteSession: ((sessionId: string, backend?: string) => Promise<void>) | null = null
 let _sendMessage: ((text: string, filePaths?: string[]) => Promise<void>) | null = null
 let _openChatPanel: (() => void) | null = null
+// SessionDrawer component ref — set by App.vue. Allows any component to
+// trigger openAgentSelector() on the global drawer without coupling.
+let _sessionDrawerRef: any = null
 
 export interface SessionActions {
   switchSession: (sessionId: string) => Promise<void>
@@ -81,10 +89,8 @@ export interface SessionActions {
 }
 
 /**
- * Register session action callbacks. Called by ChatPanel on mount.
- * These are stable across the ChatPanel lifecycle — only registered
- * once (guard below). If ChatPanel unmounts and remounts, the old
- * callbacks are replaced.
+ * Register session action callbacks. Called by App.vue on mount
+ * (for openAgentSelector) and ChatPanel on mount (for the rest).
  */
 export function registerSessionActions(actions: SessionActions) {
   _switchSession = actions.switchSession
@@ -92,6 +98,11 @@ export function registerSessionActions(actions: SessionActions) {
   _deleteSession = actions.deleteSession
   _sendMessage = actions.sendMessage
   _openChatPanel = actions.openChatPanel
+}
+
+/** Register the SessionDrawer component ref so openAgentSelector() works. */
+export function registerSessionDrawerRef(drawerRef: any) {
+  _sessionDrawerRef = drawerRef
 }
 
 /**
@@ -281,6 +292,16 @@ export function useSessionIdentity() {
     }
   }
 
+  /** Open the global session drawer (sets sessionDrawerOpen = true). */
+  function openSessionTab() {
+    sessionDrawerOpen.value = true
+  }
+
+  /** Open the agent selector inside the session drawer. */
+  function openAgentSelector() {
+    _sessionDrawerRef?.openAgentSelector()
+  }
+
   return {
     // Identity refs (read-only for consumers; ChatPanel writes to them)
     currentSessionId,
@@ -293,12 +314,16 @@ export function useSessionIdentity() {
     runningSessions,
     runningSessionsVersion,
     agentHeaderTitle,
+    // Global session drawer state
+    sessionDrawerOpen,
     // Action proxies
     switchSession,
     createSession,
     deleteSession,
     sendMessage,
     openChatPanel,
+    openSessionTab,
+    openAgentSelector,
     // Registration (for ChatPanel)
     registerSessionActions,
     // Init (for App.vue)

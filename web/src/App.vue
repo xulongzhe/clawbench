@@ -162,16 +162,16 @@
         @open-sessions="handleQuoteOpenSessions"
       />
 
-      <!-- Session drawer for quote-question session switching -->
+      <!-- Global session drawer — accessible from any tab -->
       <SessionDrawer
-        ref="quoteSessionDrawerRef"
-        :open="quoteSessionDrawerOpen"
+        ref="sessionDrawerRef"
+        :open="sessionIdentity.sessionDrawerOpen.value"
         :currentSessionId="sessionIdentity.currentSessionId.value"
         :runningSessionIds="sessionIdentity.runningSessions.value"
-        @close="quoteSessionDrawerOpen = false"
-        @select="handleQuoteSessionSelect"
-        @create="handleQuoteSessionCreate"
-        @delete="handleQuoteSessionDelete"
+        @close="sessionIdentity.sessionDrawerOpen.value = false"
+        @select="handleSessionSelect"
+        @create="handleSessionCreate"
+        @delete="handleSessionDelete"
       />
 
       <!-- Bottom dock (tab bar) -->
@@ -268,7 +268,7 @@ import SettingsPage from './components/settings/SettingsPage.vue'
 import TaskTab from '@/components/task/TaskTab.vue'
 import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
 import { useTaskTab, registerSwitchTab, onTaskEvent } from '@/composables/useTaskTab.ts'
-import { useSessionIdentity } from './composables/useSessionIdentity.ts'
+import { useSessionIdentity, registerSessionDrawerRef } from './composables/useSessionIdentity.ts'
 import { loadSessionsOnce } from './composables/useChatSession.ts'
 import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'
@@ -385,27 +385,33 @@ const { keyboardHeight: terminalKeyboardHeight } = useTerminalKeyboard()
 const terminalKeyboardActive = computed(() => terminalActive.value && terminalKeyboardHeight.value > 0)
 
 const quoteQuestion = useQuoteQuestion()
-const quoteSessionDrawerOpen = ref(false)
-const quoteSessionDrawerRef = ref(null)
+const sessionDrawerRef = ref(null)
 
+// Register SessionDrawer ref so identity.openAgentSelector() works
+watch(sessionDrawerRef, (ref) => {
+  if (ref) registerSessionDrawerRef(ref)
+}, { immediate: true })
+
+// Register identity actions (switchSession, createSession, etc.)
+// These will be overwritten by ChatPanelContent when it mounts, but
+// openAgentSelector is NOT registered here — it's handled via
+// registerSessionDrawerRef above, which is independent.
 function handleQuoteOpenSessions() {
-  quoteSessionDrawerOpen.value = true
+  sessionIdentity.openSessionTab()
 }
 
-function handleQuoteSessionSelect(sessionId) {
+function handleSessionSelect(sessionId, backend) {
   sessionIdentity.switchSession(sessionId)
-  quoteSessionDrawerOpen.value = false
+  sessionIdentity.sessionDrawerOpen.value = false
 }
 
-function handleQuoteSessionCreate(agentId) {
+function handleSessionCreate(agentId) {
   sessionIdentity.createSession(agentId)
-  quoteSessionDrawerRef.value?.invalidate()
-  quoteSessionDrawerOpen.value = false
+  sessionIdentity.sessionDrawerOpen.value = false
 }
 
-function handleQuoteSessionDelete(sessionId, backend) {
+function handleSessionDelete(sessionId, backend) {
   sessionIdentity.deleteSession(sessionId, backend)
-  quoteSessionDrawerRef.value?.invalidate(sessionId)
 }
 
 async function handleLoginSuccess() {
