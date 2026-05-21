@@ -289,7 +289,7 @@ func CloseDB() {
 // Returns (summary, found).
 func GetTTSSummary(cacheKey string) (string, bool) {
 	var summary string
-	err := DB.QueryRow(
+	err := DBRead.QueryRow(
 		"SELECT summary FROM tts_summaries WHERE cache_key = ?",
 		cacheKey,
 	).Scan(&summary)
@@ -369,7 +369,7 @@ type crudHelpers[T any, E any] struct {
 
 // list returns all rows from the helper's table ordered by sort_order.
 func (h crudHelpers[T, E]) list() ([]T, error) {
-	rows, err := DB.Query("SELECT " + h.scanCols + " FROM " + h.table + " ORDER BY sort_order")
+	rows, err := DBRead.Query("SELECT " + h.scanCols + " FROM " + h.table + " ORDER BY sort_order")
 	if err != nil {
 		return nil, err
 	}

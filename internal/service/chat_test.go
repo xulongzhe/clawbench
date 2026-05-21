@@ -105,7 +105,9 @@ func setupDB(t *testing.T) *sql.DB {
 	assert.NoError(t, err)
 
 	service.DB = db
+	service.DBRead = db // Same instance for :memory: SQLite — data is shared
 	t.Cleanup(func() {
+		service.DBRead = nil
 		db.Close()
 	})
 	return db
@@ -1993,6 +1995,13 @@ func TestGetSessionsPaged_UnreadCount(t *testing.T) {
 	assert.Len(t, sessions, 1)
 	assert.Equal(t, 1, sessions[0].UnreadCount)
 	assert.False(t, hasMore)
+}
+
+// ---------- DBRead initialization ----------
+
+func TestDBRead_Initialized_ChatDB(t *testing.T) {
+	_ = setupDB(t)
+	assert.NotNil(t, service.DBRead, "DBRead should be initialized in test setup")
 }
 
 // ---------- GetRunningSessionIDs ----------

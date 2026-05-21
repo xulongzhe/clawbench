@@ -94,7 +94,11 @@ func setupSchedulerDB(t *testing.T) *sql.DB {
 	_, err = db.Exec(schedulerSchema)
 	assert.NoError(t, err)
 	service.DB = db
-	t.Cleanup(func() { db.Close() })
+	service.DBRead = db // Same instance for :memory: SQLite — data is shared
+	t.Cleanup(func() {
+		service.DBRead = nil
+		db.Close()
+	})
 	return db
 }
 
@@ -1297,4 +1301,11 @@ func TestHasUnreadTasks_RunningExecutionNotUnread(t *testing.T) {
 	hasUnread, err = service.HasUnreadTasks("/proj")
 	assert.NoError(t, err)
 	assert.True(t, hasUnread, "completed execution should count as unread")
+}
+
+// ---------- DBRead initialization ----------
+
+func TestDBRead_Initialized_SchedulerDB(t *testing.T) {
+	_ = setupSchedulerDB(t)
+	assert.NotNil(t, service.DBRead, "DBRead should be initialized in test setup")
 }

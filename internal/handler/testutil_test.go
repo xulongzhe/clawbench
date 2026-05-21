@@ -45,6 +45,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	origToken := model.SessionToken
 	origWatch := model.WatchDir
 	origDB := service.DB
+	origDBRead := service.DBRead
 	origAgents := model.Agents
 	origAgentList := model.AgentList
 
@@ -167,6 +168,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	}
 
 	service.DB = db
+	service.DBRead = db // Same instance for :memory: SQLite — data is shared
 
 	// Register mock agents so GetDefaultAgentID() works
 	model.Agents = map[string]*model.Agent{
@@ -189,6 +191,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		model.Agents = origAgents
 		model.AgentList = origAgentList
 		service.DB = origDB
+		service.DBRead = origDBRead
 		db.Close()
 	}
 

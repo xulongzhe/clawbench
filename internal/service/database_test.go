@@ -16,6 +16,7 @@ import (
 func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 	origDB := DB
+	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -66,8 +67,10 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 	}
 
 	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
 	teardown := func() {
 		DB = origDB
+		DBRead = origDBRead
 		db.Close()
 	}
 	return db, teardown
@@ -78,6 +81,7 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 	origDB := DB
+	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -102,8 +106,10 @@ func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) {
 	}
 
 	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
 	teardown := func() {
 		DB = origDB
+		DBRead = origDBRead
 		db.Close()
 	}
 	return db, teardown

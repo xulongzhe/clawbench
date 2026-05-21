@@ -30,7 +30,9 @@ func setupRecentProjectsDB(t *testing.T) *sql.DB {
 	assert.NoError(t, err)
 
 	service.DB = db
+	service.DBRead = db // Same instance for :memory: SQLite — data is shared
 	t.Cleanup(func() {
+		service.DBRead = nil
 		db.Close()
 	})
 	return db

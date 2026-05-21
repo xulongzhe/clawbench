@@ -446,9 +446,11 @@ func insertTestMessage(t *testing.T, db *sql.DB, sessionID, role, content string
 
 func TestGetSessionResponsePreview_WithTextBlock(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	content := model.ContentBlock{Type: "text", Text: "你好，这是AI的回复内容"}
 	blocks := map[string]any{"blocks": []model.ContentBlock{content}}
@@ -462,9 +464,11 @@ func TestGetSessionResponsePreview_WithTextBlock(t *testing.T) {
 
 func TestGetSessionResponsePreview_Truncation(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// responsePreviewMaxRunes+1 runes — should be truncated
 	longText := strings.Repeat("测", responsePreviewMaxRunes+1)
@@ -482,9 +486,11 @@ func TestGetSessionResponsePreview_Truncation(t *testing.T) {
 
 func TestGetSessionResponsePreview_NoAssistantMessage(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	insertTestMessage(t, db, "session-preview-3", "user", "只有用户消息")
 
@@ -494,9 +500,11 @@ func TestGetSessionResponsePreview_NoAssistantMessage(t *testing.T) {
 
 func TestGetSessionResponsePreview_NoMessages(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	result := getSessionResponsePreview("session-nonexistent")
 	assert.Equal(t, "", result)
@@ -504,9 +512,11 @@ func TestGetSessionResponsePreview_NoMessages(t *testing.T) {
 
 func TestGetSessionResponsePreview_SkipsToolUseBlocks(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
 	textBlock := model.ContentBlock{Type: "text", Text: "工具执行后的文本"}
@@ -521,9 +531,11 @@ func TestGetSessionResponsePreview_SkipsToolUseBlocks(t *testing.T) {
 
 func TestGetSessionResponsePreview_UsesLastAssistantMessage(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	firstContent := model.ContentBlock{Type: "text", Text: "第一次回复"}
 	firstBlocks := map[string]any{"blocks": []model.ContentBlock{firstContent}}
@@ -543,9 +555,11 @@ func TestGetSessionResponsePreview_UsesLastAssistantMessage(t *testing.T) {
 
 func TestGetSessionResponsePreview_InvalidJSON(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	insertTestMessage(t, db, "session-preview-6", "user", "问题")
 	insertTestMessage(t, db, "session-preview-6", "assistant", "not valid json {{{")
@@ -556,9 +570,11 @@ func TestGetSessionResponsePreview_InvalidJSON(t *testing.T) {
 
 func TestGetSessionResponsePreview_NoTextBlocks(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
 	blocks := map[string]any{"blocks": []model.ContentBlock{toolBlock}}
@@ -572,9 +588,11 @@ func TestGetSessionResponsePreview_NoTextBlocks(t *testing.T) {
 
 func TestGetSessionResponsePreview_ExactMaxRunes(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// Exactly responsePreviewMaxRunes runes — should NOT be truncated
 	exactText := strings.Repeat("一二三四", responsePreviewMaxRunes/4)
@@ -591,9 +609,11 @@ func TestGetSessionResponsePreview_ExactMaxRunes(t *testing.T) {
 
 func TestGetSessionResponsePreview_OneOverMaxRunes(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// responsePreviewMaxRunes+1 runes — should be truncated to maxRunes + …
 	longText := strings.Repeat("一二三四", responsePreviewMaxRunes/4) + "五"
@@ -611,9 +631,11 @@ func TestGetSessionResponsePreview_OneOverMaxRunes(t *testing.T) {
 
 func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// Insert assistant message for preview
 	content := model.ContentBlock{Type: "text", Text: "AI完成了任务"}
@@ -657,9 +679,11 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 
 func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	db := setupChatTestDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	mgr := ws.NewManagerForTest(nil)
 	ws.SetManagerForTest(mgr)
@@ -915,9 +939,11 @@ func setupExecTaskDB(t *testing.T) *sql.DB {
 func TestExecuteTask_BackendCreationFailed(t *testing.T) {
 	// Set up DB with scheduler schema
 	origDB := DB
+	origDBRead := DBRead
 	db := setupExecTaskDB(t)
 	DB = db
-	defer func() { DB = origDB }()
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// Set up ws manager to capture events
 	mgr := ws.NewManagerForTest(nil)
