@@ -22,7 +22,7 @@ const COMMIT_HASH_RE = /\b([0-9a-f]{7,40})\b/gi
  * Must be 7-40 hex chars and contain at least one a-f letter
  * (to exclude pure-decimal strings like timestamps and byte counts).
  */
-function looksLikeCommitHash(text: string): boolean {
+export function looksLikeCommitHash(text: string): boolean {
     if (text.length < 7 || text.length > 40) return false
     if (!/^[0-9a-f]+$/i.test(text)) return false
     return /[a-f]/i.test(text)
