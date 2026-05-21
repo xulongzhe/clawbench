@@ -9,9 +9,11 @@
     padding: 0;
 }
 
-/* HTML & Body */
+/* HTML & Body — use 100vh instead of 100dvh to avoid iOS WKWebView mismatch.
+   On iOS, dvh shrinks when the soft keyboard opens but position:fixed elements
+   still reference the full screen, causing overflow. 100vh stays stable. */
 html, body {
-    height: 100dvh;
+    height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;
     font-size: 15px;
     line-height: 1.6;

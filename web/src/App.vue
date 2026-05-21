@@ -7,7 +7,7 @@
     <LoginView v-else-if="!isAuthenticated" @login-success="handleLoginSuccess" />
 
     <!-- Main app -->
-    <div v-else class="app-container" :class="{ 'chrome-hidden': terminalKeyboardActive }">
+    <div v-else class="app-container" :class="{ 'chrome-hidden': terminalKeyboardActive, 'chat-keyboard-open': chatKeyboardActive }">
       <AppHeader
         :hidden="terminalActive"
         :project-root="projectRoot"
@@ -175,7 +175,7 @@
       />
 
       <!-- Bottom dock (tab bar) -->
-      <div v-if="isAuthenticated" v-show="!terminalKeyboardActive" class="bottom-dock-wrapper">
+      <div v-if="isAuthenticated" v-show="!anyKeyboardActive" class="bottom-dock-wrapper">
         <div class="bottom-dock">
           <div class="dock-center">
             <div class="dock-btn-wrap">
@@ -279,6 +279,7 @@ import { loadSessionsOnce } from './composables/useChatSession.ts'
 import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'
 import { useTerminalKeyboard } from './composables/useTerminalKeyboard.ts'
+import { useChatKeyboard } from './composables/useChatKeyboard.ts'
 import { usePortForward } from './composables/usePortForward.ts'
 import { useTerminalStatus } from './composables/useTerminalStatus.ts'
 import { useFileWatch } from './composables/useFileWatch.ts'
@@ -423,6 +424,14 @@ const terminalRequestedCwd = ref(null)
 const terminalActive = computed(() => activeTab.value === 'terminal')
 const { keyboardHeight: terminalKeyboardHeight } = useTerminalKeyboard()
 const terminalKeyboardActive = computed(() => terminalActive.value && terminalKeyboardHeight.value > 0)
+
+// Chat keyboard — on iOS WKWebView there's no adjustResize, so we detect
+// keyboard via visualViewport and compensate in the web layer.
+const { chatKeyboardHeight } = useChatKeyboard()
+const chatKeyboardActive = computed(() => activeTab.value === 'chat' && chatKeyboardHeight.value > 0)
+
+// Unified: any soft keyboard is open (terminal or chat)
+const anyKeyboardActive = computed(() => terminalKeyboardActive.value || chatKeyboardActive.value)
 
 const quoteQuestion = useQuoteQuestion()
 const sessionDrawerRef = ref(null)
@@ -915,6 +924,12 @@ onUnmounted(() => {
 /* When terminal keyboard is open, remove header padding so content expands to top */
 .chrome-hidden {
     padding-top: 0 !important;
+}
+
+/* When chat keyboard is open on iOS (no adjustResize), shrink the app container
+   from the bottom so content stays above the keyboard. */
+.chat-keyboard-open {
+    bottom: v-bind(chatKeyboardHeight + 'px') !important;
 }
 
 .bottom-dock-wrapper {

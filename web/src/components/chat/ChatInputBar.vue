@@ -97,7 +97,9 @@
           :placeholder="pendingFiles.length > 0 ? t('chat.input.placeholderOptional') : loading ? t('chat.input.placeholderQueue') : t('chat.input.placeholder')"
           rows="1"
           @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
-          @blur="autoResizeTextarea"></textarea>
+          @focus="onTextareaFocus"
+          @blur="onTextareaBlur"
+          ></textarea>
         <button v-if="!stopPrimed" class="chat-send-btn" ref="sendBtnRef" :class="{ queued: loading }" @click.stop="handleSendClick" :title="loading ? t('chat.input.enqueue') : t('chat.input.send')">
           <!-- Queue mode: inbox with down arrow (enqueue) -->
           <Inbox v-if="loading" :size="16" />
@@ -192,6 +194,7 @@ import QuickSendDialog from '@/components/chat/QuickSendDialog.vue'
 import { createStopButtonMachine } from '@/utils/stopButtonMachine.ts'
 import { useDialog } from '@/composables/useDialog.ts'
 import { useQuickSend } from '@/composables/useQuickSend'
+import { useChatKeyboard } from '@/composables/useChatKeyboard'
 
 const { t } = useI18n()
 const dialog = useDialog()
@@ -251,6 +254,10 @@ const showModelMenu = ref(false)
 const modelChipRef = ref(null)
 const showThinkingEffortMenu = ref(false)
 const thinkingEffortChipRef = ref(null)
+
+// Keyboard detection for iOS (no adjustResize) — activates visualViewport monitoring
+// when textarea is focused so App.vue can compensate the layout.
+const chatKeyboard = useChatKeyboard()
 
 // Stop button two-click confirmation state
 const stopPrimed = ref(false)
@@ -334,6 +341,16 @@ function autoResizeTextarea() {
   const maxContentHeight = lineHeight * 3
   const maxHeight = maxContentHeight + paddingTop + paddingBottom
   el.style.height = Math.min(el.scrollHeight, maxHeight) + 'px'
+}
+
+function onTextareaFocus() {
+  chatKeyboard.activate()
+  autoResizeTextarea()
+}
+
+function onTextareaBlur() {
+  chatKeyboard.debounceDeactivate()
+  autoResizeTextarea()
 }
 
 // Watch inputText changes (both user input and programmatic changes like draft restore)
@@ -667,7 +684,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   background: var(--bg-tertiary, #f0f0f0);
-  flex: 1;
+  flex: none;
   min-width: 0;
   border: none;
   border-radius: 20px;
@@ -905,7 +922,7 @@ defineExpose({
   border: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 20px;
   outline: none;
   resize: none;
