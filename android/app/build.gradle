@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'jacoco'
 }
 
 android {
@@ -56,6 +57,7 @@ android {
         debug {
             minifyEnabled false
             debuggable true
+            testCoverageEnabled true
             applicationIdSuffix ".debug"
         }
     }
@@ -69,6 +71,9 @@ android {
         unitTests {
             includeAndroidResources = true
             returnDefaultValues = true
+            all {
+                jvmArgs '--add-opens', 'java.base/sun.misc=ALL-UNNAMED'
+            }
         }
     }
 }
@@ -87,4 +92,22 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.8.0'
     testImplementation 'androidx.test:core:1.5.0'
     testImplementation 'androidx.test.ext:junit:1.1.5'
+}
+
+tasks.register('jacocoTestReport', JacocoReport) {
+    dependsOn 'testDebugUnitTest'
+    reports {
+        xml.required = true
+        html.required = true
+    }
+    def excludes = [
+        '**/R.class', '**/R$*.class', '**/BuildConfig.*',
+        '**/Manifest*.*'
+    ]
+    classDirectories.setFrom(files([
+        fileTree(dir: "$buildDir/intermediates/javac/debug/classes",
+                 excludes: excludes)
+    ]))
+    sourceDirectories.setFrom(files(['app/src/main/java']))
+    executionData.setFrom(files(["$buildDir/outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"]))
 }

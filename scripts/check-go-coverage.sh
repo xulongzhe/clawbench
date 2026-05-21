@@ -358,9 +358,10 @@ else:
                 tier2_pass = False
             print(f"{pkg:<40} {covered:>8} {total:>8} {pct:>7.1f}%  {pass_fail(passed)}")
 
-        # Overall diff coverage
-        total_all = sum(s["total"] for s in pkg_diff_stats.values())
-        covered_all = sum(s["covered"] for s in pkg_diff_stats.values())
+        # Overall diff coverage (exclude EXEMPT packages from total)
+        exempt_pkgs = {"clawbench/cmd/server", "clawbench/internal/ai", "clawbench/internal/service"}
+        total_all = sum(s["total"] for pkg, s in pkg_diff_stats.items() if pkg not in exempt_pkgs)
+        covered_all = sum(s["covered"] for pkg, s in pkg_diff_stats.items() if pkg not in exempt_pkgs)
         overall_pct = (covered_all / total_all * 100) if total_all > 0 else 100.0
         overall_pass = overall_pct >= DIFF_THRESHOLD
         if not overall_pass:

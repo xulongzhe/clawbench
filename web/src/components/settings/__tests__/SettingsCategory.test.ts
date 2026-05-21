@@ -35,8 +35,7 @@ const serverConfig = ref<Record<string, any>>({
   terminal: { enabled: true, idle_timeout: '10m', max_sessions: 10, buffer_lines: 2000 },
   tts: { engine: 'edge', voice: '', speed: 1.0, max_cache_files: 100, summarize_backend: 'simple', summarize_model: '', format: '' },
   rag: { enabled: false, ollama_base_url: 'http://localhost:11434', ollama_model: 'bge-m3', chunk_size: 512, search_limit: 5, retention_days: 90 },
-  proxy: { enabled: true, allowed_ports: '1024-65535' },
-  port_forward: { enabled: true, port: 0 },
+  port_forward: { enabled: true, port: 0, allowed_ports: '1024-65535' },
   push: { jpush: { enabled: false, app_key: '' } },
   tasks: { summarize_backend: '', summarize_model: '' },
 })
@@ -111,7 +110,6 @@ const i18n = createI18n({
           locale: '语言',
           ttsEngine: 'TTS引擎',
           ttsEngineEdge: 'Edge',
-          ttsEngineMinimax: 'MiniMax',
           ttsEnginePiper: 'Piper',
           ttsEngineKokoro: 'Kokoro',
           ttsEngineMossNano: 'MOSS-Nano',
@@ -127,15 +125,13 @@ const i18n = createI18n({
           tasksSummarizeDisabled: '禁用',
           tasksHeader: '定时任务',
           ragSearchPoolSize: '搜索池大小',
-          ragOllamaUrl: 'Ollama地址',
-          proxyEnabled: '启用代理',
-          proxyAllowedPorts: '允许端口',
-          portForwardEnabled: '启用端口转发',
-          portForwardPort: '端口转发端口',
+          ragOllamaUrl: '嵌入接口地址',
+          portForwardEnabled: '启用 SSH 隧道',
+          portForwardPort: 'SSH 隧道端口',
+          portForwardAllowedPorts: '允许的端口范围',
           pushEnabled: '启用推送',
           pushAppKey: 'AppKey',
-          proxyHeader: '代理',
-          portForwardHeader: '端口转发',
+          portForwardHeader: 'SSH 隧道',
           pushHeader: '推送',
           ttsSummarizeHeader: '摘要',
           ttsCacheHeader: '缓存',
@@ -152,7 +148,7 @@ const i18n = createI18n({
           fileViewGrid: '网格',
           uploadMaxSize: '上传大小上限',
           uploadMaxFiles: '上传文件上限',
-          ragOllamaUrl: 'Ollama地址',
+          ragOllamaUrl: '嵌入接口地址',
           ragOllamaModel: '嵌入模型',
           ragChunkSize: '分块大小',
           ragSearchLimit: '搜索限制',
@@ -329,10 +325,10 @@ describe('SettingsCategory', () => {
       const engineItem = allItems.find(i => i.props().label === 'TTS引擎')
       expect(engineItem).toBeTruthy()
 
-      await engineItem!.vm.$emit('update:modelValue', 'minimax')
+      await engineItem!.vm.$emit('update:modelValue', 'edge')
       await wrapper.vm.$nextTick()
 
-      expect(mockSetServerValue).toHaveBeenCalledWith('tts.engine', 'minimax')
+      expect(mockSetServerValue).toHaveBeenCalledWith('tts.engine', 'edge')
     })
 
     it('PATCHes tts.speed via slider', async () => {
@@ -464,7 +460,7 @@ describe('SettingsCategory', () => {
     it('PATCHes rag.ollama_base_url when changed', async () => {
       const wrapper = mountCategory('rag')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === 'Ollama地址')
+      const item = allItems.find(i => i.props().label === '嵌入接口地址')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', 'http://ollama:11434')
@@ -524,34 +520,10 @@ describe('SettingsCategory', () => {
 
   // ─── Network category ──────────────────────────────
   describe('network category', () => {
-    it('PATCHes proxy.enabled when toggled', async () => {
-      const wrapper = mountCategory('network')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用代理')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', false)
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('proxy.enabled', false)
-    })
-
-    it('PATCHes proxy.allowed_ports when changed', async () => {
-      const wrapper = mountCategory('network')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '允许端口')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', '8080,9090')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('proxy.allowed_ports', '8080,9090')
-    })
-
     it('PATCHes port_forward.enabled when toggled', async () => {
       const wrapper = mountCategory('network')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用端口转发')
+      const item = allItems.find(i => i.props().label === '启用 SSH 隧道')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', false)
@@ -560,10 +532,22 @@ describe('SettingsCategory', () => {
       expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.enabled', false)
     })
 
+    it('PATCHes port_forward.allowed_ports when changed', async () => {
+      const wrapper = mountCategory('network')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '允许的端口范围')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', '8080,9090')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.allowed_ports', '8080,9090')
+    })
+
     it('PATCHes port_forward.port when changed', async () => {
       const wrapper = mountCategory('network')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '端口转发端口')
+      const item = allItems.find(i => i.props().label === 'SSH 隧道端口')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', 2222)
@@ -671,6 +655,13 @@ describe('SettingsCategory', () => {
       const item = allItems.find(i => i.props().label === '服务器版本')
       expect(item).toBeTruthy()
       expect(item!.props().type).toBe('info')
+    })
+
+    it('hides appVersion row when not in App mode', () => {
+      const wrapper = mountCategory('about')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const appVersionItem = allItems.find(i => i.props().label === 'APP版本')
+      expect(appVersionItem).toBeFalsy()
     })
   })
 })

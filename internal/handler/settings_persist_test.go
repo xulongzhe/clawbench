@@ -219,8 +219,8 @@ func TestPersist_TTSEngine(t *testing.T) {
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"tts":{"engine":"minimax"}}`)
-	assert.Equal(t, "minimax", getNestedValue(cfg, "tts.engine"))
+	cfg := patchAndReadConfig(t, `{"tts":{"engine":"piper","piper":{"model_path":"/tmp/test.onnx"}}}`)
+	assert.Equal(t, "piper", getNestedValue(cfg, "tts.engine"))
 }
 
 func TestPersist_TTSVoice(t *testing.T) {
@@ -443,16 +443,6 @@ func TestPersist_APIFormat(t *testing.T) {
 	assert.Equal(t, "anthropic", getNestedValue(cfg, "tts.api.format"))
 }
 
-func TestPersist_APIModel(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"tts":{"api":{"model":"claude-3-5-haiku"}}}`)
-	assert.Equal(t, "claude-3-5-haiku", getNestedValue(cfg, "tts.api.model"))
-}
-
 // ─── RAG section ──────────────────────────────────────
 
 func TestPersist_RAGSearchPoolSize(t *testing.T) {
@@ -465,24 +455,24 @@ func TestPersist_RAGSearchPoolSize(t *testing.T) {
 	assert.Equal(t, 30, getNestedValue(cfg, "rag.search_pool_size"))
 }
 
-func TestPersist_RAGOllamaBaseURL(t *testing.T) {
+func TestPersist_RAGBaseURL(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"rag":{"ollama_base_url":"http://ollama:11434"}}`)
-	assert.Equal(t, "http://ollama:11434", getNestedValue(cfg, "rag.ollama_base_url"))
+	cfg := patchAndReadConfig(t, `{"rag":{"base_url":"http://ollama:11434"}}`)
+	assert.Equal(t, "http://ollama:11434", getNestedValue(cfg, "rag.base_url"))
 }
 
-func TestPersist_RAGOllamaModel(t *testing.T) {
+func TestPersist_RAGModel(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"rag":{"ollama_model":"nomic-embed"}}`)
-	assert.Equal(t, "nomic-embed", getNestedValue(cfg, "rag.ollama_model"))
+	cfg := patchAndReadConfig(t, `{"rag":{"model":"nomic-embed"}}`)
+	assert.Equal(t, "nomic-embed", getNestedValue(cfg, "rag.model"))
 }
 
 func TestPersist_RAGChunkSize(t *testing.T) {
@@ -517,24 +507,14 @@ func TestPersist_RAGRetentionDays(t *testing.T) {
 
 // ─── Proxy section ──────────────────────────────────────
 
-func TestPersist_ProxyEnabled(t *testing.T) {
+func TestPersist_PortForwardAllowedPorts(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"proxy":{"enabled":false}}`)
-	assert.Equal(t, false, getNestedValue(cfg, "proxy.enabled"))
-}
-
-func TestPersist_ProxyAllowedPorts(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"proxy":{"allowed_ports":"8080,9090"}}`)
-	assert.Equal(t, "8080,9090", getNestedValue(cfg, "proxy.allowed_ports"))
+	cfg := patchAndReadConfig(t, `{"port_forward":{"allowed_ports":"8080,9090"}}`)
+	assert.Equal(t, "8080,9090", getNestedValue(cfg, "port_forward.allowed_ports"))
 }
 
 // ─── Port Forward section ──────────────────────────────────────
@@ -622,7 +602,7 @@ func TestPersist_MultipleFieldsInOnePatch(t *testing.T) {
 	body := `{
 		"default_agent": "claude",
 		"chat": {"initial_messages": 30, "page_size": 50},
-		"tts": {"engine": "minimax", "speed": 2.0},
+		"tts": {"engine": "edge", "speed": 2.0},
 		"rag": {"chunk_size": 1024, "search_pool_size": 30},
 		"terminal": {"enabled": false, "idle_timeout": "5m"}
 	}`
@@ -632,7 +612,7 @@ func TestPersist_MultipleFieldsInOnePatch(t *testing.T) {
 	assert.Equal(t, "claude", getNestedValue(cfg, "default_agent"))
 	assert.Equal(t, 30, getNestedValue(cfg, "chat.initial_messages"))
 	assert.Equal(t, 50, getNestedValue(cfg, "chat.page_size"))
-	assert.Equal(t, "minimax", getNestedValue(cfg, "tts.engine"))
+	assert.Equal(t, "edge", getNestedValue(cfg, "tts.engine"))
 	assert.InDelta(t, 2.0, getNestedValue(cfg, "tts.speed"), 0.01)
 	assert.Equal(t, 1024, getNestedValue(cfg, "rag.chunk_size"))
 	assert.Equal(t, 30, getNestedValue(cfg, "rag.search_pool_size"))

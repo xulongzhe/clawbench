@@ -80,17 +80,14 @@ const categories = computed(() =>
   position: relative;
 }
 
-/* Grouped card: first row rounded top, last row rounded bottom */
+/* Grouped card: no border-radius */
 .settings-index__row:first-child {
-  border-radius: 12px 12px 0 0;
 }
 
 .settings-index__row:last-child {
-  border-radius: 0 0 12px 12px;
 }
 
 .settings-index__row:only-child {
-  border-radius: 12px;
 }
 
 /* Row separator (not on last) */

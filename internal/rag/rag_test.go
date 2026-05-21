@@ -3,8 +3,6 @@ package rag
 import (
 	"context"
 	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"clawbench/internal/model"
@@ -114,8 +112,8 @@ func TestInit_CreatesStoreAndEmbedder(t *testing.T) {
 	model.BinDir = t.TempDir()
 
 	cfg := model.RAGConfig{
-		OllamaBaseURL: "http://localhost:11434",
-		OllamaModel:  "bge-m3",
+		BaseURL:      "http://localhost:11434",
+		Model:        "bge-m3",
 		ChunkSize:    512,
 		ChunkOverlap: 64,
 	}
@@ -145,8 +143,8 @@ func TestInit_DimensionMismatchResetsTable(t *testing.T) {
 
 	// First init creates store with 1024-dim chunks
 	cfg := model.RAGConfig{
-		OllamaBaseURL: "http://localhost:11434",
-		OllamaModel:  "bge-m3",
+		BaseURL: "http://localhost:11434",
+		Model:   "bge-m3",
 	}
 	err := Init(cfg)
 	require.NoError(t, err)
@@ -218,8 +216,8 @@ func TestShutdown_Idempotent(t *testing.T) {
 	model.BinDir = t.TempDir()
 
 	err := Init(model.RAGConfig{
-		OllamaBaseURL: "http://localhost:11434",
-		OllamaModel:  "bge-m3",
+		BaseURL: "http://localhost:11434",
+		Model:   "bge-m3",
 	})
 	require.NoError(t, err)
 
@@ -270,9 +268,9 @@ func TestSearchResult_EmptyResultsNotNil(t *testing.T) {
 
 // ---------- Mock Ollama for rag_test helpers ----------
 
-func TestNewHealthyMockOllama(t *testing.T) {
+func TestNewHealthyMockEmbedder(t *testing.T) {
 	// Verify our test helper works correctly
-	client, cleanup := newHealthyMockOllama(t)
+	client, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
 	reachable, modelAvailable, err := client.IsHealthy(context.Background())
@@ -281,18 +279,11 @@ func TestNewHealthyMockOllama(t *testing.T) {
 	assert.True(t, modelAvailable)
 }
 
-func TestMockOllamaEmbedEndpoint(t *testing.T) {
-	client, cleanup := newHealthyMockOllama(t)
+func TestMockEmbedderEndpoint(t *testing.T) {
+	client, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbedResponse{Embedding: makeTestEmbedding(1024)}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-
 	emb, err := client.Embed(context.Background(), "test")
-	_ = server
 	assert.NoError(t, err)
 	assert.Len(t, emb, 1024)
 }
@@ -354,8 +345,8 @@ func TestInit_SegmenterWarningContinues(t *testing.T) {
 	model.BinDir = t.TempDir()
 
 	cfg := model.RAGConfig{
-		OllamaBaseURL: "http://localhost:11434",
-		OllamaModel:  "bge-m3",
+		BaseURL: "http://localhost:11434",
+		Model:   "bge-m3",
 	}
 
 	// Init should succeed even if segmenter is not available

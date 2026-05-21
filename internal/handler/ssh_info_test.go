@@ -37,7 +37,7 @@ func TestServeSSHInfo_Disabled(t *testing.T) {
 func TestServeSSHInfo_Enabled(t *testing.T) {
 	// Set up a ProxyService with a registered port
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
@@ -124,7 +124,7 @@ func TestServeSSHInfo_MethodNotAllowed(t *testing.T) {
 func TestServeSSHInfo_AutoPort(t *testing.T) {
 	// Test that port 0 auto-assigns to mainPort+1
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
@@ -155,7 +155,7 @@ func TestServeSSHInfo_AutoPort(t *testing.T) {
 func TestServeSSHInfo_HostFromHeader(t *testing.T) {
 	// Test that host is correctly extracted from various Host header formats
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
@@ -197,7 +197,7 @@ func TestServeSSHInfo_HostFromHeader(t *testing.T) {
 func TestServeSSHInfo_EmptyPortList(t *testing.T) {
 	// When no ports are registered, command should be empty
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
@@ -244,7 +244,7 @@ func TestServeSSHInfo_ConnectionStats_Disabled(t *testing.T) {
 func TestServeSSHInfo_ConnectionStats_Enabled(t *testing.T) {
 	// When SSH is enabled but no clients connected, connectionStats should reflect that
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy

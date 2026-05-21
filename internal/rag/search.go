@@ -19,15 +19,15 @@ const (
 
 // SearchParams holds the parameters for a RAG search request.
 type SearchParams struct {
-	Query             string `json:"q"`
-	Limit             int    `json:"limit"`
-	ProjectPath       string `json:"project"`
-	Backend           string `json:"backend"`
-	Role              string `json:"role"`                // Filter by role: "user" or "assistant"
-	SessionID         string `json:"session_id"`          // Limit search to this session
-	ExcludeSessionID  string `json:"exclude_session_id"` // Exclude this session from results (e.g., current session)
-	FromTime          string `json:"from"`
-	ToTime            string `json:"to"`
+	Query            string `json:"q"`
+	Limit            int    `json:"limit"`
+	ProjectPath      string `json:"project"`
+	Backend          string `json:"backend"`
+	Role             string `json:"role"`                // Filter by role: "user" or "assistant"
+	SessionID        string `json:"session_id"`          // Limit search to this session
+	ExcludeSessionID string `json:"exclude_session_id"` // Exclude this session from results (e.g., current session)
+	FromTime         string `json:"from"`
+	ToTime           string `json:"to"`
 }
 
 // SearchResult represents the response from a RAG search.
@@ -38,9 +38,9 @@ type SearchResult struct {
 }
 
 // RAGSearch performs a search using the best available strategy:
-//   - Hybrid (vector + FTS with RRF) when both Ollama and FTS are available
-//   - Vector-only when Ollama is available but FTS is not
-//   - FTS-only when Ollama is unavailable
+//   - Hybrid (vector + FTS with RRF) when both embedding API and FTS are available
+//   - Vector-only when embedding API is available but FTS is not
+//   - FTS-only when embedding API is unavailable
 func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, params SearchParams, defaultLimit int, searchPoolSize int) (*SearchResult, error) {
 	if params.Query == "" {
 		return &SearchResult{Mode: SearchModeFTS}, nil
@@ -60,13 +60,13 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 		poolSize = 20
 	}
 
-	// Determine search strategy using cached Ollama health state
+	// Determine search strategy using cached embedder health state
 	// (avoids per-request HTTP probe — indexer refreshes on every polling cycle)
-	ollamaHealthy := OllamaHealthy()
+	embedderHealthy := EmbedderHealthy()
 	// If no cached state and embedder is available, do a fresh probe
-	if !ollamaHealthy && embedder != nil {
+	if !embedderHealthy && embedder != nil {
 		reachable, modelAvailable, _ := embedder.IsHealthy(ctx)
-		ollamaHealthy = reachable && modelAvailable
+		embedderHealthy = reachable && modelAvailable
 	}
 
 	ftsAvailable := store.ftsAvailable
@@ -76,7 +76,7 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 	var err error
 
 	switch {
-	case ollamaHealthy && ftsAvailable:
+	case embedderHealthy && ftsAvailable:
 		// Hybrid: vector + FTS with RRF fusion
 		mode = SearchModeHybrid
 		var queryEmbedding []float64
@@ -90,7 +90,7 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 			hits, err = store.SearchHybrid(queryEmbedding, params.Query, poolSize, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
 		}
 
-	case ollamaHealthy && !ftsAvailable:
+	case embedderHealthy && !ftsAvailable:
 		// Vector-only
 		mode = SearchModeVector
 		var queryEmbedding []float64
@@ -101,10 +101,10 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 		hits, err = store.SearchSimple(queryEmbedding, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
 
 	default:
-		// FTS-only (Ollama unavailable or no embedding)
+		// FTS-only (embedding API unavailable or no embedding)
 		mode = SearchModeFTS
 		if !ftsAvailable {
-			return nil, fmt.Errorf("no search available: Ollama not reachable and FTS not loaded")
+			return nil, fmt.Errorf("no search available: embedding API not reachable and FTS not loaded")
 		}
 		hits, err = store.SearchFTS(params.Query, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
 	}

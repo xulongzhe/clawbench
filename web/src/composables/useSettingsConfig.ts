@@ -234,8 +234,7 @@ const serverDefaults: Record<string, any> = {
   'rag.search_limit': 5,
   'rag.search_pool_size': 20,
   'rag.retention_days': 90,
-  'proxy.enabled': true,
-  'proxy.allowed_ports': '1024-65535',
+  'port_forward.allowed_ports': '1024-65535',
   'push.jpush.enabled': false,
   'tts.piper.noise_scale': 0.667,
   'tts.piper.length_scale': 1.0,
@@ -285,14 +284,14 @@ export function useSettingsConfig() {
   }
 
   async function patchConfig(changes: Record<string, any>): Promise<{ needsRestart: boolean; changedColdFields: string[] }> {
-    const result = await apiPatch<{ needsRestart?: boolean; changedColdFields?: string[] }>('/api/config', changes)
+    const result = await apiPatch<{ needs_restart?: boolean; changed_cold_fields?: string[] }>('/api/config', changes)
     // Deep-merge patched values into local cache after successful response.
     // Using Object.assign would overwrite nested objects (e.g. {chat: {collapsed_height: 300}}
     // would lose the existing page_size), so we deep-merge instead.
     deepAssign(serverConfig.value, changes)
     return {
-      needsRestart: result.needsRestart ?? false,
-      changedColdFields: result.changedColdFields ?? [],
+      needsRestart: result.needs_restart ?? false,
+      changedColdFields: result.changed_cold_fields ?? [],
     }
   }
 

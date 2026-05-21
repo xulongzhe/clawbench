@@ -226,26 +226,13 @@ func main() {
 		slog.Info("tts summarizer configured",
 			slog.String("backend", "simple"),
 		)
-	} else if summarizeBackend == "mmx-cli" {
-		s := summarize.NewMMX()
-		if cfg.TTS.SummarizeModel != "" {
-			s.Model = cfg.TTS.SummarizeModel
-		}
-		ttsSummarizer = s
-		slog.Info("tts summarizer configured",
-			slog.String("backend", "mmx-cli"),
-			slog.String("model", s.Model),
-		)
 	} else if summarizeBackend == "api" {
 		if cfg.TTS.API.BaseURL == "" {
 			slog.Error("tts summarize_backend is \"api\" but tts.api.base_url is not configured")
 			os.Exit(1)
 		}
 		if cfg.TTS.API.Format == "anthropic" {
-			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-			if cfg.TTS.SummarizeModel != "" {
-				s.Model = cfg.TTS.SummarizeModel
-			}
+			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.SummarizeModel)
 			ttsSummarizer = s
 			slog.Info("tts summarizer configured",
 				slog.String("backend", "api"),
@@ -253,10 +240,7 @@ func main() {
 				slog.String("model", s.Model),
 			)
 		} else {
-			s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-			if cfg.TTS.SummarizeModel != "" {
-				s.Model = cfg.TTS.SummarizeModel
-			}
+			s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.SummarizeModel)
 			ttsSummarizer = s
 			slog.Info("tts summarizer configured",
 				slog.String("backend", "api"),
@@ -267,15 +251,11 @@ func main() {
 	} else {
 		s, err := summarize.NewAIBackendSummarizer(summarizeBackend)
 		if err != nil {
-			slog.Error("failed to create AI backend summarizer, falling back to mmx-cli",
+			slog.Error("failed to create AI backend summarizer, falling back to simple",
 				slog.String("backend", summarizeBackend),
 				slog.String("error", err.Error()),
 			)
-			fallback := summarize.NewMMX()
-			if cfg.TTS.SummarizeModel != "" {
-				fallback.Model = cfg.TTS.SummarizeModel
-			}
-			ttsSummarizer = fallback
+			ttsSummarizer = summarize.NewSimple()
 		} else {
 			s.Model = cfg.TTS.SummarizeModel // empty = use backend default
 			ttsSummarizer = s
@@ -379,25 +359,24 @@ func main() {
 			slog.String("voice", m.Voice),
 		)
 	default:
-		p := speech.NewMiniMaxProvider()
-		if cfg.TTS.TTSModel != "" {
-			p.TTSModel = cfg.TTS.TTSModel
-		}
+		// Default to Edge TTS when engine is empty or unrecognized
+		p := speech.NewEdgeTTSProvider()
 		if cfg.TTS.Voice != "" {
-			p.TTSVoice = cfg.TTS.Voice
+			p.Voice = cfg.TTS.Voice
 		}
 		if cfg.TTS.Speed > 0 {
-			p.TTSSpeed = cfg.TTS.Speed
-		}
-		if cfg.TTS.Format != "" {
-			p.TTSFormat = cfg.TTS.Format
+			ratePercent := int((cfg.TTS.Speed - 1.0) * 100)
+			if ratePercent > 0 {
+				p.Rate = fmt.Sprintf("+%d%%", ratePercent)
+			} else if ratePercent < 0 {
+				p.Rate = fmt.Sprintf("%d%%", ratePercent)
+			}
 		}
 		ttsProvider = p
 		slog.Info("tts provider configured",
-			slog.String("engine", "minimax"),
-			slog.String("tts_model", p.TTSModel),
-			slog.String("voice", p.TTSVoice),
-			slog.Float64("speed", p.TTSSpeed),
+			slog.String("engine", "edge"),
+			slog.String("voice", p.Voice),
+			slog.String("rate", p.Rate),
 		)
 	}
 	handler.SetSpeechProvider(ttsProvider)
@@ -617,13 +596,14 @@ func main() {
 	// Start cleanup worker for soft-deleted data (runs even without RAG)
 	rag.StartCleanupWorker(cfg.RAG)
 
-	// Initialize proxy service (port forwarding) — needs the final port number
-	proxyService := service.NewProxyRegistry(cfg.Proxy, port)
-	service.ProxyService = proxyService
-	defer proxyService.Stop()
-
-	// Initialize SSH tunnel server (port forward)
+	// Initialize proxy service (port forwarding) and SSH tunnel server.
+	// ProxyRegistry is only created when SSH tunnel is enabled — it has no
+	// standalone purpose without the SSH tunnel to transport traffic.
 	if cfg.PortForward.Enabled {
+		proxyService := service.NewProxyRegistry(cfg.PortForward.AllowedPorts, port)
+		service.ProxyService = proxyService
+		defer proxyService.Stop()
+
 		sshServer := ssh.NewServer(cfg.PortForward, port, cfg.Password, proxyService)
 		handler.SetSSHServer(sshServer)
 		go func() {
@@ -632,6 +612,8 @@ func main() {
 			}
 		}()
 		defer sshServer.Close()
+	} else {
+		slog.Info("SSH tunnel and port forwarding disabled by config")
 	}
 
 	// Initialize file watcher for auto-refresh (non-critical — continue on failure)
@@ -764,10 +746,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 		// For API backends, create OpenAI/Anthropic summarizer and wrap its pass function
 		// in a pipeline with PreserveMarkdown=true and task-specific prompt.
 		if cfg.TTS.API.Format == "anthropic" {
-			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-			if modelName != "" {
-				s.Model = modelName
-			}
+			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, modelName)
 			pipeline := summarize.NewPipelineWithOpts(
 				s.DoSummarizePass,
 				summarize.TaskSummarizePrompt(),
@@ -775,10 +754,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 			)
 			return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 		}
-		s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.API.Model)
-		if modelName != "" {
-			s.Model = modelName
-		}
+		s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, modelName)
 		pipeline := summarize.NewPipelineWithOpts(
 			s.DoSummarizePass,
 			summarize.TaskSummarizePrompt(),

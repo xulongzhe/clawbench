@@ -74,7 +74,7 @@ import javax.net.ssl.X509TrustManager;
  * - WebView hidden during connection attempts — no ugly error pages shown
  * - WebView with JS, DOM storage, and media autoplay enabled
  * - JavaScript interface for native bridge (port forwarding, SSH password)
- * - Port forwarding via SSH tunnels (PortForwardService) — transparent localhost access
+ * - Port forwarding via SSH tunnels (BackgroundService) — transparent localhost access
  * - Proper back navigation within WebView
  * - SSL error handling with user confirmation
  */
@@ -182,8 +182,8 @@ public class MainActivity extends AppCompatActivity {
         // Keep screen on while app is in foreground (AI may take time to respond)
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Initialize trust-all SSL for self-signed HTTPS servers (used by PortForwardService)
-        PortForwardService.initTrustAllSSL();
+        // Initialize trust-all SSL for self-signed HTTPS servers (used by BackgroundService)
+        BackgroundService.initTrustAllSSL();
 
         setContentView(R.layout.activity_main);
 
@@ -195,10 +195,10 @@ public class MainActivity extends AppCompatActivity {
         // Request notification permission (Android 13+) — required for foreground service notification
         requestNotificationPermission();
 
-        // Auto-restore PortForwardService if there are previously saved ports.
+        // Auto-restore BackgroundService if there are previously saved ports.
         // This ensures the SSH tunnel and its notification are active immediately on cold start,
         // without waiting for the WebView to load and syncToNative() to fire.
-        restorePortForwardServiceIfNeeded();
+        restoreBackgroundServiceIfNeeded();
 
         setupWebView();
 
@@ -524,7 +524,7 @@ public class MainActivity extends AppCompatActivity {
         // Save URL and password
         prefs.edit().putString(KEY_SERVER_URL, url).apply();
         if (password != null && !password.isEmpty()) {
-            PortForwardService.setPassword(this, password);
+            BackgroundService.setPassword(this, password);
         }
 
         // Fetch JPush config now that we have a server URL.
@@ -559,7 +559,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Request POST_NOTIFICATIONS runtime permission on Android 13+ (API 33+).
-     * Required for the PortForwardService foreground notification to be visible.
+     * Required for the BackgroundService foreground notification to be visible.
      */
     private void requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -581,16 +581,16 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * If there are previously saved forwarded ports in SharedPreferences,
-     * start the PortForwardService immediately so the SSH tunnel and its
+     * start the BackgroundService immediately so the SSH tunnel and its
      * notification are active on cold start.
      * This avoids the gap where no notification shows until the WebView
      * finishes loading and syncToNative() fires.
      */
-    private void restorePortForwardServiceIfNeeded() {
+    private void restoreBackgroundServiceIfNeeded() {
         Set<String> savedPorts = prefs.getStringSet("forwarded_ports", null);
         if (savedPorts != null && !savedPorts.isEmpty()) {
-            AppLog.i(TAG, "Cold start: restoring PortForwardService with " + savedPorts.size() + " saved ports");
-            PortForwardService.start(this);
+            AppLog.i(TAG, "Cold start: restoring BackgroundService with " + savedPorts.size() + " saved ports");
+            BackgroundService.start(this);
         }
     }
 
@@ -623,7 +623,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
-        // Do NOT stop PortForwardService here — it should survive Activity lifecycle
+        // Do NOT stop BackgroundService here — it should survive Activity lifecycle
         // so the SSH tunnel continues running when the app is in background.
         instance = null; // Clear static reference to prevent memory leak / stale access
         super.onDestroy();
@@ -637,7 +637,7 @@ public class MainActivity extends AppCompatActivity {
         // Check both pushAvailable (SDK ready) and jpushEnabledOnServer (config fetched)
         // to avoid starting native WS when JPush will handle notifications anyway.
         if (!pushAvailable && !jpushEnabledOnServer && webViewConnected) {
-            PortForwardService.startNativeEventWs(this);
+            BackgroundService.startNativeEventWs(this);
         }
     }
 
@@ -645,7 +645,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         // App returning to foreground — stop native WS (WebView WS handles events)
-        PortForwardService.stopNativeEventWs(this);
+        BackgroundService.stopNativeEventWs(this);
         // Handle notification tap intent
         handleNotificationIntent(getIntent());
     }
@@ -929,12 +929,12 @@ public class MainActivity extends AppCompatActivity {
 
         /**
          * Check whether the SSH tunnel is currently connected.
-         * Queries the PortForwardService's SSH session state.
+         * Queries the BackgroundService's SSH session state.
          * Returns true if connected, false if disconnected or service not running.
          */
         @JavascriptInterface
         public boolean isTunnelConnected() {
-            return PortForwardService.isTunnelConnected();
+            return BackgroundService.isTunnelConnected();
         }
 
         /**
@@ -945,7 +945,7 @@ public class MainActivity extends AppCompatActivity {
          */
         @JavascriptInterface
         public String getTunnelError() {
-            String err = PortForwardService.getLastError();
+            String err = BackgroundService.getLastError();
             return err != null ? err : "";
         }
 
@@ -956,13 +956,13 @@ public class MainActivity extends AppCompatActivity {
          */
         @JavascriptInterface
         public String getTunnelErrorType() {
-            String type = PortForwardService.getErrorType();
+            String type = BackgroundService.getErrorType();
             return type != null ? type : "";
         }
 
         /**
          * Add a port to be forwarded via SSH tunnel.
-         * The PortForwardService creates a local port forward: localhost:{port} → server:{port}
+         * The BackgroundService creates a local port forward: localhost:{port} → server:{port}
          * WebView can then access http://localhost:{port} directly.
          * Also requests battery optimization exemption on first port forward.
          */
@@ -970,7 +970,7 @@ public class MainActivity extends AppCompatActivity {
         public void addForwardedPort(int port) {
             activity.runOnUiThread(() -> {
                 activity.forwardedPorts.add(port);
-                PortForwardService.addForwardedPort(activity, port);
+                BackgroundService.addForwardedPort(activity, port);
 
                 // Request battery optimization exemption if not already granted.
                 // Re-check every time in case the user previously dismissed the dialog.
@@ -997,14 +997,14 @@ public class MainActivity extends AppCompatActivity {
                         Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
                         intent.setData(Uri.parse("urn:android:pkg:" + packageName));
                         activity.startActivity(intent);
-                        PortForwardService.setBatteryOptRequested(activity);
+                        BackgroundService.setBatteryOptRequested(activity);
                         AppLog.i(TAG, "Requested battery optimization exemption");
                     } catch (Exception e) {
                         AppLog.w(TAG, "Failed to request battery optimization exemption", e);
                     }
                 } else {
                     // Already whitelisted, just mark as requested
-                    PortForwardService.setBatteryOptRequested(activity);
+                    BackgroundService.setBatteryOptRequested(activity);
                 }
             }
         }
@@ -1016,21 +1016,21 @@ public class MainActivity extends AppCompatActivity {
         public void removeForwardedPort(int port) {
             activity.runOnUiThread(() -> {
                 activity.forwardedPorts.remove(port);
-                PortForwardService.removeForwardedPort(activity, port);
+                BackgroundService.removeForwardedPort(activity, port);
             });
         }
 
         /**
-         * Stop the PortForwardService and disconnect SSH.
+         * Stop the BackgroundService and disconnect SSH.
          * Called from WebView when server reports no forwarded ports,
          * to avoid running an idle foreground service with no work to do.
          */
         @JavascriptInterface
-        public void stopPortForwardService() {
+        public void stopBackgroundService() {
             activity.runOnUiThread(() -> {
-                AppLog.i(TAG, "WebView requested PortForwardService stop (no ports on server)");
+                AppLog.i(TAG, "WebView requested BackgroundService stop (no ports on server)");
                 activity.forwardedPorts.clear();
-                PortForwardService.stop(activity);
+                BackgroundService.stop(activity);
             });
         }
 
@@ -1137,7 +1137,7 @@ public class MainActivity extends AppCompatActivity {
          */
         @JavascriptInterface
         public void setSSHPassword(String pwd) {
-            PortForwardService.setPassword(activity, pwd);
+            BackgroundService.setPassword(activity, pwd);
         }
 
         /**

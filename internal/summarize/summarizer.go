@@ -66,7 +66,7 @@ type SummarizeOption struct {
 }
 
 // Summarizer abstracts text summarization.
-// Implementations can use different backends (mmx-cli, AI backends, etc.)
+// Implementations can use different backends (AI backends, API, etc.)
 type Summarizer interface {
 	// Summarize condenses text.
 	// For short text, it may return the text as-is after stripping markdown.
@@ -76,7 +76,7 @@ type Summarizer interface {
 }
 
 // summarizePassFunc is the strategy function for a single summarization pass.
-// Each backend (mmx-cli, ollama, AI backend) provides its own implementation.
+// Each backend (API, AI backend) provides its own implementation.
 type summarizePassFunc func(ctx context.Context, text, systemPrompt string, pass int) (string, error)
 
 // ttsPipeline implements the shared Summarize logic that TTS backends use:

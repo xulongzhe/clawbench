@@ -249,14 +249,14 @@ describe('onSessionEvent', () => {
     expect(mockState.chatRunning).toBe(false)
   })
 
-  it('marks chatUnread=true when a different session completes', () => {
+  it('does not directly set chatUnread when a different session completes — delegates to loadSessionsOnce', () => {
     const session = createSession()
     mockState.currentSessionId = 'current-s1'
 
     session.onSessionEvent({ session_id: 's1', status: 'running' })
-    // A different session completes
+    // A different session completes — no longer sets chatUnread synchronously
     session.onSessionEvent({ session_id: 's2', status: 'completed' })
-    expect(mockState.chatUnread).toBe(true)
+    expect(mockState.chatUnread).toBe(false)
   })
 
   it('does not mark chatUnread when the current session completes', () => {
@@ -400,24 +400,24 @@ describe('onSessionEvent', () => {
     expect(mockState.chatRunning).toBe(false)
   })
 
-  it('preserves chatUnread=true when completing a non-current session even if already unread', () => {
+  it('preserves chatUnread=false when completing a non-current session — delegates to loadSessionsOnce', () => {
     const session = createSession()
     mockState.currentSessionId = 'current-s1'
-    mockState.chatUnread = true
+    mockState.chatUnread = false
 
     session.onSessionEvent({ session_id: 's2', status: 'completed' })
-    // Should remain true (not reset to false)
-    expect(mockState.chatUnread).toBe(true)
+    // No longer sets chatUnread=true synchronously
+    expect(mockState.chatUnread).toBe(false)
   })
 
-  it('marks chatUnread on cancelled status for non-current session', () => {
+  it('does not directly set chatUnread on cancelled status for non-current session', () => {
     const session = createSession()
     mockState.currentSessionId = 'current-s1'
 
     session.onSessionEvent({ session_id: 's1', status: 'running' })
-    // Cancel a different session
+    // Cancel a different session — no longer sets chatUnread synchronously
     session.onSessionEvent({ session_id: 's2', status: 'cancelled' })
-    expect(mockState.chatUnread).toBe(true)
+    expect(mockState.chatUnread).toBe(false)
   })
 })
 
@@ -888,7 +888,7 @@ describe('switchSession', () => {
 })
 
 // ───────────────────────────────────────────────────────────
-// Integration: onSessionEvent → switchSession clears chatUnread
+// Integration: onSessionEvent no longer sets chatUnread synchronously
 // ───────────────────────────────────────────────────────────
 
 describe('chatUnread integration', () => {
@@ -904,13 +904,34 @@ describe('chatUnread integration', () => {
     globalThis.fetch = originalFetch
   })
 
-  it('chatUnread set by onSessionEvent is cleared after switchSession recalculates', async () => {
+  it('onSessionEvent does not set chatUnread synchronously — delegates to debounced loadSessionsOnce', () => {
     const session = createSession()
     mockState.currentSessionId = 's1'
 
-    // Session s2 completes in the background → marks unread
+    // Session s2 completes in the background → no longer sets chatUnread synchronously
     session.onSessionEvent({ session_id: 's2', status: 'completed' })
-    expect(mockState.chatUnread).toBe(true)
+    expect(mockState.chatUnread).toBe(false)
+  })
+
+  it('onSessionEvent does not set chatUnread for cancelled sessions', () => {
+    const session = createSession()
+    mockState.currentSessionId = 's1'
+
+    session.onSessionEvent({ session_id: 's2', status: 'cancelled' })
+    expect(mockState.chatUnread).toBe(false)
+  })
+
+  it('chatUnread is not set when current session completes', () => {
+    const session = createSession()
+    mockState.currentSessionId = 'current-s1'
+
+    session.onSessionEvent({ session_id: 'current-s1', status: 'completed' })
+    expect(mockState.chatUnread).toBe(false)
+  })
+
+  it('switchSession recalculates chatUnread correctly', async () => {
+    const session = createSession()
+    mockState.currentSessionId = 's1'
 
     // User switches to s2 (backend UpdateLastRead marks it as read)
     globalThis.fetch = vi.fn()
@@ -941,14 +962,9 @@ describe('chatUnread integration', () => {
     expect(mockState.chatUnread).toBe(false)
   })
 
-  it('chatUnread stays true when switching to one unread session but another still has unread', async () => {
+  it('switchSession keeps chatUnread true when another session still has unread', async () => {
     const session = createSession()
     mockState.currentSessionId = 's1'
-
-    // Both s2 and s3 complete in the background
-    session.onSessionEvent({ session_id: 's2', status: 'completed' })
-    session.onSessionEvent({ session_id: 's3', status: 'completed' })
-    expect(mockState.chatUnread).toBe(true)
 
     // User switches to s2, but s3 is still unread
     globalThis.fetch = vi.fn()
@@ -981,66 +997,28 @@ describe('chatUnread integration', () => {
     expect(mockState.chatUnread).toBe(true)
   })
 
-  it('chatUnread is not set when current session completes', () => {
-    const session = createSession()
-    // createSession sets options.currentSessionId = ref('current-s1')
-    // onSessionEvent compares against the options ref, not mockState
-    mockState.currentSessionId = 'current-s1'
-
-    session.onSessionEvent({ session_id: 'current-s1', status: 'completed' })
-    expect(mockState.chatUnread).toBe(false)
-  })
-
-  it('simulates the bug scenario: user on chat tab, other session completes, switch clears unread', async () => {
+  it('simulates the bug scenario: user on chat tab, other session completes, no phantom flash', () => {
     // Exact scenario from the bug report:
     // 1. User is on chat tab viewing s1
-    // 2. Session s2 completes → chatUnread = true, Dock/session button flashes
-    // 3. User switches to s2 → chatUnread should be recalculated to false
+    // 2. Session s2 completes → chatUnread should NOT be set synchronously
+    // 3. The debounced loadSessionsOnce will determine the real state from the server
     const session = createSession()
     mockState.currentSessionId = 's1'
 
-    // Step 2: s2 completes in the background
+    // Step 2: s2 completes in the background — no longer sets chatUnread=true immediately
     session.onSessionEvent({ session_id: 's2', status: 'completed' })
-    expect(mockState.chatUnread).toBe(true)
-
-    // Step 3: User switches to s2 (e.g. from SessionDrawer)
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          sessionId: 's2',
-          messages: [],
-          total: 0,
-          backend: 'claude',
-          agentId: 'agent1',
-          modelId: '',
-          thinkingEffort: '',
-          running: false,
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({
-          sessions: [
-            { id: 's2', unreadCount: 0, running: false },
-          ],
-        }),
-      })
-
-    await session.switchSession('s2')
-
-    // Bug is fixed: chatUnread is recalculated and cleared
+    // No phantom flash! chatUnread stays false until loadSessionsOnce confirms
     expect(mockState.chatUnread).toBe(false)
   })
 
-  it('simulates the bug scenario: user switches to chat tab but does not open unread session', async () => {
-    // Second bug scenario:
+  it('simulates: user switches to chat tab but does not open unread session', async () => {
+    // Scenario:
     // 1. User is on another tab
-    // 2. Session s2 completes → chatUnread = true
+    // 2. chatUnread was set to true (e.g. by a prior loadSessionsOnce)
     // 3. User clicks Dock chat button → switchTab('chat') calls loadSessionsOnce()
     // 4. loadSessionsOnce should recalculate: s2 still has unreadCount > 0 → chatUnread stays true
     mockState.currentSessionId = 's1'
-    mockState.chatUnread = true  // was set by onSessionEvent
+    mockState.chatUnread = true  // was set by loadSessionsOnce
 
     // switchTab('chat') now calls loadSessionsOnce() instead of blindly clearing
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -1818,8 +1796,8 @@ describe('deleteSession', () => {
       expect.any(String),
       expect.objectContaining({ icon: '🗑️', type: 'success' })
     )
-    // Only one fetch call (the delete), no sessions list or switch fetches
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    // Two fetch calls: 1) delete API 2) loadSessionsOnce (refresh global state)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })
 
   it('API returns ok=false: no toast shown', async () => {

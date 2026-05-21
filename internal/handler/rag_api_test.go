@@ -258,6 +258,73 @@ func TestServeRAGSearch_CrossProjectIsolation(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// ---------- RAG global search (localhost without project cookie) ----------
+
+func TestServeRAGSearch_LocalhostGlobalSearch(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Setup a real DuckDB store + mock embedder
+	origStore := rag.GlobalStore
+	origEmbedder := rag.GlobalEmbedder
+	t.Cleanup(func() {
+		rag.GlobalStore = origStore
+		rag.GlobalEmbedder = origEmbedder
+	})
+
+	store := setupRAGStore(t)
+	rag.GlobalStore = store
+	embedder := setupWorkingMockEmbedder(t)
+	rag.GlobalEmbedder = embedder
+
+	// Localhost request without project cookie — should succeed (global search)
+	req := newRequest(t, http.MethodPost, "/api/rag/search", map[string]any{"q": "test"})
+	req.RemoteAddr = "127.0.0.1:12345"
+	w := callHandlerWithAuth(ServeRAGSearch, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestServeRAGSearch_RemoteNoProjectDenied(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Remote request without project cookie — should be denied
+	req := newRequest(t, http.MethodPost, "/api/rag/search", map[string]any{"q": "test"})
+	// Default RemoteAddr is 192.0.2.1 (non-localhost)
+	w := callHandlerWithAuth(ServeRAGSearch, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestServeRAGMessage_LocalhostCrossProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Insert a message in the test project
+	msgID, err := service.AddChatMessage(env.ProjectDir, "claude", "", "user", "hello", nil, false, "NewSession")
+	require.NoError(t, err)
+
+	// Localhost request without project cookie — should succeed (cross-project access)
+	req := newRequest(t, http.MethodGet, "/api/rag/message?id="+fmt.Sprint(msgID), nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	w := callHandlerWithAuth(ServeRAGMessage, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestServeRAGSession_LocalhostCrossProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session and add messages
+	sid, err := service.CreateSession(env.ProjectDir, "claude", "Test Session", "", "", "default", "chat")
+	require.NoError(t, err)
+
+	// Localhost request without project cookie — should succeed (cross-project access)
+	req := newRequest(t, http.MethodGet, "/api/rag/session?id="+sid, nil)
+	req.RemoteAddr = "127.0.0.1:12345"
+	w := callHandlerWithAuth(ServeRAGSession, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
 // ---------- RAG test helpers ----------
 
 // setupRAGStore creates a temporary DuckDB store for handler tests.
@@ -271,28 +338,32 @@ func setupRAGStore(t *testing.T) *rag.Store {
 }
 
 // setupWorkingMockEmbedder creates a mock EmbeddingClient backed by a test server
-// that returns valid 1024-dim embeddings.
+// that returns valid 1024-dim embeddings using OpenAI /v1/embeddings format.
 func setupWorkingMockEmbedder(t *testing.T) *rag.EmbeddingClient {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/embeddings":
-			// Return a 1024-dim embedding
+		case "/v1/embeddings":
+			// Return a 1024-dim embedding in OpenAI format
 			emb := make([]float64, 1024)
 			for i := range emb {
 				emb[i] = 0.01
 			}
-			json.NewEncoder(w).Encode(map[string]any{"embedding": emb})
-		case "/api/tags":
 			json.NewEncoder(w).Encode(map[string]any{
-				"models": []map[string]any{{"name": "bge-m3:latest"}},
+				"data": []map[string]any{
+					{"embedding": emb, "index": 0},
+				},
+			})
+		case "/v1/models":
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{{"id": "bge-m3"}},
 			})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(server.Close)
-	client := rag.NewEmbeddingClient(server.URL, "bge-m3")
+	client := rag.NewEmbeddingClient(server.URL, "bge-m3", "")
 	client.HTTPClient = server.Client()
 	return client
 }

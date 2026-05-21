@@ -42,10 +42,23 @@ echo "=== Building $NAME ==="
 
 # Derive version from git (e.g. v1.0.0, v0.30.0-30-g830bb6c, or short SHA)
 VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-LDFLAGS="-X clawbench/internal/version.Version=$VERSION"
+# Detect release: git describe --exact-match succeeds only when HEAD is on a tag
+IS_RELEASE=false
+if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+    IS_RELEASE=true
+fi
+# Build time (fixed at script start, shared by backend and APK)
+BUILD_TIME=$(date +"%Y-%m-%d %H:%M:%S")
+# Compose full version: dev builds include build time, release builds are clean
+if $IS_RELEASE; then
+    FULL_VERSION="$VERSION"
+else
+    FULL_VERSION="$VERSION ($BUILD_TIME)"
+fi
+LDFLAGS="-X 'clawbench/internal/version.Version=$FULL_VERSION'"
 # Derive versionCode from git commit count (monotonically increasing for Play Store)
 VERSION_CODE=$(git rev-list --count HEAD 2>/dev/null || echo "1")
-echo "  Version: $VERSION (code: $VERSION_CODE)"
+echo "  Version: $FULL_VERSION (code: $VERSION_CODE, release: $IS_RELEASE)"
 
 # 1. Build Go backend
 echo "[1/3] Building Go backend..."
@@ -85,7 +98,7 @@ if [ -n "$BUILD_ANDROID" ]; then
     echo "[3/3] Building Android APK..."
     if [ -d "android" ] && [ -f "android/gradlew" ]; then
         (cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease \
-            -PversionCode=$VERSION_CODE -PversionName=$VERSION)
+            -PversionCode=$VERSION_CODE -PversionName="$FULL_VERSION")
         echo "  APK: android/app/build/outputs/apk/release/clawbench-android.apk"
     else
         echo "  Android project not found, skipping APK build"

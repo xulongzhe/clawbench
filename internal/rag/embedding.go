@@ -9,52 +9,82 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
-// EmbeddingClient calls the Ollama /api/embeddings endpoint.
+// EmbeddingClient calls an OpenAI-compatible /v1/embeddings endpoint.
 type EmbeddingClient struct {
 	BaseURL    string
 	Model      string
+	APIKey     string
 	HTTPClient *http.Client
+	dim        atomic.Int64 // auto-detected embedding dimension
 }
 
-// NewEmbeddingClient creates a new Ollama embedding client.
-func NewEmbeddingClient(baseURL, model string) *EmbeddingClient {
+// NewEmbeddingClient creates a new embedding client.
+// baseURL is the OpenAI-compatible API root (e.g. "http://localhost:11434").
+// model is the embedding model name.
+// apiKey is the bearer token (may be empty for local servers).
+func NewEmbeddingClient(baseURL, model, apiKey string) *EmbeddingClient {
 	return &EmbeddingClient{
 		BaseURL: strings.TrimRight(baseURL, "/"),
 		Model:   model,
+		APIKey:  apiKey,
 		HTTPClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
 	}
 }
 
-// ollamaEmbedRequest is the request body for POST /api/embeddings.
-type ollamaEmbedRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
+// openaiEmbedRequest is the request body for POST /v1/embeddings.
+type openaiEmbedRequest struct {
+	Model string   `json:"model"`
+	Input []string `json:"input"`
 }
 
-// ollamaEmbedResponse is the response body for POST /api/embeddings.
-type ollamaEmbedResponse struct {
+// openaiEmbeddingData is one item in the response "data" array.
+type openaiEmbeddingData struct {
 	Embedding []float64 `json:"embedding"`
+	Index     int        `json:"index"`
 }
 
-// ollamaTagsResponse is the response body for GET /api/tags.
-type ollamaTagsResponse struct {
-	Models []ollamaModelInfo `json:"models"`
+// openaiEmbedResponse is the response body for POST /v1/embeddings.
+type openaiEmbedResponse struct {
+	Data []openaiEmbeddingData `json:"data"`
 }
 
-type ollamaModelInfo struct {
-	Name string `json:"name"`
+// openaiModelsResponse is the response body for GET /v1/models.
+type openaiModelsResponse struct {
+	Data []openaiModelInfo `json:"data"`
+}
+
+type openaiModelInfo struct {
+	ID string `json:"id"`
 }
 
 // Embed generates an embedding vector for the given text.
 func (c *EmbeddingClient) Embed(ctx context.Context, text string) ([]float64, error) {
-	reqBody := ollamaEmbedRequest{
-		Model:  c.Model,
-		Prompt: text,
+	results, err := c.EmbedBatch(ctx, []string{text})
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("embed: no results returned")
+	}
+	return results[0], nil
+}
+
+// EmbedBatch generates embeddings for multiple texts in a single API call.
+// Returns embeddings in the same order as input texts.
+func (c *EmbeddingClient) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	if len(texts) == 0 {
+		return nil, nil
+	}
+
+	reqBody := openaiEmbedRequest{
+		Model: c.Model,
+		Input: texts,
 	}
 
 	jsonBody, err := json.Marshal(reqBody)
@@ -62,12 +92,15 @@ func (c *EmbeddingClient) Embed(ctx context.Context, text string) ([]float64, er
 		return nil, fmt.Errorf("marshal embed request: %w", err)
 	}
 
-	url := c.BaseURL + "/api/embeddings"
+	url := c.BaseURL + "/v1/embeddings"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("create embed request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -77,69 +110,88 @@ func (c *EmbeddingClient) Embed(ctx context.Context, text string) ([]float64, er
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("ollama embed API returned status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("embedding API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var embedResp ollamaEmbedResponse
+	var embedResp openaiEmbedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
 		return nil, fmt.Errorf("decode embed response: %w", err)
 	}
 
-	if len(embedResp.Embedding) == 0 {
-		return nil, fmt.Errorf("ollama returned empty embedding for model %s", c.Model)
+	if len(embedResp.Data) == 0 {
+		return nil, fmt.Errorf("embedding API returned empty data for model %s", c.Model)
 	}
 
-	return embedResp.Embedding, nil
-}
-
-// EmbedBatch generates embeddings for multiple texts.
-// Returns embeddings in the same order as input texts.
-// If any individual embedding fails, returns error for the whole batch.
-func (c *EmbeddingClient) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+	// Sort by index to ensure order matches input
 	embeddings := make([][]float64, len(texts))
-	for i, text := range texts {
-		emb, err := c.Embed(ctx, text)
-		if err != nil {
-			return nil, fmt.Errorf("embed text %d/%d: %w", i+1, len(texts), err)
+	for _, d := range embedResp.Data {
+		if d.Index < 0 || d.Index >= len(embeddings) {
+			return nil, fmt.Errorf("embedding API returned out-of-range index %d", d.Index)
 		}
-		embeddings[i] = emb
+		if len(d.Embedding) == 0 {
+			return nil, fmt.Errorf("embedding API returned empty embedding at index %d for model %s", d.Index, c.Model)
+		}
+		embeddings[d.Index] = d.Embedding
 	}
+
+	// Auto-detect dimension from first response
+	if c.dim.Load() == 0 && len(embeddings) > 0 && len(embeddings[0]) > 0 {
+		c.dim.Store(int64(len(embeddings[0])))
+		slog.Info("rag: auto-detected embedding dimension", slog.Int("dim", len(embeddings[0])))
+	}
+
 	return embeddings, nil
 }
 
-// IsHealthy checks if Ollama is reachable and the configured model is available.
+// IsHealthy checks if the embedding service is reachable and the configured model is available.
 // Returns (reachable, modelAvailable, error).
+// Gracefully handles servers that do not implement /v1/models.
 func (c *EmbeddingClient) IsHealthy(ctx context.Context) (bool, bool, error) {
-	url := c.BaseURL + "/api/tags"
+	url := c.BaseURL + "/v1/models"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, false, fmt.Errorf("create health request: %w", err)
 	}
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return false, false, nil // Not reachable, but not an error per se
+		return false, false, nil // Not reachable
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		// Server does not implement /v1/models (e.g. some Ollama versions)
+		// Assume reachable and model available if we got a 404
+		return true, true, nil
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		return false, false, fmt.Errorf("ollama tags API returned status %d", resp.StatusCode)
+		return false, false, fmt.Errorf("models API returned status %d", resp.StatusCode)
 	}
 
-	var tagsResp ollamaTagsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&tagsResp); err != nil {
-		return true, false, fmt.Errorf("decode tags response: %w", err)
+	var modelsResp openaiModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&modelsResp); err != nil {
+		// Can decode but not models list — assume reachable, model might be there
+		return true, false, fmt.Errorf("decode models response: %w", err)
 	}
 
-	for _, m := range tagsResp.Models {
-		if m.Name == c.Model || strings.HasPrefix(m.Name, c.Model+":") {
+	for _, m := range modelsResp.Data {
+		if m.ID == c.Model || strings.HasPrefix(m.ID, c.Model+":") {
 			return true, true, nil
 		}
 	}
 
-	slog.Warn("ollama is reachable but model not found",
+	slog.Warn("embedding service reachable but model not found",
 		slog.String("model", c.Model),
-		slog.Int("available_models", len(tagsResp.Models)),
+		slog.Int("available_models", len(modelsResp.Data)),
 	)
 	return true, false, nil
+}
+
+// Dim returns the auto-detected embedding dimension, or 0 if not yet detected.
+func (c *EmbeddingClient) Dim() int {
+	return int(c.dim.Load())
 }

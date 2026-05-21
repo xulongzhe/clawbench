@@ -12,11 +12,11 @@ import (
 // ParsePresenceMap walks a raw YAML map and returns a flat set of dot-separated
 // keys that were explicitly present. For example, given:
 //
-//	proxy:
+//	port_forward:
 //	  enabled: true
 //	  allowed_ports: "1024-65535"
 //
-// It returns: {"proxy": true, "proxy.enabled": true, "proxy.allowed_ports": true}
+// It returns: {"port_forward": true, "port_forward.enabled": true, "port_forward.allowed_ports": true}
 func ParsePresenceMap(raw map[string]any) map[string]bool {
 	presence := make(map[string]bool)
 	walkPresenceMap(raw, "", presence)
@@ -133,15 +133,13 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 		cfg.Session.MaxCount = 10
 	}
 
-	// --- Proxy ---
-	// Bool zero-value trap: Go defaults bool to false, but we want true.
-	// Only keep false if user explicitly wrote "enabled: false".
-	// If proxy section is absent OR proxy.enabled key is absent, default to true.
-	if !presence["proxy.enabled"] {
-		cfg.Proxy.Enabled = true
-	}
-	if cfg.Proxy.AllowedPorts == "" {
-		cfg.Proxy.AllowedPorts = "1024-65535"
+	// --- Proxy (legacy) ---
+	// proxy.enabled has been removed — ProxyRegistry is now auto-enabled when
+	// port_forward.enabled is true. proxy.allowed_ports is migrated to
+	// port_forward.allowed_ports below.
+	// Backward compat: if user has proxy.allowed_ports in YAML, migrate it.
+	if cfg.Proxy.AllowedPorts != "" && cfg.PortForward.AllowedPorts == "" {
+		cfg.PortForward.AllowedPorts = cfg.Proxy.AllowedPorts
 	}
 
 	// --- Port Forward (SSH Tunnel) ---
@@ -152,6 +150,9 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	// Persist host key to avoid SSH fingerprint mismatch after server restart
 	if cfg.PortForward.HostKey == "" {
 		cfg.PortForward.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
+	}
+	if cfg.PortForward.AllowedPorts == "" {
+		cfg.PortForward.AllowedPorts = "1024-65535"
 	}
 
 	// --- TTS ---
@@ -179,12 +180,19 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 
 	// --- RAG ---
 	// RAG is always enabled. No "enabled" toggle needed.
-	// When Ollama is unavailable, falls back to BM25 full-text search.
-	if cfg.RAG.OllamaBaseURL == "" {
-		cfg.RAG.OllamaBaseURL = "http://localhost:11434"
+	// When the embedding API is unavailable, falls back to BM25 full-text search.
+	// Backward compatibility: migrate deprecated Ollama fields to new generic fields.
+	if cfg.RAG.BaseURL == "" && cfg.RAG.OllamaBaseURL != "" {
+		cfg.RAG.BaseURL = cfg.RAG.OllamaBaseURL
 	}
-	if cfg.RAG.OllamaModel == "" {
-		cfg.RAG.OllamaModel = "bge-m3"
+	if cfg.RAG.Model == "" && cfg.RAG.OllamaModel != "" {
+		cfg.RAG.Model = cfg.RAG.OllamaModel
+	}
+	if cfg.RAG.BaseURL == "" {
+		cfg.RAG.BaseURL = "http://localhost:11434"
+	}
+	if cfg.RAG.Model == "" {
+		cfg.RAG.Model = "bge-m3"
 	}
 	if cfg.RAG.ChunkSize <= 0 {
 		cfg.RAG.ChunkSize = 512

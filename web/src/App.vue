@@ -162,15 +162,16 @@
         @open-sessions="handleQuoteOpenSessions"
       />
 
-      <!-- Session drawer for quote-question session switching -->
+      <!-- Global session drawer — accessible from any tab -->
       <SessionDrawer
-        :open="quoteSessionDrawerOpen"
+        ref="sessionDrawerRef"
+        :open="sessionIdentity.sessionDrawerOpen.value"
         :currentSessionId="sessionIdentity.currentSessionId.value"
         :runningSessionIds="sessionIdentity.runningSessions.value"
-        @close="quoteSessionDrawerOpen = false"
-        @select="handleQuoteSessionSelect"
-        @create="handleQuoteSessionCreate"
-        @delete="handleQuoteSessionDelete"
+        @close="sessionIdentity.sessionDrawerOpen.value = false"
+        @select="handleSessionSelect"
+        @create="handleSessionCreate"
+        @delete="handleSessionDelete"
       />
 
       <!-- Bottom dock (tab bar) -->
@@ -219,7 +220,7 @@
             <EthernetPort :size="16" />
             <span>{{ t('nav.portForward') }}</span>
           </button>
-          <button class="dock-overflow-item" :class="{ active: activeTab === 'terminal' }" @click.stop="handleOverflowSelect('terminal')">
+          <button v-if="!isTerminalDisabled" class="dock-overflow-item" :class="{ active: activeTab === 'terminal' }" @click.stop="handleOverflowSelect('terminal')">
             <TerminalIcon :size="16" />
             <span>{{ t('terminal.title') }}</span>
           </button>
@@ -267,12 +268,13 @@ import SettingsPage from './components/settings/SettingsPage.vue'
 import TaskTab from '@/components/task/TaskTab.vue'
 import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
 import { useTaskTab, registerSwitchTab, onTaskEvent } from '@/composables/useTaskTab.ts'
-import { useSessionIdentity } from './composables/useSessionIdentity.ts'
+import { useSessionIdentity, registerSessionDrawerRef } from './composables/useSessionIdentity.ts'
 import { loadSessionsOnce } from './composables/useChatSession.ts'
 import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'
 import { useTerminalKeyboard } from './composables/useTerminalKeyboard.ts'
 import { usePortForward } from './composables/usePortForward.ts'
+import { useTerminalStatus } from './composables/useTerminalStatus.ts'
 import { useFileWatch } from './composables/useFileWatch.ts'
 import { refreshCurrentFile } from './composables/useFileRefresh.ts'
 import { useGlobalEvents } from './composables/useGlobalEvents'
@@ -327,7 +329,7 @@ provide('toast', toast)
 const sessionIdentity = useSessionIdentity()
 
 const showHidden = ref(false)
-const { localConfig, setLocalConfig: setSetting } = useSettingsConfig()
+const { localConfig, setLocalConfig: setSetting, loadConfig, getServerValueWithDefault } = useSettingsConfig()
 // Initialize from settings config (which handles legacy key migration)
 showHidden.value = !!localConfig.showHidden
 const sortField = ref(null)
@@ -341,9 +343,20 @@ useFileWatch({
 
 const { isAppMode } = useAppMode()
 const { syncToNative, sshInfo, loadSSHInfo } = usePortForward()
+const { terminalRuntimeEnabled, loadTerminalStatus } = useTerminalStatus()
 const isSSHDisabled = computed(() => sshInfo.value?.enabled === false)
+// Use runtime status (actual server state) not config value — mirrors SSH pattern.
+// Config may say enabled=true before restart; the runtime API returns false until
+// the terminal manager actually exists.  `null` means "not yet loaded" → treat as
+// disabled to avoid a flash of the terminal button on first mount.
+const isTerminalDisabled = computed(() => terminalRuntimeEnabled.value !== true)
 watch(isSSHDisabled, (disabled) => {
   if (disabled && activeTab.value === 'proxy') {
+    switchTab('chat')
+  }
+})
+watch(isTerminalDisabled, (disabled) => {
+  if (disabled && activeTab.value === 'terminal') {
     switchTab('chat')
   }
 })
@@ -372,23 +385,47 @@ const { keyboardHeight: terminalKeyboardHeight } = useTerminalKeyboard()
 const terminalKeyboardActive = computed(() => terminalActive.value && terminalKeyboardHeight.value > 0)
 
 const quoteQuestion = useQuoteQuestion()
-const quoteSessionDrawerOpen = ref(false)
+const sessionDrawerRef = ref(null)
 
+// Register SessionDrawer ref so identity.openAgentSelector() works
+watch(sessionDrawerRef, (ref) => {
+  if (ref) registerSessionDrawerRef(ref)
+}, { immediate: true })
+
+// Register identity actions (switchSession, createSession, etc.)
+// These will be overwritten by ChatPanelContent when it mounts, but
+// openAgentSelector is NOT registered here — it's handled via
+// registerSessionDrawerRef above, which is independent.
 function handleQuoteOpenSessions() {
-  quoteSessionDrawerOpen.value = true
+  sessionIdentity.openSessionTab()
 }
 
-function handleQuoteSessionSelect(sessionId) {
+function handleSessionSelect(sessionId, backend) {
   sessionIdentity.switchSession(sessionId)
-  quoteSessionDrawerOpen.value = false
+  sessionIdentity.sessionDrawerOpen.value = false
 }
 
-function handleQuoteSessionCreate(agentId) {
-  sessionIdentity.createSession(agentId)
-  quoteSessionDrawerOpen.value = false
+async function handleSessionCreate(agentId) {
+  await sessionIdentity.createSession(agentId)
+  // If drawer is still open, add the new session to the local list
+  if (sessionDrawerRef.value && sessionIdentity.sessionDrawerOpen.value) {
+    const id = sessionIdentity.currentSessionId.value
+    if (id) {
+      sessionDrawerRef.value.addSessionLocally({
+        id,
+        title: sessionIdentity.currentSessionTitle.value || '',
+        backend: sessionIdentity.currentBackend.value || '',
+        agentId: sessionIdentity.currentAgentId.value || '',
+        model: sessionIdentity.currentModelName.value || '',
+        updatedAt: new Date().toISOString(),
+        unreadCount: 0,
+      })
+    }
+  }
+  sessionIdentity.sessionDrawerOpen.value = false
 }
 
-function handleQuoteSessionDelete(sessionId, backend) {
+function handleSessionDelete(sessionId, backend) {
   sessionIdentity.deleteSession(sessionId, backend)
 }
 
@@ -513,8 +550,10 @@ function handleDockTerminal() {
 const overflowMenuOpen = ref(false)
 const overflowBtnRef = ref(null)
 const overflowTabs = computed(() => {
-  const tabs = ['history', 'terminal', 'settings']
-  if (!isSSHDisabled.value) tabs.splice(1, 0, 'proxy')
+  const tabs = ['history']
+  if (!isSSHDisabled.value) tabs.push('proxy')
+  if (!isTerminalDisabled.value) tabs.push('terminal')
+  tabs.push('settings')
   return tabs
 })
 const overflowTabMeta = {
@@ -668,6 +707,7 @@ function playQuoteEmitAnimation(e) {
 onMounted(async () => {
     initGlobalEvents()
     loadTasks()
+    loadConfig() // Load server config early for settings page
     window.addEventListener('open-file-manager', handleOpenFileManager)
     window.addEventListener('navigate-to-commit', handleNavigateToCommit)
     window.addEventListener('quote-sent', playQuoteEmitAnimation)
@@ -723,12 +763,12 @@ onMounted(async () => {
     }
     initMermaid()
     await sessionIdentity.initSessionFromAPI()
-    try {
-        const sr = await fetch('/api/ai/sessions')
-        if (sr.ok) { const sd = await sr.json(); if (sd.sessions?.some(s => s.unreadCount > 0 && s.id !== sessionIdentity.currentSessionId.value)) store.state.chatUnread = true }
-    } catch (_) {}
+    // Use loadSessionsOnce() which correctly sets chatUnread to true OR false.
+    // The old code only set chatUnread=true and never corrected a stale true.
+    loadSessionsOnce()
     if (isAppMode.value) syncToNative().catch(() => {})
     loadSSHInfo().catch(() => {})
+    loadTerminalStatus().catch(() => {})
     try { await store.loadProject() } catch (_) {
         toast.show(t('toast.projectLoadFailed'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() }); return
     }

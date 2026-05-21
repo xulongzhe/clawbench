@@ -12,13 +12,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.junit.Assert.*;
 
 /**
- * Pure unit tests for PortForwardService's nativeWsNeeded logic.
+ * Pure unit tests for BackgroundService's nativeWsNeeded logic.
  *
  * Uses reflection instead of Robolectric to avoid JPush SDK VerifyError
  * caused by obfuscated bytecode in the JPush runtime JAR.
  *
  * Bug: When no SSH ports are forwarded and JPush is not available,
- * PortForwardService.onCreate() would immediately stopSelf(), preventing
+ * BackgroundService.onCreate() would immediately stopSelf(), preventing
  * the native WebSocket from ever starting. The nativeWsNeeded flag fixes this
  * by making native WS a valid reason for the Service to stay alive.
  *
@@ -29,7 +29,7 @@ import static org.junit.Assert.*;
  * - We test state transitions (flag set/cleared at correct times)
  * - We test the buildNotification text logic
  */
-public class PortForwardServiceNativeWsTest {
+public class BackgroundServiceNativeWsTest {
 
     // A simple struct to represent the stopSelf decision state
     private static class ServiceState {
@@ -51,13 +51,10 @@ public class PortForwardServiceNativeWsTest {
             if (statusOverride != null) return statusOverride;
             if (portCount > 0) return portCount + " 个端口转发活跃";
             if (nativeWsNeeded || nativeWsActive) return "后台事件监听中";
-            return "无端口转发，即将停止";
+            return "后台服务即将停止";
         }
 
         String notificationTitle(int portCount, String statusOverride) {
-            if (statusOverride != null) return portCount > 0 ? "ClawBench 端口转发" : "ClawBench";
-            if (portCount > 0) return "ClawBench 端口转发";
-            if (nativeWsNeeded || nativeWsActive) return "ClawBench";
             return "ClawBench";
         }
     }
@@ -80,14 +77,14 @@ public class PortForwardServiceNativeWsTest {
     }
 
     private void setStaticField(String name, Object value) throws Exception {
-        Field field = PortForwardService.class.getDeclaredField(name);
+        Field field = BackgroundService.class.getDeclaredField(name);
         field.setAccessible(true);
         field.set(null, value);
     }
 
     @SuppressWarnings("unchecked")
     private <T> T getStaticField(String name) throws Exception {
-        Field field = PortForwardService.class.getDeclaredField(name);
+        Field field = BackgroundService.class.getDeclaredField(name);
         field.setAccessible(true);
         return (T) field.get(null);
     }
@@ -154,7 +151,7 @@ public class PortForwardServiceNativeWsTest {
         // Subsequent calls (startForegroundService) may fail, but the flag
         // is already set by then — that's the whole point of the fix
         try {
-            PortForwardService.startNativeEventWs(
+            BackgroundService.startNativeEventWs(
                     new android.content.ContextWrapper(null) {}
             );
         } catch (Exception e) {
@@ -175,7 +172,7 @@ public class PortForwardServiceNativeWsTest {
 
         // Step 1-2: flag is set
         try {
-            PortForwardService.startNativeEventWs(
+            BackgroundService.startNativeEventWs(
                     new android.content.ContextWrapper(null) {}
             );
         } catch (Exception ignored) {}
@@ -282,7 +279,7 @@ public class PortForwardServiceNativeWsTest {
     @Test
     public void notification_noPortsNoNativeWs_showsStopping() {
         ServiceState state = new ServiceState();
-        assertEquals("无端口转发，即将停止", state.notificationText(0, null));
+        assertEquals("后台服务即将停止", state.notificationText(0, null));
     }
 
     @Test
@@ -307,9 +304,9 @@ public class PortForwardServiceNativeWsTest {
     }
 
     @Test
-    public void notification_title_hasPorts_showsPortForward() {
+    public void notification_title_hasPorts_showsClawBench() {
         ServiceState state = new ServiceState();
-        assertEquals("ClawBench 端口转发", state.notificationTitle(1, null));
+        assertEquals("ClawBench", state.notificationTitle(1, null));
     }
 
     @Test
@@ -333,9 +330,9 @@ public class PortForwardServiceNativeWsTest {
     }
 
     @Test
-    public void notification_statusOverride_hasPorts_titleShowsPortForward() {
+    public void notification_statusOverride_hasPorts_titleShowsClawBench() {
         ServiceState state = new ServiceState();
-        assertEquals("ClawBench 端口转发", state.notificationTitle(1, "重连中…"));
+        assertEquals("ClawBench", state.notificationTitle(1, "重连中…"));
         assertEquals("重连中…", state.notificationText(1, "重连中…"));
     }
 
@@ -437,7 +434,7 @@ public class PortForwardServiceNativeWsTest {
 
     @Test
     public void nativeWsNeeded_isStaticVolatileBoolean() throws Exception {
-        Field field = PortForwardService.class.getDeclaredField("nativeWsNeeded");
+        Field field = BackgroundService.class.getDeclaredField("nativeWsNeeded");
         assertTrue("nativeWsNeeded should be static",
                 java.lang.reflect.Modifier.isStatic(field.getModifiers()));
         assertTrue("nativeWsNeeded should be volatile",
@@ -448,7 +445,7 @@ public class PortForwardServiceNativeWsTest {
 
     // =====================================================
     // Test 10: postEventNotification — notification text logic
-    // Mirrors the logic in PortForwardService.postEventNotification()
+    // Mirrors the logic in BackgroundService.postEventNotification()
     // =====================================================
 
     private static class EventNotificationState {
@@ -604,8 +601,8 @@ public class PortForwardServiceNativeWsTest {
 
     private Object createMinimalInstance() throws Exception {
         // Allocate instance without calling constructor (avoids Android Service init)
-        java.lang.reflect.Constructor<PortForwardService> ctor =
-                PortForwardService.class.getDeclaredConstructor();
+        java.lang.reflect.Constructor<BackgroundService> ctor =
+                BackgroundService.class.getDeclaredConstructor();
         ctor.setAccessible(true);
 
         // Use objenesis-style allocation via Unsafe
@@ -614,7 +611,7 @@ public class PortForwardServiceNativeWsTest {
         } catch (Exception ignored) {}
 
         // Simpler approach: just allocate with the default constructor
-        // PortForwardService() extends Service which has a no-arg constructor
+        // BackgroundService() extends Service which has a no-arg constructor
         // This may fail with Android classes, so we use a fallback
         try {
             return ctor.newInstance();
@@ -627,14 +624,14 @@ public class PortForwardServiceNativeWsTest {
 
     private void setForwardedPorts(Object service, Set<Integer> ports) throws Exception {
         if (service == null) return;
-        Field field = PortForwardService.class.getDeclaredField("forwardedPorts");
+        Field field = BackgroundService.class.getDeclaredField("forwardedPorts");
         field.setAccessible(true);
         field.set(service, ports);
     }
 
     private void invokeMethod(Object target, String methodName) throws Exception {
         if (target == null) return;
-        Method method = PortForwardService.class.getDeclaredMethod(methodName);
+        Method method = BackgroundService.class.getDeclaredMethod(methodName);
         method.setAccessible(true);
         method.invoke(target);
     }

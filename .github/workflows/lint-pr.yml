@@ -1,0 +1,32 @@
+name: PR Lint
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  lint-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            chore
+            ci
+            build
+            revert
+          requireScope: false
+          # Allow Chinese descriptions — only validate type prefix
+          subjectPattern: ^.{1,200}$
+          subjectPatternError: |
+            PR 标题描述部分不能为空且不超过 200 字符。
+            PR title subject must not be empty and no more than 200 chars.

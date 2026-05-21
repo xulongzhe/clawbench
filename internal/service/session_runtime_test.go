@@ -629,7 +629,7 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit")
 	_ = sub
 
-	emitSessionEvent("session-emit-1", "completed", true)
+	EmitSessionEvent("session-emit-1", "completed", true)
 
 	// Verify the buffered event has response_preview
 	buffered := sub.GetBufferedEvents()
@@ -654,7 +654,7 @@ func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
 	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit2")
 	_ = sub
 
-	emitSessionEvent("session-emit-2", "running", false)
+	EmitSessionEvent("session-emit-2", "running", false)
 
 	buffered := sub.GetBufferedEvents()
 	if len(buffered) == 0 {
@@ -666,4 +666,88 @@ func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
 	}
 	assert.Equal(t, "running", data.Status)
 	assert.Equal(t, "", data.ResponsePreview)
+}
+
+// --- GetSessionStream edge cases ---
+
+func TestGetSessionStream_NotRegistered(t *testing.T) {
+	cleanupStreams()
+
+	ch, ok := GetSessionStream("nonexistent")
+	assert.False(t, ok)
+	assert.Nil(t, ch)
+}
+
+func TestGetSessionStream_BadType(t *testing.T) {
+	cleanupStreams()
+	defer cleanupStreams()
+
+	// Store a non-channel value to test type assertion failure
+	sessionStreams.Store("bad-type", "not-a-channel")
+
+	ch, ok := GetSessionStream("bad-type")
+	assert.False(t, ok, "should return false for wrong type")
+	assert.Nil(t, ch)
+}
+
+// --- emitSessionEvent with nil ws manager ---
+
+func TestEmitSessionEvent_NilManager(t *testing.T) {
+	ws.SetManagerForTest(nil)
+
+	// Should not panic when ws manager is nil
+	assert.NotPanics(t, func() {
+		EmitSessionEvent("session-nil-mgr", "running", false)
+	})
+}
+
+// --- CancelSession with bad cancel type ---
+
+func TestCancelSession_BadCancelType(t *testing.T) {
+	cleanupAllSessionState()
+	defer cleanupAllSessionState()
+
+	// Store a non-CancelFunc value
+	sessionCancels.Store("session-bad-cancel", "not-a-cancel-func")
+	SetSessionRunning("session-bad-cancel", true)
+
+	result := CancelSession("session-bad-cancel")
+	assert.False(t, result, "should return false when cancel func has wrong type")
+}
+
+// --- UnregisterSessionStream ---
+
+func TestUnregisterSessionStream(t *testing.T) {
+	cleanupStreams()
+	defer cleanupStreams()
+
+	ch := RegisterSessionStream("session-unreg")
+	UnregisterSessionStream("session-unreg")
+
+	// Channel should be closed
+	_, ok := <-ch
+	assert.False(t, ok, "channel should be closed after unregister")
+}
+
+func TestUnregisterSessionStream_Nonexistent(t *testing.T) {
+	cleanupStreams()
+
+	// Should not panic
+	assert.NotPanics(t, func() {
+		UnregisterSessionStream("nonexistent")
+	})
+}
+
+// --- SetSessionRunning with skipEvent ---
+
+func TestSetSessionRunning_SkipEventTrue(t *testing.T) {
+	cleanupActiveSessions()
+
+	// Set running with skipEvent=true — should NOT emit event
+	SetSessionRunning("session-skip", true, true)
+	assert.True(t, IsSessionRunning("session-skip"))
+
+	// Stop with skipEvent=true — should NOT emit completed event
+	SetSessionRunning("session-skip", false, true)
+	assert.False(t, IsSessionRunning("session-skip"))
 }

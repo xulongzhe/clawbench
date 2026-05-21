@@ -1,9 +1,12 @@
 <template>
   <div v-if="type === 'header'" class="settings-item__header">{{ label }}</div>
-  <div v-else class="settings-item" :class="{ 'settings-item--disabled': disabled }" @click="handleClick">
+  <div v-else class="settings-item" :class="{ 'settings-item--disabled': disabled, 'settings-item--has-desc': description }" @click="handleClick">
     <div class="settings-item__left">
-      <span class="settings-item__label">{{ label }}</span>
-      <span v-if="needsRestart" class="settings-item__badge">{{ t('settings.needsRestart') }}</span>
+      <div class="settings-item__text">
+        <span class="settings-item__label">{{ label }}</span>
+        <span v-if="needsRestart" class="settings-item__badge">{{ t('settings.needsRestart') }}</span>
+        <span v-if="description" class="settings-item__desc">{{ description }}</span>
+      </div>
     </div>
     <div class="settings-item__right">
       <template v-if="type === 'switch'">
@@ -44,9 +47,11 @@
         <span class="settings-item__arrow">›</span>
       </template>
       <template v-else-if="type === 'info'">
-        <span class="settings-item__value">{{ displayValue }}</span>
+        <!-- info value shown in description area below, nothing on the right -->
       </template>
     </div>
+    <!-- Info-type: show value as a full-width detail line below the label/desc -->
+    <div v-if="type === 'info' && displayValue" class="settings-item__info-detail">{{ displayValue }}</div>
   </div>
   <!-- Inline editor -->
   <div v-if="editing" class="settings-item__editor" @click.stop>
@@ -123,6 +128,7 @@ const { t } = useI18n()
 
 interface Props {
   label: string
+  description?: string
   type: 'switch' | 'select' | 'number' | 'text' | 'slider' | 'action' | 'info' | 'header' | 'password'
   modelValue?: any
   options?: { label: string; value: any }[]
@@ -142,6 +148,7 @@ const props = withDefaults(defineProps<Props>(), {
   max: undefined,
   step: undefined,
   placeholder: '',
+  description: '',
   needsRestart: false,
   disabled: false,
   forceClose: false,
@@ -257,11 +264,17 @@ function confirmEdit() {
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  height: 48px;
+  min-height: 48px;
   cursor: pointer;
   gap: 12px;
   background: var(--bg-primary);
   position: relative;
+}
+
+.settings-item--has-desc {
+  min-height: 60px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .settings-item--disabled {
@@ -277,12 +290,30 @@ function confirmEdit() {
   min-width: 0;
 }
 
+.settings-item__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .settings-item__label {
   font-size: 15px;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.settings-item__desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .settings-item__badge {
@@ -309,6 +340,15 @@ function confirmEdit() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Info-type: full-width detail line below the label row */
+.settings-item__info-detail {
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding: 0 16px 10px;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
 .settings-item__arrow {

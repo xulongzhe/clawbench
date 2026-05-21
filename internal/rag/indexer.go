@@ -11,18 +11,20 @@ import (
 )
 
 // Indexer polls for unindexed chat messages and generates embeddings.
-// When Ollama is unavailable, it indexes text-only (for FTS search).
-// When Ollama becomes available, it backfills embeddings for pending chunks.
+// When the embedding API is unavailable, it indexes text-only (for FTS search).
+// When the embedding API becomes available, it backfills embeddings for pending chunks.
 type Indexer struct {
-	store         *Store
-	embedder      *EmbeddingClient
-	cfg           model.RAGConfig
-	stopCh        chan struct{}
-	doneCh        chan struct{}
-	mu            sync.Mutex
-	running       bool
-	modelWarn     bool // Whether we've warned about missing model
-	ollamaHealthy bool // Current Ollama health state
+	store           *Store
+	embedder        *EmbeddingClient
+	cfg             model.RAGConfig
+	stopCh          chan struct{}
+	doneCh          chan struct{}
+	mu              sync.Mutex
+	running         bool
+	modelWarn       bool  // Whether we've warned about missing model
+	embedderHealthy bool  // Current embedding API health state
+	dimensionSynced bool  // Whether dimension has been synced from embedder to store
+	batchCancel     context.CancelFunc // cancels in-flight indexBatch on Stop
 }
 
 // NewIndexer creates a new RAG indexer.
@@ -55,6 +57,7 @@ func (idx *Indexer) Start() {
 }
 
 // Stop signals the indexer to stop and waits for it to finish.
+// Cancels any in-flight batch and waits up to 5s for the goroutine to exit.
 func (idx *Indexer) Stop() {
 	idx.mu.Lock()
 	if !idx.running {
@@ -63,8 +66,19 @@ func (idx *Indexer) Stop() {
 	}
 	idx.mu.Unlock()
 
+	// Cancel any in-flight batch so indexBatch returns quickly
+	if idx.batchCancel != nil {
+		idx.batchCancel()
+	}
+
 	close(idx.stopCh)
-	<-idx.doneCh
+
+	// Wait with timeout to avoid blocking forever on a stuck goroutine
+	select {
+	case <-idx.doneCh:
+	case <-time.After(5 * time.Second):
+		slog.Warn("rag: indexer did not stop within timeout, continuing shutdown")
+	}
 
 	idx.mu.Lock()
 	idx.running = false
@@ -94,24 +108,41 @@ func (idx *Indexer) run() {
 		case <-idx.stopCh:
 			return
 		case <-ticker.C:
+			// Check stop again before starting a new batch
+			select {
+			case <-idx.stopCh:
+				return
+			default:
+			}
 			idx.indexBatch()
 		}
 	}
 }
 
 // indexBatch processes one batch of unindexed messages and backfills embeddings.
+// Uses a stop-aware context so Stop() can cancel in-flight work.
 func (idx *Indexer) indexBatch() {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	// Check Ollama health (startup probe + periodic retry)
-	idx.checkOllamaHealth(ctx)
+	// Store cancel so Stop() can abort this batch
+	idx.mu.Lock()
+	idx.batchCancel = cancel
+	idx.mu.Unlock()
+
+	// Check embedding API health (startup probe + periodic retry)
+	idx.checkEmbedderHealth(ctx)
 
 	// Phase 1: Index new messages from SQLite
 	idx.indexNewMessages(ctx)
 
+	// Exit early if stopped
+	if ctx.Err() != nil {
+		return
+	}
+
 	// Phase 2: Backfill embeddings for chunks that were indexed without them
-	if idx.ollamaHealthy {
+	if idx.embedderHealthy {
 		idx.backfillEmbeddings(ctx)
 	}
 
@@ -121,47 +152,59 @@ func (idx *Indexer) indexBatch() {
 	}
 }
 
-// checkOllamaHealth checks Ollama availability and updates the healthy flag.
+// checkEmbedderHealth checks embedding API availability and updates the healthy flag.
 // Also updates the global cached health state for search requests.
-func (idx *Indexer) checkOllamaHealth(ctx context.Context) {
+// After health check passes, syncs embedding dimension from embedder to store.
+func (idx *Indexer) checkEmbedderHealth(ctx context.Context) {
 	reachable, modelAvailable, err := idx.embedder.IsHealthy(ctx)
 	if err != nil {
-		slog.Debug("rag: ollama health check error", slog.String("err", err.Error()))
-		idx.ollamaHealthy = false
-		SetOllamaHealthy(false)
+		slog.Debug("rag: embedding API health check error", slog.String("err", err.Error()))
+		idx.embedderHealthy = false
+		SetEmbedderHealthy(false)
 		return
 	}
 	if !reachable {
-		if idx.ollamaHealthy {
-			slog.Info("rag: ollama became unreachable")
+		if idx.embedderHealthy {
+			slog.Info("rag: embedding API became unreachable")
 		}
-		idx.ollamaHealthy = false
-		SetOllamaHealthy(false)
+		idx.embedderHealthy = false
+		SetEmbedderHealthy(false)
 		return
 	}
 	if !modelAvailable {
 		if !idx.modelWarn {
-			slog.Warn("rag: ollama reachable but model not available",
-				slog.String("model", idx.cfg.OllamaModel),
+			slog.Warn("rag: embedding API reachable but model not available",
+				slog.String("model", idx.cfg.Model),
 			)
 			idx.modelWarn = true
 		}
-		idx.ollamaHealthy = false
-		SetOllamaHealthy(false)
+		idx.embedderHealthy = false
+		SetEmbedderHealthy(false)
 		return
 	}
 
-	// Ollama is healthy
-	if !idx.ollamaHealthy {
-		slog.Info("rag: ollama became healthy, will backfill embeddings")
+	// Embedding API is healthy
+	if !idx.embedderHealthy {
+		slog.Info("rag: embedding API became healthy, will backfill embeddings")
 	}
-	idx.ollamaHealthy = true
+
+	// Sync dimension from embedder to store (one-time)
+	if !idx.dimensionSynced {
+		if dim := idx.embedder.Dim(); dim > 0 {
+			if idx.store.SetEmbeddingDim(dim) {
+				slog.Info("rag: synced embedding dimension from embedder", slog.Int("dim", dim))
+			}
+			idx.dimensionSynced = true
+		}
+	}
+
+	idx.embedderHealthy = true
 	idx.modelWarn = false
-	SetOllamaHealthy(true)
+	SetEmbedderHealthy(true)
 }
 
 // indexNewMessages indexes new (unindexed) messages from SQLite.
-// When Ollama is healthy, generates embeddings; otherwise stores text-only (for FTS).
+// When the embedding API is healthy, generates embeddings; otherwise stores text-only (for FTS).
 func (idx *Indexer) indexNewMessages(ctx context.Context) {
 	// Fetch unindexed messages from SQLite (newest first)
 	messages, err := service.GetUnindexedMessages(idx.cfg.BatchSize)
@@ -179,7 +222,7 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 	slog.Info("rag: indexing batch",
 		slog.Int("batch_size", len(messages)),
 		slog.Int("remaining", totalRemaining),
-		slog.Bool("ollama_healthy", idx.ollamaHealthy),
+		slog.Bool("embedder_healthy", idx.embedderHealthy),
 	)
 
 	batchStart := time.Now()
@@ -278,8 +321,8 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 		}
 	}
 
-	// Generate embeddings if Ollama is healthy
-	if idx.ollamaHealthy {
+	// Generate embeddings if the embedding API is healthy
+	if idx.embedderHealthy {
 		slog.Debug("rag: embedding message",
 			slog.Int64("message_id", msg.ID),
 			slog.Int("chunks", len(textChunks)),
@@ -309,7 +352,7 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 			}
 		}
 	}
-	// When Ollama is NOT healthy, chunks are stored without embedding
+	// When the embedding API is NOT healthy, chunks are stored without embedding
 	// (Embedding: nil, HasEmbedding: false) — FTS search still works.
 
 	// Store in DuckDB

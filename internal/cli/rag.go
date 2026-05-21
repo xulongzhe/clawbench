@@ -21,7 +21,7 @@ var searchHelp = HelpInfo{
 	Flags: []FlagHelp{
 		{Name: "q", Short: "q", Type: "string", Desc: "Search query text", Required: true},
 		{Name: "limit", Type: "int", Default: "config default (5)", Desc: "Number of results"},
-		{Name: "project", Type: "string", Desc: "Filter by project path"},
+		{Name: "project", Type: "string", Desc: "Project path (omit for global search across all projects)"},
 		{Name: "backend", Type: "string", Desc: "Filter by backend name"},
 		{Name: "role", Type: "string", Desc: "Filter by role: user|assistant"},
 		{Name: "session-id", Type: "string", Desc: "Limit results to this session"},
@@ -30,8 +30,8 @@ var searchHelp = HelpInfo{
 		{Name: "to", Type: "string", Desc: "Time range end"},
 	},
 	Examples: []string{
-		`clawbench rag search -q "authentication bug" --limit 3`,
-		`clawbench rag search -q "SSH tunnel" --exclude-session-id abc-123`,
+		`clawbench rag search -q "authentication bug" --limit 3 --project /path/to/project`,
+		`clawbench rag search -q "RAG design"                           # global search`,
 	},
 	Footer: `Response format:
   {"results":[{"chunk_text":"...","score":0.85,"session_id":"...","message_id":42,...}],"total":3}
@@ -43,28 +43,30 @@ Tips:
 }
 
 var messageHelp = HelpInfo{
-	Usage:       "clawbench rag message [MESSAGE_ID] [--id ID]",
+	Usage:       "clawbench rag message [MESSAGE_ID] [--id ID] [--project PATH]",
 	Description: "Get full message detail by ID, including all content blocks (text, thinking, tool_use, warning, error).",
 	Flags: []FlagHelp{
 		{Name: "id", Type: "string", Desc: "Message database ID (or pass as positional arg)"},
+		{Name: "project", Type: "string", Desc: "Project path (omit for cross-project access)"},
 	},
 	Positional: "MESSAGE_ID  (optional) Message database ID",
 	Examples: []string{
-		`clawbench rag message --id 42`,
-		`clawbench rag message 42`,
+		`clawbench rag message --id 42 --project /path/to/project`,
+		`clawbench rag message 42                     # cross-project access`,
 	},
 }
 
 var sessionHelp = HelpInfo{
-	Usage:       "clawbench rag session [SESSION_ID] [--id ID]",
+	Usage:       "clawbench rag session [SESSION_ID] [--id ID] [--project PATH]",
 	Description: "Get all messages in a session — the complete conversation including user messages, AI responses with thinking and tool_use blocks.",
 	Flags: []FlagHelp{
 		{Name: "id", Type: "string", Desc: "Session ID (or pass as positional arg)"},
+		{Name: "project", Type: "string", Desc: "Project path (omit for cross-project access)"},
 	},
 	Positional: "SESSION_ID  (optional) Session ID",
 	Examples: []string{
-		`clawbench rag session --id abc-123-def`,
-		`clawbench rag session abc-123-def`,
+		`clawbench rag session --id abc-123-def --project /path/to/project`,
+		`clawbench rag session abc-123-def                     # cross-project access`,
 	},
 	Footer: `Response format:
   {"session_id":"...","messages":[...],"total":15}`,
@@ -111,7 +113,7 @@ func runRAGSearch(args []string) int {
 	fs := flagSet("search")
 	query := fs.String("q", "", "Search query (required)")
 	limit := fs.Int("limit", 0, "Number of results (default from config)")
-	project := fs.String("project", "", "Filter by project path")
+	project := fs.String("project", "", "Project path (omit for global search)")
 	backend := fs.String("backend", "", "Filter by backend name")
 	role := fs.String("role", "", "Filter by role: user or assistant")
 	sessionID := fs.String("session-id", "", "Limit results to this session")
@@ -126,7 +128,6 @@ func runRAGSearch(args []string) int {
 
 	body := map[string]any{
 		"q":                  *query,
-		"project":            *project,
 		"backend":            *backend,
 		"role":               *role,
 		"session_id":         *sessionID,
@@ -138,7 +139,14 @@ func runRAGSearch(args []string) int {
 		body["limit"] = *limit
 	}
 
-	result, status, err := httpDo(http.MethodPost, "/api/rag/search", body)
+	var result map[string]any
+	var status int
+	var err error
+	if *project != "" {
+		result, status, err = httpDoWithProject(http.MethodPost, "/api/rag/search", body, *project)
+	} else {
+		result, status, err = httpDo(http.MethodPost, "/api/rag/search", body)
+	}
 	if err != nil {
 		return outputError(fmt.Sprintf("search failed: %v", err))
 	}
@@ -153,6 +161,7 @@ func runRAGSearch(args []string) int {
 func runRAGMessage(args []string) int {
 	fs := flagSet("message")
 	idStr := fs.String("id", "", "Message database ID (required)")
+	project := fs.String("project", "", "Project path (omit for cross-project access)")
 	parseOrHelp(fs, args, &messageHelp)
 
 	if *idStr == "" {
@@ -170,7 +179,13 @@ func runRAGMessage(args []string) int {
 		return outputError(fmt.Sprintf("invalid message ID: %v", err))
 	}
 
-	result, status, err := httpDo(http.MethodGet, "/api/rag/message?id="+strconv.FormatInt(id, 10), nil)
+	var result map[string]any
+	var status int
+	if *project != "" {
+		result, status, err = httpDoWithProject(http.MethodGet, "/api/rag/message?id="+strconv.FormatInt(id, 10), nil, *project)
+	} else {
+		result, status, err = httpDo(http.MethodGet, "/api/rag/message?id="+strconv.FormatInt(id, 10), nil)
+	}
 	if err != nil {
 		return outputError(fmt.Sprintf("message not found: %v", err))
 	}
@@ -185,6 +200,7 @@ func runRAGMessage(args []string) int {
 func runRAGSession(args []string) int {
 	fs := flagSet("session")
 	sessionID := fs.String("id", "", "Session ID (required)")
+	project := fs.String("project", "", "Project path (omit for cross-project access)")
 	parseOrHelp(fs, args, &sessionHelp)
 
 	if *sessionID == "" {
@@ -196,7 +212,14 @@ func runRAGSession(args []string) int {
 		}
 	}
 
-	result, status, err := httpDo(http.MethodGet, "/api/rag/session?id="+*sessionID, nil)
+	var result map[string]any
+	var status int
+	var err error
+	if *project != "" {
+		result, status, err = httpDoWithProject(http.MethodGet, "/api/rag/session?id="+*sessionID, nil, *project)
+	} else {
+		result, status, err = httpDo(http.MethodGet, "/api/rag/session?id="+*sessionID, nil)
+	}
 	if err != nil {
 		return outputError(fmt.Sprintf("session not found: %v", err))
 	}

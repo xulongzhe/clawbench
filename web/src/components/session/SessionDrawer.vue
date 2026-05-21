@@ -130,14 +130,15 @@ const sessionsWithStatus = computed(() => {
   void runningSessionsVersion.value
   return sessions.value.map(s => ({
     ...s,
-    // A session is running if either the WS-event-driven set or the API response says so.
-    // The set updates in real time via WS events; the API field is the source of truth
-    // when the drawer is opened (loadSessions fetches fresh data).
-    running: props.runningSessionIds.has(s.id) || !!s.running
+    // WS-maintained runningSessionIds is the authoritative source of truth.
+    // It is initialized from API on app start (loadSessionsOnce) and updated
+    // in real-time via WS session_update events. The API snapshot s.running
+    // is stale once the drawer is open — do NOT fall back to it.
+    running: props.runningSessionIds.has(s.id)
   }))
 })
 
-defineExpose({ loadSessions, openAgentSelector })
+defineExpose({ loadSessions, openAgentSelector, addSessionLocally })
 
 async function openAgentSelector() {
   await loadAgents()
@@ -235,10 +236,22 @@ async function deleteSession(sessionId) {
   if (!await dialog.confirm(t('session.confirmDelete'), { dangerous: true })) return
   const session = sessions.value.find(s => s.id === sessionId)
   emit('delete', sessionId, session?.backend)
-  // Reload list after a short delay to let the delete API complete (resets pagination)
-  setTimeout(() => loadSessions(), 300)
+  // Optimistic local removal — no API reload needed while drawer is open.
+  // Next open will do a full loadSessions() to catch any changes made while closed.
+  sessions.value = sessions.value.filter(s => s.id !== sessionId)
 }
 
+function addSessionLocally(session) {
+  if (!session) return
+  // Prepend to list, avoid duplicate if already present
+  if (sessions.value.some(s => s.id === session.id)) return
+  sessions.value = [session, ...sessions.value]
+}
+
+// Load from API when the drawer opens. While the drawer is open, local
+// mutations (delete, create) update the sessions array directly — no reload
+// needed. The next open will do a full loadSessions() to catch any changes
+// that happened while the drawer was closed.
 watch(() => props.open, async (val) => {
   if (val) {
     await Promise.all([loadSessions(), loadAgents()])
@@ -264,10 +277,20 @@ onUnmounted(() => {
   flex: 1;
 }
 
-.session-loading,
+.session-loading {
+  min-height: 40vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #999);
+  font-size: 13px;
+}
+
 .session-empty {
-  padding: 24px 12px;
-  text-align: center;
+  min-height: 40vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-muted, #999);
   font-size: 13px;
 }

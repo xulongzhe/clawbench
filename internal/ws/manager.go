@@ -272,9 +272,9 @@ func (m *Manager) broadcastToSubscription(key string, msg ServerMessage, deliver
 		if msg.Event == "task_update" {
 			alert = "计划任务已完成"
 		}
-		// Use response preview as alert text when available
-		if d, ok := msg.Data.(*SessionUpdateData); ok && d.ResponsePreview != "" {
-			alert = d.ResponsePreview
+		// Use session title as alert text when available (more informative than response preview)
+		if d, ok := msg.Data.(*SessionUpdateData); ok && d.SessionTitle != "" {
+			alert = d.SessionTitle
 		}
 		slog.Info("ws: sending jpush notification", "event", msg.Event, "client_id", key, "reg_id", pushRegID, "title", title)
 		if err := m.jpush.SendNotification(pushRegID, title, alert, extras); err != nil {

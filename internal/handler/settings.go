@@ -64,7 +64,6 @@ type configResponse struct {
 	Terminal      configTerminal `json:"terminal"`
 	TTS           configTTS      `json:"tts"`
 	RAG           configRAG      `json:"rag"`
-	Proxy         configProxy    `json:"proxy"`
 	PortForward    configPortForward `json:"port_forward"`
 	Push          configPush     `json:"push"`
 	Tasks         configTasks    `json:"tasks"`
@@ -132,26 +131,22 @@ type configAPI struct {
 	BaseURL string `json:"base_url"`
 	Key     string `json:"key"`
 	Format  string `json:"format"`
-	Model   string `json:"model"`
 }
 
 type configRAG struct {
-	OllamaBaseURL  string `json:"ollama_base_url"`
-	OllamaModel    string `json:"ollama_model"`
+	BaseURL        string `json:"base_url"`
+	Model          string `json:"model"`
+	APIKey         string `json:"api_key"`
 	ChunkSize      int    `json:"chunk_size"`
 	SearchLimit    int    `json:"search_limit"`
 	SearchPoolSize int    `json:"search_pool_size"`
 	RetentionDays  int    `json:"retention_days"`
 }
 
-type configProxy struct {
-	Enabled      bool   `json:"enabled"`
-	AllowedPorts string `json:"allowed_ports"`
-}
-
 type configPortForward struct {
-	Enabled bool `json:"enabled"`
-	Port    int  `json:"port"`
+	Enabled      bool   `json:"enabled"`
+	Port         int    `json:"port"`
+	AllowedPorts string `json:"allowed_ports"`
 }
 
 type configPush struct {
@@ -205,17 +200,16 @@ var PatchableConfigPaths = map[string]bool{
 	"tts.api.base_url":            true,
 	"tts.api.key":                  true,
 	"tts.api.format":              true,
-	"tts.api.model":               true,
-	"rag.ollama_base_url":         true,
-	"rag.ollama_model":            true,
-	"rag.chunk_size":              true,
-	"rag.search_limit":            true,
-	"rag.search_pool_size":        true,
-	"rag.retention_days":          true,
-	"proxy.enabled":               true,
-	"proxy.allowed_ports":         true,
+	"rag.base_url":              true,
+	"rag.model":                 true,
+	"rag.api_key":               true,
+	"rag.chunk_size":            true,
+	"rag.search_limit":          true,
+	"rag.search_pool_size":      true,
+	"rag.retention_days":        true,
 	"port_forward.enabled":                 true,
 	"port_forward.port":                    true,
+	"port_forward.allowed_ports":           true,
 	"push.jpush.enabled":          true,
 	"push.jpush.app_key":          true,
 	"tasks.summarize_backend":     true,
@@ -224,7 +218,7 @@ var PatchableConfigPaths = map[string]bool{
 
 // validTTSEngines is the set of valid TTS engine values.
 var validTTSEngines = map[string]bool{
-	"edge": true, "minimax": true, "piper": true, "kokoro": true, "moss-nano": true,
+	"edge": true, "piper": true, "kokoro": true, "moss-nano": true,
 }
 
 // validSummarizeBackends is the set of valid TTS summarization backend values.
@@ -233,7 +227,6 @@ var validSummarizeBackends = map[string]bool{
 	"claude": true, "codebuddy": true, "gemini": true,
 	"opencode": true, "codex": true, "qoder": true,
 	"vecli": true, "deepseek": true, "pi": true,
-	"mmx-cli": true,
 }
 
 // validTTSFormats is the set of valid TTS output format values.
@@ -255,36 +248,26 @@ var validMossNanoBackends = map[string]bool{
 // getBuildVersion returns a human-readable version string from build info.
 // When version.Version is set via -ldflags (from git describe), it combines
 // the semantic version with the VCS short SHA, e.g. "v1.0.0 (abc1234)".
-// When not set (bare "go build"), it falls back to VCS info only.
+// getBuildVersion returns the version string injected at build time via -ldflags.
+// For release builds (HEAD on a tag), the format is: "v1.0.0"
+// For dev builds, the format is: "v0.30.0-33-ga636beb (2026-05-21 10:30:00)"
+// When not set (bare "go build"), falls back to VCS info or "dev".
 func getBuildVersion() string {
+	if version.Version != "" {
+		return version.Version
+	}
+	// Fallback: no ldflags injected (bare "go build") — use VCS info
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		if version.Version != "" {
-			return version.Version
-		}
 		return "dev"
 	}
-	var vcsRev, vcsTime string
+	var vcsRev string
 	for _, s := range info.Settings {
 		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
 			vcsRev = s.Value[:7]
 		}
-		if s.Key == "vcs.time" {
-			vcsTime = s.Value
-		}
 	}
-	// If version was injected via ldflags (git describe), combine with short SHA
-	if version.Version != "" {
-		if vcsRev != "" {
-			return version.Version + " (" + vcsRev + ")"
-		}
-		return version.Version
-	}
-	// Fallback: VCS info only (same as pre-ldflags behavior)
 	if vcsRev != "" {
-		if vcsTime != "" {
-			return vcsRev + " (" + vcsTime + ")"
-		}
 		return vcsRev
 	}
 	if info.Main.Version != "" && info.Main.Version != "(devel)" {
@@ -355,25 +338,23 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 			MaxCacheFiles:    cfg.TTS.MaxCacheFiles,
 		},
 		RAG: configRAG{
-			OllamaBaseURL:  cfg.RAG.OllamaBaseURL,
-			OllamaModel:    cfg.RAG.OllamaModel,
+			BaseURL:        cfg.RAG.BaseURL,
+			Model:          cfg.RAG.Model,
+			APIKey:         maskAPIKey(cfg.RAG.APIKey),
 			ChunkSize:      cfg.RAG.ChunkSize,
 			SearchLimit:    cfg.RAG.SearchLimit,
 			SearchPoolSize: cfg.RAG.SearchPoolSize,
 			RetentionDays:  cfg.RAG.RetentionDays,
 		},
-		Proxy: configProxy{
-			Enabled:      cfg.Proxy.Enabled,
-			AllowedPorts: cfg.Proxy.AllowedPorts,
-		},
 		PortForward: configPortForward{
-			Enabled: cfg.PortForward.Enabled,
-			Port:    cfg.PortForward.Port,
+			Enabled:      cfg.PortForward.Enabled,
+			Port:         cfg.PortForward.Port,
+			AllowedPorts: cfg.PortForward.AllowedPorts,
 		},
 		Push: configPush{
 			JPush: configJPush{
 				Enabled: cfg.Push.JPush.Enabled,
-				AppKey:  cfg.Push.JPush.AppKey,
+				AppKey:  maskAPIKey(cfg.Push.JPush.AppKey), // ISS-119: mask semi-secret AppKey
 			},
 		},
 		Tasks: configTasks{
@@ -412,7 +393,6 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 			BaseURL: cfg.TTS.API.BaseURL,
 			Key:     maskAPIKey(cfg.TTS.API.Key),
 			Format:  cfg.TTS.API.Format,
-			Model:   cfg.TTS.API.Model,
 		}
 	}
 
@@ -527,12 +507,12 @@ func validatePatchValues(patch map[string]any) error {
 	if ok {
 		if engine, ok := tts["engine"].(string); ok {
 			if !validTTSEngines[engine] {
-				return fmt.Errorf("tts.engine must be one of: edge,minimax,piper,kokoro,moss-nano")
+				return fmt.Errorf("tts.engine must be one of: edge,piper,kokoro,moss-nano")
 			}
 		}
 		if backend, ok := tts["summarize_backend"].(string); ok {
 			if !validSummarizeBackends[backend] {
-				return fmt.Errorf("tts.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi,mmx-cli")
+				return fmt.Errorf("tts.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi")
 			}
 		}
 		if format, ok := tts["format"].(string); ok {
@@ -614,14 +594,24 @@ func validatePatchValues(patch map[string]any) error {
 	}
 
 	// 2. Engine-specific model path requirements.
+	// When the patch switches tts.engine to a new value, skip required-field
+	// validation for the *target* engine — the user hasn't had a chance to
+	// fill in the sub-config yet (frontend auto-saves one field at a time).
+	// Only enforce when the engine is already set to that value (i.e. the
+	// user is saving sub-config fields for the current engine).
 	effectiveEngine := cfg.TTS.Engine
+	engineSwitched := false
 	if tts, ok := patch["tts"].(map[string]any); ok {
-		if v, ok := tts["engine"].(string); ok {
+		if v, ok := tts["engine"].(string); ok && v != cfg.TTS.Engine {
 			effectiveEngine = v
+			engineSwitched = true
 		}
 	}
 	switch effectiveEngine {
 	case "piper":
+		if engineSwitched {
+			break // will be validated after user fills in sub-config
+		}
 		effectiveModelPath := cfg.TTS.Piper.ModelPath
 		if tts, ok := patch["tts"].(map[string]any); ok {
 			if piper, ok := tts["piper"].(map[string]any); ok {
@@ -634,6 +624,9 @@ func validatePatchValues(patch map[string]any) error {
 			return fmt.Errorf("tts.piper.model_path is required when tts.engine is \"piper\"")
 		}
 	case "kokoro":
+		if engineSwitched {
+			break // will be validated after user fills in sub-config
+		}
 		effectiveKokoroModel := cfg.TTS.Kokoro.ModelPath
 		effectiveVoicesPath := cfg.TTS.Kokoro.VoicesPath
 		if tts, ok := patch["tts"].(map[string]any); ok {
@@ -653,6 +646,9 @@ func validatePatchValues(patch map[string]any) error {
 			return fmt.Errorf("tts.kokoro.voices_path is required when tts.engine is \"kokoro\"")
 		}
 	case "moss-nano":
+		if engineSwitched {
+			break // will be validated after user fills in sub-config
+		}
 		effectiveModelDir := cfg.TTS.MossNano.ModelDir
 		if tts, ok := patch["tts"].(map[string]any); ok {
 			if mossNano, ok := tts["moss_nano"].(map[string]any); ok {
@@ -683,7 +679,7 @@ func validatePatchValues(patch map[string]any) error {
 	if tasks, ok := patch["tasks"].(map[string]any); ok {
 		if v, ok := tasks["summarize_backend"].(string); ok && v != "" {
 			if !validSummarizeBackends[v] {
-				return fmt.Errorf("tasks.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi,mmx-cli")
+				return fmt.Errorf("tasks.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi")
 			}
 		}
 	}
@@ -847,18 +843,21 @@ func applyConfigPatch(patch map[string]any) error {
 			if v, ok := api["format"].(string); ok {
 				cfg.TTS.API.Format = v
 			}
-			if v, ok := api["model"].(string); ok {
-				cfg.TTS.API.Model = v
-			}
 		}
 	}
 
 	if rag, ok := patch["rag"].(map[string]any); ok {
-		if v, ok := rag["ollama_base_url"].(string); ok {
-			cfg.RAG.OllamaBaseURL = v
+		if v, ok := rag["base_url"].(string); ok {
+			cfg.RAG.BaseURL = v
 		}
-		if v, ok := rag["ollama_model"].(string); ok {
-			cfg.RAG.OllamaModel = v
+		if v, ok := rag["model"].(string); ok {
+			cfg.RAG.Model = v
+		}
+		if v, ok := rag["api_key"].(string); ok {
+			if strings.Contains(v, "***") {
+				return fmt.Errorf("rag.api_key must not contain '***' — please provide the full key value")
+			}
+			cfg.RAG.APIKey = v
 		}
 		if v, ok := rag["chunk_size"].(float64); ok {
 			cfg.RAG.ChunkSize = int(v)
@@ -874,21 +873,16 @@ func applyConfigPatch(patch map[string]any) error {
 		}
 	}
 
-	if proxy, ok := patch["proxy"].(map[string]any); ok {
-		if v, ok := proxy["enabled"].(bool); ok {
-			cfg.Proxy.Enabled = v
-		}
-		if v, ok := proxy["allowed_ports"].(string); ok {
-			cfg.Proxy.AllowedPorts = v
-		}
-	}
-
 	if pf, ok := patch["port_forward"].(map[string]any); ok {
 		if v, ok := pf["enabled"].(bool); ok {
 			cfg.PortForward.Enabled = v
 		}
 		if v, ok := pf["port"].(float64); ok {
 			cfg.PortForward.Port = int(v)
+		}
+		if v, ok := pf["allowed_ports"].(string); ok {
+			cfg.PortForward.AllowedPorts = v
+			cfg.Proxy.AllowedPorts = v // keep in sync for backward compat
 		}
 	}
 

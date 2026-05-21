@@ -4,6 +4,7 @@
       v-for="item in items"
       :key="item.key"
       :label="item.label"
+      :description="item.description"
       :type="item.type"
       :model-value="getItemValue(item)"
       :options="item.options"
@@ -27,6 +28,7 @@ import SettingsItem from './SettingsItem.vue'
 import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAgents } from '@/composables/useAgents'
 import { useToast } from '@/composables/useToast'
+import { useAppMode } from '@/composables/useAppMode'
 import { categoryItems, type ItemSpec } from './settingsFieldMap'
 
 const props = defineProps<{
@@ -42,6 +44,7 @@ const { t } = useI18n()
 const toast = useToast()
 const { localConfig, serverConfig, setLocalConfig, getServerValueWithDefault, setServerValue, patchAgentPref, getAgentModelPref, getAgentThinkingPref } = useSettingsConfig()
 const { agents, loadAgents, getAgentModels, getAgentThinkingEffortLevels, hasThinkingEffortLevels, getDefaultModelId } = useAgents()
+const { isAppMode } = useAppMode()
 
 const openEditorKey = ref<string | null>(null)
 
@@ -126,6 +129,8 @@ const items = computed(() => {
   const expanded: any[] = []
   for (const item of raw) {
     if (!isDependsOnMet(item.dependsOn)) continue
+    // Hide appVersion row when not in Android App mode (no AndroidNative bridge)
+    if (item.key === 'appVersion' && !isAppMode.value) continue
     if (item.sectionHeader) {
       expanded.push({
         key: `header-${item.key}`,
@@ -151,6 +156,7 @@ const items = computed(() => {
     return {
       ...item,
       label: item.label || t(item.labelKey),
+      description: item.descriptionKey ? t(item.descriptionKey) : '',
       options: resolvedOptions?.map(opt => ({
         ...opt,
         label: opt.label || resolveOptionLabel(item.key, opt),

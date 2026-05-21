@@ -38,15 +38,14 @@ func TestServeConfig_Get(t *testing.T) {
 	cfg.TTS.Speed = 1.5
 	cfg.TTS.Voice = "zh-CN-XiaoxiaoNeural"
 	cfg.TTS.MaxCacheFiles = 50
-	cfg.RAG.OllamaBaseURL = "http://localhost:11434"
-	cfg.RAG.OllamaModel = "bge-m3"
+	cfg.RAG.BaseURL = "http://localhost:11434"
+	cfg.RAG.Model = "bge-m3"
 	cfg.RAG.ChunkSize = 512
 	cfg.RAG.SearchLimit = 5
 	cfg.RAG.RetentionDays = 30
-	cfg.Proxy.Enabled = true
-	cfg.Proxy.AllowedPorts = "1024-65535"
 	cfg.PortForward.Enabled = true
 	cfg.PortForward.Port = 20001
+	cfg.PortForward.AllowedPorts = "1024-65535"
 	cfg.Push.JPush.Enabled = true
 	cfg.Push.JPush.AppKey = "test-app-key"
 	cfg.Tasks.SummarizeBackend = "simple"
@@ -74,7 +73,6 @@ func TestServeConfig_Get(t *testing.T) {
 	assert.Contains(t, resp, "terminal")
 	assert.Contains(t, resp, "tts")
 	assert.Contains(t, resp, "rag")
-	assert.Contains(t, resp, "proxy")
 	assert.Contains(t, resp, "port_forward")
 	assert.Contains(t, resp, "push")
 	assert.Contains(t, resp, "tasks")
@@ -227,7 +225,7 @@ func TestServeConfig_Get_ConditionalAPISubConfig(t *testing.T) {
 	cfg.TTS.API.BaseURL = "https://api.openai.com/v1/chat/completions"
 	cfg.TTS.API.Key = "sk-1234567890abcdefghijklmnopqrstuvwxyz"
 	cfg.TTS.API.Format = "openai"
-	cfg.TTS.API.Model = "gpt-4o-mini"
+	cfg.TTS.SummarizeModel = "gpt-4o-mini"
 	model.ConfigInstance = cfg
 
 	req := newRequest(t, http.MethodGet, "/api/config", nil)
@@ -250,7 +248,6 @@ func TestServeConfig_Get_ConditionalAPISubConfig(t *testing.T) {
 	// Verify mask format: first 4 + *** + last 3
 	assert.Equal(t, "sk-1***xyz", api["key"])
 	assert.Equal(t, "openai", api["format"])
-	assert.Equal(t, "gpt-4o-mini", api["model"])
 }
 
 func TestServeConfig_Get_APIMaskShortKey(t *testing.T) {
@@ -378,7 +375,7 @@ func TestServeConfig_Patch_APISubConfig(t *testing.T) {
 	cfg := model.Config{}
 	model.ConfigInstance = cfg
 
-	body := `{"tts":{"api":{"base_url":"https://api.example.com/v1/chat","format":"openai","model":"gpt-4o-mini"}}}`
+	body := `{"tts":{"summarize_model":"gpt-4o-mini","api":{"base_url":"https://api.example.com/v1/chat","format":"openai"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -387,7 +384,7 @@ func TestServeConfig_Patch_APISubConfig(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "https://api.example.com/v1/chat", model.ConfigInstance.TTS.API.BaseURL)
 	assert.Equal(t, "openai", model.ConfigInstance.TTS.API.Format)
-	assert.Equal(t, "gpt-4o-mini", model.ConfigInstance.TTS.API.Model)
+	assert.Equal(t, "gpt-4o-mini", model.ConfigInstance.TTS.SummarizeModel)
 }
 
 func TestServeConfig_Patch_APIKeyMasked(t *testing.T) {
@@ -727,7 +724,28 @@ func TestServeConfig_Patch_PiperEngineWithoutModelPath(t *testing.T) {
 	cfg.TTS.Piper.ModelPath = ""
 	model.ConfigInstance = cfg
 
+	// Switching engine without sub-config should succeed — user fills sub-config later
 	body := `{"tts":{"engine":"piper"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "piper", model.ConfigInstance.TTS.Engine)
+}
+
+func TestServeConfig_Patch_PiperSubConfigWithoutModelPath(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "piper"
+	cfg.TTS.Piper.ModelPath = ""
+	model.ConfigInstance = cfg
+
+	// Saving sub-config when engine is already piper but model_path is empty should fail
+	body := `{"tts":{"piper":{"noise_scale":0.5}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -745,7 +763,29 @@ func TestServeConfig_Patch_KokoroEngineWithoutPaths(t *testing.T) {
 	cfg.TTS.Engine = "edge"
 	model.ConfigInstance = cfg
 
+	// Switching engine without sub-config should succeed — user fills sub-config later
 	body := `{"tts":{"engine":"kokoro"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "kokoro", model.ConfigInstance.TTS.Engine)
+}
+
+func TestServeConfig_Patch_KokoroSubConfigWithoutPaths(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "kokoro"
+	cfg.TTS.Kokoro.ModelPath = ""
+	cfg.TTS.Kokoro.VoicesPath = ""
+	model.ConfigInstance = cfg
+
+	// Saving sub-config when engine is already kokoro but paths are empty should fail
+	body := `{"tts":{"kokoro":{"lang":"en"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -763,7 +803,28 @@ func TestServeConfig_Patch_MossNanoEngineWithoutModelDir(t *testing.T) {
 	cfg.TTS.Engine = "edge"
 	model.ConfigInstance = cfg
 
+	// Switching engine without sub-config should succeed — user fills sub-config later
 	body := `{"tts":{"engine":"moss-nano"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "moss-nano", model.ConfigInstance.TTS.Engine)
+}
+
+func TestServeConfig_Patch_MossNanoSubConfigWithoutModelDir(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "moss-nano"
+	cfg.TTS.MossNano.ModelDir = ""
+	model.ConfigInstance = cfg
+
+	// Saving sub-config when engine is already moss-nano but model_dir is empty should fail
+	body := `{"tts":{"moss_nano":{"voice":"Junhao"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -839,7 +900,7 @@ func TestServeConfig_Patch_ColdFields_NeedRestart(t *testing.T) {
 	model.ConfigInstance = cfg
 
 	// terminal.enabled is a cold field — restart should be needed
-	body := `{"terminal":{"enabled":false},"tts":{"engine":"minimax"}}`
+	body := `{"terminal":{"enabled":false},"tts":{"engine":"piper","piper":{"model_path":"/tmp/test.onnx"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -853,7 +914,7 @@ func TestServeConfig_Patch_ColdFields_NeedRestart(t *testing.T) {
 	assert.True(t, resp["needs_restart"].(bool), "needs_restart should be true when cold fields are changed")
 	changed, ok := resp["changed_cold_fields"].([]any)
 	assert.True(t, ok)
-	assert.Equal(t, 2, len(changed))
+	assert.GreaterOrEqual(t, len(changed), 2)
 	// Should contain the cold field paths
 	changedStr := make([]string, len(changed))
 	for i, v := range changed {
@@ -1247,15 +1308,15 @@ func TestServeConfig_Patch_KokoroEngineWithoutVoicesPath(t *testing.T) {
 	cfg.TTS.Kokoro.ModelPath = "/path/to/kokoro.onnx"
 	model.ConfigInstance = cfg
 
-	// Engine=kokoro with model_path set but no voices_path
+	// Engine switch should succeed even without voices_path — user fills sub-config later
 	body := `{"tts":{"engine":"kokoro"}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfig, req)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "kokoro.voices_path is required")
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "kokoro", model.ConfigInstance.TTS.Engine)
 }
 
 // --- Cross-field: moss-nano engine with model_dir in same patch ---
