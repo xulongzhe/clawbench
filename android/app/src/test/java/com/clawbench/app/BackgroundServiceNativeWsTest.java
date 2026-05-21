@@ -602,13 +602,15 @@ public class BackgroundServiceNativeWsTest {
 
     private Object createMinimalInstance() throws Exception {
         // Allocate instance without calling constructor (avoids Android Service init).
-        // Uses sun.misc.Unsafe to bypass constructor so JaCoCo can track coverage
-        // on the BackgroundService methods we invoke via reflection.
+        // Uses reflection to access sun.misc.Unsafe so we don't have a compile-time
+        // dependency on the internal API (JDK 17 modules restrict sun.misc.Unsafe).
         try {
-            java.lang.reflect.Field unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+            Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
+            java.lang.reflect.Field unsafeField = unsafeClass.getDeclaredField("theUnsafe");
             unsafeField.setAccessible(true);
-            sun.misc.Unsafe unsafe = (sun.misc.Unsafe) unsafeField.get(null);
-            return unsafe.allocateInstance(BackgroundService.class);
+            Object unsafe = unsafeField.get(null);
+            java.lang.reflect.Method allocate = unsafeClass.getMethod("allocateInstance", Class.class);
+            return allocate.invoke(unsafe, BackgroundService.class);
         } catch (Exception e) {
             // Fallback: try default constructor (may fail with Android classes)
             try {
