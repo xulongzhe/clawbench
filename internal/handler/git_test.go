@@ -473,6 +473,73 @@ func TestServeGitCommitFiles_MissingSHA(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 }
 
+func TestServeGitCommitFiles_MergeCommit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Create a branch, add a file, commit
+	run("git", "checkout", "-b", "feature-branch")
+	createTestFile(t, env.ProjectDir, "feature.txt", "feature work")
+	gitCommitAll(t, env.ProjectDir, "add feature.txt")
+
+	// Switch back to main, add a different file, commit
+	run("git", "checkout", "main")
+	createTestFile(t, env.ProjectDir, "main.txt", "main work")
+	gitCommitAll(t, env.ProjectDir, "add main.txt")
+
+	// Merge feature-branch into main
+	run("git", "merge", "feature-branch", "-m", "Merge branch 'feature-branch' into main")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodGet, "/api/git/commit-files?sha="+mergeSHA, nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitCommitFiles, req)
+	assertOK(t, w)
+
+	var result map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &result)
+
+	// Verify it's a merge response
+	assert.Equal(t, true, result["merge"])
+
+	// Verify groups exist
+	groups, ok := result["groups"].([]interface{})
+	assert.True(t, ok, "expected groups array")
+	assert.GreaterOrEqual(t, len(groups), 2, "expected at least 2 groups for a merge commit")
+
+	// Verify each group has label and files
+	for _, g := range groups {
+		group := g.(map[string]interface{})
+		assert.NotEmpty(t, group["label"])
+		files, ok := group["files"].([]interface{})
+		assert.True(t, ok, "expected files array in group")
+		assert.Greater(t, len(files), 0, "each group should have at least one file")
+	}
+
+	// Verify no duplicate files across groups (dedup works)
+	allPaths := map[string]bool{}
+	for _, g := range groups {
+		group := g.(map[string]interface{})
+		for _, f := range group["files"].([]interface{}) {
+			file := f.(map[string]interface{})
+			path := file["path"].(string)
+			assert.False(t, allPaths[path], "duplicate file path: %s", path)
+			allPaths[path] = true
+		}
+	}
+}
+
 // --- ServeGitFileDiff ---
 
 func TestServeGitFileDiff_SpecificCommit(t *testing.T) {
