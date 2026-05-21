@@ -742,10 +742,9 @@ onMounted(async () => {
     }
     initMermaid()
     await sessionIdentity.initSessionFromAPI()
-    try {
-        const sr = await fetch('/api/ai/sessions')
-        if (sr.ok) { const sd = await sr.json(); if (sd.sessions?.some(s => s.unreadCount > 0 && s.id !== sessionIdentity.currentSessionId.value)) store.state.chatUnread = true }
-    } catch (_) {}
+    // Use loadSessionsOnce() which correctly sets chatUnread to true OR false.
+    // The old code only set chatUnread=true and never corrected a stale true.
+    loadSessionsOnce()
     if (isAppMode.value) syncToNative().catch(() => {})
     loadSSHInfo().catch(() => {})
     loadTerminalStatus().catch(() => {})

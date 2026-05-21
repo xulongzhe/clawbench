@@ -416,6 +416,11 @@ export function useChatSession(options: UseChatSessionOptions) {
     if (msgCountInterval) { clearInterval(msgCountInterval); msgCountInterval = null }
   }
 
+  // Debounce timer for loadSessionsOnce after session events.
+  // When multiple sessions complete in quick succession, we coalesce
+  // the recalculations into a single API call after a short delay.
+  let sessionEventDebounce: ReturnType<typeof setTimeout> | null = null
+
   // Called from WS session_update event
   function onSessionEvent(data: { session_id?: string; status?: string; has_new_messages?: boolean } | undefined) {
     if (!data) return
@@ -427,9 +432,17 @@ export function useChatSession(options: UseChatSessionOptions) {
       if (sid) { runningSessions.value.delete(sid); runningSessionsVersion.value++ }
       // Update global boolean from remaining set
       store.state.chatRunning = runningSessions.value.size > 0
-      // Session completed — mark unread
+      // Recalculate chatUnread from backend instead of optimistically setting true.
+      // The old code unconditionally set chatUnread=true here, which caused phantom
+      // flashing: a session that was already read (last_read_at set) would trigger
+      // the flash, and the button kept blinking until loadSessionsOnce() corrected it.
+      // Now we debounce-load the real unread state from the server.
       if (sid && sid !== currentSessionId.value) {
-        store.state.chatUnread = true
+        if (sessionEventDebounce) clearTimeout(sessionEventDebounce)
+        sessionEventDebounce = setTimeout(() => {
+          sessionEventDebounce = null
+          loadSessionsOnce()
+        }, 500)
       }
     }
   }
