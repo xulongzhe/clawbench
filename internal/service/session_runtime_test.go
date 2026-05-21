@@ -96,6 +96,17 @@ func TestGetAndClearCancelReason_NoReason(t *testing.T) {
 	assert.Equal(t, "", reason)
 }
 
+func TestGetAndClearCancelReason_NonStringValue(t *testing.T) {
+	cleanupCancelReasons()
+	defer cleanupCancelReasons()
+
+	// Store a non-string value to trigger the safe type assertion path (ISS-126)
+	sessionCancelReasons.Store("session-nonstring", 12345)
+
+	reason := GetAndClearCancelReason("session-nonstring")
+	assert.Equal(t, "", reason)
+}
+
 // --- CancelSession ---
 
 func TestCancelSession_WithCancelFunc(t *testing.T) {
