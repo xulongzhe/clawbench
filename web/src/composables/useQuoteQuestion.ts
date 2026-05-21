@@ -3,6 +3,7 @@ import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
 import { useToast } from '@/composables/useToast.ts'
 import { gt } from '@/composables/useLocale'
 import { buildQuoteMessage } from '@/utils/doubleClickUtils.ts'
+import { closestElement, getLineInfo, getFileInfo } from '@/utils/quoteQuestionUtils.ts'
 
 export interface QuoteData {
   text: string           // selected text
@@ -19,51 +20,6 @@ const barPinned = ref(false)  // When pinned, selection loss won't auto-hide the
 const sheetOpen = ref(false)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
-
-/**
- * Helper: get the closest Element matching a selector from a node.
- * The node may be a Text node, so we use parentElement first.
- */
-function closestElement(node: Node | null, selector: string): HTMLElement | null {
-  if (!node) return null
-  const el = (node instanceof HTMLElement ? node : node.parentElement)
-  return el?.closest?.(selector) ?? null
-}
-
-/**
- * Get line numbers from a selection range inside a code preview.
- * Walks up from anchor/focus nodes to find .code-line[data-line] elements.
- */
-function getLineInfo(selection: Selection): { startLine: number; endLine: number } {
-  const anchor = closestElement(selection.anchorNode, '.code-line')
-  const focus = closestElement(selection.focusNode, '.code-line')
-  if (!anchor || !focus) return { startLine: 0, endLine: 0 }
-
-  const anchorLine = parseInt(anchor.getAttribute('data-line') || '0')
-  const focusLine = parseInt(focus.getAttribute('data-line') || '0')
-  return {
-    startLine: Math.min(anchorLine, focusLine),
-    endLine: Math.max(anchorLine, focusLine),
-  }
-}
-
-/**
- * Get the file path and language from the container element.
- */
-function getFileInfo(container: HTMLElement): { filePath: string; language: string } {
-  const codePreview = container.closest('.raw-content-pre')
-  if (codePreview) {
-    const filePath = codePreview.getAttribute('data-file-path') || ''
-    const language = codePreview.getAttribute('data-language') || ''
-    return { filePath, language }
-  }
-  const markdownBody = container.closest('.markdown-body')
-  if (markdownBody) {
-    const filePath = markdownBody.getAttribute('data-file-path') || ''
-    return { filePath, language: '' }
-  }
-  return { filePath: '', language: '' }
-}
 
 function onSelectionChange() {
   if (debounceTimer) clearTimeout(debounceTimer)

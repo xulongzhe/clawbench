@@ -12,7 +12,8 @@ import {
   useCommitNavigation,
   setPendingCommitNavigation,
   consumePendingCommitNavigation,
-  hasPendingCommitNavigation,
+  setPendingManageNavigation,
+  consumePendingManageNavigation,
   _resetPendingShaForTesting,
   pendingSha,
 } from '@/composables/useCommitNavigation'
@@ -82,19 +83,43 @@ describe('pending SHA (module-level)', () => {
     expect(consumePendingCommitNavigation()).toBeNull()
   })
 
-  it('hasPendingCommitNavigation reflects current state', () => {
-    expect(hasPendingCommitNavigation()).toBe(false)
+  it('pendingSha reflects current state', () => {
+    expect(pendingSha.value).toBeNull()
     setPendingCommitNavigation('abc1234')
-    expect(hasPendingCommitNavigation()).toBe(true)
+    expect(pendingSha.value).toBe('abc1234')
     consumePendingCommitNavigation()
-    expect(hasPendingCommitNavigation()).toBe(false)
+    expect(pendingSha.value).toBeNull()
   })
 
   it('_resetPendingShaForTesting clears the value', () => {
     setPendingCommitNavigation('abc1234')
     _resetPendingShaForTesting()
     expect(pendingSha.value).toBeNull()
-    expect(hasPendingCommitNavigation()).toBe(false)
+  })
+})
+
+// ─── Module-level pending manage navigation ─────────────────────────────────
+
+describe('pending manage navigation (module-level)', () => {
+  it('setPendingManageNavigation sets the value to true', () => {
+    setPendingManageNavigation()
+    expect(consumePendingManageNavigation()).toBe(true)
+  })
+
+  it('consumePendingManageNavigation returns false when nothing is pending', () => {
+    expect(consumePendingManageNavigation()).toBe(false)
+  })
+
+  it('consumePendingManageNavigation is destructive — second call returns false', () => {
+    setPendingManageNavigation()
+    expect(consumePendingManageNavigation()).toBe(true)
+    expect(consumePendingManageNavigation()).toBe(false)
+  })
+
+  it('_resetPendingShaForTesting clears manage navigation too', () => {
+    setPendingManageNavigation()
+    _resetPendingShaForTesting()
+    expect(consumePendingManageNavigation()).toBe(false)
   })
 })
 

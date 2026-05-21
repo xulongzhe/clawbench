@@ -11,10 +11,7 @@
       <AppHeader
         :hidden="terminalActive"
         :project-root="projectRoot"
-        :theme="theme"
-        @toggle-theme="toggleTheme"
         @open-project-dialog="handleOpenProjectDialog"
-        @reconfigure-server="handleReconfigureServer"
       />
 
       <main class="main-content">
@@ -130,6 +127,11 @@
           <TabPanel tabId="tasks" :activeTab="activeTab" :noHeader="true">
             <TaskTab :active="activeTab === 'tasks'" @open-file="handleTaskOpenFile" />
           </TabPanel>
+
+          <!-- Settings Tab -->
+          <TabPanel tabId="settings" :activeTab="activeTab" :noHeader="true">
+            <SettingsPage :active="activeTab === 'settings'" />
+          </TabPanel>
         </div>
       </main>
 
@@ -162,6 +164,7 @@
 
       <!-- Session drawer for quote-question session switching -->
       <SessionDrawer
+        ref="quoteSessionDrawerRef"
         :open="quoteSessionDrawerOpen"
         :currentSessionId="sessionIdentity.currentSessionId.value"
         :runningSessionIds="sessionIdentity.runningSessions.value"
@@ -213,13 +216,18 @@
             <GitBranch :size="16" />
             <span>{{ t('git.history.projectHistory') }}</span>
           </button>
-          <button class="dock-overflow-item" :class="{ active: activeTab === 'proxy' }" @click.stop="handleOverflowSelect('proxy')">
+          <button v-if="!isSSHDisabled" class="dock-overflow-item" :class="{ active: activeTab === 'proxy' }" @click.stop="handleOverflowSelect('proxy')">
             <EthernetPort :size="16" />
             <span>{{ t('nav.portForward') }}</span>
           </button>
-          <button class="dock-overflow-item" :class="{ active: activeTab === 'terminal' }" @click.stop="handleOverflowSelect('terminal')">
+          <button v-if="!isTerminalDisabled" class="dock-overflow-item" :class="{ active: activeTab === 'terminal' }" @click.stop="handleOverflowSelect('terminal')">
             <TerminalIcon :size="16" />
             <span>{{ t('terminal.title') }}</span>
+          </button>
+          <div class="dock-overflow-divider"></div>
+          <button class="dock-overflow-item" @click.stop="handleOverflowSettings">
+            <Settings :size="16" />
+            <span>{{ t('nav.settings') }}</span>
           </button>
         </div>
       </Transition>
@@ -233,7 +241,8 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessageSquare, FolderOpen, FileText, GitBranch, EthernetPort, Terminal as TerminalIcon, CalendarClock, MoreHorizontal } from 'lucide-vue-next'
+import { useSettingsConfig } from '@/composables/useSettingsConfig'
+import { MessageSquare, FolderOpen, FileText, GitBranch, EthernetPort, Terminal as TerminalIcon, CalendarClock, MoreHorizontal, Settings } from 'lucide-vue-next'
 import AppHeader from './components/common/AppHeader.vue'
 import TabPanel from './components/common/TabPanel.vue'
 import WelcomeView from './components/WelcomeView.vue'
@@ -255,6 +264,7 @@ import DialogOverlay from './components/common/DialogOverlay.vue'
 import SessionDrawer from './components/session/SessionDrawer.vue'
 import QuoteQuestionBar from './components/common/QuoteQuestionBar.vue'
 import HeaderMarquee from './components/common/HeaderMarquee.vue'
+import SettingsPage from './components/settings/SettingsPage.vue'
 import TaskTab from '@/components/task/TaskTab.vue'
 import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
 import { useTaskTab, registerSwitchTab, onTaskEvent } from '@/composables/useTaskTab.ts'
@@ -296,7 +306,7 @@ function switchTab(tab) {
     store.state.taskUnread = false
   }
   // Close overflow menu when switching to a main tab
-  if (!overflowTabs.includes(tab)) {
+  if (!overflowTabs.value.includes(tab)) {
     overflowMenuOpen.value = false
   }
 }
@@ -317,7 +327,10 @@ provide('toast', toast)
 
 const sessionIdentity = useSessionIdentity()
 
-const showHidden = ref(JSON.parse(localStorage.getItem('clawbenchShowHidden') || 'false'))
+const showHidden = ref(false)
+const { localConfig, setLocalConfig: setSetting, loadConfig, getServerValueWithDefault } = useSettingsConfig()
+// Initialize from settings config (which handles legacy key migration)
+showHidden.value = !!localConfig.showHidden
 const sortField = ref(null)
 const sortDir = ref('asc')
 
@@ -328,7 +341,19 @@ useFileWatch({
 })
 
 const { isAppMode } = useAppMode()
-const { syncToNative } = usePortForward()
+const { syncToNative, sshInfo, loadSSHInfo } = usePortForward()
+const isSSHDisabled = computed(() => sshInfo.value?.enabled === false)
+const isTerminalDisabled = computed(() => !getServerValueWithDefault('terminal.enabled'))
+watch(isSSHDisabled, (disabled) => {
+  if (disabled && activeTab.value === 'proxy') {
+    switchTab('chat')
+  }
+})
+watch(isTerminalDisabled, (disabled) => {
+  if (disabled && activeTab.value === 'terminal') {
+    switchTab('chat')
+  }
+})
 const { navigateToTaskSettings, loadTasks } = useTaskTab()
 registerSwitchTab(switchTab)
 
@@ -355,6 +380,7 @@ const terminalKeyboardActive = computed(() => terminalActive.value && terminalKe
 
 const quoteQuestion = useQuoteQuestion()
 const quoteSessionDrawerOpen = ref(false)
+const quoteSessionDrawerRef = ref(null)
 
 function handleQuoteOpenSessions() {
   quoteSessionDrawerOpen.value = true
@@ -367,11 +393,13 @@ function handleQuoteSessionSelect(sessionId) {
 
 function handleQuoteSessionCreate(agentId) {
   sessionIdentity.createSession(agentId)
+  quoteSessionDrawerRef.value?.invalidate()
   quoteSessionDrawerOpen.value = false
 }
 
 function handleQuoteSessionDelete(sessionId, backend) {
   sessionIdentity.deleteSession(sessionId, backend)
+  quoteSessionDrawerRef.value?.invalidate()
 }
 
 async function handleLoginSuccess() {
@@ -387,14 +415,9 @@ function handleOpenProjectDialog() {
     projectDialogOpen.value = true
 }
 
-function handleReconfigureServer() {
-    if (window.AndroidNative?.showServerDialog) {
-        window.AndroidNative.showServerDialog()
-    }
-}
-
-const theme = ref(localStorage.getItem('theme') ||
-    (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'))
+const theme = ref(localConfig.theme === 'auto'
+    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : (localConfig.theme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')))
 
 const dirEntries = computed(() => store.state.dirEntries)
 const currentDir = computed(() => store.state.currentDir)
@@ -433,7 +456,7 @@ watch(() => currentFile.value, (f) => {
 
 function toggleHidden() {
     showHidden.value = !showHidden.value
-    localStorage.setItem('clawbenchShowHidden', JSON.stringify(showHidden.value))
+    setSetting('showHidden', showHidden.value)
     store.loadFiles(store.state.currentDir)
 }
 
@@ -499,14 +522,21 @@ function handleDockTerminal() {
 // Overflow menu state
 const overflowMenuOpen = ref(false)
 const overflowBtnRef = ref(null)
-const overflowTabs = ['history', 'proxy', 'terminal']
+const overflowTabs = computed(() => {
+  const tabs = ['history']
+  if (!isSSHDisabled.value) tabs.push('proxy')
+  if (!isTerminalDisabled.value) tabs.push('terminal')
+  tabs.push('settings')
+  return tabs
+})
 const overflowTabMeta = {
   history: { icon: GitBranch, titleKey: 'git.history.projectHistory' },
   proxy:   { icon: EthernetPort, titleKey: 'nav.portForward' },
   terminal:{ icon: TerminalIcon, titleKey: 'terminal.title' },
+  settings:{ icon: Settings, titleKey: 'nav.settings' },
 }
 
-const isOverflowTabActive = computed(() => overflowTabs.includes(activeTab.value))
+const isOverflowTabActive = computed(() => overflowTabs.value.includes(activeTab.value))
 
 const overflowPopupStyle = computed(() => {
   const btn = overflowBtnRef.value
@@ -552,6 +582,11 @@ function handleOverflowSelect(tab) {
   }
 }
 
+function handleOverflowSettings() {
+  overflowMenuOpen.value = false
+  switchTab('settings')
+}
+
 // Close overflow menu on outside click
 function handleOverflowOutsideClick(e) {
   if (overflowMenuOpen.value && !e.target.closest('.dock-overflow-popup') && !e.target.closest('.dock-overflow-btn')) {
@@ -581,7 +616,7 @@ function toggleTheme() {
 
 function applyTheme(t) {
     document.documentElement.setAttribute('data-theme', t)
-    localStorage.setItem('theme', t)
+    setSetting('theme', t)
     document.documentElement.setAttribute('data-hljs-theme', t)
     initMermaid()
     reRenderMermaid()
@@ -645,10 +680,22 @@ function playQuoteEmitAnimation(e) {
 onMounted(async () => {
     initGlobalEvents()
     loadTasks()
+    loadConfig() // Load server config early for terminal.enabled check
     window.addEventListener('open-file-manager', handleOpenFileManager)
     window.addEventListener('navigate-to-commit', handleNavigateToCommit)
     window.addEventListener('quote-sent', playQuoteEmitAnimation)
     document.addEventListener('click', handleOverflowOutsideClick)
+    // Sync reactive state from Settings page changes
+    window.addEventListener('clawbench-theme-change', (e) => {
+        const resolved = e.detail
+        theme.value = resolved
+        // Re-render mermaid diagrams for new theme
+        initMermaid()
+        reRenderMermaid()
+    })
+    window.addEventListener('clawbench-showhidden-change', (e) => {
+        showHidden.value = e.detail
+    })
     applyTheme(theme.value)
     let resp
     try {
@@ -694,6 +741,7 @@ onMounted(async () => {
         if (sr.ok) { const sd = await sr.json(); if (sd.sessions?.some(s => s.unreadCount > 0 && s.id !== sessionIdentity.currentSessionId.value)) store.state.chatUnread = true }
     } catch (_) {}
     if (isAppMode.value) syncToNative().catch(() => {})
+    loadSSHInfo().catch(() => {})
     try { await store.loadProject() } catch (_) {
         toast.show(t('toast.projectLoadFailed'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() }); return
     }
@@ -931,6 +979,12 @@ onUnmounted(() => {
 .dock-overflow-item.active {
     background: color-mix(in srgb, var(--accent-color) 15%, transparent);
     color: var(--accent-color);
+}
+
+.dock-overflow-divider {
+    height: 1px;
+    background: var(--border-color);
+    margin: 4px 8px;
 }
 
 /* Popup transition */

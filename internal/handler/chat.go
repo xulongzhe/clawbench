@@ -786,9 +786,9 @@ func buildChatRequest(prompt, sessionID, projectPath, backendName, agentID, mode
 		if agent.Command != "" {
 			agentCommand = agent.Command
 		}
-		// Fall back to YAML config default when frontend didn't specify
-		if effectiveThinkingEffort == "" && agent.ThinkingEffort != "" {
-			effectiveThinkingEffort = agent.ThinkingEffort
+		// Fall back to agent's effective thinking effort when frontend didn't specify
+		if effectiveThinkingEffort == "" && agent.EffectiveThinkingEffort() != "" {
+			effectiveThinkingEffort = agent.EffectiveThinkingEffort()
 		}
 	}
 

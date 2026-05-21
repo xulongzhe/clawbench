@@ -37,7 +37,7 @@ func TestServeSSHInfo_Disabled(t *testing.T) {
 func TestServeSSHInfo_Enabled(t *testing.T) {
 	// Set up a ProxyService with a registered port
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
@@ -46,7 +46,7 @@ func TestServeSSHInfo_Enabled(t *testing.T) {
 	_ = service.ProxyService.RegisterPort(8080, "API", "http")
 
 	// Create and set an SSH server reference
-	srv := ssh.NewServer(model.SSHConfig{Enabled: true, Port: 20001}, 20000, "test-password", service.ProxyService)
+	srv := ssh.NewServer(model.PortForwardConfig{Enabled: true, Port: 20001}, 20000, "test-password", service.ProxyService)
 	if err := srv.InitHostKey(); err != nil {
 		t.Fatalf("failed to init host key: %v", err)
 	}
@@ -124,13 +124,13 @@ func TestServeSSHInfo_MethodNotAllowed(t *testing.T) {
 func TestServeSSHInfo_AutoPort(t *testing.T) {
 	// Test that port 0 auto-assigns to mainPort+1
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
 	}()
 
-	srv := ssh.NewServer(model.SSHConfig{Enabled: true, Port: 0}, 30000, "test", service.ProxyService)
+	srv := ssh.NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 30000, "test", service.ProxyService)
 	if err := srv.InitHostKey(); err != nil {
 		t.Fatalf("failed to init host key: %v", err)
 	}
@@ -155,13 +155,13 @@ func TestServeSSHInfo_AutoPort(t *testing.T) {
 func TestServeSSHInfo_HostFromHeader(t *testing.T) {
 	// Test that host is correctly extracted from various Host header formats
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
 	}()
 
-	srv := ssh.NewServer(model.SSHConfig{Enabled: true, Port: 20001}, 20000, "test", service.ProxyService)
+	srv := ssh.NewServer(model.PortForwardConfig{Enabled: true, Port: 20001}, 20000, "test", service.ProxyService)
 	origSSH := sshServerRef
 	sshServerRef = srv
 	defer func() { sshServerRef = origSSH }()
@@ -197,13 +197,13 @@ func TestServeSSHInfo_HostFromHeader(t *testing.T) {
 func TestServeSSHInfo_EmptyPortList(t *testing.T) {
 	// When no ports are registered, command should be empty
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
 	}()
 
-	srv := ssh.NewServer(model.SSHConfig{Enabled: true, Port: 20001}, 20000, "test", service.ProxyService)
+	srv := ssh.NewServer(model.PortForwardConfig{Enabled: true, Port: 20001}, 20000, "test", service.ProxyService)
 	origSSH := sshServerRef
 	sshServerRef = srv
 	defer func() { sshServerRef = origSSH }()
@@ -244,13 +244,13 @@ func TestServeSSHInfo_ConnectionStats_Disabled(t *testing.T) {
 func TestServeSSHInfo_ConnectionStats_Enabled(t *testing.T) {
 	// When SSH is enabled but no clients connected, connectionStats should reflect that
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry(model.ProxyConfig{Enabled: true, AllowedPorts: "1024-65535"}, 0)
+	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
 	}()
 
-	srv := ssh.NewServer(model.SSHConfig{Enabled: true, Port: 20001}, 20000, "test", service.ProxyService)
+	srv := ssh.NewServer(model.PortForwardConfig{Enabled: true, Port: 20001}, 20000, "test", service.ProxyService)
 	if err := srv.InitHostKey(); err != nil {
 		t.Fatalf("failed to init host key: %v", err)
 	}

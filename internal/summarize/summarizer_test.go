@@ -313,13 +313,6 @@ func TestNeedsReSummarization(t *testing.T) {
 	assert.False(t, needsReSummarization(strings.Repeat("a", reSummarizeThreshold+1), 2)) // max pass reached
 }
 
-// --- NeedsSummarization ---
-
-func TestNeedsSummarization(t *testing.T) {
-	assert.False(t, NeedsSummarization("短文本"))
-	assert.True(t, NeedsSummarization(strings.Repeat("这是一段较长的文本内容。", 50)))
-}
-
 // --- NewTTSPipeline ---
 
 func TestNewTTSPipeline(t *testing.T) {

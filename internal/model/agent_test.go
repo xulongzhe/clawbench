@@ -3,6 +3,7 @@ package model_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"clawbench/internal/model"
@@ -266,4 +267,407 @@ func TestGetDefaultAgentID_NoAgents(t *testing.T) {
 	model.AgentList = nil
 
 	assert.Equal(t, "", model.GetDefaultAgentID())
+}
+
+// ---------- DefaultModelID ----------
+
+func TestDefaultModelID_PreferredModel(t *testing.T) {
+	agent := &model.Agent{
+		PreferredModel: "preferred-model",
+		Models: []model.AgentModel{
+			{ID: "default-model", Default: true},
+		},
+	}
+	assert.Equal(t, "preferred-model", agent.DefaultModelID())
+}
+
+func TestDefaultModelID_NoPreferredModel(t *testing.T) {
+	agent := &model.Agent{
+		Models: []model.AgentModel{
+			{ID: "other-model"},
+			{ID: "default-model", Default: true},
+		},
+	}
+	assert.Equal(t, "default-model", agent.DefaultModelID())
+}
+
+func TestDefaultModelID_NoDefaultFlag(t *testing.T) {
+	agent := &model.Agent{
+		Models: []model.AgentModel{
+			{ID: "first-model"},
+			{ID: "second-model"},
+		},
+	}
+	assert.Equal(t, "first-model", agent.DefaultModelID())
+}
+
+func TestDefaultModelID_NoModels(t *testing.T) {
+	agent := &model.Agent{}
+	assert.Equal(t, "", agent.DefaultModelID())
+}
+
+// ---------- BaseModelID ----------
+
+func TestBaseModelID_DefaultFlag(t *testing.T) {
+	agent := &model.Agent{
+		PreferredModel: "preferred", // should be ignored
+		Models: []model.AgentModel{
+			{ID: "first"},
+			{ID: "flagged", Default: true},
+		},
+	}
+	assert.Equal(t, "flagged", agent.BaseModelID())
+}
+
+func TestBaseModelID_FirstInList(t *testing.T) {
+	agent := &model.Agent{
+		PreferredModel: "preferred", // should be ignored
+		Models: []model.AgentModel{
+			{ID: "first"},
+			{ID: "second"},
+		},
+	}
+	assert.Equal(t, "first", agent.BaseModelID())
+}
+
+func TestBaseModelID_NoModels(t *testing.T) {
+	agent := &model.Agent{PreferredModel: "ignored"}
+	assert.Equal(t, "", agent.BaseModelID())
+}
+
+// ---------- EffectiveThinkingEffort ----------
+
+func TestEffectiveThinkingEffort_Preferred(t *testing.T) {
+	agent := &model.Agent{
+		PreferredThinkingEffort: "high",
+		ThinkingEffort:           "medium",
+	}
+	assert.Equal(t, "high", agent.EffectiveThinkingEffort())
+}
+
+func TestEffectiveThinkingEffort_NoPreferred(t *testing.T) {
+	agent := &model.Agent{
+		ThinkingEffort: "medium",
+	}
+	assert.Equal(t, "medium", agent.EffectiveThinkingEffort())
+}
+
+func TestEffectiveThinkingEffort_Neither(t *testing.T) {
+	agent := &model.Agent{}
+	assert.Equal(t, "", agent.EffectiveThinkingEffort())
+}
+
+// ---------- WriteAgentYAML ----------
+
+func TestWriteAgentYAML_Success(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Write initial agent YAML
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	// Load agents to set agentsDir
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Write preferences
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = "glm-5.1"
+	agent.PreferredThinkingEffort = "high"
+
+	err = model.WriteAgentYAML(agent)
+	assert.NoError(t, err)
+
+	// Read back and verify
+	data, err := os.ReadFile(filepath.Join(agentsDir, "test-agent.yaml"))
+	require.NoError(t, err)
+	content := string(data)
+	assert.Contains(t, content, "preferred_model: glm-5.1")
+	assert.Contains(t, content, "preferred_thinking_effort: high")
+	assert.Contains(t, content, "backend: codebuddy")
+}
+
+func TestWriteAgentYAML_ClearPreferences(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+preferred_model: old-model
+preferred_thinking_effort: low
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Clear preferences
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = ""
+	agent.PreferredThinkingEffort = ""
+
+	err = model.WriteAgentYAML(agent)
+	assert.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(agentsDir, "test-agent.yaml"))
+	require.NoError(t, err)
+	content := string(data)
+	assert.NotContains(t, content, "preferred_model")
+	assert.NotContains(t, content, "preferred_thinking_effort")
+}
+
+func TestWriteAgentYAML_NotInitialized(t *testing.T) {
+	// Save and restore agentsDir
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// LoadAgents sets agentsDir, so calling it on a valid dir then
+	// testing WriteAgentYAML for a nonexistent agent tests the read path
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+
+	// Write an agent YAML that doesn't exist on disk
+	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent"})
+	assert.Error(t, err)
+}
+
+func TestWriteAgentYAML_AgentNotFound(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Agent YAML doesn't exist
+	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent"})
+	assert.Error(t, err)
+}
+
+func TestWriteAgentYAML_NotInitializedNoDir(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// LoadAgents on an empty dir sets agentsDir, but the agent won't exist on disk
+	// We need agentsDir to be empty to trigger "agents directory not initialized"
+	// Since agentsDir is unexported, we test by calling WriteAgentYAML before LoadAgents
+	// Reset state first
+	model.Agents = nil
+	model.AgentList = nil
+
+	// WriteAgentYAML checks agentsDir internally; calling before LoadAgents
+	// means agentsDir="" (the zero value). But since agentsDir persists across
+	// tests, we use LoadAgents on empty dir (which sets agentsDir) then
+	// test with a nonexistent agent which hits the read error instead.
+	// The "not initialized" path is actually untestable without modifying
+	// the source, so we test the behavior we can: calling WriteAgentYAML
+	// for an agent whose YAML doesn't exist on disk.
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+
+	// WriteAgentYAML for nonexistent agent — should fail with read error
+	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent", PreferredModel: "m1"})
+	assert.Error(t, err)
+}
+
+func TestLoadAgents_CommonPromptOnlyWithRulesNoSystemPrompt(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Create rules.md in parent directory
+	rulesContent := "## Rules\nBe helpful and concise."
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0644))
+
+	// Agent with no system_prompt — should get commonPrompt only (the else-if branch)
+	yaml := `id: no-prompt
+name: No Prompt
+icon: "N"
+specialty: None
+backend: claude
+`
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "agent.yaml"), []byte(yaml), 0644))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	agent := model.Agents["no-prompt"]
+	assert.NotNil(t, agent)
+	// Should have the common prompt (rules.md) as the system prompt
+	assert.Contains(t, agent.SystemPrompt, "Be helpful and concise")
+}
+
+func TestLoadAgents_CommonPromptWithAgentPrompt(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Create rules.md
+	rulesContent := "## Rules\nBe helpful."
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0644))
+
+	// Agent with system_prompt — should get commonPrompt + agent prompt
+	yaml := `id: with-prompt
+name: With Prompt
+icon: "W"
+specialty: Writing
+backend: codebuddy
+system_prompt: My specific prompt
+`
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "agent.yaml"), []byte(yaml), 0644))
+
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	agent := model.Agents["with-prompt"]
+	assert.NotNil(t, agent)
+	// Should have both common prompt and specific prompt
+	assert.Contains(t, agent.SystemPrompt, "Be helpful")
+	assert.Contains(t, agent.SystemPrompt, "My specific prompt")
+	// Common prompt should come first
+	idx := strings.Index(agent.SystemPrompt, "Be helpful")
+	idx2 := strings.Index(agent.SystemPrompt, "My specific prompt")
+	assert.Less(t, idx, idx2)
+}
+
+func TestWriteAgentYAML_InvalidYAMLContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Write an agent YAML that is valid YAML but cannot be round-tripped
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = "new-model"
+	err = model.WriteAgentYAML(agent)
+	assert.NoError(t, err)
+
+	// Verify the file was updated
+	data, err := os.ReadFile(filepath.Join(agentsDir, "test-agent.yaml"))
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "preferred_model: new-model")
+	assert.Contains(t, string(data), "backend: codebuddy")
+}
+
+func TestLoadAgents_ClawbenchBinReplacement(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+		model.ClawbenchBin = ""
+	})
+
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Create rules.md with {{CLAWBENCH_BIN}} placeholder
+	rulesContent := "Use {{CLAWBENCH_BIN}} for CLI operations."
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0644))
+
+	yaml := `id: test-agent
+name: Test
+icon: "T"
+specialty: Testing
+backend: codebuddy
+system_prompt: You test.
+`
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yaml), 0644))
+
+	// Set ClawbenchBin before loading
+	model.ClawbenchBin = "/usr/local/bin/clawbench"
+	err := model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+
+	agent := model.Agents["test-agent"]
+	assert.NotNil(t, agent)
+	assert.Contains(t, agent.SystemPrompt, "/usr/local/bin/clawbench")
+	assert.NotContains(t, agent.SystemPrompt, "{{CLAWBENCH_BIN}}")
+}
+
+func TestWriteAgentYAML_WriteFileError(t *testing.T) {
+	// Skip on Windows where permission model differs
+	if os.PathSeparator == '\\' {
+		t.Skip("read-only directory test not reliable on Windows")
+	}
+
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Make the directory read-only so WriteFile fails
+	require.NoError(t, os.Chmod(agentsDir, 0555))
+	defer os.Chmod(agentsDir, 0755) // restore for cleanup
+
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = "new-model"
+	err = model.WriteAgentYAML(agent)
+	assert.Error(t, err, "writing to read-only directory should fail")
 }

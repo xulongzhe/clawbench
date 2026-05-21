@@ -281,12 +281,12 @@ func GetSessions(projectPath, backend string) ([]model.ChatSession, error) {
 }
 
 // GetSessionsPaged retrieves chat sessions with cursor-based pagination.
-// limit=0 means no limit (returns all sessions, backward compatible).
+// limit=0 means no limit (returns all sessions).
 // cursor and cursorID: when non-empty, only return sessions with
 //   (updated_at < cursor) OR (updated_at = cursor AND id < cursorID)
 // Returns sessions and hasMore flag.
 func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cursorID string) ([]model.ChatSession, bool, error) {
-	// No limit: return all sessions (backward compatible)
+	// No limit: return all sessions
 	if limit <= 0 {
 		sessions, err := GetSessions(projectPath, backend)
 		if err != nil {
@@ -467,6 +467,41 @@ func GetSessionTitle(sessionID string) (string, error) {
 		return "", err
 	}
 	return title, nil
+}
+
+// GetSessionTitlesBatch fetches titles for multiple sessions in a single query.
+func GetSessionTitlesBatch(sessionIDs []string) (map[string]string, error) {
+	if len(sessionIDs) == 0 {
+		return map[string]string{}, nil
+	}
+
+	placeholders := ""
+	args := make([]any, len(sessionIDs))
+	for i, id := range sessionIDs {
+		if i > 0 {
+			placeholders += ","
+		}
+		placeholders += "?"
+		args[i] = id
+	}
+
+	rows, err := DB.Query("SELECT id, title FROM chat_sessions WHERE id IN ("+placeholders+") AND deleted = 0", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	titles := make(map[string]string, len(sessionIDs))
+	for rows.Next() {
+		var id, title string
+		if err := rows.Scan(&id, &title); err != nil {
+			continue
+		}
+		if title != "" {
+			titles[id] = title
+		}
+	}
+	return titles, rows.Err()
 }
 
 // GetSessionAgentID returns the agent_id of an active (non-deleted) session.

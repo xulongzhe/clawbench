@@ -1,12 +1,10 @@
 package handler
 
 import (
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -15,6 +13,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	"clawbench/internal/middleware"
 	"clawbench/internal/model"
 )
 
@@ -114,23 +113,6 @@ func (l *loginLimiter) cleanupLoop() {
 	}
 }
 
-func extractIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
-// isLocalhost returns true if the request originates from the local machine.
-func isLocalhost(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	return host == "127.0.0.1" || host == "::1" || host == "localhost"
-}
-
 // --- Auth handlers ---
 
 // ServeAuthCheck returns 200 if the session cookie is valid, 401 otherwise.
@@ -142,7 +124,7 @@ func ServeAuthCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Localhost (CLI subcommands / local browser) — always allowed
-	if isLocalhost(r) {
+	if middleware.IsLocalhost(r) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -162,7 +144,10 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodPost {
-		remoteIP := extractIP(r)
+		remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if remoteIP == "" {
+			remoteIP = r.RemoteAddr
+		}
 
 		// Rate limiting check (ISS-003c)
 		limiter := getLoginLimiter()
@@ -184,10 +169,12 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 			// bcrypt verification
 			authenticated = bcrypt.CompareHashAndPassword(model.PasswordHash, []byte(body.Password)) == nil
 		} else {
-			// Fallback: SHA-256 for backward compatibility (shouldn't happen after startup fix)
-			hash := sha256.Sum256([]byte(body.Password + "clawbench-salt"))
-			token := hex.EncodeToString(hash[:])
-			authenticated = subtle.ConstantTimeCompare([]byte(token), []byte(model.SessionToken)) == 1
+			// No bcrypt hash available — bcrypt generation must have failed at startup.
+			// Reject the login rather than falling back to insecure SHA-256.
+			slog.Error("password hash not available, rejecting login", slog.String("remoteIP", remoteIP))
+			writeLocalizedError(w, r, model.Internal(nil))
+			limiter.recordFailure(remoteIP)
+			return
 		}
 
 		if authenticated {
@@ -216,14 +203,4 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
-}
-
-// GenerateSecureRandom produces cryptographically secure random bytes.
-// Panics on failure (ISS-003d) — random generation failure is a fatal security error.
-func GenerateSecureRandom(n int) ([]byte, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return nil, fmt.Errorf("crypto/rand.Read failed: %w", err)
-	}
-	return b, nil
 }

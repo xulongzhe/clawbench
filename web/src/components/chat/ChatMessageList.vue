@@ -47,6 +47,7 @@
       :agents="agents"
       :shouldCollapse="isCollapsed(i, msg)"
       :staticBlockCache="staticBlockCache"
+      :active="active"
       @toggle-tool="$emit('toggle-tool', $event)"
       @show-tool-detail="$emit('show-tool-detail', $event)"
       @show-thinking-detail="$emit('show-thinking-detail', $event)"
@@ -103,6 +104,7 @@ const props = defineProps({
   totalMessages: { type: Number, default: 0 },
   pendingMessages: { type: Array, default: () => [] },
   staticBlockCache: Object,
+  active: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'file-open', 'load-more', 'task-card-click', 'send-message', 'remove-pending', 'render-flush'])
@@ -110,7 +112,7 @@ const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-deta
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()
 const { openFilePath } = useFilePathAnnotation()
-const { ensurePortRegistered, openPort, isAppMode } = usePortForward()
+const { ensurePortRegistered, openPort, isAppMode, sshInfo } = usePortForward()
 const toast = useToast()
 
 // Track whether a localhost URL open is in progress (prevent double-click)
@@ -251,6 +253,7 @@ function handleChatClick(event) {
  */
 async function openLocalhostUrl(element, port, protocol) {
   if (urlOpening.value) return
+  if (sshInfo.value?.enabled === false) return
   urlOpening.value = true
   element.classList.add('loading')
 

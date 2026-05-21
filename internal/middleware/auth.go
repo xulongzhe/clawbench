@@ -10,9 +10,9 @@ import (
 	"clawbench/internal/model"
 )
 
-// isLocalhost returns true if the request originates from the local machine.
+// IsLocalhost returns true if the request originates from the local machine.
 // CLI subcommands (clawbench task, clawbench rag) always connect from localhost.
-func isLocalhost(r *http.Request) bool {
+func IsLocalhost(r *http.Request) bool {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
@@ -31,7 +31,7 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		// Localhost (CLI subcommands) — always allowed
-		if isLocalhost(r) {
+		if IsLocalhost(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -19,14 +19,7 @@ func TestSentinelErrors(t *testing.T) {
 		err     error
 		wantMsg string
 	}{
-		{"ErrUnauthorized", model.ErrUnauthorized, "unauthorized"},
-		{"ErrForbidden", model.ErrForbidden, "access denied"},
-		{"ErrNotFound", model.ErrNotFound, "not found"},
-		{"ErrBadRequest", model.ErrBadRequest, "bad request"},
-		{"ErrInternal", model.ErrInternal, "internal server error"},
 		{"ErrProjectNotSet", model.ErrProjectNotSet, "no project selected"},
-		{"ErrInvalidPath", model.ErrInvalidPath, "invalid path"},
-		{"ErrPathTraversal", model.ErrPathTraversal, "path traversal detected"},
 	}
 
 	for _, tt := range sentinelTests {
@@ -61,9 +54,9 @@ func TestAppError_Unwrap(t *testing.T) {
 }
 
 func TestAppError_Unwrap_WithErrorsIs(t *testing.T) {
-	inner := model.ErrNotFound
+	inner := errors.New("not found")
 	err := &model.AppError{Code: 404, Message: "resource missing", Err: inner}
-	assert.True(t, errors.Is(err, model.ErrNotFound), "errors.Is should find the inner sentinel")
+	assert.True(t, errors.Is(err, inner), "errors.Is should find the inner error")
 }
 
 func TestNewAppError(t *testing.T) {
@@ -71,35 +64,6 @@ func TestNewAppError(t *testing.T) {
 	err := model.NewAppError(http.StatusServiceUnavailable, "service unavailable", inner)
 	assert.Equal(t, http.StatusServiceUnavailable, err.Code)
 	assert.Equal(t, "service unavailable", err.Message)
-	assert.Equal(t, inner, err.Err)
-}
-
-func TestNewAppErrorf(t *testing.T) {
-	t.Run("formatted message", func(t *testing.T) {
-		inner := errors.New("timeout")
-		err := model.NewAppErrorf(http.StatusBadRequest, "field %q is required", inner, "email")
-		assert.Equal(t, http.StatusBadRequest, err.Code)
-		assert.Equal(t, `field "email" is required`, err.Message)
-		assert.Equal(t, inner, err.Err)
-	})
-
-	t.Run("no format args", func(t *testing.T) {
-		err := model.NewAppErrorf(http.StatusBadRequest, "simple message", nil)
-		assert.Equal(t, "simple message", err.Message)
-		assert.Nil(t, err.Err)
-	})
-
-	t.Run("multiple format args", func(t *testing.T) {
-		err := model.NewAppErrorf(http.StatusBadRequest, "got %d errors in %s", nil, 3, "module")
-		assert.Equal(t, "got 3 errors in module", err.Message)
-	})
-}
-
-func TestBadRequest(t *testing.T) {
-	inner := errors.New("invalid json")
-	err := model.BadRequest(inner, "invalid request body")
-	assert.Equal(t, http.StatusBadRequest, err.Code)
-	assert.Equal(t, "invalid request body", err.Message)
 	assert.Equal(t, inner, err.Err)
 }
 
@@ -150,18 +114,18 @@ func TestUnauthorized_NilErr(t *testing.T) {
 }
 
 func TestWriteError_WithAppError(t *testing.T) {
-	appErr := model.BadRequest(errors.New("missing field"), "validation failed")
+	appErr := model.NotFound(errors.New("missing field"), "validation failed")
 	rec := httptest.NewRecorder()
 	model.WriteError(rec, appErr)
 
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 
 	var resp model.ErrorResponse
 	err := json.NewDecoder(rec.Body).Decode(&resp)
 	assert.NoError(t, err)
 	assert.Equal(t, "validation failed", resp.Error)
-	assert.Equal(t, http.StatusBadRequest, resp.Code)
+	assert.Equal(t, http.StatusNotFound, resp.Code)
 }
 
 func TestWriteError_WithAppError_VariousStatusCodes(t *testing.T) {
@@ -206,60 +170,6 @@ func TestWriteError_WithNonAppError(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "Internal server error", resp.Error)
 	assert.Equal(t, http.StatusInternalServerError, resp.Code)
-}
-
-func TestWriteError_WithSentinelError(t *testing.T) {
-	rec := httptest.NewRecorder()
-	model.WriteError(rec, model.ErrNotFound)
-
-	// Sentinel errors are not AppError, so should fall back to 500
-	assert.Equal(t, http.StatusInternalServerError, rec.Code)
-
-	var resp model.ErrorResponse
-	err := json.NewDecoder(rec.Body).Decode(&resp)
-	assert.NoError(t, err)
-	assert.Equal(t, "Internal server error", resp.Error)
-}
-
-func TestWriteErrorf(t *testing.T) {
-	rec := httptest.NewRecorder()
-	model.WriteErrorf(rec, http.StatusBadGateway, "upstream unavailable")
-
-	assert.Equal(t, http.StatusBadGateway, rec.Code)
-	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-
-	var resp model.ErrorResponse
-	err := json.NewDecoder(rec.Body).Decode(&resp)
-	assert.NoError(t, err)
-	assert.Equal(t, "upstream unavailable", resp.Error)
-	assert.Equal(t, http.StatusBadGateway, resp.Code)
-}
-
-func TestWriteErrorf_CustomStatusAndMessage(t *testing.T) {
-	tests := []struct {
-		name     string
-		status   int
-		msg      string
-	}{
-		{"429 Too Many Requests", http.StatusTooManyRequests, "rate limit exceeded"},
-		{"503 Service Unavailable", http.StatusServiceUnavailable, "try again later"},
-		{"422 Unprocessable", http.StatusUnprocessableEntity, "validation failed"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rec := httptest.NewRecorder()
-			model.WriteErrorf(rec, tt.status, tt.msg)
-
-			assert.Equal(t, tt.status, rec.Code)
-
-			var resp model.ErrorResponse
-			err := json.NewDecoder(rec.Body).Decode(&resp)
-			assert.NoError(t, err)
-			assert.Equal(t, tt.msg, resp.Error)
-			assert.Equal(t, tt.status, resp.Code)
-		})
-	}
 }
 
 func TestErrorResponse_JSONMarshaling(t *testing.T) {

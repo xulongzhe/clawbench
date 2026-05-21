@@ -120,9 +120,6 @@ func TestBuildPiStreamArgs_NoSystemPrompt(t *testing.T) {
 // indexOf returns the index of the first occurrence of target in slice, or -1.
 func indexOf(slice []string, target string) int {
 	for i, v := range slice {
-		if v == v {
-			_ = i
-		}
 		if v == target {
 			return i
 		}

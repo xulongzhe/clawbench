@@ -1,0 +1,248 @@
+import { describe, expect, it } from 'vitest'
+import { closestElement, getFileInfo, getLineInfo } from '@/utils/quoteQuestionUtils'
+
+// --- closestElement ---
+
+describe('closestElement', () => {
+  it('returns null for null node', () => {
+    expect(closestElement(null, '.any')).toBeNull()
+  })
+
+  it('returns the element itself when it matches the selector', () => {
+    const el = document.createElement('div')
+    el.classList.add('target')
+    expect(closestElement(el, '.target')).toBe(el)
+  })
+
+  it('returns the parent element when a text node is passed and parent matches', () => {
+    const parent = document.createElement('span')
+    parent.classList.add('target')
+    const text = document.createTextNode('hello')
+    parent.appendChild(text)
+    expect(closestElement(text, '.target')).toBe(parent)
+  })
+
+  it('returns null when no ancestor matches the selector', () => {
+    const el = document.createElement('div')
+    el.classList.add('other')
+    expect(closestElement(el, '.target')).toBeNull()
+  })
+
+  it('finds closest matching ancestor in a deeply nested DOM', () => {
+    const grandparent = document.createElement('div')
+    grandparent.classList.add('target')
+    const parent = document.createElement('section')
+    const child = document.createElement('span')
+    grandparent.appendChild(parent)
+    parent.appendChild(child)
+    // child has no .target, parent has no .target, grandparent has .target
+    expect(closestElement(child, '.target')).toBe(grandparent)
+  })
+
+  it('picks the closest (nearest) matching ancestor when multiple match', () => {
+    const outer = document.createElement('div')
+    outer.classList.add('target')
+    const inner = document.createElement('div')
+    inner.classList.add('target')
+    outer.appendChild(inner)
+    const leaf = document.createElement('span')
+    inner.appendChild(leaf)
+    // inner is closer than outer
+    expect(closestElement(leaf, '.target')).toBe(inner)
+  })
+
+  it('throws on empty selector string (JSDOM throws SyntaxError for invalid selector)', () => {
+    const el = document.createElement('div')
+    expect(() => closestElement(el, '')).toThrow()
+  })
+
+  it('returns null for a detached text node with no parent', () => {
+    const text = document.createTextNode('orphan')
+    expect(closestElement(text, '.any')).toBeNull()
+  })
+
+  it('handles text node whose parentElement does not match', () => {
+    const parent = document.createElement('div')
+    parent.classList.add('unrelated')
+    const text = document.createTextNode('text')
+    parent.appendChild(text)
+    expect(closestElement(text, '.target')).toBeNull()
+  })
+})
+
+// --- getLineInfo ---
+
+describe('getLineInfo', () => {
+  function makeCodeLine(lineNumber: string): HTMLElement {
+    const el = document.createElement('div')
+    el.classList.add('code-line')
+    el.setAttribute('data-line', lineNumber)
+    return el
+  }
+
+  function mockSelection(anchorNode: Node | null, focusNode: Node | null) {
+    return { anchorNode, focusNode } as Selection
+  }
+
+  it('returns correct line numbers when both anchor and focus are in code-line elements', () => {
+    const anchor = makeCodeLine('5')
+    const focus = makeCodeLine('10')
+    const sel = mockSelection(anchor, focus)
+    expect(getLineInfo(sel)).toEqual({ startLine: 5, endLine: 10 })
+  })
+
+  it('swaps when anchor line > focus line', () => {
+    const anchor = makeCodeLine('20')
+    const focus = makeCodeLine('3')
+    const sel = mockSelection(anchor, focus)
+    expect(getLineInfo(sel)).toEqual({ startLine: 3, endLine: 20 })
+  })
+
+  it('returns same start and end when anchor and focus are on the same line', () => {
+    const anchor = makeCodeLine('7')
+    const focus = makeCodeLine('7')
+    const sel = mockSelection(anchor, focus)
+    expect(getLineInfo(sel)).toEqual({ startLine: 7, endLine: 7 })
+  })
+
+  it('returns zeros when anchor is not in a code-line element', () => {
+    const anchor = document.createElement('div') // no .code-line
+    const focus = makeCodeLine('5')
+    const sel = mockSelection(anchor, focus)
+    expect(getLineInfo(sel)).toEqual({ startLine: 0, endLine: 0 })
+  })
+
+  it('returns zeros when focus is not in a code-line element', () => {
+    const anchor = makeCodeLine('5')
+    const focus = document.createElement('div') // no .code-line
+    const sel = mockSelection(anchor, focus)
+    expect(getLineInfo(sel)).toEqual({ startLine: 0, endLine: 0 })
+  })
+
+  it('returns zeros when both anchor and focus are not in code-line elements', () => {
+    const anchor = document.createElement('div')
+    const focus = document.createElement('div')
+    const sel = mockSelection(anchor, focus)
+    expect(getLineInfo(sel)).toEqual({ startLine: 0, endLine: 0 })
+  })
+
+  it('defaults to 0 when data-line attribute is missing', () => {
+    const anchor = document.createElement('div')
+    anchor.classList.add('code-line')
+    // no data-line attribute
+    const focus = makeCodeLine('3')
+    const sel = mockSelection(anchor, focus)
+    expect(getLineInfo(sel)).toEqual({ startLine: 0, endLine: 3 })
+  })
+
+  it('produces NaN when data-line attribute is non-numeric', () => {
+    const anchor = document.createElement('div')
+    anchor.classList.add('code-line')
+    anchor.setAttribute('data-line', 'abc')
+    const focus = makeCodeLine('4')
+    const sel = mockSelection(anchor, focus)
+    // 'abc' || '0' → 'abc' (truthy), parseInt('abc') → NaN
+    // Math.min(NaN, 4) → NaN
+    expect(getLineInfo(sel)).toEqual({ startLine: NaN, endLine: NaN })
+  })
+
+  it('finds code-line via text node parentElement', () => {
+    const codeLine = makeCodeLine('12')
+    const textNode = document.createTextNode('code here')
+    codeLine.appendChild(textNode)
+    const focus = makeCodeLine('15')
+    const sel = mockSelection(textNode, focus)
+    expect(getLineInfo(sel)).toEqual({ startLine: 12, endLine: 15 })
+  })
+})
+
+// --- getFileInfo ---
+
+describe('getFileInfo', () => {
+  it('returns filePath and language from .raw-content-pre', () => {
+    const wrapper = document.createElement('pre')
+    wrapper.classList.add('raw-content-pre')
+    wrapper.setAttribute('data-file-path', '/src/main.go')
+    wrapper.setAttribute('data-language', 'go')
+    const container = document.createElement('code')
+    wrapper.appendChild(container)
+    expect(getFileInfo(container)).toEqual({ filePath: '/src/main.go', language: 'go' })
+  })
+
+  it('returns filePath and empty language from .markdown-body', () => {
+    const wrapper = document.createElement('div')
+    wrapper.classList.add('markdown-body')
+    wrapper.setAttribute('data-file-path', '/docs/README.md')
+    const container = document.createElement('p')
+    wrapper.appendChild(container)
+    expect(getFileInfo(container)).toEqual({ filePath: '/docs/README.md', language: '' })
+  })
+
+  it('prioritizes .raw-content-pre when both .raw-content-pre and .markdown-body are ancestors', () => {
+    const markdown = document.createElement('div')
+    markdown.classList.add('markdown-body')
+    markdown.setAttribute('data-file-path', '/from-markdown.md')
+    markdown.setAttribute('data-language', 'md')
+    const raw = document.createElement('pre')
+    raw.classList.add('raw-content-pre')
+    raw.setAttribute('data-file-path', '/from-raw.go')
+    raw.setAttribute('data-language', 'go')
+    const container = document.createElement('code')
+    raw.appendChild(container)
+    markdown.appendChild(raw)
+    // .raw-content-pre is closer, so it takes priority
+    expect(getFileInfo(container)).toEqual({ filePath: '/from-raw.go', language: 'go' })
+  })
+
+  it('returns empty strings when container is not in .raw-content-pre or .markdown-body', () => {
+    const container = document.createElement('div')
+    expect(getFileInfo(container)).toEqual({ filePath: '', language: '' })
+  })
+
+  it('defaults to empty string when data-file-path is missing on .raw-content-pre', () => {
+    const wrapper = document.createElement('pre')
+    wrapper.classList.add('raw-content-pre')
+    wrapper.setAttribute('data-language', 'js')
+    const container = document.createElement('code')
+    wrapper.appendChild(container)
+    expect(getFileInfo(container)).toEqual({ filePath: '', language: 'js' })
+  })
+
+  it('defaults to empty string when data-language is missing on .raw-content-pre', () => {
+    const wrapper = document.createElement('pre')
+    wrapper.classList.add('raw-content-pre')
+    wrapper.setAttribute('data-file-path', '/src/app.ts')
+    const container = document.createElement('code')
+    wrapper.appendChild(container)
+    expect(getFileInfo(container)).toEqual({ filePath: '/src/app.ts', language: '' })
+  })
+
+  it('defaults to empty string when data-file-path is missing on .markdown-body', () => {
+    const wrapper = document.createElement('div')
+    wrapper.classList.add('markdown-body')
+    const container = document.createElement('p')
+    wrapper.appendChild(container)
+    expect(getFileInfo(container)).toEqual({ filePath: '', language: '' })
+  })
+
+  it('finds .raw-content-pre through intermediate elements', () => {
+    const wrapper = document.createElement('pre')
+    wrapper.classList.add('raw-content-pre')
+    wrapper.setAttribute('data-file-path', '/deep/file.py')
+    wrapper.setAttribute('data-language', 'python')
+    const mid = document.createElement('div')
+    const container = document.createElement('span')
+    mid.appendChild(container)
+    wrapper.appendChild(mid)
+    expect(getFileInfo(container)).toEqual({ filePath: '/deep/file.py', language: 'python' })
+  })
+
+  it('container itself is .raw-content-pre returns its own attributes', () => {
+    const el = document.createElement('pre')
+    el.classList.add('raw-content-pre')
+    el.setAttribute('data-file-path', '/self.rs')
+    el.setAttribute('data-language', 'rust')
+    // closest('.raw-content-pre') on the element itself returns itself
+    expect(getFileInfo(el)).toEqual({ filePath: '/self.rs', language: 'rust' })
+  })
+})

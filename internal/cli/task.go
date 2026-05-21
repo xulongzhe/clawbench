@@ -187,7 +187,7 @@ var listAgentsHelp = HelpInfo{
 //
 // Security: @path is restricted to files under the project directory to prevent
 // arbitrary file reads by AI agents (ISS-026). If projectPath is empty, the
-// restriction is not applied (backward compat for non-task CLI usage).
+// restriction is not applied (allows non-task CLI usage).
 func readFlagOrFile(val string, projectPath string) (string, error) {
 	if !strings.HasPrefix(val, "@") {
 		return val, nil

@@ -461,7 +461,7 @@ func TestBroadcastEvent_BufferWindow(t *testing.T) {
 	}
 }
 
-func TestManager_BroadcastEvent_JPushAlert_WithResponsePreview(t *testing.T) {
+func TestManager_BroadcastEvent_JPushAlert_WithSessionTitle(t *testing.T) {
 	var receivedAlert string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]any
@@ -498,17 +498,17 @@ func TestManager_BroadcastEvent_JPushAlert_WithResponsePreview(t *testing.T) {
 			SessionID:      "s1",
 			Status:         "completed",
 			HasNewMessages: true,
-			ResponsePreview: "AI回复的前16个字符…",
+			SessionTitle:   "帮我写一个Go HTTP服务器",
 		},
 	}
 	mgr.BroadcastEvent(msg)
 
-	if receivedAlert != "AI回复的前16个字符…" {
-		t.Errorf("expected alert to be response preview, got %q", receivedAlert)
+	if receivedAlert != "帮我写一个Go HTTP服务器" {
+		t.Errorf("expected alert to be session title, got %q", receivedAlert)
 	}
 }
 
-func TestManager_BroadcastEvent_JPushAlert_WithoutResponsePreview(t *testing.T) {
+func TestManager_BroadcastEvent_JPushAlert_WithoutSessionTitle(t *testing.T) {
 	var receivedAlert string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]any

@@ -35,20 +35,12 @@ var ProxyService *ProxyRegistry
 
 // NewProxyRegistry creates a new port registry and starts background health checks.
 // It also restores any previously persisted ports from the database.
-func NewProxyRegistry(cfg model.ProxyConfig, selfPort int) *ProxyRegistry {
-	if !cfg.Enabled {
-		slog.Info("proxy service disabled by config")
-		return &ProxyRegistry{
-			ports:    make(map[int]*model.ForwardedPort),
-			cfg:      cfg,
-			selfPort: selfPort,
-		}
-	}
-
+// The caller (main.go) decides whether to create this based on port_forward.enabled.
+func NewProxyRegistry(allowedPorts string, selfPort int) *ProxyRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &ProxyRegistry{
 		ports:    make(map[int]*model.ForwardedPort),
-		cfg:      cfg,
+		cfg:      model.ProxyConfig{AllowedPorts: allowedPorts},
 		selfPort: selfPort,
 		cancel:   cancel,
 	}
@@ -154,24 +146,6 @@ func (r *ProxyRegistry) ListPorts() []model.ForwardedPort {
 // IsPortAllowed checks whether a port falls within the configured allowed range.
 func (r *ProxyRegistry) IsPortAllowed(port int) bool {
 	return isPortInRange(port, r.cfg.AllowedPorts)
-}
-
-// IsPortRegistered checks whether a port has been explicitly registered.
-func (r *ProxyRegistry) IsPortRegistered(port int) bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	_, exists := r.ports[port]
-	return exists
-}
-
-// GetPortProtocol returns the protocol for a registered port, defaults to "http".
-func (r *ProxyRegistry) GetPortProtocol(port int) string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if p, ok := r.ports[port]; ok && p.Protocol != "" {
-		return p.Protocol
-	}
-	return "http"
 }
 
 // DetectedPort represents an auto-detected listening port with its protocol and process.

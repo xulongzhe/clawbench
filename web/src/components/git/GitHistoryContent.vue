@@ -134,7 +134,7 @@ import GitBreadcrumb from './GitBreadcrumb.vue'
 import GitManageContent from './GitManageContent.vue'
 import { renderDiff } from '@/utils/diff.ts'
 import { store } from '@/stores/app.ts'
-import { useCommitNavigation, consumePendingCommitNavigation, pendingSha as pendingCommitSha } from '@/composables/useCommitNavigation.ts'
+import { useCommitNavigation, consumePendingCommitNavigation, pendingSha as pendingCommitSha, consumePendingManageNavigation } from '@/composables/useCommitNavigation.ts'
 const { t } = useI18n()
 
 const switchTab = inject('switchTab', () => {})
@@ -529,6 +529,12 @@ const hasLoadedMore = ref(false)
 watch(() => props.active, async (nowActive) => {
   if (!nowActive || props.mode !== 'project') return
 
+  // Check for pending manage-view navigation (from branch badge click)
+  if (consumePendingManageNavigation()) {
+    currentView.value = 'manage'
+    return
+  }
+
   // Check for pending commit navigation (from chat hash links)
   const pendingSha = consumePendingCommitNavigation()
   if (pendingSha) {
@@ -566,6 +572,15 @@ onMounted(async () => {
     resetState()
     lastProjectRoot.value = currentProject
     lastFilePath.value = currentFile
+  }
+
+  // If navigating from branch badge click, go directly to manage view
+  if (consumePendingManageNavigation()) {
+    currentView.value = 'manage'
+    if (commits.value.length === 0 && !error.value) {
+      await loadProjectHistory()
+    }
+    return
   }
 
   // If navigating from a commit hash link, go directly to that commit

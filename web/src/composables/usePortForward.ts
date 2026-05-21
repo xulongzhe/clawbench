@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { apiGet, apiPost, apiDelete } from '@/utils/api.ts'
+import { apiGet, apiPost, apiDelete } from '@/utils/api'
 import { useAppMode } from './useAppMode.ts'
 import { gt } from '@/composables/useLocale'
 import { tunnelStatusFromPorts as tunnelStatusFromPortsUtil, buildPortUrl } from '@/utils/portForwardUtils.ts'

@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const terminalComponentPaths = [
-  '../terminal/TerminalPanel.vue',
   '../terminal/TerminalPanelContent.vue',
 ]
 
@@ -17,13 +16,13 @@ const readToolbarStyleBlock = (source: string) => {
 
 describe('TerminalPanel xterm selection defaults', () => {
   it('does not force xterm selection to line mode', () => {
-    const source = readTerminalComponent('../terminal/TerminalPanel.vue')
+    const source = readTerminalComponent('../terminal/TerminalPanelContent.vue')
 
     expect(source).not.toContain("selectionStyle: 'line'")
   })
 
   it('hides toolbar buttons whose actions are covered by gestures', () => {
-    const source = readTerminalComponent('../terminal/TerminalPanel.vue')
+    const source = readTerminalComponent('../terminal/TerminalPanelContent.vue')
     const gestureMappedKeys = ['Esc', 'Tab', 'Page Up', 'Page Down', '↑', '↓', '←', '→']
 
     for (const title of gestureMappedKeys) {

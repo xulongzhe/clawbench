@@ -1,5 +1,5 @@
 <template>
-  <BottomSheet :open="open" :title="t('toc.title')" @close="$emit('close')">
+  <BottomSheet :open="open" auto :title="t('toc.title')" @close="$emit('close')">
     <template #header>
       <List :size="16" class="bs-header-icon" />
       <span class="bs-header-title">{{ t('toc.title') }}</span>

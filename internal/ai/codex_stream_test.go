@@ -3,8 +3,11 @@ package ai
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func parseCodexLine(line string) []StreamEvent {
@@ -629,9 +632,13 @@ ERROR: Missing environment variable: MINIMAX_API_KEY`
 
 	// Should have: 1 error event (stops parsing after ERROR)
 	var errorEvents []StreamEvent
+	var doneEvents []StreamEvent
 	for _, ev := range events {
 		if ev.Type == "error" {
 			errorEvents = append(errorEvents, ev)
+		}
+		if ev.Type == "done" {
+			doneEvents = append(doneEvents, ev)
 		}
 	}
 	if len(errorEvents) == 0 {
@@ -639,6 +646,10 @@ ERROR: Missing environment variable: MINIMAX_API_KEY`
 	}
 	if !strings.Contains(errorEvents[0].Error, "Missing environment variable") {
 		t.Errorf("expected error to mention env var, got %q", errorEvents[0].Error)
+	}
+	// ISS-079: ERROR must emit a done event so the SSE stream doesn't hang
+	if len(doneEvents) == 0 {
+		t.Fatal("expected a done event after ERROR line, got none")
 	}
 }
 
@@ -910,7 +921,9 @@ func TestCodexResumeOutput_EmptyResponse(t *testing.T) {
 
 func TestCodexResumeOutput_AnSIColorCodes(t *testing.T) {
 	// Codex may output ANSI color codes around role markers.
-	// The parser should still detect "codex" and "user" as role markers.
+	// ANSI-prefixed markers won't match the bare "codex"/"user" comparison,
+	// so no content should be extracted. This tests the parser's resilience
+	// to ANSI — it still produces metadata + done without panicking.
 	input := "--------\n" +
 		"\x1b[36muser\x1b[0m\n" + // ANSI-colored "user" — NOT a bare "user" line
 		"hello\n" +
@@ -918,19 +931,28 @@ func TestCodexResumeOutput_AnSIColorCodes(t *testing.T) {
 		"Hi there!\n"
 	events := parseResumeOutput(input)
 
-	// With ANSI codes, "codex" marker won't match (it has escape codes),
-	// so no content should be extracted — this tests the parser's
-	// resilience to ANSI. The parser still produces metadata + done.
 	var contentCount int
 	for _, ev := range events {
 		if ev.Type == "content" {
 			contentCount++
 		}
 	}
-	// ANSI-prefixed markers won't match, so no content is expected
-	if contentCount != 0 {
-		t.Logf("Note: ANSI color codes around role markers may cause content to be missed (got %d content events)", contentCount)
+	// ANSI-prefixed markers won't match, so no content is expected.
+	// If ANSI stripping is added later, this test should be updated.
+	assert.Equal(t, 0, contentCount, "ANSI-prefixed role markers should not produce content events")
+
+	// Parser should still produce metadata + done
+	var foundMetadata, foundDone bool
+	for _, ev := range events {
+		if ev.Type == "metadata" {
+			foundMetadata = true
+		}
+		if ev.Type == "done" {
+			foundDone = true
+		}
 	}
+	assert.True(t, foundMetadata, "metadata event should still be produced")
+	assert.True(t, foundDone, "done event should still be produced")
 }
 
 func TestCodexResumeOutput_MetadataSessionID(t *testing.T) {
@@ -1068,7 +1090,7 @@ func TestCodexResumeOutput_SecondSession_ResumeFlow(t *testing.T) {
 	var firstEvents []StreamEvent
 	var threadID string
 	for ev := range ch1 {
-		firstEvents = append(firstEvents, ev)
+		_ = append(firstEvents, ev)
 		if ev.Type == "metadata" && ev.Meta != nil && ev.Meta.SessionID != "" {
 			threadID = ev.Meta.SessionID
 		}
@@ -1379,4 +1401,68 @@ func TestCodexSplitThinking_OnlyOpenTag(t *testing.T) {
 	if content != "" {
 		t.Errorf("expected empty content, got %q", content)
 	}
+}
+
+// --- Scanner error (ISS-080) test ---
+
+// errorReader reads a limited number of bytes, then returns an error.
+type errorReader struct {
+	data   []byte
+	err    error
+	offset int
+}
+
+func (r *errorReader) Read(p []byte) (int, error) {
+	if r.offset >= len(r.data) {
+		return 0, r.err
+	}
+	n := copy(p, r.data[r.offset:])
+	r.offset += n
+	if r.offset >= len(r.data) {
+		return n, r.err
+	}
+	return n, nil
+}
+
+func TestCodexResumeOutput_ScannerReadError(t *testing.T) {
+	// Simulate a partial read followed by an I/O error
+	partial := `OpenAI Codex v0.57.0 (research preview)
+--------
+workdir: /tmp
+model: codex-MiniMax-M2.7
+--------
+user
+hello
+codex
+Hi the`
+	reader := &errorReader{data: []byte(partial), err: fmt.Errorf("i/o timeout")}
+	scanner := bufio.NewScanner(reader)
+	ch := make(chan StreamEvent, 64)
+	var rawLines strings.Builder
+	parseCodexResumeOutput(scanner, ch, "", &rawLines)
+	close(ch)
+
+	var events []StreamEvent
+	for ev := range ch {
+		events = append(events, ev)
+	}
+
+	// Should have a warning event for the read error
+	hasWarning := false
+	for _, ev := range events {
+		if ev.Type == "warning" {
+			hasWarning = true
+			assert.Contains(t, ev.Content, "read error", "warning should mention read error")
+		}
+	}
+	assert.True(t, hasWarning, "expected a warning event for scanner.Err()")
+
+	// Should still have a done event so the consumer can finalize
+	hasDone := false
+	for _, ev := range events {
+		if ev.Type == "done" {
+			hasDone = true
+		}
+	}
+	assert.True(t, hasDone, "expected a done event after scanner read error")
 }

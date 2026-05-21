@@ -149,6 +149,7 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { FileText, Download, Code2 } from 'lucide-vue-next'
 import ImagePreview from '@/components/media/ImagePreview.vue'
 import PdfPreview from '@/components/media/PdfPreview.vue'
@@ -186,32 +187,17 @@ const htmlPreviewRef = ref(null)
 const pdfOutline = computed(() => pdfPreviewRef.value?.outline || [])
 const pdfScrollToPage = (pageNum) => pdfPreviewRef.value?.scrollToPage(pageNum)
 
-// Word wrap preference persisted to localStorage
-const wordWrap = ref(false)
-try {
-    const saved = localStorage.getItem('clawbench-word-wrap')
-    if (saved !== null) wordWrap.value = saved === 'true'
-} catch { /* localStorage may be unavailable */ }
+// Word wrap & line numbers preferences from settings config
+const { localConfig, setLocalConfig } = useSettingsConfig()
+const wordWrap = computed(() => !!localConfig.wordWrap)
+const showLineNumbers = computed(() => localConfig.lineNumbers !== false)
 
 function toggleWordWrap() {
-    wordWrap.value = !wordWrap.value
-    try {
-        localStorage.setItem('clawbench-word-wrap', String(wordWrap.value))
-    } catch { /* localStorage may be unavailable */ }
+    setLocalConfig('wordWrap', !wordWrap.value)
 }
 
-// Line numbers preference persisted to localStorage
-const showLineNumbers = ref(true)
-try {
-    const savedLn = localStorage.getItem('clawbench-line-numbers')
-    if (savedLn !== null) showLineNumbers.value = savedLn !== 'false'
-} catch { /* localStorage may be unavailable */ }
-
 function toggleLineNumbers() {
-    showLineNumbers.value = !showLineNumbers.value
-    try {
-        localStorage.setItem('clawbench-line-numbers', String(showLineNumbers.value))
-    } catch { /* localStorage may be unavailable */ }
+    setLocalConfig('lineNumbers', !showLineNumbers.value)
 }
 
 // Per-file scroll position cache

@@ -1,0 +1,85 @@
+chat:
+    collapsed_height: 200
+    initial_messages: 0
+    page_size: 0
+    session_page_size: 0
+    system_prompt_interval: 0
+default_agent: claude
+dev_port: 0
+host: ""
+log_dir: ""
+log_level: ""
+log_max_days: 0
+password: ""
+port: 0
+port_forward:
+    allowed_ports: ""
+    enabled: false
+    host_key: ""
+    port: 0
+proxy:
+    allowed_ports: ""
+push:
+    jpush:
+        app_key: ""
+        enabled: false
+        master_secret: ""
+rag:
+    batch_size: 0
+    chunk_overlap: 0
+    chunk_size: 0
+    ollama_base_url: ""
+    ollama_model: ""
+    poll_interval: ""
+    retention_days: 0
+    search_limit: 0
+    search_pool_size: 0
+session:
+    max_count: 20
+tasks:
+    summarize_backend: codebuddy
+    summarize_model: codebuddy-latest
+terminal:
+    buffer_lines: 0
+    enabled: false
+    idle_timeout: ""
+    max_buffer_mb: 0
+    max_line_bytes: 0
+    max_sessions: 0
+tls:
+    cert_file: ""
+    enabled: false
+    key_file: ""
+tts:
+    api:
+        base_url: https://api.example.com/v1/chat
+        format: openai
+        key: sk-1234567890abcdef
+    engine: moss-nano
+    format: ""
+    inline_code_max_len: 0
+    kokoro:
+        lang: ""
+        model_path: /path/to/kokoro.onnx
+        voices_path: /path/to/voices.bin
+    max_cache_files: 0
+    max_summarize_runes: 0
+    moss_nano:
+        backend: ""
+        model_dir: /path/to/models
+        prompt_speech: ""
+        voice: ""
+    piper:
+        length_scale: 1.2
+        model_path: /path/to/model.onnx
+        noise_scale: 0.5
+        sentence_silence: 0.3
+    speed: 0
+    summarize_backend: api
+    summarize_model: gpt-4o-mini
+    tts_model: ""
+    voice: ""
+upload:
+    max_files: 0
+    max_size_mb: 50
+watch_dir: ""

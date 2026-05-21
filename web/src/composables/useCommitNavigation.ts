@@ -4,6 +4,9 @@ import { getCachedCommitInfo } from '@/composables/useCommitHashAnnotation.ts'
 // Module-level pending SHA — set by chat click, consumed by Git history components
 const pendingSha = ref<string | null>(null)
 
+// Module-level pending manage navigation — set by branch badge click, consumed by Git history components
+const pendingManageView = ref(false)
+
 /**
  * Set a pending commit navigation request.
  * Called from App.vue's handleNavigateToCommit.
@@ -23,18 +26,30 @@ export function consumePendingCommitNavigation(): string | null {
 }
 
 /**
- * Check if there's a pending commit navigation without consuming it.
- */
-export function hasPendingCommitNavigation(): boolean {
-    return pendingSha.value !== null
-}
-
-/**
  * Reset module-level state for testing.
  * @internal
  */
 export function _resetPendingShaForTesting() {
     pendingSha.value = null
+    pendingManageView.value = false
+}
+
+/**
+ * Set a pending manage-view navigation request.
+ * Called from AppHeader's branch badge click.
+ */
+export function setPendingManageNavigation() {
+    pendingManageView.value = true
+}
+
+/**
+ * Check if there's a pending manage-view navigation and consume it.
+ * Returns true if pending, false otherwise.
+ */
+export function consumePendingManageNavigation(): boolean {
+    const pending = pendingManageView.value
+    pendingManageView.value = false
+    return pending
 }
 
 /**

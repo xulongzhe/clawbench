@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func parseOpenCodeLine(line string) []StreamEvent {
@@ -90,6 +92,23 @@ func TestOpenCodeStream_ParseLine_ToolUse(t *testing.T) {
 	if input["file_path"] != "/tmp/test.go" {
 		t.Errorf("unexpected input: %v", input)
 	}
+}
+
+func TestOpenCodeStream_ParseLine_ToolUseNonObjectInput(t *testing.T) {
+	// When tool input is valid JSON but not an object (e.g., an array),
+	// normalizeToolInput should fail and fall back to raw input string
+	line := `{"type":"tool_use","timestamp":1,"sessionID":"ses_abc","part":{"type":"tool","tool":"bash","callID":"call_arr","state":{"status":"completed","input":[1,2,3],"output":"done"}}}`
+	events := parseOpenCodeLine(line)
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	tool := events[0].Tool
+	if tool == nil {
+		t.Fatal("expected tool call, got nil")
+	}
+	// Should fall back to raw input string
+	assert.Equal(t, "[1,2,3]", tool.Input)
 }
 
 func TestOpenCodeStream_ParseLine_ToolUseRunning(t *testing.T) {
@@ -373,9 +392,9 @@ func TestNormalizeOpenCodeToolName(t *testing.T) {
 		{"", ""},
 	}
 	for _, tt := range tests {
-		got := normalizeOpenCodeToolName(tt.input)
+		got := normalizeToolName(tt.input)
 		if got != tt.expected {
-			t.Errorf("normalizeOpenCodeToolName(%q) = %q, want %q", tt.input, got, tt.expected)
+			t.Errorf("normalizeToolName(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
 	}
 }
@@ -383,7 +402,11 @@ func TestNormalizeOpenCodeToolName(t *testing.T) {
 func TestNormalizeOpenCodeInput_FieldRemapping(t *testing.T) {
 	// filePath → file_path
 	input1 := json.RawMessage(`{"filePath":"/tmp/test.go"}`)
-	result1 := normalizeOpenCodeInput("read", input1)
+	norm1, err := normalizeToolInput(input1, map[string]string{"oldString": "old_string", "newString": "new_string"})
+	if err != nil {
+		t.Fatalf("normalizeToolInput failed: %v", err)
+	}
+	result1 := string(norm1)
 	var parsed1 map[string]any
 	if err := json.Unmarshal([]byte(result1), &parsed1); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
@@ -397,7 +420,11 @@ func TestNormalizeOpenCodeInput_FieldRemapping(t *testing.T) {
 
 	// oldString → old_string
 	input2 := json.RawMessage(`{"oldString":"foo","newString":"bar"}`)
-	result2 := normalizeOpenCodeInput("edit", input2)
+	norm2, err := normalizeToolInput(input2, map[string]string{"oldString": "old_string", "newString": "new_string"})
+	if err != nil {
+		t.Fatalf("normalizeToolInput failed: %v", err)
+	}
+	result2 := string(norm2)
 	var parsed2 map[string]any
 	if err := json.Unmarshal([]byte(result2), &parsed2); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
@@ -417,7 +444,11 @@ func TestNormalizeOpenCodeInput_FieldRemapping(t *testing.T) {
 
 	// Combined: filePath + oldString + newString
 	input3 := json.RawMessage(`{"filePath":"main.go","oldString":"hello","newString":"world","replace_all":true}`)
-	result3 := normalizeOpenCodeInput("edit", input3)
+	norm3, err := normalizeToolInput(input3, map[string]string{"oldString": "old_string", "newString": "new_string"})
+	if err != nil {
+		t.Fatalf("normalizeToolInput failed: %v", err)
+	}
+	result3 := string(norm3)
 	var parsed3 map[string]any
 	if err := json.Unmarshal([]byte(result3), &parsed3); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
@@ -438,16 +469,20 @@ func TestNormalizeOpenCodeInput_FieldRemapping(t *testing.T) {
 
 func TestNormalizeOpenCodeInput_UnparseableJSON(t *testing.T) {
 	bad := json.RawMessage(`not valid json`)
-	result := normalizeOpenCodeInput("edit", bad)
-	if result != string(bad) {
-		t.Errorf("expected unparseable input returned as-is, got %q", result)
+	_, err := normalizeToolInput(bad, nil)
+	if err == nil {
+		t.Error("expected error for unparseable JSON")
 	}
 }
 
 func TestNormalizeOpenCodeInput_AlreadyCanonical(t *testing.T) {
 	// If input already uses snake_case, no remapping needed
 	input := json.RawMessage(`{"file_path":"/tmp/test.go","old_string":"foo","new_string":"bar"}`)
-	result := normalizeOpenCodeInput("edit", input)
+	norm, err := normalizeToolInput(input, map[string]string{"oldString": "old_string", "newString": "new_string"})
+	if err != nil {
+		t.Fatalf("normalizeToolInput failed: %v", err)
+	}
+	result := string(norm)
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 		t.Fatalf("failed to parse result: %v", err)

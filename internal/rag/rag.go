@@ -3,38 +3,36 @@ package rag
 import (
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 
 	"clawbench/internal/model"
 )
 
 var (
-	// GlobalStore is the singleton DuckDB store instance.
-	GlobalStore *Store
-	// GlobalIndexer is the singleton indexer instance.
-	GlobalIndexer *Indexer
-	// GlobalEmbedder is the singleton embedding client instance.
-	GlobalEmbedder *EmbeddingClient
-	// GlobalCleanupWorker is the singleton cleanup worker instance.
-	GlobalCleanupWorker *CleanupWorker
+	GlobalStore           *Store
+	GlobalIndexer         *Indexer
+	GlobalEmbedder        *EmbeddingClient
+	GlobalCleanupWorker   *CleanupWorker
+	embedderHealthyFlag   atomic.Bool
 )
 
-// Init initializes the RAG system: DuckDB store, embedding client, and dimension check.
 func Init(cfg model.RAGConfig) error {
-	// Initialize DuckDB store
+	if err := InitSegmenter(); err != nil {
+		slog.Warn("rag: gse segmenter not available, Chinese FTS may be limited", slog.String("err", err.Error()))
+	}
+
 	store, err := InitStore()
 	if err != nil {
 		return fmt.Errorf("init rag store: %w", err)
 	}
 
-	// Check embedding dimension compatibility
-	const bgeM3Dim = 1024
-	existingDim, mismatch, err := store.CheckDimensionMismatch(bgeM3Dim)
+	existingDim, mismatch, err := store.CheckDimensionMismatch()
 	if err != nil {
 		slog.Warn("rag: failed to check dimension, continuing", slog.String("err", err.Error()))
 	} else if mismatch {
 		slog.Warn("rag: embedding dimension mismatch, resetting table",
 			slog.Int("existing_dim", existingDim),
-			slog.Int("expected_dim", bgeM3Dim),
+			slog.Int("expected_dim", store.embeddingDim),
 		)
 		if err := store.ResetTable(); err != nil {
 			store.Close()
@@ -42,35 +40,31 @@ func Init(cfg model.RAGConfig) error {
 		}
 	}
 
-	// Initialize embedding client
-	embedder := NewEmbeddingClient(cfg.OllamaBaseURL, cfg.OllamaModel)
+	embedder := NewEmbeddingClient(cfg.BaseURL, cfg.Model, cfg.APIKey)
 
 	GlobalStore = store
 	GlobalEmbedder = embedder
 
 	slog.Info("rag initialized",
-		slog.String("ollama_url", cfg.OllamaBaseURL),
-		slog.String("model", cfg.OllamaModel),
+		slog.String("base_url", cfg.BaseURL),
+		slog.String("model", cfg.Model),
 		slog.Int("chunk_size", cfg.ChunkSize),
+		slog.Bool("fts_available", store.ftsAvailable),
+		slog.Int("embedding_dim", store.embeddingDim),
 	)
 
 	return nil
 }
 
-// StartIndexer creates and starts the RAG indexer.
 func StartIndexer(cfg model.RAGConfig) {
-	if GlobalStore == nil || GlobalEmbedder == nil {
-		slog.Warn("rag: cannot start indexer, store or embedder not initialized")
+	if GlobalStore == nil {
+		slog.Warn("rag: cannot start indexer, store not initialized")
 		return
 	}
 	GlobalIndexer = NewIndexer(GlobalStore, GlobalEmbedder, cfg)
 	GlobalIndexer.Start()
 }
 
-// StartCleanupWorker creates and starts the cleanup worker.
-// Starts regardless of whether RAG is enabled — soft-deleted SQLite data
-// accumulates even without RAG. When RAG is disabled, store is nil and
-// only SQLite cleanup runs.
 func StartCleanupWorker(cfg model.RAGConfig) {
 	if cfg.RetentionDays <= 0 {
 		return
@@ -79,7 +73,6 @@ func StartCleanupWorker(cfg model.RAGConfig) {
 	GlobalCleanupWorker.Start()
 }
 
-// Shutdown gracefully stops the RAG system.
 func Shutdown() {
 	if GlobalCleanupWorker != nil {
 		GlobalCleanupWorker.Stop()
@@ -95,4 +88,12 @@ func Shutdown() {
 	}
 	GlobalEmbedder = nil
 	slog.Info("rag shutdown complete")
+}
+
+func EmbedderHealthy() bool {
+	return embedderHealthyFlag.Load()
+}
+
+func SetEmbedderHealthy(healthy bool) {
+	embedderHealthyFlag.Store(healthy)
 }

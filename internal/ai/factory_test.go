@@ -11,6 +11,9 @@ func TestNewBackend_Claude(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, backend)
 	assert.Equal(t, "claude", backend.Name())
+	// Claude is wrapped in AutoResumeBackend (ExitPlanMode auto-resume)
+	_, ok := backend.(*AutoResumeBackend)
+	assert.True(t, ok, "claude should be wrapped in AutoResumeBackend")
 }
 
 func TestNewBackend_Codebuddy(t *testing.T) {
@@ -18,6 +21,9 @@ func TestNewBackend_Codebuddy(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, backend)
 	assert.Equal(t, "codebuddy", backend.Name())
+	// Codebuddy is wrapped in AutoResumeBackend (ExitPlanMode auto-resume)
+	_, ok := backend.(*AutoResumeBackend)
+	assert.True(t, ok, "codebuddy should be wrapped in AutoResumeBackend")
 }
 
 func TestNewBackend_OpenCode(t *testing.T) {
@@ -25,6 +31,9 @@ func TestNewBackend_OpenCode(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, backend)
 	assert.Equal(t, "opencode", backend.Name())
+	// OpenCode is NOT wrapped in AutoResumeBackend
+	_, ok := backend.(*AutoResumeBackend)
+	assert.False(t, ok, "opencode should NOT be wrapped in AutoResumeBackend")
 }
 
 func TestNewBackend_Gemini(t *testing.T) {
@@ -32,6 +41,9 @@ func TestNewBackend_Gemini(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, backend)
 	assert.Equal(t, "gemini", backend.Name())
+	// Gemini is NOT wrapped in AutoResumeBackend
+	_, ok := backend.(*AutoResumeBackend)
+	assert.False(t, ok, "gemini should NOT be wrapped in AutoResumeBackend")
 }
 
 func TestNewBackend_Qoder(t *testing.T) {
@@ -88,9 +100,22 @@ func TestNewBackend_Unsupported(t *testing.T) {
 	_, err := NewBackend("unsupported")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported backend type")
+	// Verify error message lists all supported backends
+	assert.Contains(t, err.Error(), "claude")
+	assert.Contains(t, err.Error(), "codex")
+	assert.Contains(t, err.Error(), "pi")
 }
 
 func TestNewBackend_Empty(t *testing.T) {
 	_, err := NewBackend("")
 	assert.Error(t, err)
+}
+
+func TestNewBackend_CaseSensitive(t *testing.T) {
+	// Backend type is case-sensitive
+	_, err := NewBackend("Claude")
+	assert.Error(t, err, "backend type should be case-sensitive")
+
+	_, err = NewBackend("PI")
+	assert.Error(t, err, "backend type should be case-sensitive")
 }

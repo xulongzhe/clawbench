@@ -1,5 +1,5 @@
 <template>
-  <BottomSheet :open="open" @close="$emit('close')">
+  <BottomSheet :open="open" auto @close="$emit('close')">
     <template #header>
       <FileText :size="16" class="bs-header-icon" />
       <span class="bs-header-title">{{ t('file.details.title') }}</span>

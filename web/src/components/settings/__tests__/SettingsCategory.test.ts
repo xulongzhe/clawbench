@@ -1,0 +1,667 @@
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { mount } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
+import { ref, reactive } from 'vue'
+import SettingsCategory from '@/components/settings/SettingsCategory.vue'
+
+// Mock composables
+const mockSetLocalConfig = vi.fn()
+const mockSetServerValue = vi.fn().mockResolvedValue({ needsRestart: false, changedColdFields: [] })
+const mockGetServerValueWithDefault = vi.fn()
+const mockPatchAgentPref = vi.fn().mockResolvedValue(undefined)
+const mockGetAgentModelPref = vi.fn().mockReturnValue(null)
+const mockGetAgentThinkingPref = vi.fn().mockReturnValue(null)
+const mockLoadAgents = vi.fn()
+const mockUpdateAgentField = vi.fn()
+
+const localConfig = reactive<Record<string, any>>({
+  theme: 'auto',
+  locale: 'zh',
+  autoSpeech: false,
+  showHidden: false,
+  wordWrap: false,
+  lineNumbers: true,
+  fileView: 'list',
+  terminalFontSize: 12,
+  androidLogCapture: false,
+})
+
+const serverConfig = ref<Record<string, any>>({
+  version: 'dev',
+  default_agent: '',
+  chat: { initial_messages: 20, page_size: 20, collapsed_height: 150, system_prompt_interval: 10 },
+  session: { max_count: 10 },
+  upload: { max_size_mb: 100, max_files: 20 },
+  terminal: { enabled: true, idle_timeout: '10m', max_sessions: 10, buffer_lines: 2000 },
+  tts: { engine: 'edge', voice: '', speed: 1.0, max_cache_files: 100, summarize_backend: 'simple', summarize_model: '', format: '' },
+  rag: { enabled: false, ollama_base_url: 'http://localhost:11434', ollama_model: 'bge-m3', chunk_size: 512, search_limit: 5, retention_days: 90 },
+  port_forward: { enabled: true, port: 0, allowed_ports: '1024-65535' },
+  push: { jpush: { enabled: false, app_key: '' } },
+  tasks: { summarize_backend: '', summarize_model: '' },
+})
+
+const mockAgents = [
+  { id: 'codebuddy', name: 'CodeBuddy', icon: '🤖', backend: 'codebuddy', models: [{ id: 'glm-5.1', name: 'GLM 5.1', default: true }, { id: 'glm-4', name: 'GLM 4', default: false }], thinkingEffortLevels: ['low', 'medium', 'high'], thinkingEffort: 'medium', preferredModel: '' },
+  { id: 'claude', name: 'Claude', icon: '🧠', backend: 'claude', models: [{ id: 'claude-sonnet', name: 'Sonnet', default: true }], thinkingEffortLevels: [], thinkingEffort: '', preferredModel: '' },
+]
+
+vi.mock('@/composables/useSettingsConfig', () => ({
+  useSettingsConfig: () => ({
+    localConfig,
+    serverConfig,
+    setLocalConfig: mockSetLocalConfig,
+    getServerValueWithDefault: mockGetServerValueWithDefault,
+    setServerValue: mockSetServerValue,
+    patchAgentPref: mockPatchAgentPref,
+    getAgentModelPref: mockGetAgentModelPref,
+    getAgentThinkingPref: mockGetAgentThinkingPref,
+  }),
+}))
+
+vi.mock('@/composables/useAgents', () => ({
+  useAgents: () => ({
+    agents: ref(mockAgents),
+    loadAgents: mockLoadAgents,
+    updateAgentField: mockUpdateAgentField,
+    getAgentModels: (agentId: string) => {
+      const a = mockAgents.find(a => a.id === agentId)
+      return a?.models || []
+    },
+    getAgentThinkingEffortLevels: (agentId: string) => {
+      const a = mockAgents.find(a => a.id === agentId)
+      return a?.thinkingEffortLevels || []
+    },
+    hasThinkingEffortLevels: (agentId: string) => {
+      const a = mockAgents.find(a => a.id === agentId)
+      return (a?.thinkingEffortLevels?.length || 0) > 0
+    },
+    getDefaultModelId: (agentId: string) => {
+      const a = mockAgents.find(a => a.id === agentId)
+      if (a?.preferredModel) return a.preferredModel
+      if (!a?.models?.length) return ''
+      const def = a.models.find((m: any) => m.default)
+      return def ? def.id : a.models[0].id
+    },
+  }),
+}))
+
+vi.mock('@/composables/useAppMode', () => ({
+  useAppMode: () => ({ isAppMode: ref(false) }),
+}))
+
+const i18n = createI18n({
+  legacy: false,
+  locale: 'zh',
+  messages: {
+    zh: {
+      common: { ok: '确定' },
+      settings: {
+        needsRestart: '需重启',
+        categories: { chat: '聊天', agents: '智能体', appearance: '外观', tts: '语音', network: '网络', terminal: '终端', rag: 'RAG', files: '文件', about: '关于', android: 'Android' },
+        items: {
+          defaultAgent: '默认智能体',
+          autoSpeech: '自动语音',
+          chatInitialMessages: '初始消息数',
+          chatPageSize: '每页消息数',
+          chatCollapsedHeight: '折叠高度',
+          chatSystemPromptInterval: '系统提示间隔',
+          sessionMaxCount: '最大会话数',
+          theme: '主题',
+          locale: '语言',
+          ttsEngine: 'TTS引擎',
+          ttsEngineEdge: 'Edge',
+          ttsEnginePiper: 'Piper',
+          ttsEngineKokoro: 'Kokoro',
+          ttsEngineMossNano: 'MOSS-Nano',
+          ttsVoice: '语音',
+          ttsSpeed: '语速',
+          ttsSummarizeBackend: '摘要后端',
+          ttsSummarizeSimple: '简单',
+          ttsSummarizeApi: 'API',
+          ttsSummarizeModel: '摘要模型',
+          ttsMaxCacheFiles: '缓存上限',
+          tasksSummarizeBackend: '任务摘要后端',
+          tasksSummarizeModel: '任务摘要模型',
+          tasksSummarizeDisabled: '禁用',
+          tasksHeader: '定时任务',
+          ragSearchPoolSize: '搜索池大小',
+          ragOllamaUrl: '嵌入接口地址',
+          portForwardEnabled: '启用 SSH 隧道',
+          portForwardPort: 'SSH 隧道端口',
+          portForwardAllowedPorts: '允许的端口范围',
+          pushEnabled: '启用推送',
+          pushAppKey: 'AppKey',
+          portForwardHeader: 'SSH 隧道',
+          pushHeader: '推送',
+          ttsSummarizeHeader: '摘要',
+          ttsCacheHeader: '缓存',
+          terminalEnabled: '启用终端',
+          terminalIdleTimeout: '空闲超时',
+          terminalMaxSessions: '最大会话',
+          terminalBufferLines: '缓冲行数',
+          terminalFontSize: '终端字号',
+          showHidden: '显示隐藏文件',
+          wordWrap: '自动换行',
+          lineNumbers: '行号',
+          fileView: '视图模式',
+          fileViewList: '列表',
+          fileViewGrid: '网格',
+          uploadMaxSize: '上传大小上限',
+          uploadMaxFiles: '上传文件上限',
+          ragOllamaUrl: '嵌入接口地址',
+          ragOllamaModel: '嵌入模型',
+          ragChunkSize: '分块大小',
+          ragSearchLimit: '搜索限制',
+          ragRetentionDays: '保留天数',
+          aboutServerVersion: '服务器版本',
+          aboutAppVersion: 'APP版本',
+          serverRestart: '重启服务器',
+          androidLogCapture: '日志抓取',
+          reconfigureServer: '重新配置服务器',
+          agentModel: '首选模型',
+          agentThinking: '思考强度',
+          themeAuto: '自动',
+          themeLight: '浅色',
+          themeDark: '深色',
+          localeZh: '中文',
+          localeEn: 'English',
+        },
+      },
+    },
+  },
+})
+
+function mountCategory(categoryId: string) {
+  return mount(SettingsCategory, {
+    props: { categoryId },
+    global: { plugins: [i18n] },
+  })
+}
+
+describe('SettingsCategory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetServerValueWithDefault.mockImplementation((key: string) => {
+      // Simple flat-dot-path resolver against serverConfig
+      const parts = key.split('.')
+      let current: any = serverConfig.value
+      for (const p of parts) {
+        if (current == null || typeof current !== 'object') return undefined
+        current = current[p]
+      }
+      return current
+    })
+  })
+
+  // ─── Chat category ──────────────────────────────
+  describe('chat category', () => {
+    it('renders default_agent as select item', () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const defaultAgentItem = allItems.find(i => i.props().label === '默认智能体')
+      expect(defaultAgentItem).toBeTruthy()
+      expect(defaultAgentItem!.props().type).toBe('select')
+    })
+
+    it('renders autoSpeech as switch item', () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const autoSpeechItem = allItems.find(i => i.props().label === '自动语音')
+      expect(autoSpeechItem).toBeTruthy()
+      expect(autoSpeechItem!.props().type).toBe('switch')
+    })
+
+    it('PATCHes default_agent when user selects a value', async () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const defaultAgentItem = allItems.find(i => i.props().label === '默认智能体')
+      expect(defaultAgentItem).toBeTruthy()
+
+      // Simulate user selecting a value
+      await defaultAgentItem!.vm.$emit('update:modelValue', 'codebuddy')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('default_agent', 'codebuddy')
+    })
+
+    it('saves autoSpeech locally when toggled', async () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const autoSpeechItem = allItems.find(i => i.props().label === '自动语音')
+      expect(autoSpeechItem).toBeTruthy()
+
+      await autoSpeechItem!.vm.$emit('update:modelValue', true)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetLocalConfig).toHaveBeenCalledWith('autoSpeech', true)
+    })
+
+    it('PATCHes chat.initial_messages when number changed', async () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '初始消息数')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 30)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('chat.initial_messages', 30)
+    })
+
+    it('PATCHes session.max_count when number changed', async () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '最大会话数')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 20)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('session.max_count', 20)
+    })
+
+    it('session.max_count should NOT be marked as needsRestart (hot-reload field)', async () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '最大会话数')
+      expect(item).toBeTruthy()
+      // session.max_count is hot-reloadable via applyHotReloadGlobals, no restart needed
+      expect(item!.props().needsRestart).toBe(false)
+    })
+  })
+
+  // ─── Agents category ──────────────────────────────
+  describe('agents category', () => {
+    it('renders agent header, model selector, and thinking selector', () => {
+      const wrapper = mountCategory('agents')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+
+      // codebuddy has 2 models + thinking => header + model + thinking
+      // claude has 1 model + no thinking => header only
+      expect(allItems.length).toBe(4)
+    })
+
+    it('saves agent model preference via PATCH when selected', async () => {
+      const wrapper = mountCategory('agents')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const modelItem = allItems.find(i => i.props().label === '首选模型')
+      expect(modelItem).toBeTruthy()
+
+      await modelItem!.vm.$emit('update:modelValue', 'glm-4')
+      await wrapper.vm.$nextTick()
+
+      expect(mockPatchAgentPref).toHaveBeenCalledWith('codebuddy', 'preferred_model', 'glm-4')
+    })
+
+    it('saves agent thinking preference via PATCH when selected', async () => {
+      const wrapper = mountCategory('agents')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const thinkingItem = allItems.find(i => i.props().label === '思考强度')
+      expect(thinkingItem).toBeTruthy()
+
+      await thinkingItem!.vm.$emit('update:modelValue', 'high')
+      await wrapper.vm.$nextTick()
+
+      expect(mockPatchAgentPref).toHaveBeenCalledWith('codebuddy', 'preferred_thinking_effort', 'high')
+    })
+  })
+
+  // ─── TTS category ──────────────────────────────
+  describe('tts category', () => {
+    it('shows engine select and common fields', () => {
+      const wrapper = mountCategory('tts')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+
+      // Should show: engine, voice, speed, summarize_backend, summarize_model, cache, tasks header + 2 items
+      const labels = allItems.map(i => i.props().label as string)
+      expect(labels).toContain('TTS引擎')
+      expect(labels).toContain('语音')
+      expect(labels).toContain('语速')
+    })
+
+    it('PATCHes tts.engine when selected', async () => {
+      const wrapper = mountCategory('tts')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const engineItem = allItems.find(i => i.props().label === 'TTS引擎')
+      expect(engineItem).toBeTruthy()
+
+      await engineItem!.vm.$emit('update:modelValue', 'edge')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('tts.engine', 'edge')
+    })
+
+    it('PATCHes tts.speed via slider', async () => {
+      const wrapper = mountCategory('tts')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const speedItem = allItems.find(i => i.props().label === '语速')
+      expect(speedItem).toBeTruthy()
+
+      await speedItem!.vm.$emit('update:modelValue', 1.5)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('tts.speed', 1.5)
+    })
+
+    it('PATCHes tts.summarize_backend when selected', async () => {
+      const wrapper = mountCategory('tts')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const summarizeItem = allItems.find(i => i.props().label === '摘要后端')
+      expect(summarizeItem).toBeTruthy()
+
+      await summarizeItem!.vm.$emit('update:modelValue', 'api')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('tts.summarize_backend', 'api')
+    })
+
+    it('PATCHes tts.max_cache_files when changed', async () => {
+      const wrapper = mountCategory('tts')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const cacheItem = allItems.find(i => i.props().label === '缓存上限')
+      expect(cacheItem).toBeTruthy()
+
+      await cacheItem!.vm.$emit('update:modelValue', 200)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('tts.max_cache_files', 200)
+    })
+
+    it('PATCHes tasks.summarize_backend when selected', async () => {
+      const wrapper = mountCategory('tts')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const taskBackendItem = allItems.find(i => i.props().label === '任务摘要后端')
+      expect(taskBackendItem).toBeTruthy()
+
+      await taskBackendItem!.vm.$emit('update:modelValue', 'simple')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('tasks.summarize_backend', 'simple')
+    })
+
+    it('PATCHes tasks.summarize_model when changed', async () => {
+      const wrapper = mountCategory('tts')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const taskModelItem = allItems.find(i => i.props().label === '任务摘要模型')
+      expect(taskModelItem).toBeTruthy()
+
+      await taskModelItem!.vm.$emit('update:modelValue', 'gpt-4o-mini')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('tasks.summarize_model', 'gpt-4o-mini')
+    })
+  })
+
+  // ─── Terminal category ──────────────────────────────
+  describe('terminal category', () => {
+    it('saves terminalFontSize locally', async () => {
+      const wrapper = mountCategory('terminal')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const fontItem = allItems.find(i => i.props().label === '终端字号')
+      expect(fontItem).toBeTruthy()
+
+      await fontItem!.vm.$emit('update:modelValue', 14)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetLocalConfig).toHaveBeenCalledWith('terminalFontSize', 14)
+    })
+
+    it('PATCHes terminal.enabled when toggled', async () => {
+      const wrapper = mountCategory('terminal')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const enabledItem = allItems.find(i => i.props().label === '启用终端')
+      expect(enabledItem).toBeTruthy()
+
+      await enabledItem!.vm.$emit('update:modelValue', false)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('terminal.enabled', false)
+    })
+
+    it('PATCHes terminal.idle_timeout when changed', async () => {
+      const wrapper = mountCategory('terminal')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const timeoutItem = allItems.find(i => i.props().label === '空闲超时')
+      expect(timeoutItem).toBeTruthy()
+
+      await timeoutItem!.vm.$emit('update:modelValue', '30m')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('terminal.idle_timeout', '30m')
+    })
+
+    it('PATCHes terminal.max_sessions when changed', async () => {
+      const wrapper = mountCategory('terminal')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '最大会话')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 5)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('terminal.max_sessions', 5)
+    })
+
+    it('PATCHes terminal.buffer_lines when changed', async () => {
+      const wrapper = mountCategory('terminal')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '缓冲行数')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 5000)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('terminal.buffer_lines', 5000)
+    })
+  })
+
+  // ─── RAG category ──────────────────────────────
+  describe('rag category', () => {
+    it('PATCHes rag.ollama_base_url when changed', async () => {
+      const wrapper = mountCategory('rag')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '嵌入接口地址')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 'http://ollama:11434')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('rag.ollama_base_url', 'http://ollama:11434')
+    })
+
+    it('PATCHes rag.ollama_model when changed', async () => {
+      const wrapper = mountCategory('rag')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '嵌入模型')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 'nomic-embed')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('rag.ollama_model', 'nomic-embed')
+    })
+
+    it('PATCHes rag.chunk_size when changed', async () => {
+      const wrapper = mountCategory('rag')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '分块大小')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 1024)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('rag.chunk_size', 1024)
+    })
+
+    it('PATCHes rag.search_limit when changed', async () => {
+      const wrapper = mountCategory('rag')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '搜索限制')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 10)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('rag.search_limit', 10)
+    })
+
+    it('PATCHes rag.retention_days when changed', async () => {
+      const wrapper = mountCategory('rag')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '保留天数')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 30)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('rag.retention_days', 30)
+    })
+  })
+
+  // ─── Network category ──────────────────────────────
+  describe('network category', () => {
+    it('PATCHes port_forward.enabled when toggled', async () => {
+      const wrapper = mountCategory('network')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '启用 SSH 隧道')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', false)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.enabled', false)
+    })
+
+    it('PATCHes port_forward.allowed_ports when changed', async () => {
+      const wrapper = mountCategory('network')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '允许的端口范围')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', '8080,9090')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.allowed_ports', '8080,9090')
+    })
+
+    it('PATCHes port_forward.port when changed', async () => {
+      const wrapper = mountCategory('network')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === 'SSH 隧道端口')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 2222)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.port', 2222)
+    })
+
+    it('PATCHes push.jpush.enabled when toggled', async () => {
+      const wrapper = mountCategory('network')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '启用推送')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', true)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('push.jpush.enabled', true)
+    })
+
+    it('PATCHes push.jpush.app_key when changed', async () => {
+      const wrapper = mountCategory('network')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === 'AppKey')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 'new-app-key')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('push.jpush.app_key', 'new-app-key')
+    })
+  })
+
+  // ─── Files category ──────────────────────────────
+  describe('files category', () => {
+    it('saves showHidden locally when toggled', async () => {
+      const wrapper = mountCategory('files')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '显示隐藏文件')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', true)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetLocalConfig).toHaveBeenCalledWith('showHidden', true)
+    })
+
+    it('PATCHes upload.max_size_mb when changed', async () => {
+      const wrapper = mountCategory('files')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '上传大小上限')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 200)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('upload.max_size_mb', 200)
+    })
+
+    it('PATCHes upload.max_files when changed', async () => {
+      const wrapper = mountCategory('files')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '上传文件上限')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 50)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetServerValue).toHaveBeenCalledWith('upload.max_files', 50)
+    })
+  })
+
+  // ─── Appearance category ──────────────────────────────
+  describe('appearance category', () => {
+    it('saves theme locally when selected', async () => {
+      const wrapper = mountCategory('appearance')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '主题')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 'dark')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetLocalConfig).toHaveBeenCalledWith('theme', 'dark')
+    })
+
+    it('saves locale locally when selected', async () => {
+      const wrapper = mountCategory('appearance')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '语言')
+      expect(item).toBeTruthy()
+
+      await item!.vm.$emit('update:modelValue', 'en')
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetLocalConfig).toHaveBeenCalledWith('locale', 'en')
+    })
+  })
+
+  // ─── About category ──────────────────────────────
+  describe('about category', () => {
+    it('renders server version as info type', () => {
+      const wrapper = mountCategory('about')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '服务器版本')
+      expect(item).toBeTruthy()
+      expect(item!.props().type).toBe('info')
+    })
+
+    it('hides appVersion row when not in App mode', () => {
+      const wrapper = mountCategory('about')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const appVersionItem = allItems.find(i => i.props().label === 'APP版本')
+      expect(appVersionItem).toBeFalsy()
+    })
+  })
+})

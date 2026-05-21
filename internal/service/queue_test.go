@@ -140,24 +140,6 @@ func TestClearQueue(t *testing.T) {
 
 	ClearQueue(sessionID)
 	assert.Nil(t, GetQueue(sessionID))
-	assert.Equal(t, 0, QueueLength(sessionID))
-}
-
-func TestQueueLength(t *testing.T) {
-	sessionID := "qtest-length"
-	defer ClearQueue(sessionID)
-
-	assert.Equal(t, 0, QueueLength(sessionID))
-
-	EnqueueMessage(sessionID, model.QueuedMessage{Text: "a", CreatedAt: time.Now().Format(time.RFC3339)})
-	assert.Equal(t, 1, QueueLength(sessionID))
-
-	EnqueueMessage(sessionID, model.QueuedMessage{Text: "b", CreatedAt: time.Now().Format(time.RFC3339)})
-	assert.Equal(t, 2, QueueLength(sessionID))
-}
-
-func TestQueueLength_Empty(t *testing.T) {
-	assert.Equal(t, 0, QueueLength("qtest-length-empty"))
 }
 
 func TestEnqueueReturnsCopy(t *testing.T) {

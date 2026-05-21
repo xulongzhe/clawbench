@@ -72,10 +72,10 @@ func setupSearchDB(t *testing.T) *sql.DB {
 
 func TestRAGSearch_EmptyQuery(t *testing.T) {
 	store := setupTestStore(t)
-	embedder, cleanup := newHealthyMockOllama(t)
+	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
-	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: ""}, 5)
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: ""}, 5, 20)
 	assert.NoError(t, err)
 	assert.Empty(t, result.Results)
 	assert.Equal(t, 0, result.Total)
@@ -84,93 +84,92 @@ func TestRAGSearch_EmptyQuery(t *testing.T) {
 func TestRAGSearch_DefaultLimit(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+	embedder, cleanup := newHealthyMockEmbedder(t)
+	defer cleanup()
 
-	// Mock embedder that returns 1024-dim vectors
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbedResponse{Embedding: makeTestEmbedding(1024)}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
-	embedder.HTTPClient = server.Client()
-
-	// Insert some chunks
+	// Insert some chunks and build FTS index
 	insertTestChunks(t, store, 3)
+	require.NoError(t, store.CreateFTSIndex())
 
 	// Search with limit=0 should use defaultLimit
-	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 0}, 5)
-	assert.NoError(t, err)
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 0}, 5, 20)
+	require.NoError(t, err)
 	assert.LessOrEqual(t, len(result.Results), 5)
 }
 
 func TestRAGSearch_WithResults(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbedResponse{Embedding: makeTestEmbedding(1024)}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
-	embedder.HTTPClient = server.Client()
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+	embedder, cleanup := newHealthyMockEmbedder(t)
+	defer cleanup()
 
 	insertTestChunks(t, store, 2)
+	require.NoError(t, store.CreateFTSIndex())
 
-	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 10}, 5)
-	assert.NoError(t, err)
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 10}, 5, 20)
+	require.NoError(t, err)
 	assert.NotEmpty(t, result.Results)
 	assert.Equal(t, len(result.Results), result.Total)
+	// Should use hybrid or vector mode since embedder is healthy
+	assert.Contains(t, []SearchMode{SearchModeHybrid, SearchModeVector, SearchModeFTS}, result.Mode)
 }
 
-func TestRAGSearch_EmbedError(t *testing.T) {
+func TestRAGSearch_FTSOnly(t *testing.T) {
 	setupSearchDB(t)
 	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+	SetEmbedderHealthy(false) // Ensure cached state doesn't interfere
 
-	// Server that returns 500
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	}))
-	defer server.Close()
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
-	embedder.HTTPClient = server.Client()
+	// Insert chunks and build FTS index
+	insertTestChunks(t, store, 3)
+	require.NoError(t, store.CreateFTSIndex())
 
-	_, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test"}, 5)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "embed query")
-}
-
-func TestRAGSearch_SearchError(t *testing.T) {
-	// Use a store that's been closed — should error on search
-	dir := t.TempDir()
-	store, err := NewStore(dir + "/test.duckdb")
-	require.NoError(t, err)
-	insertTestChunks(t, store, 1)
-	store.Close() // Close the store
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		resp := ollamaEmbedResponse{Embedding: makeTestEmbedding(1024)}
-		json.NewEncoder(w).Encode(resp)
-	}))
-	defer server.Close()
-	embedder := NewEmbeddingClient(server.URL, "bge-m3")
-	embedder.HTTPClient = server.Client()
-
-	_, err = RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test"}, 5)
-	assert.Error(t, err)
+	// Use nil embedder (embedder not available) — should fall back to FTS-only
+	result, err := RAGSearch(context.Background(), store, nil, SearchParams{Query: "chunk", Limit: 5}, 5, 20)
+	assert.NoError(t, err)
+	assert.Equal(t, SearchModeFTS, result.Mode)
+	assert.NotEmpty(t, result.Results)
 }
 
 func TestRAGSearch_NilStore(t *testing.T) {
-	_, err := RAGSearch(context.Background(), nil, nil, SearchParams{Query: "test"}, 5)
+	_, err := RAGSearch(context.Background(), nil, nil, SearchParams{Query: "test"}, 5, 20)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "RAG not initialized")
 }
 
 func TestRAGSearch_NilStoreEmptyQuery(t *testing.T) {
 	// Empty query should return before nil check
-	result, err := RAGSearch(context.Background(), nil, nil, SearchParams{Query: ""}, 5)
+	result, err := RAGSearch(context.Background(), nil, nil, SearchParams{Query: ""}, 5, 20)
 	assert.NoError(t, err)
 	assert.Empty(t, result.Results)
+}
+
+func TestRAGSearch_SearchModeField(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	insertTestChunks(t, store, 3)
+	require.NoError(t, store.CreateFTSIndex())
+
+	// With healthy embedder — should be hybrid
+	embedder, cleanup := newHealthyMockEmbedder(t)
+	defer cleanup()
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "chunk", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	// With both FTS and embedder available, should use hybrid
+	assert.Equal(t, SearchModeHybrid, result.Mode)
 }
 
 // ---------- getSessionTitles ----------
@@ -199,4 +198,180 @@ func TestGetSessionTitles_Empty(t *testing.T) {
 
 	titles := getSessionTitles(map[string]bool{})
 	assert.Empty(t, titles)
+}
+
+// ---------- RAGSearch vector-only mode ----------
+
+func TestRAGSearch_VectorOnlyMode(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+
+	// Set embedder healthy but FTS not available
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
+	store.ftsAvailable = false
+
+	embedder, cleanup := newHealthyMockEmbedder(t)
+	defer cleanup()
+
+	// Insert chunks with embeddings
+	insertTestChunks(t, store, 2)
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	assert.Equal(t, SearchModeVector, result.Mode)
+}
+
+// ---------- RAGSearch with no search available ----------
+
+func TestRAGSearch_NoSearchAvailable(t *testing.T) {
+	store := setupTestStore(t)
+	store.ftsAvailable = false
+	SetEmbedderHealthy(false)
+
+	// nil embedder — no search available
+	_, err := RAGSearch(context.Background(), store, nil, SearchParams{Query: "test"}, 5, 20)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no search available")
+}
+
+// ---------- RAGSearch with default poolSize ----------
+
+func TestRAGSearch_DefaultPoolSize(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+	embedder, cleanup := newHealthyMockEmbedder(t)
+	defer cleanup()
+
+	insertTestChunks(t, store, 2)
+	require.NoError(t, store.CreateFTSIndex())
+
+	// poolSize=0 should use default of 20
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 0)
+	require.NoError(t, err)
+	assert.NotEmpty(t, result.Results)
+}
+
+// ---------- RAGSearch embedding fallback to FTS ----------
+
+func TestRAGSearch_EmbeddingFailsFallsBackToFTS(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	// Server where embedding endpoint fails
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+		} else if r.URL.Path == "/v1/embeddings" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	embedder := NewEmbeddingClient(server.URL, "bge-m3", "")
+	embedder.HTTPClient = server.Client()
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
+
+	insertTestChunks(t, store, 3)
+	require.NoError(t, store.CreateFTSIndex())
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "chunk", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	assert.Equal(t, SearchModeFTS, result.Mode, "should fall back to FTS when embedding fails")
+}
+
+// ---------- RAGSearch with cached embedder health ----------
+
+func TestRAGSearch_CachedEmbedderHealth(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	if !store.ftsAvailable {
+		t.Skip("FTS not available")
+	}
+
+	// Set cached embedder health to true
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
+
+	insertTestChunks(t, store, 2)
+	require.NoError(t, store.CreateFTSIndex())
+
+	embedder, cleanup := newHealthyMockEmbedder(t)
+	defer cleanup()
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	// With cached healthy state, should use hybrid or vector mode
+	assert.Contains(t, []SearchMode{SearchModeHybrid, SearchModeVector}, result.Mode)
+}
+
+// ---------- RAGSearch vector-only (no FTS) ----------
+
+func TestRAGSearch_VectorOnlyNoFTS(t *testing.T) {
+	setupSearchDB(t)
+	store := setupTestStore(t)
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
+	store.ftsAvailable = false
+
+	embedder, cleanup := newHealthyMockEmbedder(t)
+	defer cleanup()
+
+	insertTestChunks(t, store, 2)
+
+	result, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
+	require.NoError(t, err)
+	assert.Equal(t, SearchModeVector, result.Mode)
+}
+
+// ---------- RAGSearch with vector-only embedding error ----------
+
+func TestRAGSearch_VectorOnlyEmbeddingError(t *testing.T) {
+	store := setupTestStore(t)
+	SetEmbedderHealthy(true)
+	t.Cleanup(func() { SetEmbedderHealthy(false) })
+	store.ftsAvailable = false
+
+	// Embedding will fail
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+		} else if r.URL.Path == "/v1/embeddings" {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	embedder := NewEmbeddingClient(server.URL, "bge-m3", "")
+	embedder.HTTPClient = server.Client()
+
+	insertTestChunks(t, store, 2)
+
+	_, err := RAGSearch(context.Background(), store, embedder, SearchParams{Query: "test", Limit: 5}, 5, 20)
+	assert.Error(t, err, "should error when embedding fails in vector-only mode")
+}
+
+// ---------- getSessionTitles batch failure fallback ----------
+
+func TestGetSessionTitles_BatchFailureFallback(t *testing.T) {
+	db := setupSearchDB(t)
+
+	// Create a session with known title
+	sid, err := service.CreateSession("/test", "claude", "Batch Fallback Title", "", "", "default", "chat")
+	require.NoError(t, err)
+
+	// Drop the chat_sessions table to make batch query fail
+	db.Exec("DROP TABLE chat_sessions")
+
+	// Should fall back gracefully (return empty map)
+	titles := getSessionTitles(map[string]bool{sid: true})
+	_, ok := titles[sid]
+	assert.False(t, ok, "should handle batch failure gracefully")
 }

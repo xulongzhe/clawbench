@@ -2,7 +2,6 @@ package rag
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -12,15 +11,20 @@ import (
 )
 
 // Indexer polls for unindexed chat messages and generates embeddings.
+// When the embedding API is unavailable, it indexes text-only (for FTS search).
+// When the embedding API becomes available, it backfills embeddings for pending chunks.
 type Indexer struct {
-	store     *Store
-	embedder  *EmbeddingClient
-	cfg       model.RAGConfig
-	stopCh    chan struct{}
-	doneCh    chan struct{}
-	mu        sync.Mutex
-	running   bool
-	modelWarn bool // Whether we've warned about missing model
+	store           *Store
+	embedder        *EmbeddingClient
+	cfg             model.RAGConfig
+	stopCh          chan struct{}
+	doneCh          chan struct{}
+	mu              sync.Mutex
+	running         bool
+	modelWarn       bool  // Whether we've warned about missing model
+	embedderHealthy bool  // Current embedding API health state
+	dimensionSynced bool  // Whether dimension has been synced from embedder to store
+	batchCancel     context.CancelFunc // cancels in-flight indexBatch on Stop
 }
 
 // NewIndexer creates a new RAG indexer.
@@ -53,6 +57,7 @@ func (idx *Indexer) Start() {
 }
 
 // Stop signals the indexer to stop and waits for it to finish.
+// Cancels any in-flight batch and waits up to 5s for the goroutine to exit.
 func (idx *Indexer) Stop() {
 	idx.mu.Lock()
 	if !idx.running {
@@ -61,8 +66,19 @@ func (idx *Indexer) Stop() {
 	}
 	idx.mu.Unlock()
 
+	// Cancel any in-flight batch so indexBatch returns quickly
+	if idx.batchCancel != nil {
+		idx.batchCancel()
+	}
+
 	close(idx.stopCh)
-	<-idx.doneCh
+
+	// Wait with timeout to avoid blocking forever on a stuck goroutine
+	select {
+	case <-idx.doneCh:
+	case <-time.After(5 * time.Second):
+		slog.Warn("rag: indexer did not stop within timeout, continuing shutdown")
+	}
 
 	idx.mu.Lock()
 	idx.running = false
@@ -92,37 +108,104 @@ func (idx *Indexer) run() {
 		case <-idx.stopCh:
 			return
 		case <-ticker.C:
+			// Check stop again before starting a new batch
+			select {
+			case <-idx.stopCh:
+				return
+			default:
+			}
 			idx.indexBatch()
 		}
 	}
 }
 
-// indexBatch processes one batch of unindexed messages.
+// indexBatch processes one batch of unindexed messages and backfills embeddings.
+// Uses a stop-aware context so Stop() can cancel in-flight work.
 func (idx *Indexer) indexBatch() {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	// Check Ollama health
+	// Store cancel so Stop() can abort this batch
+	idx.mu.Lock()
+	idx.batchCancel = cancel
+	idx.mu.Unlock()
+
+	// Check embedding API health (startup probe + periodic retry)
+	idx.checkEmbedderHealth(ctx)
+
+	// Phase 1: Index new messages from SQLite
+	idx.indexNewMessages(ctx)
+
+	// Exit early if stopped
+	if ctx.Err() != nil {
+		return
+	}
+
+	// Phase 2: Backfill embeddings for chunks that were indexed without them
+	if idx.embedderHealthy {
+		idx.backfillEmbeddings(ctx)
+	}
+
+	// Phase 3: Rebuild FTS index if dirty
+	if err := idx.store.RebuildFTSIfDirty(); err != nil {
+		slog.Debug("rag: FTS rebuild deferred", slog.String("err", err.Error()))
+	}
+}
+
+// checkEmbedderHealth checks embedding API availability and updates the healthy flag.
+// Also updates the global cached health state for search requests.
+// After health check passes, syncs embedding dimension from embedder to store.
+func (idx *Indexer) checkEmbedderHealth(ctx context.Context) {
 	reachable, modelAvailable, err := idx.embedder.IsHealthy(ctx)
 	if err != nil {
-		slog.Debug("rag: ollama health check error", slog.String("err", err.Error()))
+		slog.Debug("rag: embedding API health check error", slog.String("err", err.Error()))
+		idx.embedderHealthy = false
+		SetEmbedderHealthy(false)
 		return
 	}
 	if !reachable {
-		slog.Debug("rag: ollama not reachable, skipping batch")
+		if idx.embedderHealthy {
+			slog.Info("rag: embedding API became unreachable")
+		}
+		idx.embedderHealthy = false
+		SetEmbedderHealthy(false)
 		return
 	}
 	if !modelAvailable {
 		if !idx.modelWarn {
-			slog.Warn("rag: ollama model not available, skipping batch",
-				slog.String("model", idx.cfg.OllamaModel),
+			slog.Warn("rag: embedding API reachable but model not available",
+				slog.String("model", idx.cfg.Model),
 			)
 			idx.modelWarn = true
 		}
+		idx.embedderHealthy = false
+		SetEmbedderHealthy(false)
 		return
 	}
-	idx.modelWarn = false // Reset warning flag
 
+	// Embedding API is healthy
+	if !idx.embedderHealthy {
+		slog.Info("rag: embedding API became healthy, will backfill embeddings")
+	}
+
+	// Sync dimension from embedder to store (one-time)
+	if !idx.dimensionSynced {
+		if dim := idx.embedder.Dim(); dim > 0 {
+			if idx.store.SetEmbeddingDim(dim) {
+				slog.Info("rag: synced embedding dimension from embedder", slog.Int("dim", dim))
+			}
+			idx.dimensionSynced = true
+		}
+	}
+
+	idx.embedderHealthy = true
+	idx.modelWarn = false
+	SetEmbedderHealthy(true)
+}
+
+// indexNewMessages indexes new (unindexed) messages from SQLite.
+// When the embedding API is healthy, generates embeddings; otherwise stores text-only (for FTS).
+func (idx *Indexer) indexNewMessages(ctx context.Context) {
 	// Fetch unindexed messages from SQLite (newest first)
 	messages, err := service.GetUnindexedMessages(idx.cfg.BatchSize)
 	if err != nil {
@@ -139,6 +222,7 @@ func (idx *Indexer) indexBatch() {
 	slog.Info("rag: indexing batch",
 		slog.Int("batch_size", len(messages)),
 		slog.Int("remaining", totalRemaining),
+		slog.Bool("embedder_healthy", idx.embedderHealthy),
 	)
 
 	batchStart := time.Now()
@@ -190,7 +274,7 @@ func (idx *Indexer) indexBatch() {
 	)
 }
 
-// indexMessage processes a single message: extract text, chunk, embed, store.
+// indexMessage processes a single message: extract text, chunk, (optionally) embed, store.
 func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessage) error {
 	// Extract text content
 	text := ExtractTextFromContent(msg.Content, msg.Role)
@@ -220,40 +304,124 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 		textChunks = textChunks[:maxChunks]
 	}
 
-	slog.Debug("rag: embedding message",
-		slog.Int64("message_id", msg.ID),
-		slog.Int("chunks", len(textChunks)),
-		slog.String("session_id", msg.SessionID),
-	)
-
-	// Generate embeddings for all chunks
-	texts := make([]string, len(textChunks))
-	for i, tc := range textChunks {
-		texts[i] = tc.Text
-	}
-
-	embeddings, err := idx.embedder.EmbedBatch(ctx, texts)
-	if err != nil {
-		return fmt.Errorf("embed batch: %w", err)
-	}
-
 	// Build Chunk objects for storage
 	chunks := make([]Chunk, len(textChunks))
 	for i, tc := range textChunks {
 		chunks[i] = Chunk{
-			SessionID:   msg.SessionID,
-			MessageID:   msg.ID,
-			ChunkText:   tc.Text,
-			ChunkIndex:  tc.Index,
-			TokenCount:  tc.TokenCount,
-			Embedding:   embeddings[i],
-			ProjectPath: msg.ProjectPath,
-			Backend:     msg.Backend,
-			Role:        msg.Role,
-			CreatedAt:   msg.CreatedAt,
+			SessionID:          msg.SessionID,
+			MessageID:          msg.ID,
+			ChunkText:          tc.Text,
+			ChunkTextSegmented: SegmentText(tc.Text),
+			ChunkIndex:         tc.Index,
+			TokenCount:         tc.TokenCount,
+			ProjectPath:        msg.ProjectPath,
+			Backend:            msg.Backend,
+			Role:               msg.Role,
+			CreatedAt:          msg.CreatedAt,
 		}
 	}
 
+	// Generate embeddings if the embedding API is healthy
+	if idx.embedderHealthy {
+		slog.Debug("rag: embedding message",
+			slog.Int64("message_id", msg.ID),
+			slog.Int("chunks", len(textChunks)),
+			slog.String("session_id", msg.SessionID),
+		)
+
+		texts := make([]string, len(textChunks))
+		for i, tc := range textChunks {
+			texts[i] = tc.Text
+		}
+
+		embeddings, err := idx.embedder.EmbedBatch(ctx, texts)
+		if err != nil {
+			// Embedding failed — store without embedding (FTS still works)
+			slog.Warn("rag: embedding failed, storing text-only",
+				slog.Int64("message_id", msg.ID),
+				slog.String("err", err.Error()),
+			)
+			for i := range chunks {
+				chunks[i].Embedding = nil
+				chunks[i].HasEmbedding = false
+			}
+		} else {
+			for i := range chunks {
+				chunks[i].Embedding = embeddings[i]
+				chunks[i].HasEmbedding = true
+			}
+		}
+	}
+	// When the embedding API is NOT healthy, chunks are stored without embedding
+	// (Embedding: nil, HasEmbedding: false) — FTS search still works.
+
 	// Store in DuckDB
 	return idx.store.InsertChunks(chunks)
+}
+
+// backfillEmbeddings generates embeddings for chunks that were stored without them.
+func (idx *Indexer) backfillEmbeddings(ctx context.Context) {
+	pending, err := idx.store.PendingEmbeddingCount()
+	if err != nil {
+		slog.Debug("rag: failed to check pending embeddings", slog.String("err", err.Error()))
+		return
+	}
+	if pending == 0 {
+		return
+	}
+
+	slog.Info("rag: backfilling embeddings", slog.Int("pending", pending))
+
+	batchSize := idx.cfg.BatchSize
+	if batchSize <= 0 {
+		batchSize = 10
+	}
+
+	// Limit backfill per cycle to avoid overloading
+	maxBackfill := batchSize
+	if maxBackfill > 50 {
+		maxBackfill = 50
+	}
+
+	pendingChunks, err := idx.store.GetPendingEmbeddings(maxBackfill)
+	if err != nil {
+		slog.Error("rag: failed to fetch pending embeddings", slog.String("err", err.Error()))
+		return
+	}
+	if len(pendingChunks) == 0 {
+		return
+	}
+
+	// Batch embed all pending chunk texts
+	texts := make([]string, len(pendingChunks))
+	for i, p := range pendingChunks {
+		texts[i] = p.ChunkText
+	}
+
+	embeddings, err := idx.embedder.EmbedBatch(ctx, texts)
+	if err != nil {
+		slog.Warn("rag: backfill embedding failed", slog.String("err", err.Error()))
+		return
+	}
+
+	// Update each chunk with its embedding
+	backfilled := 0
+	for i, p := range pendingChunks {
+		if embeddings[i] == nil {
+			continue
+		}
+		if err := idx.store.UpdateEmbedding(p.ID, embeddings[i]); err != nil {
+			slog.Error("rag: failed to backfill embedding",
+				slog.Int64("chunk_id", p.ID),
+				slog.String("err", err.Error()),
+			)
+			continue
+		}
+		backfilled++
+	}
+
+	slog.Info("rag: backfill complete",
+		slog.Int("backfilled", backfilled),
+		slog.Int("total_pending", pending),
+	)
 }

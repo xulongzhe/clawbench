@@ -13,7 +13,7 @@ const LANE_COLORS = [
   '#34495e', // dark gray
 ]
 
-export { LANE_WIDTH, LANE_COLORS, GRAPH_LEFT_PADDING }
+
 
 function laneCx(lane) {
   return lane * LANE_WIDTH + LANE_WIDTH / 2 + GRAPH_LEFT_PADDING
@@ -590,7 +590,7 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
 
 // ─── Ref label helpers ─────────────────────────────────────────────────────
 
-export function refLabelWidth(ref) {
+function refLabelWidth(ref) {
   const text = ref.startsWith('tag: ') ? ref.slice(5) : ref
   return text.length * 6 + 8
 }
@@ -600,7 +600,7 @@ export function refLabelText(ref) {
   return ref
 }
 
-export function refLabelBg(ref) {
+function refLabelBg(ref) {
   if (ref === 'HEAD') return '#1a1a2e'
   if (ref.startsWith('tag: ')) return '#555'
   return '#4a90d9'

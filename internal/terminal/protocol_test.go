@@ -125,10 +125,7 @@ func TestServerMessage_Exit(t *testing.T) {
 // ---------- Error code constants ----------
 
 func TestErrorCodeConstants(t *testing.T) {
-	assert.Equal(t, "session_in_use", ErrCodeSessionInUse)
-	assert.Equal(t, "terminal_disabled", ErrCodeDisabled)
 	assert.Equal(t, "shell_start_failed", ErrCodeShellFailed)
-	assert.Equal(t, "cwd_invalid", ErrCodeCwdInvalid)
 	assert.Equal(t, "session_limit", ErrCodeSessionLimit)
 	assert.Equal(t, 4001, StatusReplaced)
 }

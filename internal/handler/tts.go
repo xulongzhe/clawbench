@@ -119,12 +119,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 			slog.String("cache_key", cacheKey),
 			slog.String("path", relAudioPath),
 		)
-		// Try DB first, fall back to file cache
-		summary, found := service.GetTTSSummary(cacheKey)
-		if !found {
-			cachedSummary, _ := os.ReadFile(absAudioPath + ".summary.txt")
-			summary = string(cachedSummary)
-		}
+		// Try DB for cached summary
+		summary, _ := service.GetTTSSummary(cacheKey)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"cached":    true,
 			"audioPath": relAudioPath,

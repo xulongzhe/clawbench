@@ -3,6 +3,8 @@ package ai
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func parseGeminiLine(line string) []StreamEvent {
@@ -92,6 +94,23 @@ func TestGeminiStream_ParseLine_ToolUse(t *testing.T) {
 	if input["file_path"] != "/tmp/test.go" {
 		t.Errorf("unexpected input: %v", input)
 	}
+}
+
+func TestGeminiStream_ParseLine_ToolUseNonObjectParams(t *testing.T) {
+	// When parameters is valid JSON but not an object (e.g., an array),
+	// normalizeToolInput should fail and fall back to string(msg.Parameters)
+	line := `{"type":"tool_use","timestamp":"2026-04-25T10:00:02.000Z","tool_name":"list_files","tool_id":"call_arr","parameters":[1,2,3]}`
+	events := parseGeminiLine(line)
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	tool := events[0].Tool
+	if tool == nil {
+		t.Fatal("expected tool call, got nil")
+	}
+	// Should fall back to raw parameter string
+	assert.Equal(t, "[1,2,3]", tool.Input)
 }
 
 func TestGeminiStream_ParseLine_ToolUseEmptyParams(t *testing.T) {
@@ -414,9 +433,9 @@ func TestNormalizeGeminiToolName(t *testing.T) {
 		{"", ""},
 	}
 	for _, tt := range tests {
-		got := normalizeGeminiToolName(tt.input)
+		got := normalizeToolName(tt.input)
 		if got != tt.expected {
-			t.Errorf("normalizeGeminiToolName(%q) = %q, want %q", tt.input, got, tt.expected)
+			t.Errorf("normalizeToolName(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
 	}
 }
@@ -424,7 +443,11 @@ func TestNormalizeGeminiToolName(t *testing.T) {
 func TestNormalizeGeminiInput_FieldRemapping(t *testing.T) {
 	// filePath → file_path
 	input1 := json.RawMessage(`{"filePath":"/tmp/test.go"}`)
-	result1 := normalizeGeminiInput("read_file", input1)
+	norm1, err := normalizeToolInput(input1, map[string]string{"dirPath": "path"})
+	if err != nil {
+		t.Fatalf("normalizeToolInput failed: %v", err)
+	}
+	result1 := string(norm1)
 	var parsed1 map[string]any
 	if err := json.Unmarshal([]byte(result1), &parsed1); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
@@ -438,7 +461,11 @@ func TestNormalizeGeminiInput_FieldRemapping(t *testing.T) {
 
 	// dirPath → path
 	input2 := json.RawMessage(`{"dirPath":"./src"}`)
-	result2 := normalizeGeminiInput("list_directory", input2)
+	norm2, err := normalizeToolInput(input2, map[string]string{"dirPath": "path"})
+	if err != nil {
+		t.Fatalf("normalizeToolInput failed: %v", err)
+	}
+	result2 := string(norm2)
 	var parsed2 map[string]any
 	if err := json.Unmarshal([]byte(result2), &parsed2); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
@@ -452,7 +479,11 @@ func TestNormalizeGeminiInput_FieldRemapping(t *testing.T) {
 
 	// Combined: filePath + dirPath
 	input3 := json.RawMessage(`{"filePath":"main.go","dirPath":"./src"}`)
-	result3 := normalizeGeminiInput("read_file", input3)
+	norm3, err := normalizeToolInput(input3, map[string]string{"dirPath": "path"})
+	if err != nil {
+		t.Fatalf("normalizeToolInput failed: %v", err)
+	}
+	result3 := string(norm3)
 	var parsed3 map[string]any
 	if err := json.Unmarshal([]byte(result3), &parsed3); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
@@ -467,15 +498,19 @@ func TestNormalizeGeminiInput_FieldRemapping(t *testing.T) {
 
 func TestNormalizeGeminiInput_UnparseableJSON(t *testing.T) {
 	bad := json.RawMessage(`not valid json`)
-	result := normalizeGeminiInput("read_file", bad)
-	if result != string(bad) {
-		t.Errorf("expected unparseable input returned as-is, got %q", result)
+	_, err := normalizeToolInput(bad, map[string]string{"dirPath": "path"})
+	if err == nil {
+		t.Error("expected error for unparseable JSON")
 	}
 }
 
 func TestNormalizeGeminiInput_AlreadyCanonical(t *testing.T) {
 	input := json.RawMessage(`{"file_path":"/tmp/test.go"}`)
-	result := normalizeGeminiInput("read_file", input)
+	norm, err := normalizeToolInput(input, map[string]string{"dirPath": "path"})
+	if err != nil {
+		t.Fatalf("normalizeToolInput failed: %v", err)
+	}
+	result := string(norm)
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
@@ -623,4 +658,78 @@ func TestBuildGeminiStreamArgs_Minimal(t *testing.T) {
 			t.Errorf("arg %d: expected %q, got %q", i, v, args[i])
 		}
 	}
+}
+
+func TestGeminiStream_GetCapturedSessionID_AlwaysEmpty(t *testing.T) {
+	// Gemini always returns "" for GetCapturedSessionID since it uses --resume latest
+	parser := &GeminiStreamParser{}
+	assert.Equal(t, "", parser.GetCapturedSessionID())
+
+	// Even after parsing an init event with session_id
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"init","session_id":"sess-123","model":"gemini-2.5"}`, ch)
+	assert.Equal(t, "", parser.GetCapturedSessionID(), "Gemini GetCapturedSessionID should always return empty")
+}
+
+func TestGeminiStream_ErrorEmptyMessage(t *testing.T) {
+	// Error event with empty message should not produce any event
+	parser := &GeminiStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"error","severity":"error","message":""}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("error with empty message should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestGeminiStream_ToolResultEmptyToolID(t *testing.T) {
+	// tool_result with empty tool_id should be skipped
+	parser := &GeminiStreamParser{}
+	ch := make(chan StreamEvent, 10)
+	parser.ParseLine(`{"type":"tool_result","tool_id":"","output":"result","status":"success"}`, ch)
+
+	select {
+	case evt := <-ch:
+		t.Errorf("tool_result with empty tool_id should be skipped, got %+v", evt)
+	default:
+		// expected
+	}
+}
+
+func TestBuildGeminiStreamArgs_WithSystemPrompt(t *testing.T) {
+	req := ChatRequest{
+		Prompt:       "hello",
+		SystemPrompt: "you are helpful",
+	}
+	args := buildGeminiStreamArgs(req)
+
+	// Gemini injects system prompt into the user prompt
+	found := false
+	for _, arg := range args {
+		if arg == "[System Instructions: you are helpful]\n\nhello" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected system prompt injection in args, got %v", args)
+	}
+}
+
+func TestBuildGeminiStreamArgs_NoSystemPrompt(t *testing.T) {
+	req := ChatRequest{
+		Prompt: "hello",
+	}
+	args := buildGeminiStreamArgs(req)
+
+	// Without system prompt, the prompt is passed as-is
+	for _, arg := range args {
+		if arg == "hello" {
+			return
+		}
+	}
+	t.Errorf("expected plain prompt 'hello' in args, got %v", args)
 }

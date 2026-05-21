@@ -12,11 +12,11 @@ import (
 // ParsePresenceMap walks a raw YAML map and returns a flat set of dot-separated
 // keys that were explicitly present. For example, given:
 //
-//	proxy:
+//	port_forward:
 //	  enabled: true
 //	  allowed_ports: "1024-65535"
 //
-// It returns: {"proxy": true, "proxy.enabled": true, "proxy.allowed_ports": true}
+// It returns: {"port_forward": true, "port_forward.enabled": true, "port_forward.allowed_ports": true}
 func ParsePresenceMap(raw map[string]any) map[string]bool {
 	presence := make(map[string]bool)
 	walkPresenceMap(raw, "", presence)
@@ -133,25 +133,26 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 		cfg.Session.MaxCount = 10
 	}
 
-	// --- Proxy ---
-	// Bool zero-value trap: Go defaults bool to false, but we want true.
-	// Only keep false if user explicitly wrote "enabled: false".
-	// If proxy section is absent OR proxy.enabled key is absent, default to true.
-	if !presence["proxy.enabled"] {
-		cfg.Proxy.Enabled = true
-	}
-	if cfg.Proxy.AllowedPorts == "" {
-		cfg.Proxy.AllowedPorts = "1024-65535"
+	// --- Proxy (legacy) ---
+	// proxy.enabled has been removed — ProxyRegistry is now auto-enabled when
+	// port_forward.enabled is true. proxy.allowed_ports is migrated to
+	// port_forward.allowed_ports below.
+	// Backward compat: if user has proxy.allowed_ports in YAML, migrate it.
+	if cfg.Proxy.AllowedPorts != "" && cfg.PortForward.AllowedPorts == "" {
+		cfg.PortForward.AllowedPorts = cfg.Proxy.AllowedPorts
 	}
 
-	// --- SSH ---
+	// --- Port Forward (SSH Tunnel) ---
 	// Same bool zero-value trap as Proxy.
-	if !presence["ssh.enabled"] {
-		cfg.SSH.Enabled = true
+	if !presence["port_forward.enabled"] {
+		cfg.PortForward.Enabled = true
 	}
 	// Persist host key to avoid SSH fingerprint mismatch after server restart
-	if cfg.SSH.HostKey == "" {
-		cfg.SSH.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
+	if cfg.PortForward.HostKey == "" {
+		cfg.PortForward.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
+	}
+	if cfg.PortForward.AllowedPorts == "" {
+		cfg.PortForward.AllowedPorts = "1024-65535"
 	}
 
 	// --- TTS ---
@@ -178,13 +179,20 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	}
 
 	// --- RAG ---
-	// Bool zero-value: Go defaults to false, which IS the desired default for RAG.
-	// No presence check needed — "rag.enabled" absent means false (disabled).
-	if cfg.RAG.OllamaBaseURL == "" {
-		cfg.RAG.OllamaBaseURL = "http://localhost:11434"
+	// RAG is always enabled. No "enabled" toggle needed.
+	// When the embedding API is unavailable, falls back to BM25 full-text search.
+	// Backward compatibility: migrate deprecated Ollama fields to new generic fields.
+	if cfg.RAG.BaseURL == "" && cfg.RAG.OllamaBaseURL != "" {
+		cfg.RAG.BaseURL = cfg.RAG.OllamaBaseURL
 	}
-	if cfg.RAG.OllamaModel == "" {
-		cfg.RAG.OllamaModel = "bge-m3"
+	if cfg.RAG.Model == "" && cfg.RAG.OllamaModel != "" {
+		cfg.RAG.Model = cfg.RAG.OllamaModel
+	}
+	if cfg.RAG.BaseURL == "" {
+		cfg.RAG.BaseURL = "http://localhost:11434"
+	}
+	if cfg.RAG.Model == "" {
+		cfg.RAG.Model = "bge-m3"
 	}
 	if cfg.RAG.ChunkSize <= 0 {
 		cfg.RAG.ChunkSize = 512
@@ -201,12 +209,15 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	if cfg.RAG.SearchLimit <= 0 {
 		cfg.RAG.SearchLimit = 5
 	}
+	if cfg.RAG.SearchPoolSize <= 0 {
+		cfg.RAG.SearchPoolSize = 20
+	}
 	if cfg.RAG.RetentionDays <= 0 {
 		cfg.RAG.RetentionDays = 90
 	}
 
 	// --- Terminal ---
-	// Bool zero-value trap: same as proxy/ssh — default to true when absent.
+	// Bool zero-value trap: same as proxy/port_forward — default to true when absent.
 	if !presence["terminal.enabled"] {
 		cfg.Terminal.Enabled = true
 	}

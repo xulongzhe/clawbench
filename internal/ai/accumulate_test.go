@@ -194,3 +194,47 @@ func TestAccumulateBlock_ToolResultOverwritesEmptyOutput(t *testing.T) {
 	assert.Equal(t, "main.go:42: TODO fix this", blocks[0].Output)
 	assert.Equal(t, "success", blocks[0].Status)
 }
+
+func TestAccumulateBlock_ErrorEvent(t *testing.T) {
+	// "error" event type creates a warning ContentBlock with Error and Reason
+	blocks := []model.ContentBlock{}
+	AccumulateBlock(&blocks, StreamEvent{Type: "error", Error: "connection lost", Reason: "disconnect"})
+	assert.Len(t, blocks, 1)
+	assert.Equal(t, "warning", blocks[0].Type, "error event should produce a warning block")
+	assert.Equal(t, "connection lost", blocks[0].Text)
+	assert.Equal(t, "disconnect", blocks[0].Reason)
+}
+
+func TestAccumulateBlock_ToolUseMalformedJSON(t *testing.T) {
+	// Malformed JSON input should result in an empty map, not a crash
+	blocks := []model.ContentBlock{}
+	AccumulateBlock(&blocks, StreamEvent{
+		Type: "tool_use",
+		Tool: &ToolCall{Name: "Bash", ID: "t7", Input: `{invalid json`, Done: true},
+	})
+	assert.Len(t, blocks, 1)
+	assert.Equal(t, "tool_use", blocks[0].Type)
+	assert.NotNil(t, blocks[0].Input, "input should be non-nil even with malformed JSON")
+	assert.Empty(t, blocks[0].Input, "malformed JSON should produce empty input map")
+}
+
+func TestAccumulateBlock_ThinkingAndContentInterleaved(t *testing.T) {
+	// Thinking and content without tool_use boundaries should coalesce correctly
+	blocks := []model.ContentBlock{}
+	AccumulateBlock(&blocks, StreamEvent{Type: "thinking", Content: "think1"})
+	AccumulateBlock(&blocks, StreamEvent{Type: "content", Content: "text1"})
+	AccumulateBlock(&blocks, StreamEvent{Type: "thinking", Content: "think2"})
+	AccumulateBlock(&blocks, StreamEvent{Type: "content", Content: "text2"})
+
+	// Without tool_use boundaries, same-type blocks coalesce:
+	// thinking: "think1" then coalesce "think2" into first thinking block
+	// content: "text1" then coalesce "text2" into first content block
+	// But they interleave, so: thinking block, content block, and
+	// the second thinking should coalesce into the first thinking block,
+	// and second content into first content block.
+	assert.Len(t, blocks, 2, "should have thinking and content blocks")
+	assert.Equal(t, "thinking", blocks[0].Type)
+	assert.Equal(t, "think1think2", blocks[0].Text, "thinking deltas should coalesce across content blocks")
+	assert.Equal(t, "text", blocks[1].Type)
+	assert.Equal(t, "text1text2", blocks[1].Text, "content deltas should coalesce across thinking blocks")
+}

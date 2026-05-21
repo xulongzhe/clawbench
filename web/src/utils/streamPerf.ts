@@ -20,7 +20,7 @@
 // ────────────────────────────────────────────────────────────
 
 /** Regex to match <scheduled-task id="..." /> tags with integer IDs. */
-export const SCHEDULED_TASK_RE = /<scheduled-task\s+id="(\d+)"\s*\/>/gi
+const SCHEDULED_TASK_RE = /<scheduled-task\s+id="(\d+)"\s*\/>/gi
 
 /**
  * Extract scheduled task IDs from text.

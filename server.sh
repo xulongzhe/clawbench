@@ -44,7 +44,20 @@ check_binary() {
     if [[ ! -f "$bin" ]]; then
         echo "Binary not found, building..."
         if command -v go >/dev/null 2>&1; then
-            go build -o "$bin" ./cmd/server
+            local ver is_release build_time full_ver
+            ver=$(git describe --tags --always 2>/dev/null || echo "dev")
+            if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+                is_release=true
+            else
+                is_release=false
+            fi
+            build_time=$(date +"%Y-%m-%d %H:%M:%S")
+            if $is_release; then
+                full_ver="$ver"
+            else
+                full_ver="$ver ($build_time)"
+            fi
+            go build -ldflags "-X clawbench/internal/version.Version=$full_ver" -o "$bin" ./cmd/server
         else
             echo "Error: Go not found and binary missing." >&2
             exit 1
@@ -168,9 +181,9 @@ start_release() {
     if [[ -n "$FOREGROUND" ]]; then
         echo "Open http://localhost:$EFFECTIVE_PORT in your browser"
         echo ""
-        PORT=$EFFECTIVE_PORT exec "$BIN"
+        PORT=$EFFECTIVE_PORT CLAWBENCH_NO_SUPERVISOR=1 exec "$BIN"
     else
-        PORT=$EFFECTIVE_PORT nohup $BIN >> "$LOG_FILE" 2>&1 &
+        PORT=$EFFECTIVE_PORT CLAWBENCH_NO_SUPERVISOR=1 nohup $BIN >> "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
         disown $! 2>/dev/null
 

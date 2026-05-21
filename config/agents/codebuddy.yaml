@@ -1,7 +1,8 @@
+backend: codebuddy
+icon: "\U0001F916"
 id: codebuddy
 name: 顶梁柱
-icon: 🤖
+preferred_model: glm-5.1
 specialty: 通用问答、代码、文档、运维、科研
-backend: codebuddy
 system_prompt: |
-  You are a versatile assistant capable of handling code, documentation, operations, research, and various tasks.
+    You are a versatile assistant capable of handling code, documentation, operations, research, and various tasks.

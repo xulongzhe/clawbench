@@ -13,6 +13,7 @@
       :hasMore="session.hasMore.value"
       :loadingMore="session.loadingMore.value"
       :totalMessages="session.totalMessages.value"
+      :active="props.active"
       :pendingMessages="manager.pendingMessages.value"
       @touchstart="swipeSession.onTouchStart"
       @touchend="swipeSession.onTouchEnd"
@@ -88,9 +89,9 @@
       @open-session-tab="session.openSessionTab"
       @file-tag-click="handleFileTagClick"
       @toggle-auto-speech="autoSpeech.toggle"
-      @create-session="manager.createSession"
+      @create-session="() => { manager.createSession(); sessionDrawerRef.value?.invalidate() }"
       @show-agent-selector="handleShowAgentSelector"
-      @delete-session="(id) => manager.deleteCurrentSession((draftId) => inputBarRef.value?.deleteDraft(draftId))"
+      @delete-session="(id) => { manager.deleteCurrentSession((draftId) => inputBarRef.value?.deleteDraft(draftId)); sessionDrawerRef.value?.invalidate() }"
       @switch-model="handleSwitchModel"
       @switch-thinking-effort="handleSwitchThinkingEffort"
     />
@@ -154,7 +155,7 @@ import { useChatStream } from '@/composables/useChatStream.ts'
 import { useChatSession, loadSessionsOnce } from '@/composables/useChatSession.ts'
 import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
 import { useSessionManager } from '@/composables/useSessionManager.ts'
-import { useAgents } from '@/composables/useAgents.ts'
+import { useAgents } from '@/composables/useAgents'
 import { useToast } from '@/composables/useToast.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useNotification } from '@/composables/useNotification.ts'
@@ -413,6 +414,7 @@ async function handleShowAgentSelector() {
   // If only one agent exists, skip the selector and create directly
   if (agentsList.value.length === 1) {
     manager.createSession(agentsList.value[0].id)
+    sessionDrawerRef.value?.invalidate()
     return
   }
   sessionDrawerRef.value?.openAgentSelector()

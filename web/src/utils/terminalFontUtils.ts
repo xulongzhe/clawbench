@@ -2,10 +2,10 @@
  * Terminal font size utilities — pure functions extracted from TerminalPanelContent.
  */
 
-export const FONT_SIZE_KEY = 'clawbench-terminal-font-size'
+const FONT_SIZE_KEY = 'clawbench-terminal-font-size'
 export const DEFAULT_FONT_SIZE = 12
-export const MIN_FONT_SIZE = 8
-export const MAX_FONT_SIZE = 28
+const MIN_FONT_SIZE = 8
+const MAX_FONT_SIZE = 28
 
 /**
  * Load font size from localStorage with bounds checking.

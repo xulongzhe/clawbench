@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import { apiPost, apiPut } from '@/utils/api.ts'
+import { apiPost, apiPut } from '@/utils/api'
 
 interface UseTaskFormOptions {
   mode: Ref<string>
