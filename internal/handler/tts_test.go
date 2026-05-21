@@ -48,6 +48,11 @@ type mockSpeechProvider struct {
 	synthesizeCalled bool
 	lastSynthText    string
 	lastSynthLang    string
+	// synthesizeBlock, if non-nil, is closed before Synthesize returns.
+	// Set before starting the job to keep the goroutine alive until the
+	// stream endpoint has connected (avoids race where the goroutine
+	// finishes and unregisters the job before TTSStream can look it up).
+	synthesizeBlock chan struct{}
 }
 
 func (m *mockSpeechProvider) Synthesize(ctx context.Context, text string, outputPath string, language string) error {
@@ -61,7 +66,18 @@ func (m *mockSpeechProvider) Synthesize(ctx context.Context, text string, output
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(outputPath, []byte("fake audio data"), 0644)
+	if err := os.WriteFile(outputPath, []byte("fake audio data"), 0644); err != nil {
+		return err
+	}
+	// Block until the test releases us (if configured)
+	if m.synthesizeBlock != nil {
+		select {
+		case <-m.synthesizeBlock:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
 }
 
 // setupTTSTest sets up a test environment with mock provider and summarizer.
@@ -452,7 +468,8 @@ func TestTTSGenerate_LanguageJa(t *testing.T) {
 // --- TTSStream: SSE streaming via EventSource-compatible format ---
 
 func TestTTSStream_Success(t *testing.T) {
-	mockProvider := &mockSpeechProvider{}
+	block := make(chan struct{})
+	mockProvider := &mockSpeechProvider{synthesizeBlock: block}
 	mockSum := &mockSummarizer{result: "这是核心结论"}
 	env, teardown := setupTTSTest(t, mockProvider, mockSum)
 	defer teardown()
@@ -469,13 +486,32 @@ func TestTTSStream_Success(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &genResp)
 	jobID := genResp["jobId"].(string)
 
-	// Connect to stream endpoint immediately (as a real client would).
-	// TTSStream blocks reading from the job's channel until the goroutine completes.
+	// Wait for the summarizing phase to be sent (ensures the goroutine is running)
+	hash := sha256.Sum256([]byte(text))
+	cacheKey := hex.EncodeToString(hash[:])[:summarize.CacheKeyHexLen]
+	job, ok := service.GetTTSJob(cacheKey)
+	if !ok {
+		t.Fatal("TTS job not found after TTSGenerate returned")
+	}
+
+	// Connect to stream endpoint while the job is still alive.
+	// The mock synthesize blocks on `block`, so the goroutine won't finish
+	// and unregister the job before we connect.
 	streamReq := httptest.NewRequest(http.MethodGet, "/api/tts/stream/"+jobID, nil)
 	streamReq = withProjectCookie(streamReq, env.ProjectDir)
 	streamW := httptest.NewRecorder()
 
+	// Release the mock so the job can finish after we've connected.
+	close(block)
+
 	TTSStream(streamW, streamReq)
+
+	// Wait for the job to complete so events are fully flushed.
+	select {
+	case <-job.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("TTS job did not complete in time")
+	}
 
 	body := streamW.Body.String()
 	assert.Contains(t, body, "event: phase")
