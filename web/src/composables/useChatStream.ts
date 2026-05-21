@@ -58,9 +58,9 @@ export function useChatStream(options: UseChatStreamOptions) {
   const TOOL_USE_TIMEOUT_MS = 30000 // 30 seconds without 'done' event = mark as done
 
   const reconnect = useReconnect({
-    maxAttempts: 1,
+    maxAttempts: 3,
     baseDelay: 2000,
-    onReconnect: () => connectStream(currentSessionId.value),
+    onReconnect: () => connectStream(currentSessionId.value, true),
   })
 
   function debouncedRender() {
@@ -135,7 +135,7 @@ export function useChatStream(options: UseChatStreamOptions) {
     const MAX_JSON_PARSE_FAILURES = 5
     pollingInterval = setInterval(async () => {
       try {
-        const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(currentSessionId.value)}`)
+        const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(currentSessionId.value)}`, { credentials: 'same-origin' })
         if (!resp.ok) {
           throw new Error(`HTTP ${resp.status}`)
         }
@@ -216,10 +216,15 @@ export function useChatStream(options: UseChatStreamOptions) {
     }, 2000)
   }
 
-  function connectStream(sessionId: string) {
+  function connectStream(sessionId: string, isRetry = false) {
     disconnectStream()
     stopPolling()
-    reconnect.reset()
+    // Only reset reconnect state for fresh/intentional connections (user action,
+    // foreground return, network recovery). Do NOT reset for automatic reconnection
+    // attempts — that would clear reconnectAttempts, making maxAttempts useless.
+    if (!isRetry) {
+      reconnect.reset()
+    }
 
     // Find existing streaming message or create a new one
     let streamingMsg = messages.value.find(m => m.role === 'assistant' && m.streaming)
@@ -250,7 +255,7 @@ export function useChatStream(options: UseChatStreamOptions) {
       return true
     }
 
-    eventSource = new EventSource(`/api/ai/chat/stream?session_id=${encodeURIComponent(sessionId)}`)
+    eventSource = new EventSource(`/api/ai/chat/stream?session_id=${encodeURIComponent(sessionId)}`, { withCredentials: true })
 
     // Start stream timeout
     resetStreamTimeout()
@@ -377,6 +382,7 @@ export function useChatStream(options: UseChatStreamOptions) {
       if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null }
       clearToolUseTimeouts()
       disconnectStream()
+      reconnect.reset() // Stream completed — reset reconnect state for future sessions
       // Reload from DB to ensure complete content — SSE events may have been
       // dropped during transmission, so the local state may be incomplete.
       onLoadHistory().finally(() => {
@@ -523,6 +529,7 @@ export function useChatStream(options: UseChatStreamOptions) {
         reconnect.scheduleReconnect()
       } else {
         // Too many attempts or session inactive — fall back to polling
+        reconnect.reset() // Clear reconnect state before falling back to polling
         forceCleanupStreamingState()
         pollUntilDone()
       }
@@ -554,7 +561,7 @@ export function useChatStream(options: UseChatStreamOptions) {
     if (eventSource) {
       console.info('Network recovered, reconnecting SSE stream')
       disconnectStream()
-      reconnect.reset()
+      // connectStream with isRetry=false will reset reconnect state
       connectStream(currentSessionId.value)
     }
   }

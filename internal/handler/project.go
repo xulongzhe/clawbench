@@ -87,6 +87,7 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 				Path:     "/",
 				MaxAge:   7 * 24 * 3600,
 				HttpOnly: true,
+				Secure:   r.TLS != nil,
 				SameSite: http.SameSiteLaxMode,
 			})
 		}
@@ -148,6 +149,7 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 			Path:     "/",
 			MaxAge:   7 * 24 * 3600,
 			HttpOnly: true,
+			Secure:   r.TLS != nil,
 			SameSite: http.SameSiteLaxMode,
 		})
 		w.Header().Set("Content-Type", "application/json")
