@@ -314,11 +314,17 @@ function switchTab(tab) {
 
 /** Handle clawbench-open-session event from Android push notification tap */
 function handleOpenSession(e) {
-  const detail = (e).detail
-  if (!detail?.sessionId) return
+  const detail = e?.detail
+  console.log('[ClawBench] clawbench-open-session event received, detail=', detail)
+  if (!detail?.sessionId) {
+    console.warn('[ClawBench] clawbench-open-session: no sessionId in detail, ignoring')
+    return
+  }
   const { sessionId, projectPath } = detail
+  console.log('[ClawBench] clawbench-open-session: sessionId=', sessionId, 'projectPath=', projectPath, 'currentProject=', store.state.projectRoot)
   if (projectPath && projectPath !== store.state.projectRoot) {
     // Cross-project: switch project, store pending session, then reload
+    console.log('[ClawBench] cross-project navigation, switching to', projectPath)
     localStorage.setItem('clawbenchPendingNav', JSON.stringify({ sessionId }))
     fetch('/api/project', {
       method: 'POST',
@@ -328,11 +334,13 @@ function handleOpenSession(e) {
       window.location.reload()
     }).catch(() => {
       // If project switch fails, try same-project switch as fallback
+      console.warn('[ClawBench] project switch failed, falling back to same-project switch')
       switchTab('chat')
       sessionIdentity.switchSession(sessionId)
     })
   } else {
     // Same project: lightweight switch
+    console.log('[ClawBench] same-project navigation, switching to session', sessionId)
     switchTab('chat')
     sessionIdentity.switchSession(sessionId)
   }
@@ -828,26 +836,42 @@ onMounted(async () => {
     }
 
     // Check AndroidNative bridge for cold-start pending navigation
+    // Also poll briefly in case CustomEvent was dispatched while WebView was paused
     if (isAppMode.value && window.AndroidNative?.getPendingNavigation) {
-      try {
-        const nav = window.AndroidNative.getPendingNavigation()
-        if (nav) {
-          const { sessionId, projectPath } = JSON.parse(nav)
-          if (sessionId) {
-            if (projectPath && projectPath !== store.state.projectRoot) {
-              // Need to switch project first
-              localStorage.setItem('clawbenchPendingNav', JSON.stringify({ sessionId }))
-              fetch('/api/project', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ path: projectPath }),
-              }).then(() => window.location.reload())
-            } else {
-              processPendingNav(sessionId)
+      let pollCleared = false
+      const pollPendingNav = () => {
+        try {
+          const nav = window.AndroidNative.getPendingNavigation()
+          console.log('[ClawBench] getPendingNavigation poll result:', nav)
+          if (nav) {
+            const { sessionId, projectPath } = JSON.parse(nav)
+            if (sessionId) {
+              // Navigation data found — stop polling
+              pollCleared = true
+              if (projectPath && projectPath !== store.state.projectRoot) {
+                // Need to switch project first
+                localStorage.setItem('clawbenchPendingNav', JSON.stringify({ sessionId }))
+                fetch('/api/project', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path: projectPath }),
+                }).then(() => window.location.reload())
+              } else {
+                processPendingNav(sessionId)
+              }
             }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
+      // Poll immediately and then every 500ms for up to 3 seconds
+      pollPendingNav()
+      let pollCount = 0
+      const pollInterval = setInterval(() => {
+        if (pollCleared) { clearInterval(pollInterval); return }
+        pollPendingNav()
+        pollCount++
+        if (pollCount >= 6) clearInterval(pollInterval) // 3 seconds total
+      }, 500)
     }
     const lastFile = localStorage.getItem('clawbenchLastFile_' + store.state.projectRoot)
     if (lastFile && lastFile !== store.state.currentFile?.path) {

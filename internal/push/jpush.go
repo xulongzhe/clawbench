@@ -86,7 +86,7 @@ func (c *JPushClient) SendNotification(registrationID, title, alert string, extr
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Content-Type", "application/json")
 
-	slog.Info("jpush: sending notification", "reg_id", registrationID, "title", title, "alert", alert, "extras", extras, "payload", string(body))
+	slog.Debug("jpush: sending notification", "reg_id", registrationID, "title", title, "alert", alert, "extras", extras)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -95,12 +95,11 @@ func (c *JPushClient) SendNotification(registrationID, title, alert string, extr
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	slog.Info("jpush: server response", "status", resp.StatusCode, "body", string(respBody))
 	if resp.StatusCode != http.StatusOK {
 		slog.Error("jpush: push failed", "status", resp.StatusCode, "body", string(respBody))
 		return fmt.Errorf("jpush: server returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	slog.Info("jpush: notification sent successfully", "reg_id", registrationID, "title", title)
+	slog.Debug("jpush: notification sent", "reg_id", registrationID, "title", title)
 	return nil
 }

@@ -1291,11 +1291,13 @@ public class BackgroundService extends Service {
     private void postEventNotification(String eventType, JSONObject data) {
         try {
             String status = data.optString("status", "");
-            String title;
-            String text;
             String sessionId = null;
             String taskId = null;
             String projectPath = null;
+            String title = null;
+            String text = null;
+
+            AppLog.i(TAG, "NativeWS: postEventNotification called, eventType=" + eventType + ", data=" + data.toString());
 
             if ("session_update".equals(eventType)) {
                 sessionId = data.optString("session_id", "");
@@ -1321,6 +1323,7 @@ public class BackgroundService extends Service {
                     text = "任务失败";
                 }
             } else {
+                AppLog.i(TAG, "NativeWS: postEventNotification - unhandled eventType=" + eventType + ", skipping");
                 return;
             }
 
@@ -1328,7 +1331,7 @@ public class BackgroundService extends Service {
             Intent intent = new Intent(this, MainActivity.class);
             intent.setAction(android.content.Intent.ACTION_MAIN);
             intent.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
-            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             if (sessionId != null && !sessionId.isEmpty()) {
                 intent.putExtra("session_id", sessionId);
             }
@@ -1339,6 +1342,9 @@ public class BackgroundService extends Service {
             if (projectPath != null && !projectPath.isEmpty()) {
                 intent.putExtra("project_path", projectPath);
             }
+
+            AppLog.i(TAG, "NativeWS: notification intent extras: session_id=" + sessionId
+                    + ", task_id=" + taskId + ", project_path=" + projectPath);
 
             PendingIntent pendingIntent = PendingIntent.getActivity(
                     this, 0, intent,

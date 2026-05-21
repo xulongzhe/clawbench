@@ -61,13 +61,13 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- JPush push notification receiver -->
+        <!-- JPush push notification receiver (since 5.2.0, uses SERVICE_MESSAGE action) -->
         <receiver
             android:name=".JPushReceiver"
             android:enabled="true"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
-                <action android:name="cn.jpush.android.intent.RECEIVER_MESSAGE" />
+                <action android:name="cn.jpush.android.intent.SERVICE_MESSAGE" />
                 <category android:name="${applicationId}" />
             </intent-filter>
         </receiver>
