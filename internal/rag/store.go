@@ -149,9 +149,25 @@ func (s *Store) initSchema() error {
 
 	// Migrate existing databases: add new columns if they don't exist
 	s.db.Exec("ALTER TABLE chat_chunks ADD COLUMN chunk_text_segmented TEXT")
-	s.db.Exec("ALTER TABLE chat_chunks ADD COLUMN has_embedding BOOLEAN NOT NULL DEFAULT false")
+	// DuckDB does not support ADD COLUMN with NOT NULL DEFAULT constraints,
+	// so add as nullable, then set default and backfill.
+	if _, err := s.db.Exec("ALTER TABLE chat_chunks ADD COLUMN has_embedding BOOLEAN"); err == nil {
+		// Column was just added (didn't exist before), set default value
+		s.db.Exec("UPDATE chat_chunks SET has_embedding = false WHERE has_embedding IS NULL")
+	}
 	// Mark existing rows with embeddings as having embedding
-	s.db.Exec("UPDATE chat_chunks SET has_embedding = true WHERE embedding IS NOT NULL AND has_embedding = false")
+	s.db.Exec("UPDATE chat_chunks SET has_embedding = true WHERE embedding IS NOT NULL AND (has_embedding IS NULL OR has_embedding = false)")
+
+	// Sync sequence to max(id) so next insert doesn't violate primary key.
+	// This can happen when the table was created with auto-increment IDs
+	// but the sequence was never advanced past the existing rows.
+	// DuckDB doesn't support ALTER SEQUENCE RESTART or subqueries in CREATE SEQUENCE,
+	// so we query the max id and drop+recreate the sequence with the correct start value.
+	var maxID int
+	if err := s.db.QueryRow("SELECT COALESCE(MAX(id), 0) FROM chat_chunks").Scan(&maxID); err == nil && maxID > 0 {
+		s.db.Exec("DROP SEQUENCE IF EXISTS chat_chunks_id_seq")
+		s.db.Exec(fmt.Sprintf("CREATE SEQUENCE chat_chunks_id_seq START WITH %d", maxID+1))
+	}
 
 	return nil
 }
@@ -262,7 +278,7 @@ func (s *Store) SearchSimple(queryEmbedding []float64, limit int, projectPath, b
 		       backend,
 		       created_at
 		FROM chat_chunks
-		WHERE has_embedding
+		WHERE has_embedding = true
 	`, embeddingLiteral)
 	args := []any{}
 
@@ -463,7 +479,7 @@ func (s *Store) SearchHybrid(queryEmbedding []float64, queryText string, poolSiz
 // PendingEmbeddingCount returns the number of chunks that need embedding backfill.
 func (s *Store) PendingEmbeddingCount() (int, error) {
 	var count int
-	err := s.db.QueryRow("SELECT COUNT(*) FROM chat_chunks WHERE has_embedding = false").Scan(&count)
+	err := s.db.QueryRow("SELECT COUNT(*) FROM chat_chunks WHERE COALESCE(has_embedding, false) = false").Scan(&count)
 	return count, err
 }
 
@@ -475,7 +491,7 @@ type PendingChunk struct {
 
 // GetPendingEmbeddings returns chunk IDs and texts that need embedding backfill.
 func (s *Store) GetPendingEmbeddings(limit int) ([]PendingChunk, error) {
-	rows, err := s.db.Query("SELECT id, chunk_text FROM chat_chunks WHERE has_embedding = false ORDER BY created_at DESC LIMIT ?", limit)
+	rows, err := s.db.Query("SELECT id, chunk_text FROM chat_chunks WHERE COALESCE(has_embedding, false) = false ORDER BY created_at DESC LIMIT ?", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -552,7 +568,7 @@ func (s *Store) CheckDimensionMismatch() (int, bool, error) {
 			ELSE ANY_VALUE(array_length(embedding))
 		END
 		FROM chat_chunks
-		WHERE has_embedding
+		WHERE has_embedding = true
 	`).Scan(&dim)
 	if err != nil {
 		return 0, false, fmt.Errorf("check dimension: %w", err)

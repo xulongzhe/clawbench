@@ -33,6 +33,8 @@ npm test                             # Vitest (all frontend tests)
 ./scripts/check-frontend-coverage.sh              # Frontend: run tests + check per-dir coverage
 ./scripts/check-frontend-coverage.sh --skip-test   # Frontend: reuse existing coverage data
 ./scripts/check-frontend-coverage.sh --update      # Frontend: auto-update baseline after improvement
+./scripts/check-android-coverage.sh              # Android: run tests + check per-class coverage
+./scripts/check-android-coverage.sh --skip-test   # Android: reuse existing JaCoCo report
 
 # Android APK (requires JDK 17)
 cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleDebug    # Debug APK
@@ -94,7 +96,7 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 - **Green portable deployment:** All runtime data under `.clawbench/`. Delete = clean uninstall. Copy binary dir for multi-instance.
 - **Zero-config startup:** `config/config.yaml` optional. `model.ApplyDefaults()` fills defaults. Auto-password persisted to `.clawbench/auto-password`.
 - **Model auto-discovery:** `SyncDiscoverAgents` detects CLIs → generates minimal YAMLs. `SyncDiscoverModels` (sync first run) + `AsyncRefreshModelCache` (background). Gemini/Codex/VeCLI/Qoder: no CLI model listing, must be user-defined in YAML.
-- **Android integration:** HTML login (static `login.html` + `AndroidNative` JS bridge). `PortForwardService` SSE listener for background notifications. JPush AppKey from `/api/push/config` (runtime, not in APK). Push-aware: `pushAvailable=true` → disconnect WS on background (JPush delivers); `false` → keep WS alive. Registration ID via `POST /api/push/register` (login-level lifecycle, survives WS reconnects).
+- **Android integration:** HTML login (static `login.html` + `AndroidNative` JS bridge). `BackgroundService` manages SSH port forwarding + native WebSocket event channel for background notifications. JPush AppKey from `/api/push/config` (runtime, not in APK). Push-aware: `pushAvailable=true` → disconnect WS on background (JPush delivers); `false` → keep WS alive. Registration ID via `POST /api/push/register` (login-level lifecycle, survives WS reconnects).
 - **Coverage gate (CI 合入门槛):** Two-tier check. Tier 1 (Project): per-package/directory coverage `>= baseline% - 1.5%`, baseline from CI artifact. Tier 2 (Diff): changed lines coverage `>= 80%`. CI enforces on every PR/push to main.
 - **Bugfix workflow (GitHub Issues):** All AI agents should report newly discovered bugs as GitHub Issues (`gh issue create`). A scheduled task runs hourly to auto-fix open issues: fetches open issues without any `bugfix:*` label (sorted by creation time) → evaluates complexity → claims and fixes in bugfix worktree (`.worktrees/bugfix`) → writes test → builds → starts on port 20100 → auto-verifies → updates issue with result. Max 3 fixes per run. Merge to main requires manual trigger. Issue labels track state: none = pending, `bugfix:in-progress` = AI claimed, `bugfix:awaiting-review` = fixed awaiting human verification, `bugfix:needs-design` = too complex for auto-fix (skipped), `bugfix:failed` = auto-fix failed. Human closes issue after verification.
 

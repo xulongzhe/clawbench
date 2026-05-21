@@ -588,29 +588,29 @@ defineExpose({
   cursor: not-allowed;
 }
 
-/* Unread session indicator — fast flash on the button (GPU-safe: opacity + box-shadow) */
+/* Unread session indicator — static highlight (no flash animation).
+ * The user is already on the chat tab, so flashing is unnecessary and distracting.
+ * A subtle color change + accent dot is enough to indicate other sessions have unread messages. */
 .chat-action-btn.has-unread {
     position: relative;
     color: var(--accent-color, #0066cc);
     background: color-mix(in srgb, var(--accent-color, #0066cc) 16%, transparent);
-    animation: unread-flash 0.8s ease-in-out infinite;
+}
+
+.chat-action-btn.has-unread::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent-color, #0066cc);
 }
 
 .chat-action-btn.has-unread:active {
-    animation: none;
     background: color-mix(in srgb, var(--accent-color, #0066cc) 30%, transparent);
     transform: scale(0.92);
-}
-
-@keyframes unread-flash {
-    0%, 100% {
-        opacity: 0.6;
-        box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color, #0066cc) 0%, transparent);
-    }
-    50% {
-        opacity: 1;
-        box-shadow: 0 0 10px 2px color-mix(in srgb, var(--accent-color, #0066cc) 25%, transparent);
-    }
 }
 
 /* Running session indicator — refined sweep light with accent color blend */

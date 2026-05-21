@@ -138,20 +138,12 @@ const sessionsWithStatus = computed(() => {
   }))
 })
 
-// Whether the cached session list needs a full reload on next open.
-// Set after create/delete operations that change the list composition.
-let stale = true
-
-/** Mark cached session list as stale so the next open triggers a full reload. */
-function invalidate() { stale = true }
-
-defineExpose({ loadSessions, openAgentSelector, invalidate })
+defineExpose({ loadSessions, openAgentSelector, addSessionLocally })
 
 async function openAgentSelector() {
   await loadAgents()
   // If only one agent exists, skip the selector and create directly
   if (agents.value.length === 1) {
-    stale = true
     emit('create', agents.value[0].id)
     bottomSheetRef.value?.close()
     return
@@ -164,7 +156,6 @@ async function handleCreateClick() {
   await loadAgents()
   // If only one agent exists, skip the selector and create directly
   if (agents.value.length === 1) {
-    stale = true
     emit('create', agents.value[0].id)
     bottomSheetRef.value?.close()
     return
@@ -186,7 +177,6 @@ async function loadSessions() {
     sessions.value = []
   } finally {
     loading.value = false
-    stale = false
     await nextTick()
     setupObserver()
   }
@@ -238,8 +228,6 @@ function createSession(agentId) {
   // from touch events that propagate to the newly rendered dialog
   if (Date.now() - agentSelectorOpenTime < 400) return
   showAgentSelector.value = false
-  // New session will be added to the list — mark stale so next open refreshes
-  stale = true
   emit('create', agentId)
   bottomSheetRef.value?.close()
 }
@@ -247,23 +235,26 @@ function createSession(agentId) {
 async function deleteSession(sessionId) {
   if (!await dialog.confirm(t('session.confirmDelete'), { dangerous: true })) return
   const session = sessions.value.find(s => s.id === sessionId)
-  // Optimistic removal from local list — no need for a full API reload
-  sessions.value = sessions.value.filter(s => s.id !== sessionId)
-  // Mark stale: if the deleted session was the current one, the core handler
-  // may create a new session or switch to another — the list will refresh on next open.
-  stale = true
   emit('delete', sessionId, session?.backend)
+  // Optimistic local removal — no API reload needed while drawer is open.
+  // Next open will do a full loadSessions() to catch any changes made while closed.
+  sessions.value = sessions.value.filter(s => s.id !== sessionId)
 }
 
+function addSessionLocally(session) {
+  if (!session) return
+  // Prepend to list, avoid duplicate if already present
+  if (sessions.value.some(s => s.id === session.id)) return
+  sessions.value = [session, ...sessions.value]
+}
+
+// Load from API when the drawer opens. While the drawer is open, local
+// mutations (delete, create) update the sessions array directly — no reload
+// needed. The next open will do a full loadSessions() to catch any changes
+// that happened while the drawer was closed.
 watch(() => props.open, async (val) => {
   if (val) {
-    if (stale || sessions.value.length === 0) {
-      // First open or after cache invalidation (create/delete) — load from API
-      await Promise.all([loadSessions(), loadAgents()])
-    } else {
-      // Subsequent opens — reuse cached list, running status comes from WS
-      await loadAgents()
-    }
+    await Promise.all([loadSessions(), loadAgents()])
   }
 })
 

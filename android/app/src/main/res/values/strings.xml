@@ -11,8 +11,8 @@
     <string name="download_failed">下载失败</string>
     <string name="download_completed">下载完成</string>
     <string name="download_description">ClawBench 文件下载</string>
-    <string name="ssh_notification_reconnecting">SSH 隧道断开，正在重连…</string>
-    <string name="ssh_notification_recovering">SSH 隧道已恢复</string>
+    <string name="ssh_notification_reconnecting">后台连接断开，正在重连…</string>
+    <string name="ssh_notification_recovering">后台连接已恢复</string>
     <!-- Browser sandbox -->
     <string name="browser_back">返回</string>
     <string name="browser_refresh">刷新</string>

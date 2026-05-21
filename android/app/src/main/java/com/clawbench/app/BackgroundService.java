@@ -52,25 +52,30 @@ import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
 
 /**
- * Foreground service that manages SSH tunnels for port forwarding.
+ * Foreground service for background connectivity.
  *
- * When the user registers a port for forwarding, this service:
- * 1. Establishes (or reuses) an SSH connection to the ClawBench server
- * 2. Creates a local port forward: 127.0.0.1:{port} on device → 127.0.0.1:{port} on server
- * 3. WebView can then access http://localhost:{port} transparently
+ * Manages:
+ * 1. SSH tunnels for port forwarding (127.0.0.1:{port} on device → 127.0.0.1:{port} on server)
+ * 2. Native WebSocket event channel for AI session/task notifications when JPush is unavailable
+ * 3. JPush push notification integration for real-time event delivery
+ *
+ * The service stays alive as long as at least one of these is active:
+ * - Any forwarded SSH ports
+ * - Native WS needed (JPush unavailable)
  *
  * Reliability features:
  * - Auto-reconnect: monitors SSH connection and reconnects with exponential backoff
  * - Port persistence: saves forwarded ports to SharedPreferences, restores on Service restart
  * - WifiLock: prevents WiFi from disconnecting while SSH tunnel is active
+ * - WakeLock: prevents CPU from sleeping so SSH keep-alive packets are sent
  *
  * All SSH/HTTP network operations run on a background thread to avoid NetworkOnMainThreadException.
  */
-public class PortForwardService extends Service {
+public class BackgroundService extends Service {
 
     private static final String TAG = "ClawBench";
     private static final int NOTIFICATION_ID = 2;
-    private static final String CHANNEL_ID = "clawbench_ssh";
+    private static final String CHANNEL_ID = "clawbench_background";
     private static final String EVENTS_CHANNEL_ID = "clawbench_events";
     private static final int EVENTS_NOTIFICATION_ID = 3;
     private static final String PREFS_NAME = "clawbench_prefs";
@@ -85,7 +90,7 @@ public class PortForwardService extends Service {
     private static final int MONITOR_CHECK_INTERVAL_MS = 15000;
 
     private static volatile boolean isRunning = false;
-    private static volatile PortForwardService instance;
+    private static volatile BackgroundService instance;
 
     private JSch jsch;
     private Session sshSession;
@@ -189,7 +194,7 @@ public class PortForwardService extends Service {
      */
     public static void start(Context context) {
         if (isRunning) return;
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, BackgroundService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
         } else {
@@ -202,7 +207,7 @@ public class PortForwardService extends Service {
      */
     public static void stop(Context context) {
         if (!isRunning) return;
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, BackgroundService.class);
         context.stopService(intent);
     }
 
@@ -349,7 +354,7 @@ public class PortForwardService extends Service {
     public void onTaskRemoved(Intent rootIntent) {
         // When the user swipes the app from recents, restart the service
         // so the SSH tunnel keeps running.
-        Intent restartIntent = new Intent(this, PortForwardService.class);
+        Intent restartIntent = new Intent(this, BackgroundService.class);
         restartIntent.setAction("RESTORE_PORTS");
         PendingIntent pendingIntent = PendingIntent.getService(
                 this, 1, restartIntent,
@@ -847,13 +852,13 @@ public class PortForwardService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
             if (nm != null) {
-                // SSH tunnel channel (low priority, no sound)
+                // Background connectivity channel (low priority, no sound)
                 android.app.NotificationChannel channel = new android.app.NotificationChannel(
                         CHANNEL_ID,
-                        "SSH 端口转发",
+                        "后台连接服务",
                         android.app.NotificationManager.IMPORTANCE_LOW
                 );
-                channel.setDescription("SSH 隧道端口转发服务");
+                channel.setDescription("SSH 端口转发与后台事件监听");
                 nm.createNotificationChannel(channel);
 
                 // AI events channel (high priority, sound + vibration)
@@ -873,7 +878,7 @@ public class PortForwardService extends Service {
     /**
      * Build the foreground service notification.
      * @param portCount  Number of currently forwarded ports
-     * @param statusText Optional status override (e.g. "SSH 隧道断开，正在重连…"). Null = normal status.
+     * @param statusText Optional status override (e.g. "后台连接断开，正在重连…"). Null = normal status.
      */
     Notification buildNotification(int portCount, String statusText) {
         Intent notificationIntent = new Intent(this, MainActivity.class);
@@ -885,17 +890,17 @@ public class PortForwardService extends Service {
         String title;
         String text;
         if (statusText != null) {
-            title = portCount > 0 ? "ClawBench 端口转发" : "ClawBench";
+            title = "ClawBench";
             text = statusText;
         } else if (portCount > 0) {
-            title = "ClawBench 端口转发";
+            title = "ClawBench";
             text = portCount + " 个端口转发活跃";
         } else if (nativeWsNeeded || nativeWsActive) {
             title = "ClawBench";
             text = "后台事件监听中";
         } else {
             title = "ClawBench";
-            text = "无端口转发，即将停止";
+            text = "后台服务即将停止";
         }
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
@@ -966,7 +971,7 @@ public class PortForwardService extends Service {
      * Add a port forward via the service.
      */
     public static void addForwardedPort(Context context, int port) {
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, BackgroundService.class);
         intent.setAction("ADD_PORT");
         intent.putExtra("port", port);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -980,7 +985,7 @@ public class PortForwardService extends Service {
      * Remove a port forward via the service.
      */
     public static void removeForwardedPort(Context context, int port) {
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, BackgroundService.class);
         intent.setAction("REMOVE_PORT");
         intent.putExtra("port", port);
         context.startService(intent);
@@ -1022,7 +1027,7 @@ public class PortForwardService extends Service {
             // Service not running — start it first
             start(context);
         }
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, BackgroundService.class);
         intent.setAction("START_NATIVE_WS");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
@@ -1036,7 +1041,7 @@ public class PortForwardService extends Service {
      * Called when the app returns to foreground.
      */
     public static void stopNativeEventWs(Context context) {
-        Intent intent = new Intent(context, PortForwardService.class);
+        Intent intent = new Intent(context, BackgroundService.class);
         intent.setAction("STOP_NATIVE_WS");
         context.startService(intent);
     }

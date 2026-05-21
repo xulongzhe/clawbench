@@ -72,6 +72,7 @@ import ChatMetadataModal from '@/components/chat/ChatMetadataModal.vue'
 import { useChatRender } from '@/composables/useChatRender.ts'
 import { useAgents } from '@/composables/useAgents'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
+import { useLocalhostUrlClickHandler } from '@/composables/useLocalhostAnnotation.ts'
 import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
 import { useTaskTab } from '@/composables/useTaskTab.ts'
 import { formatToolOutput } from '@/utils/renderToolDetail.ts'
@@ -87,6 +88,7 @@ const { t } = useI18n()
 const { refreshExecDetail } = useTaskTab()
 const theme = inject('theme', ref('light'))
 const { openFilePath, verifyFilePaths } = useFilePathAnnotation()
+const { handleLocalhostUrlClick } = useLocalhostUrlClickHandler()
 const switchTab = inject('switchTab', () => {})
 
 // ── Refresh logic ──
@@ -238,7 +240,10 @@ function showMetadata() {
 const contentRef = ref(null)
 
 function handleContentClick(event) {
-  // Handle commit-hash clicks (span or button)
+  // 1. Handle localhost URL clicks (icon button or <a> tag) — App mode only
+  if (handleLocalhostUrlClick(event)) return
+
+  // 2. Handle commit-hash clicks (span or button)
   const commitEl = event.target.closest('.chat-commit-hash, .chat-commit-open-btn')
   if (commitEl) {
     event.preventDefault()
@@ -249,6 +254,8 @@ function handleContentClick(event) {
     }
     return
   }
+
+  // 3. Handle file-open buttons
   const btn = event.target.closest('.chat-file-open-btn')
   if (!btn) return
   event.preventDefault()

@@ -114,7 +114,7 @@ export function usePortForward() {
     await loadPorts()
     if (ports.value.length === 0) {
       // No ports on server — stop the native service (clears stale SharedPreferences)
-      ;(window as any).AndroidNative?.stopPortForwardService()
+      ;(window as any).AndroidNative?.stopBackgroundService()
       return
     }
     for (const p of ports.value) {

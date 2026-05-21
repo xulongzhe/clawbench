@@ -629,7 +629,7 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit")
 	_ = sub
 
-	emitSessionEvent("session-emit-1", "completed", true)
+	EmitSessionEvent("session-emit-1", "completed", true)
 
 	// Verify the buffered event has response_preview
 	buffered := sub.GetBufferedEvents()
@@ -654,7 +654,7 @@ func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
 	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit2")
 	_ = sub
 
-	emitSessionEvent("session-emit-2", "running", false)
+	EmitSessionEvent("session-emit-2", "running", false)
 
 	buffered := sub.GetBufferedEvents()
 	if len(buffered) == 0 {
@@ -697,7 +697,7 @@ func TestEmitSessionEvent_NilManager(t *testing.T) {
 
 	// Should not panic when ws manager is nil
 	assert.NotPanics(t, func() {
-		emitSessionEvent("session-nil-mgr", "running", false)
+		EmitSessionEvent("session-nil-mgr", "running", false)
 	})
 }
 

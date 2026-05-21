@@ -25,8 +25,8 @@ var sessionStreams sync.Map // map[string]chan ai.StreamEvent
 var sessionCancels sync.Map         // map[string]context.CancelFunc
 var sessionCancelReasons sync.Map   // map[string]string — "user", "disconnect"
 
-// emitSessionEvent broadcasts a session_update event to connected clients.
-func emitSessionEvent(sessionID, status string, hasNewMessages bool) {
+// EmitSessionEvent broadcasts a session_update event to connected clients.
+func EmitSessionEvent(sessionID, status string, hasNewMessages bool) {
 	mgr := ws.GetManager()
 	if mgr == nil {
 		return
@@ -110,9 +110,9 @@ func SetSessionRunning(sessionID string, running bool, skipEvent ...bool) {
 	// Emit event unless caller explicitly skips (e.g. CancelSession sends its own event)
 	if len(skipEvent) == 0 || !skipEvent[0] {
 		if !running {
-			emitSessionEvent(sessionID, "completed", true)
+			EmitSessionEvent(sessionID, "completed", true)
 		} else {
-			emitSessionEvent(sessionID, "running", false)
+			EmitSessionEvent(sessionID, "running", false)
 		}
 	}
 }
@@ -132,7 +132,7 @@ func TrySetSessionRunning(sessionID string) bool {
 	activeMu.Unlock()
 
 	// Emit event so frontends know the session started running
-	emitSessionEvent(sessionID, "running", false)
+	EmitSessionEvent(sessionID, "running", false)
 
 	return true
 }
@@ -180,7 +180,7 @@ func CancelSession(sessionID string) bool {
 	sessionCancelReasons.Store(sessionID, "user")
 	ClearQueue(sessionID)
 	cancel()
-	emitSessionEvent(sessionID, "cancelled", false)
+	EmitSessionEvent(sessionID, "cancelled", false)
 
 	// Send cancelled event to SSE stream after cancelling context (non-blocking)
 	if streamVal, ok := sessionStreams.Load(sessionID); ok {
@@ -212,6 +212,10 @@ func ForceCancelSession(sessionID string) {
 	if cancel, ok := val.(context.CancelFunc); ok {
 		cancel()
 	}
+	// ISS-120: Clear activeSessions to prevent zombie entries that block new messages.
+	// Skip the "completed" event (true) — ForceCancelSession is for disconnected clients
+	// that won't see it anyway, and we don't want to emit a stale event on reconnection.
+	SetSessionRunning(sessionID, false, true)
 }
 
 // RegisterSessionStream creates and registers a stream channel for a session

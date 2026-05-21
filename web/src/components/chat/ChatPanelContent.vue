@@ -86,12 +86,12 @@
       @remove-file="removeFile"
       @add-attached="addAttachedFile"
       @remove-attached="removeAttachedFile"
-      @open-session-tab="session.openSessionTab"
+      @open-session-tab="identity.openSessionTab"
       @file-tag-click="handleFileTagClick"
       @toggle-auto-speech="autoSpeech.toggle"
-      @create-session="() => { manager.createSession(); sessionDrawerRef.value?.invalidate() }"
+      @create-session="() => manager.createSession()"
       @show-agent-selector="handleShowAgentSelector"
-      @delete-session="(id) => { manager.deleteCurrentSession((draftId) => inputBarRef.value?.deleteDraft(draftId)); sessionDrawerRef.value?.invalidate() }"
+      @delete-session="() => manager.deleteCurrentSession((draftId) => inputBarRef.value?.deleteDraft(draftId))"
       @switch-model="handleSwitchModel"
       @switch-thinking-effort="handleSwitchThinkingEffort"
     />
@@ -125,18 +125,6 @@
     @file-open="handleFileOpenInOverlay"
     @send-message="handleToolSendMessage"
   />
-
-  <!-- Session Drawer — only open when chat tab is active -->
-  <SessionDrawer
-    ref="sessionDrawerRef"
-    :open="props.active && session.sessionDrawerOpen.value"
-    :currentSessionId="identity.currentSessionId.value"
-    :runningSessionIds="identity.runningSessions.value"
-    @close="session.sessionDrawerOpen.value = false"
-    @select="manager.switchSession"
-    @create="manager.createSession"
-    @delete="(sessionId, backend) => manager.deleteSession(sessionId, backend).then(() => inputBarRef.value?.deleteDraft(sessionId))"
-  />
 </template>
 
 <script setup>
@@ -144,7 +132,6 @@ import { ref, computed, watch, onUnmounted, onMounted, inject, provide, toRef, n
 import { useI18n } from 'vue-i18n'
 import { gt } from '@/composables/useLocale'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'
-import SessionDrawer from '@/components/session/SessionDrawer.vue'
 import ChatMetadataModal from './ChatMetadataModal.vue'
 import ToolDetailOverlay from './ToolDetailOverlay.vue'
 import ChatInputBar from './ChatInputBar.vue'
@@ -191,7 +178,6 @@ const loading = ref(false)
 // overflow after being hidden (display:none gives scrollHeight=0).
 const layoutRefreshKey = ref(0)
 const currentAgent = computed(() => getAgent(identity.currentAgentId.value) || null)
-const sessionDrawerRef = ref(null)
 const inputBarRef = ref(null)
 const messageListRef = ref(null)
 const metadataModal = ref({
@@ -396,7 +382,7 @@ provide('layoutRefreshKey', layoutRefreshKey)
 // immediate: true 确保首次挂载时（active 已为 true）也会加载历史记录
 watch(() => props.active, async (val) => {
   if (!val) {
-    session.sessionDrawerOpen.value = false
+    identity.sessionDrawerOpen.value = false
     toolDetailOverlay.value.show = false
   } else {
     // Open/Re-open: load history (with overlay) and fix stale layout state from v-show display:none
@@ -414,10 +400,9 @@ async function handleShowAgentSelector() {
   // If only one agent exists, skip the selector and create directly
   if (agentsList.value.length === 1) {
     manager.createSession(agentsList.value[0].id)
-    sessionDrawerRef.value?.invalidate()
     return
   }
-  sessionDrawerRef.value?.openAgentSelector()
+  identity.openAgentSelector()
 }
 
 function handleSwitchModel(model) {

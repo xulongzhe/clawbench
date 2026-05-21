@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"clawbench/internal/middleware"
 	"clawbench/internal/model"
 	"clawbench/internal/rag"
 	"clawbench/internal/service"
@@ -11,14 +12,16 @@ import (
 
 // ServeRAGSearch handles POST /api/rag/search — hybrid/FTS/vector search.
 // Auth: localhost bypasses auth (CLI); remote requires cookie.
-// Project isolation: uses cookie-derived project path, ignoring client-supplied project field.
+// Project isolation: remote requests require project cookie; localhost (CLI) may omit it for global search.
 func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
 
-	projectPath, ok := requireProject(w, r)
-	if !ok {
+	// Remote requests require project cookie; localhost (CLI) may omit it for global search.
+	projectPath := middleware.GetProjectFromCookie(r)
+	if projectPath == "" && !middleware.IsLocalhost(r) {
+		writeLocalizedError(w, r, model.Forbidden(model.ErrProjectNotSet, "NoProjectSelected"))
 		return
 	}
 
@@ -46,8 +49,8 @@ func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
 		defaultLimit = req.Limit
 	}
 
-	// Enforce project isolation: always use cookie-derived project path,
-	// ignoring any client-supplied project field to prevent cross-project data access.
+	// Project isolation: use cookie-derived project path when set.
+	// Empty projectPath (CLI global search) searches across all projects.
 	params := rag.SearchParams{
 		Query:            req.Query,
 		Limit:            req.Limit,
@@ -74,14 +77,16 @@ func ServeRAGSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeRAGMessage handles GET /api/rag/message?id=<id> — get full message by ID.
-// Project isolation: verifies the message's session belongs to the authenticated project.
+// Project isolation: remote requires project cookie; localhost may omit it for cross-project access.
 func ServeRAGMessage(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 
-	projectPath, ok := requireProject(w, r)
-	if !ok {
+	// Remote requests require project cookie; localhost (CLI) may omit it.
+	projectPath := middleware.GetProjectFromCookie(r)
+	if projectPath == "" && !middleware.IsLocalhost(r) {
+		writeLocalizedError(w, r, model.Forbidden(model.ErrProjectNotSet, "NoProjectSelected"))
 		return
 	}
 
@@ -102,8 +107,8 @@ func ServeRAGMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the message belongs to the authenticated project
-	if msg.ProjectPath != projectPath {
+	// Verify the message belongs to the authenticated project (skip for localhost global access)
+	if projectPath != "" && msg.ProjectPath != projectPath {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
@@ -112,14 +117,16 @@ func ServeRAGMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeRAGSession handles GET /api/rag/session?id=<id> — get all messages in a session.
-// Project isolation: verifies the session belongs to the authenticated project.
+// Project isolation: remote requires project cookie; localhost may omit it for cross-project access.
 func ServeRAGSession(w http.ResponseWriter, r *http.Request) {
 	if !requireMethod(w, r, http.MethodGet) {
 		return
 	}
 
-	projectPath, ok := requireProject(w, r)
-	if !ok {
+	// Remote requests require project cookie; localhost (CLI) may omit it.
+	projectPath := middleware.GetProjectFromCookie(r)
+	if projectPath == "" && !middleware.IsLocalhost(r) {
+		writeLocalizedError(w, r, model.Forbidden(model.ErrProjectNotSet, "NoProjectSelected"))
 		return
 	}
 
@@ -129,10 +136,12 @@ func ServeRAGSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the session belongs to the authenticated project
-	if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != projectPath {
-		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
-		return
+	// Verify the session belongs to the authenticated project (skip for localhost global access)
+	if projectPath != "" {
+		if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != projectPath {
+			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+			return
+		}
 	}
 
 	messages, err := service.GetMessagesBySessionID(sessionID)

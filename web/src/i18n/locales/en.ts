@@ -262,6 +262,7 @@ export default {
     },
     localhost: {
       openFailed: 'Failed to open localhost URL',
+      sshDisabled: 'SSH tunnel is disabled, cannot open localhost URL',
     },
   },
   session: {

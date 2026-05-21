@@ -4,13 +4,28 @@ import { ref } from 'vue'
 // Mock composables before importing the module
 const mockIsAppMode = ref(false)
 const mockSshInfo = ref<any>(null)
+const mockEnsurePortRegistered = vi.fn().mockResolvedValue(undefined)
+const mockOpenPort = vi.fn()
+const mockToastShow = vi.fn()
 
 vi.mock('@/composables/useAppMode', () => ({
   useAppMode: () => ({ isAppMode: mockIsAppMode }),
 }))
 
 vi.mock('@/composables/usePortForward', () => ({
-  usePortForward: () => ({ sshInfo: mockSshInfo }),
+  usePortForward: () => ({
+    sshInfo: mockSshInfo,
+    ensurePortRegistered: mockEnsurePortRegistered,
+    openPort: mockOpenPort,
+  }),
+}))
+
+vi.mock('@/composables/useToast', () => ({
+  useToast: () => ({ show: mockToastShow }),
+}))
+
+vi.mock('@/composables/useLocale', () => ({
+  gt: (key: string) => key,
 }))
 
 import {
@@ -18,6 +33,7 @@ import {
   parseLocalhostUrl,
   localhostOpenButtonHtml,
   annotateLocalhostUrls,
+  useLocalhostUrlClickHandler,
 } from '@/composables/useLocalhostAnnotation'
 
 describe('useLocalhostAnnotation', () => {
@@ -173,6 +189,166 @@ describe('useLocalhostAnnotation', () => {
       const result = annotateLocalhostUrls(html)
       // null = still loading, should annotate (same as enabled)
       expect(result).toContain('chat-url-open-btn')
+    })
+  })
+
+  // --- useLocalhostUrlClickHandler ---
+
+  describe('useLocalhostUrlClickHandler', () => {
+    let handleLocalhostUrlClick: (event: MouseEvent) => boolean
+    let openLocalhostUrl: (element: Element, port: number, protocol: string) => Promise<boolean>
+
+    beforeEach(() => {
+      mockIsAppMode.value = true
+      mockSshInfo.value = { enabled: true }
+      mockEnsurePortRegistered.mockReset().mockResolvedValue(undefined)
+      mockOpenPort.mockReset()
+      mockToastShow.mockReset()
+      const handler = useLocalhostUrlClickHandler()
+      handleLocalhostUrlClick = handler.handleLocalhostUrlClick
+      openLocalhostUrl = handler.openLocalhostUrl
+    })
+
+    function createClickEvent(target: Element): MouseEvent {
+      const event = {
+        target,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      } as unknown as MouseEvent
+      return event
+    }
+
+    it('returns false in web mode', () => {
+      mockIsAppMode.value = false
+      const btn = document.createElement('button')
+      btn.className = 'chat-url-open-btn'
+      const event = createClickEvent(btn)
+      expect(handleLocalhostUrlClick(event)).toBe(false)
+    })
+
+    it('handles click on .chat-url-open-btn icon button', async () => {
+      const btn = document.createElement('button')
+      btn.className = 'chat-url-open-btn'
+      btn.setAttribute('data-port', '3000')
+      btn.setAttribute('data-protocol', 'http')
+      const event = createClickEvent(btn)
+      const result = handleLocalhostUrlClick(event)
+      expect(result).toBe(true)
+      expect(event.preventDefault).toHaveBeenCalled()
+      expect(event.stopPropagation).toHaveBeenCalled()
+      // openLocalhostUrl is fire-and-forget, wait for it
+      await vi.waitFor(() => {
+        expect(mockEnsurePortRegistered).toHaveBeenCalledWith(3000, 'http')
+      })
+      expect(mockOpenPort).toHaveBeenCalledWith(3000, 'http')
+    })
+
+    it('ignores icon button with invalid port', () => {
+      const btn = document.createElement('button')
+      btn.className = 'chat-url-open-btn'
+      btn.setAttribute('data-port', '0')
+      btn.setAttribute('data-protocol', 'http')
+      const event = createClickEvent(btn)
+      const result = handleLocalhostUrlClick(event)
+      expect(result).toBe(true)
+      expect(event.preventDefault).toHaveBeenCalled()
+      // Should not call openLocalhostUrl with port <= 0
+      expect(mockEnsurePortRegistered).not.toHaveBeenCalled()
+    })
+
+    it('handles click on <a> tag with localhost href', async () => {
+      const anchor = document.createElement('a')
+      anchor.setAttribute('href', 'http://localhost:5173')
+      anchor.textContent = 'link'
+      const event = createClickEvent(anchor)
+      const result = handleLocalhostUrlClick(event)
+      expect(result).toBe(true)
+      expect(event.preventDefault).toHaveBeenCalled()
+      await vi.waitFor(() => {
+        expect(mockEnsurePortRegistered).toHaveBeenCalledWith(5173, 'http')
+      })
+    })
+
+    it('falls back to window.open when SSH disabled (anchor click)', async () => {
+      mockSshInfo.value = { enabled: false }
+      const anchor = document.createElement('a')
+      anchor.setAttribute('href', 'http://localhost:5173')
+      anchor.textContent = 'link'
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+      const event = createClickEvent(anchor)
+      handleLocalhostUrlClick(event)
+      await vi.waitFor(() => {
+        expect(openSpy).toHaveBeenCalledWith('http://localhost:5173', '_blank')
+      })
+      openSpy.mockRestore()
+    })
+
+    it('shows warning toast when SSH disabled (anchor click)', async () => {
+      mockSshInfo.value = { enabled: false }
+      const anchor = document.createElement('a')
+      anchor.setAttribute('href', 'http://localhost:5173')
+      anchor.textContent = 'link'
+      const event = createClickEvent(anchor)
+      handleLocalhostUrlClick(event)
+      await vi.waitFor(() => {
+        expect(mockToastShow).toHaveBeenCalledWith('chat.localhost.sshDisabled', { type: 'warning' })
+      })
+    })
+
+    it('returns false for non-localhost anchor click', () => {
+      const anchor = document.createElement('a')
+      anchor.setAttribute('href', 'https://example.com')
+      anchor.textContent = 'link'
+      const event = createClickEvent(anchor)
+      expect(handleLocalhostUrlClick(event)).toBe(false)
+    })
+
+    it('returns false for click on non-special element', () => {
+      const div = document.createElement('div')
+      const event = createClickEvent(div)
+      expect(handleLocalhostUrlClick(event)).toBe(false)
+    })
+
+    // --- openLocalhostUrl ---
+
+    it('openLocalhostUrl returns true on success', async () => {
+      const btn = document.createElement('button')
+      const result = await openLocalhostUrl(btn, 3000, 'http')
+      expect(result).toBe(true)
+      expect(mockEnsurePortRegistered).toHaveBeenCalledWith(3000, 'http')
+      expect(mockOpenPort).toHaveBeenCalledWith(3000, 'http')
+      expect(btn.classList.contains('loading')).toBe(false)
+    })
+
+    it('openLocalhostUrl returns false when SSH disabled', async () => {
+      mockSshInfo.value = { enabled: false }
+      const btn = document.createElement('button')
+      const result = await openLocalhostUrl(btn, 3000, 'http')
+      expect(result).toBe(false)
+      expect(mockToastShow).toHaveBeenCalledWith('chat.localhost.sshDisabled', { type: 'warning' })
+    })
+
+    it('openLocalhostUrl shows error toast on failure', async () => {
+      mockEnsurePortRegistered.mockRejectedValue(new Error('fail'))
+      const btn = document.createElement('button')
+      const result = await openLocalhostUrl(btn, 3000, 'http')
+      expect(result).toBe(true)
+      expect(mockToastShow).toHaveBeenCalledWith('chat.localhost.openFailed', { type: 'error' })
+      expect(btn.classList.contains('loading')).toBe(false)
+    })
+
+    it('openLocalhostUrl prevents double-click while opening', async () => {
+      let resolveOpen: () => void
+      mockEnsurePortRegistered.mockReturnValue(new Promise<void>(r => { resolveOpen = r }))
+      const btn = document.createElement('button')
+      // First call — starts opening
+      const p1 = openLocalhostUrl(btn, 3000, 'http')
+      // Second call while first is in progress — should return true (already opening)
+      const result2 = await openLocalhostUrl(btn, 3000, 'http')
+      expect(result2).toBe(true)
+      // Resolve the first call
+      resolveOpen!()
+      await p1
     })
   })
 })

@@ -354,7 +354,7 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 		Push: configPush{
 			JPush: configJPush{
 				Enabled: cfg.Push.JPush.Enabled,
-				AppKey:  cfg.Push.JPush.AppKey,
+				AppKey:  maskAPIKey(cfg.Push.JPush.AppKey), // ISS-119: mask semi-secret AppKey
 			},
 		},
 		Tasks: configTasks{
@@ -594,14 +594,24 @@ func validatePatchValues(patch map[string]any) error {
 	}
 
 	// 2. Engine-specific model path requirements.
+	// When the patch switches tts.engine to a new value, skip required-field
+	// validation for the *target* engine — the user hasn't had a chance to
+	// fill in the sub-config yet (frontend auto-saves one field at a time).
+	// Only enforce when the engine is already set to that value (i.e. the
+	// user is saving sub-config fields for the current engine).
 	effectiveEngine := cfg.TTS.Engine
+	engineSwitched := false
 	if tts, ok := patch["tts"].(map[string]any); ok {
-		if v, ok := tts["engine"].(string); ok {
+		if v, ok := tts["engine"].(string); ok && v != cfg.TTS.Engine {
 			effectiveEngine = v
+			engineSwitched = true
 		}
 	}
 	switch effectiveEngine {
 	case "piper":
+		if engineSwitched {
+			break // will be validated after user fills in sub-config
+		}
 		effectiveModelPath := cfg.TTS.Piper.ModelPath
 		if tts, ok := patch["tts"].(map[string]any); ok {
 			if piper, ok := tts["piper"].(map[string]any); ok {
@@ -614,6 +624,9 @@ func validatePatchValues(patch map[string]any) error {
 			return fmt.Errorf("tts.piper.model_path is required when tts.engine is \"piper\"")
 		}
 	case "kokoro":
+		if engineSwitched {
+			break // will be validated after user fills in sub-config
+		}
 		effectiveKokoroModel := cfg.TTS.Kokoro.ModelPath
 		effectiveVoicesPath := cfg.TTS.Kokoro.VoicesPath
 		if tts, ok := patch["tts"].(map[string]any); ok {
@@ -633,6 +646,9 @@ func validatePatchValues(patch map[string]any) error {
 			return fmt.Errorf("tts.kokoro.voices_path is required when tts.engine is \"kokoro\"")
 		}
 	case "moss-nano":
+		if engineSwitched {
+			break // will be validated after user fills in sub-config
+		}
 		effectiveModelDir := cfg.TTS.MossNano.ModelDir
 		if tts, ok := patch["tts"].(map[string]any); ok {
 			if mossNano, ok := tts["moss_nano"].(map[string]any); ok {

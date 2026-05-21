@@ -37,7 +37,7 @@ rag:
 session:
     max_count: 20
 tasks:
-    summarize_backend: codebuddy
+    summarize_backend: api
     summarize_model: codebuddy-latest
 terminal:
     buffer_lines: 0
@@ -52,7 +52,7 @@ tls:
     key_file: ""
 tts:
     api:
-        base_url: https://api.example.com/v1/chat
+        base_url: https://api.openai.com/v1
         format: openai
         key: sk-1234567890abcdef
     engine: moss-nano

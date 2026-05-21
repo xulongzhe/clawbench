@@ -129,7 +129,6 @@ export function useChatSession(options: UseChatSessionOptions) {
   // transition so the user sees immediate feedback instead of a frozen UI.
   const switching = ref(false)
 
-  const sessionDrawerOpen = ref(false)
   const lastMsgCount = ref(0)
   let msgCountInterval: ReturnType<typeof setInterval> | null = null
 
@@ -374,6 +373,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             // No sessions left, create a default one
             await createSession()
           }
+        } else {
+          // Deleted a non-current session — refresh global state (chatUnread, chatRunning, runningSessions)
+          await loadSessionsOnce()
         }
         const maxCount = store.state.sessionMaxCount
         toast.show(gt('chat.session.deleted', { count: data.sessionCount ?? '', max: maxCount }), { icon: '🗑️', type: 'success', duration: 2000 })
@@ -382,10 +384,6 @@ export function useChatSession(options: UseChatSessionOptions) {
       console.error('Failed to delete session:', err)
       toast.show(gt('chat.session.deleteFailed'), { icon: '⚠️', type: 'error' })
     }
-  }
-
-  function openSessionTab() {
-    sessionDrawerOpen.value = true
   }
 
   function startMsgCountPolling() {
@@ -413,6 +411,11 @@ export function useChatSession(options: UseChatSessionOptions) {
     if (msgCountInterval) { clearInterval(msgCountInterval); msgCountInterval = null }
   }
 
+  // Debounce timer for loadSessionsOnce after session events.
+  // When multiple sessions complete in quick succession, we coalesce
+  // the recalculations into a single API call after a short delay.
+  let sessionEventDebounce: ReturnType<typeof setTimeout> | null = null
+
   // Called from WS session_update event
   function onSessionEvent(data: { session_id?: string; status?: string; has_new_messages?: boolean } | undefined) {
     if (!data) return
@@ -424,9 +427,17 @@ export function useChatSession(options: UseChatSessionOptions) {
       if (sid) { runningSessions.value.delete(sid); runningSessionsVersion.value++ }
       // Update global boolean from remaining set
       store.state.chatRunning = runningSessions.value.size > 0
-      // Session completed — mark unread
+      // Recalculate chatUnread from backend instead of optimistically setting true.
+      // The old code unconditionally set chatUnread=true here, which caused phantom
+      // flashing: a session that was already read (last_read_at set) would trigger
+      // the flash, and the button kept blinking until loadSessionsOnce() corrected it.
+      // Now we debounce-load the real unread state from the server.
       if (sid && sid !== currentSessionId.value) {
-        store.state.chatUnread = true
+        if (sessionEventDebounce) clearTimeout(sessionEventDebounce)
+        sessionEventDebounce = setTimeout(() => {
+          sessionEventDebounce = null
+          loadSessionsOnce()
+        }, 500)
       }
     }
   }
@@ -461,7 +472,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     currentAgentId,
     runningSessions,
     // UI state — local to this instance
-    sessionDrawerOpen,
     agentHeaderTitle,
     totalMessages,
     hasMore,
@@ -473,7 +483,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     switchSession,
     createSession,
     deleteSession,
-    openSessionTab,
     onSessionEvent,
     loadSessionsOnce: loadSessionsOnceInner,
     startMsgCountPolling,

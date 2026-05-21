@@ -101,6 +101,46 @@ jobs:
             coverage/coverage-final.json
           retention-days: 90
 
+  coverage-android:
+    name: Coverage Gate (Android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download main baseline
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v8
+        with:
+          workflow: ci.yml
+          branch: main
+          name: main-android-coverage
+          path: .clawbench/baseline/
+        continue-on-error: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Run coverage gate check
+        run: ./scripts/check-android-coverage.sh
+
+      - name: Upload coverage data
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: main-android-coverage
+          path: android/app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
+          retention-days: 90
+
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest

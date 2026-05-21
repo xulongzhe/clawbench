@@ -31,11 +31,7 @@ import { CheckCircle2, XCircle } from 'lucide-vue-next'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { getToolIcon } from '@/utils/icons'
 import { handleToolAction } from '@/utils/renderToolDetail.ts'
-import { useAppMode } from '@/composables/useAppMode.ts'
-import { usePortForward } from '@/composables/usePortForward.ts'
-import { useToast } from '@/composables/useToast.ts'
-import { isLocalhostUrl, parseLocalhostUrl } from '@/composables/useLocalhostAnnotation.ts'
-import { useI18n } from 'vue-i18n'
+import { useLocalhostUrlClickHandler } from '@/composables/useLocalhostAnnotation.ts'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -52,62 +48,14 @@ const emit = defineEmits(['close', 'file-open', 'send-message'])
 const category = computed(() => getToolIcon(props.toolName).category)
 const headerIcon = computed(() => getToolIcon(props.toolName).icon)
 
-const { isAppMode } = useAppMode()
-const { ensurePortRegistered, openPort, sshInfo } = usePortForward()
-const toast = useToast()
-const { t } = useI18n()
-let urlOpening = false
-
-async function openLocalhostUrl(element, port, protocol) {
-  if (urlOpening) return
-  if (sshInfo.value?.enabled === false) return
-  urlOpening = true
-  element.classList.add('loading')
-
-  try {
-    await ensurePortRegistered(port, protocol)
-    openPort(port, protocol)
-  } catch (err) {
-    toast.show(t('chat.localhost.openFailed'), { type: 'error' })
-  } finally {
-    urlOpening = false
-    element.classList.remove('loading')
-  }
-}
+const { handleLocalhostUrlClick } = useLocalhostUrlClickHandler()
 
 function handleBodyClick(event) {
   if (props.toolName && handleToolAction(props.toolName, event, emit)) return
 
   // Handle localhost URL open buttons — bottom sheet is teleported to <body>,
   // ChatMessageList's handleChatClick won't see these clicks.
-  if (isAppMode.value) {
-    const urlBtn = event.target.closest('.chat-url-open-btn')
-    if (urlBtn) {
-      event.preventDefault()
-      event.stopPropagation()
-      const port = parseInt(urlBtn.getAttribute('data-port') || '0')
-      const protocol = urlBtn.getAttribute('data-protocol') || 'http'
-      if (port > 0) {
-        openLocalhostUrl(urlBtn, port, protocol)
-      }
-      return
-    }
-
-    // Intercept <a> clicks on localhost URLs in tool output
-    const anchor = event.target.closest('a[href]')
-    if (anchor) {
-      const href = anchor.getAttribute('href') || ''
-      if (isLocalhostUrl(href)) {
-        event.preventDefault()
-        event.stopPropagation()
-        const parsed = parseLocalhostUrl(href)
-        if (parsed) {
-          openLocalhostUrl(anchor, parsed.port, parsed.protocol)
-        }
-        return
-      }
-    }
-  }
+  if (handleLocalhostUrlClick(event)) return
 
   // Handle commit-hash clicks (span or button) — bottom sheet is teleported to <body>,
   // ChatMessageList's handleChatClick won't see these clicks.
