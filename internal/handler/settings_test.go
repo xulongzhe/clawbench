@@ -724,7 +724,28 @@ func TestServeConfig_Patch_PiperEngineWithoutModelPath(t *testing.T) {
 	cfg.TTS.Piper.ModelPath = ""
 	model.ConfigInstance = cfg
 
+	// Switching engine without sub-config should succeed — user fills sub-config later
 	body := `{"tts":{"engine":"piper"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "piper", model.ConfigInstance.TTS.Engine)
+}
+
+func TestServeConfig_Patch_PiperSubConfigWithoutModelPath(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "piper"
+	cfg.TTS.Piper.ModelPath = ""
+	model.ConfigInstance = cfg
+
+	// Saving sub-config when engine is already piper but model_path is empty should fail
+	body := `{"tts":{"piper":{"noise_scale":0.5}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -742,7 +763,29 @@ func TestServeConfig_Patch_KokoroEngineWithoutPaths(t *testing.T) {
 	cfg.TTS.Engine = "edge"
 	model.ConfigInstance = cfg
 
+	// Switching engine without sub-config should succeed — user fills sub-config later
 	body := `{"tts":{"engine":"kokoro"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "kokoro", model.ConfigInstance.TTS.Engine)
+}
+
+func TestServeConfig_Patch_KokoroSubConfigWithoutPaths(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "kokoro"
+	cfg.TTS.Kokoro.ModelPath = ""
+	cfg.TTS.Kokoro.VoicesPath = ""
+	model.ConfigInstance = cfg
+
+	// Saving sub-config when engine is already kokoro but paths are empty should fail
+	body := `{"tts":{"kokoro":{"lang":"en"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -760,7 +803,28 @@ func TestServeConfig_Patch_MossNanoEngineWithoutModelDir(t *testing.T) {
 	cfg.TTS.Engine = "edge"
 	model.ConfigInstance = cfg
 
+	// Switching engine without sub-config should succeed — user fills sub-config later
 	body := `{"tts":{"engine":"moss-nano"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "moss-nano", model.ConfigInstance.TTS.Engine)
+}
+
+func TestServeConfig_Patch_MossNanoSubConfigWithoutModelDir(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "moss-nano"
+	cfg.TTS.MossNano.ModelDir = ""
+	model.ConfigInstance = cfg
+
+	// Saving sub-config when engine is already moss-nano but model_dir is empty should fail
+	body := `{"tts":{"moss_nano":{"voice":"Junhao"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
@@ -1244,15 +1308,15 @@ func TestServeConfig_Patch_KokoroEngineWithoutVoicesPath(t *testing.T) {
 	cfg.TTS.Kokoro.ModelPath = "/path/to/kokoro.onnx"
 	model.ConfigInstance = cfg
 
-	// Engine=kokoro with model_path set but no voices_path
+	// Engine switch should succeed even without voices_path — user fills sub-config later
 	body := `{"tts":{"engine":"kokoro"}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfig, req)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "kokoro.voices_path is required")
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "kokoro", model.ConfigInstance.TTS.Engine)
 }
 
 // --- Cross-field: moss-nano engine with model_dir in same patch ---
