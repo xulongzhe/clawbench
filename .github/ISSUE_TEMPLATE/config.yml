@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 文档
+    url: https://xulongzhe.github.io/clawbench/
+    about: 查阅项目文档
+  - name: 💬 讨论区
+    url: https://github.com/xulongzhe/clawbench/discussions
+    about: 一般性讨论、想法分享、展示成果

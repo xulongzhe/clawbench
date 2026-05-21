@@ -1,0 +1,66 @@
+name: Bug 报告
+description: 报告一个问题
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 清晰描述遇到了什么问题
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 逐步描述如何复现该问题
+      placeholder: |
+        1. 打开设置页
+        2. 切换 TTS 引擎
+        3. 点击保存
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 运行平台
+      multiple: true
+      options:
+        - Android App
+        - Web (桌面浏览器)
+        - Web (手机浏览器)
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: 环境信息
+      description: 版本号、操作系统、浏览器、Android 版本等
+      placeholder: |
+        ClawBench 版本: v0.31.0
+        操作系统: Android 14 / macOS 15
+        浏览器: Chrome 126
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志/截图
+      description: 相关错误日志或截图
