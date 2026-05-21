@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -53,19 +54,19 @@ func captureStdout(t *testing.T, fn func()) string {
 
 func TestFindConfigPath_BinDirConfig(t *testing.T) {
 	tmpDir := t.TempDir()
-	configDir := tmpDir + "/config"
+	configDir := filepath.Join(tmpDir, "config")
 	os.MkdirAll(configDir, 0755)
-	os.WriteFile(configDir+"/config.yaml", []byte("port: 12345"), 0644)
+	os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("port: 12345"), 0644)
 
 	path := FindConfigPath(tmpDir)
-	assert.Equal(t, configDir+"/config.yaml", path)
+	assert.Equal(t, filepath.Join(tmpDir, "config", "config.yaml"), path)
 }
 
 func TestFindConfigPath_FallbackToCWD(t *testing.T) {
 	tmpDir := t.TempDir()
 	// No config dir under tmpDir — should fall back to CWD-relative path
 	path := FindConfigPath(tmpDir)
-	assert.Equal(t, "config/config.yaml", path)
+	assert.Equal(t, filepath.Join("config", "config.yaml"), path)
 }
 
 // ---------- checkHTTPResponse ----------
@@ -561,9 +562,9 @@ func TestLoadConfig_FromFile(t *testing.T) {
 	})
 
 	tmpDir := t.TempDir()
-	configDir := tmpDir + "/config"
+	configDir := filepath.Join(tmpDir, "config")
 	os.MkdirAll(configDir, 0755)
-	os.WriteFile(configDir+"/config.yaml", []byte("port: 12345\nwatch_dir: /tmp"), 0644)
+	os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("port: 12345\nwatch_dir: /tmp"), 0644)
 
 	// loadConfig() reads os.Args[0] to compute BinDir, then calls FindConfigPath.
 	// Since we can't easily control os.Args[0] in tests, just test that
@@ -571,7 +572,7 @@ func TestLoadConfig_FromFile(t *testing.T) {
 	// The full loadConfig path is tested indirectly by integration tests.
 	// Here, just verify FindConfigPath resolves correctly with a valid config dir.
 	path := FindConfigPath(tmpDir)
-	assert.Equal(t, configDir+"/config.yaml", path)
+	assert.Equal(t, filepath.Join(tmpDir, "config", "config.yaml"), path)
 
 	// Verify that a YAML file at that path is parseable
 	data, err := os.ReadFile(path)
