@@ -1,6 +1,9 @@
+import { ref } from 'vue'
 import { escapeHtml } from '@/utils/html.ts'
 import { useAppMode } from '@/composables/useAppMode.ts'
 import { usePortForward } from '@/composables/usePortForward.ts'
+import { useToast } from '@/composables/useToast.ts'
+import { gt } from '@/composables/useLocale'
 
 /**
  * Localhost URL annotation composable.
@@ -142,6 +145,99 @@ export function annotateLocalhostUrls(html: string): string {
     html = html.replace(/<!--PREBLOCK_LOCALHOST(\d+)-->/g, (_, idx) => preBlocks[parseInt(idx)])
 
     return html
+}
+
+/**
+ * Composable for handling localhost URL click events in rendered chat HTML.
+ *
+ * Provides two reusable functions that encapsulate the shared click-handling logic
+ * used by ChatMessageList, ToolDetailOverlay, and TaskExecDetail:
+ *
+ * - handleLocalhostUrlClick(event): inspects a click event for .chat-url-open-btn
+ *   or <a href="localhost:..."> targets, intercepts the default navigation, and
+ *   opens via SSH tunnel + WebView instead. Returns true if the event was handled.
+ *
+ * - openLocalhostUrl(element, port, protocol): low-level async function that
+ *   ensures a port is registered for forwarding and opens it in the WebView.
+ *
+ * Usage in a component:
+ *   const { handleLocalhostUrlClick } = useLocalhostUrlClickHandler()
+ *   // In your @click handler:
+ *   if (handleLocalhostUrlClick(event)) return
+ */
+export function useLocalhostUrlClickHandler() {
+    const { isAppMode } = useAppMode()
+    const { ensurePortRegistered, openPort, sshInfo } = usePortForward()
+    const toast = useToast()
+
+    // Module-level guard to prevent double-clicks
+    const urlOpening = ref(false)
+
+    /**
+     * Open a localhost URL: ensure port forwarding is set up, then open in WebView.
+     */
+    async function openLocalhostUrl(element: Element, port: number, protocol: string) {
+        if (urlOpening.value) return
+        if (sshInfo.value?.enabled === false) return
+        urlOpening.value = true
+        element.classList.add('loading')
+
+        try {
+            await ensurePortRegistered(port, protocol)
+            openPort(port, protocol)
+        } catch (err) {
+            toast.show(gt('chat.localhost.openFailed'), { type: 'error' })
+        } finally {
+            urlOpening.value = false
+            element.classList.remove('loading')
+        }
+    }
+
+    /**
+     * Handle a click event that may target a localhost URL element.
+     *
+     * Checks for two targets (App mode only):
+     * 1. .chat-url-open-btn — the icon button appended after localhost URLs
+     * 2. <a href="localhost:..."> — direct link clicks on localhost URLs
+     *
+     * If either is found, prevents default navigation, ensures the port is
+     * registered for forwarding, and opens via SSH tunnel + WebView.
+     *
+     * Returns true if the click was handled (caller should stop processing).
+     */
+    function handleLocalhostUrlClick(event: MouseEvent): boolean {
+        if (!isAppMode.value) return false
+
+        const urlBtn = (event.target as Element).closest('.chat-url-open-btn')
+        if (urlBtn) {
+            event.preventDefault()
+            event.stopPropagation()
+            const port = parseInt(urlBtn.getAttribute('data-port') || '0')
+            const protocol = urlBtn.getAttribute('data-protocol') || 'http'
+            if (port > 0) {
+                openLocalhostUrl(urlBtn, port, protocol)
+            }
+            return true
+        }
+
+        const anchor = (event.target as Element).closest('a[href]')
+        if (anchor) {
+            const href = anchor.getAttribute('href') || ''
+            if (isLocalhostUrl(href)) {
+                event.preventDefault()
+                event.stopPropagation()
+                const parsed = parseLocalhostUrl(href)
+                if (parsed) {
+                    openLocalhostUrl(anchor, parsed.port, parsed.protocol)
+                }
+                return true
+            }
+        }
+
+        return false
+    }
+
+    return { handleLocalhostUrlClick, openLocalhostUrl }
 }
 
 /**

@@ -83,10 +83,7 @@ import ChatMessageItem from './ChatMessageItem.vue'
 import PendingMessageItem from './PendingMessageItem.vue'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
-import { usePortForward } from '@/composables/usePortForward.ts'
-import { isLocalhostUrl, parseLocalhostUrl } from '@/composables/useLocalhostAnnotation.ts'
-import { useAppMode } from '@/composables/useAppMode.ts'
-import { useToast } from '@/composables/useToast.ts'
+import { useLocalhostUrlClickHandler } from '@/composables/useLocalhostAnnotation.ts'
 import { computeRemainingCount, computeLastRoundIndices, isCollapsed as isCollapsedUtil } from '@/utils/messageListUtils.ts'
 
 const { t } = useI18n()
@@ -112,11 +109,7 @@ const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-deta
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()
 const { openFilePath } = useFilePathAnnotation()
-const { ensurePortRegistered, openPort, isAppMode, sshInfo } = usePortForward()
-const toast = useToast()
-
-// Track whether a localhost URL open is in progress (prevent double-click)
-const urlOpening = ref(false)
+const { handleLocalhostUrlClick } = useLocalhostUrlClickHandler()
 
 // How many older messages are not yet loaded
 const remainingCount = computed(() => {
@@ -183,38 +176,10 @@ function handleCollapse(index) {
 const chatUI = inject('chatUI', {})
 
 function handleChatClick(event) {
-  // 1. Check for localhost URL open button click (.chat-url-open-btn)
-  //    Only in App mode — web mode doesn't have port forwarding / built-in WebView
-  if (isAppMode.value) {
-    const urlBtn = (event.target).closest('.chat-url-open-btn')
-    if (urlBtn) {
-      event.preventDefault()
-      event.stopPropagation()
-      const port = parseInt(urlBtn.getAttribute('data-port') || '0')
-      const protocol = urlBtn.getAttribute('data-protocol') || 'http'
-      if (port > 0) {
-        openLocalhostUrl(urlBtn, port, protocol)
-      }
-      return
-    }
+  // 1. Handle localhost URL clicks (icon button or <a> tag) — App mode only
+  if (handleLocalhostUrlClick(event)) return
 
-    // 2. In App mode, intercept <a> clicks on localhost URLs to use WebView
-    const anchor = (event.target).closest('a[href]')
-    if (anchor) {
-      const href = anchor.getAttribute('href') || ''
-      if (isLocalhostUrl(href)) {
-        event.preventDefault()
-        event.stopPropagation()
-        const parsed = parseLocalhostUrl(href)
-        if (parsed) {
-          openLocalhostUrl(anchor, parsed.port, parsed.protocol)
-        }
-        return
-      }
-    }
-  }
-
-  // 3. Commit hash click (span or button) — check before file-path to prevent
+  // 2. Commit hash click (span or button) — check before file-path to prevent
   //    7-char hex hashes from being misinterpreted as file paths.
   //    Note: do NOT call navigateToFileViewer() here — handleNavigateToCommit
   //    in App.vue switches to the history tab which hides the chat panel.
@@ -229,7 +194,7 @@ function handleChatClick(event) {
     return
   }
 
-  // 4. File-path button handler
+  // 3. File-path button handler
   const btn = (event.target).closest('.chat-file-open-btn')
   if (btn) {
     event.preventDefault()
@@ -246,26 +211,6 @@ function handleChatClick(event) {
     openFilePath(href)
     chatUI.navigateToFileViewer?.()
   })
-}
-
-/**
- * Open a localhost URL: ensure port forwarding is set up, then open in WebView.
- */
-async function openLocalhostUrl(element, port, protocol) {
-  if (urlOpening.value) return
-  if (sshInfo.value?.enabled === false) return
-  urlOpening.value = true
-  element.classList.add('loading')
-
-  try {
-    await ensurePortRegistered(port, protocol)
-    openPort(port, protocol)
-  } catch (err) {
-    toast.show(t('chat.localhost.openFailed'), { type: 'error' })
-  } finally {
-    urlOpening.value = false
-    element.classList.remove('loading')
-  }
 }
 
 let loadMorePending = false
