@@ -194,6 +194,7 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 				Value:    sessionToken,
 				Path:     "/",
 				HttpOnly: true,
+				Secure:   r.TLS != nil,
 				MaxAge:   int(7 * 24 * 3600),
 				SameSite: http.SameSiteLaxMode,
 			})
