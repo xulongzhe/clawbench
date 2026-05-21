@@ -138,7 +138,7 @@ const sessionsWithStatus = computed(() => {
   }))
 })
 
-defineExpose({ loadSessions, openAgentSelector })
+defineExpose({ loadSessions, openAgentSelector, addSessionLocally })
 
 async function openAgentSelector() {
   await loadAgents()
@@ -236,12 +236,22 @@ async function deleteSession(sessionId) {
   if (!await dialog.confirm(t('session.confirmDelete'), { dangerous: true })) return
   const session = sessions.value.find(s => s.id === sessionId)
   emit('delete', sessionId, session?.backend)
+  // Optimistic local removal — no API reload needed while drawer is open.
+  // Next open will do a full loadSessions() to catch any changes made while closed.
+  sessions.value = sessions.value.filter(s => s.id !== sessionId)
 }
 
-// Every time the drawer opens, reload from API.
-// This is the simplest and most reliable approach — no stale flags, no
-// manual invalidate(), no cache to get out of sync. The API call is cheap
-// (first page only, ~10 items) and only happens on user action (open drawer).
+function addSessionLocally(session) {
+  if (!session) return
+  // Prepend to list, avoid duplicate if already present
+  if (sessions.value.some(s => s.id === session.id)) return
+  sessions.value = [session, ...sessions.value]
+}
+
+// Load from API when the drawer opens. While the drawer is open, local
+// mutations (delete, create) update the sessions array directly — no reload
+// needed. The next open will do a full loadSessions() to catch any changes
+// that happened while the drawer was closed.
 watch(() => props.open, async (val) => {
   if (val) {
     await Promise.all([loadSessions(), loadAgents()])

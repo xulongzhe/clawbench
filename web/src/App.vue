@@ -405,8 +405,23 @@ function handleSessionSelect(sessionId, backend) {
   sessionIdentity.sessionDrawerOpen.value = false
 }
 
-function handleSessionCreate(agentId) {
-  sessionIdentity.createSession(agentId)
+async function handleSessionCreate(agentId) {
+  await sessionIdentity.createSession(agentId)
+  // If drawer is still open, add the new session to the local list
+  if (sessionDrawerRef.value && sessionIdentity.sessionDrawerOpen.value) {
+    const id = sessionIdentity.currentSessionId.value
+    if (id) {
+      sessionDrawerRef.value.addSessionLocally({
+        id,
+        title: sessionIdentity.currentSessionTitle.value || '',
+        backend: sessionIdentity.currentBackend.value || '',
+        agentId: sessionIdentity.currentAgentId.value || '',
+        model: sessionIdentity.currentModelName.value || '',
+        updatedAt: new Date().toISOString(),
+        unreadCount: 0,
+      })
+    }
+  }
   sessionIdentity.sessionDrawerOpen.value = false
 }
 

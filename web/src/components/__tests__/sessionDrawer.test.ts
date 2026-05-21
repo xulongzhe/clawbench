@@ -17,9 +17,11 @@ vi.mock('@/composables/useAgents', () => ({
   }),
 }))
 
+// ── Configurable dialog mock ──
+let _dialogConfirmResult = false
 vi.mock('@/composables/useDialog.ts', () => ({
   useDialog: () => ({
-    confirm: vi.fn().mockResolvedValue(false),
+    confirm: vi.fn().mockImplementation(() => Promise.resolve(_dialogConfirmResult)),
   }),
 }))
 
@@ -268,5 +270,60 @@ describe('SessionDrawer: always reload on open', () => {
 
     // invalidate should NOT exist on the component instance
     expect(wrapper.vm.invalidate).toBeUndefined()
+  })
+
+  it('removes session from local array on delete (no API reload)', async () => {
+    _dialogConfirmResult = true
+    const fetchFn = createFetchMock()
+    const { wrapper } = await mountOpenDrawer(fetchFn)
+
+    expect(wrapper.vm.sessions).toHaveLength(3)
+    const fetchCallCount = fetchFn.mock.calls.length
+
+    // Simulate clicking delete on s2 — dialog confirms, then local array is updated
+    await wrapper.vm.deleteSession('s2')
+    await flushPromises()
+
+    // Session removed from local array without additional API call
+    expect(wrapper.vm.sessions).toHaveLength(2)
+    expect(wrapper.vm.sessions.find(s => s.id === 's2')).toBeUndefined()
+    expect(fetchFn.mock.calls.length).toBe(fetchCallCount)
+
+    _dialogConfirmResult = false
+  })
+
+  it('addSessionLocally prepends a new session without API reload', async () => {
+    const fetchFn = createFetchMock()
+    const { wrapper } = await mountOpenDrawer(fetchFn)
+
+    expect(wrapper.vm.sessions).toHaveLength(3)
+    const fetchCallCount = fetchFn.mock.calls.length
+
+    // Add a new session locally
+    wrapper.vm.addSessionLocally({
+      id: 's-new',
+      title: 'New Session',
+      backend: 'claude',
+      agentId: 'claude',
+      updatedAt: '2026-01-04T00:00:00Z',
+    })
+
+    // New session appears at the top, no API call
+    expect(wrapper.vm.sessions).toHaveLength(4)
+    expect(wrapper.vm.sessions[0].id).toBe('s-new')
+    expect(fetchFn.mock.calls.length).toBe(fetchCallCount)
+  })
+
+  it('addSessionLocally ignores duplicate session', async () => {
+    const fetchFn = createFetchMock()
+    const { wrapper } = await mountOpenDrawer(fetchFn)
+
+    expect(wrapper.vm.sessions).toHaveLength(3)
+
+    // Try adding an existing session
+    wrapper.vm.addSessionLocally({ id: 's1', title: 'Session 1', backend: 'claude', updatedAt: '2026-01-01T00:00:00Z' })
+
+    // No duplicate added
+    expect(wrapper.vm.sessions).toHaveLength(3)
   })
 })
