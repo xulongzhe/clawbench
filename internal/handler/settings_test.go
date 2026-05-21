@@ -836,8 +836,8 @@ func TestServeConfig_Patch_ColdFields_NeedRestart(t *testing.T) {
 	cfg.TTS.Engine = "edge"
 	model.ConfigInstance = cfg
 
-	// terminal.enabled is a cold field — restart should be needed
-	body := `{"terminal":{"enabled":false},"tts":{"engine":"minimax"}}`
+	// terminal.enabled and tts.engine are cold fields — restart should be needed
+	body := `{"terminal":{"enabled":false},"tts":{"engine":"edge"}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
