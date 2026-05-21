@@ -2154,3 +2154,144 @@ describe('syncModelFromData', () => {
     expect(mockIdentity.currentModelName).toBe('Default Model')
   })
 })
+
+describe('loadMoreMessages', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    resetMockState()
+    resetAdditionalMocks()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('fetches older messages using before_id cursor from oldest message id', async () => {
+    // First: loadHistory to populate messages and totalMessages
+    const initialMsgs = [
+      { id: 50, role: 'user', content: 'hello' },
+      { id: 51, role: 'assistant', content: 'hi' },
+    ]
+    const olderMsgs = [
+      { id: 42, role: 'user', content: 'older' },
+      { id: 43, role: 'assistant', content: 'older reply' },
+    ]
+
+    // First fetch: loadHistory
+    // Second fetch: loadMoreMessages
+    mockUtilsFns.parseMessages
+      .mockReturnValueOnce(initialMsgs)
+      .mockReturnValueOnce(olderMsgs)
+
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          sessionId: 'current-s1',
+          messages: [{ id: 50 }, { id: 51 }],
+          total: 100, // more than 2 → hasMore=true
+          running: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          messages: [{ id: 42 }, { id: 43 }],
+          total: 100,
+        }),
+      })
+
+    const options = {
+      currentSessionId: ref('current-s1'),
+      messages: ref([]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+
+    // Load initial messages
+    await session.loadHistory(true, false, false)
+    expect(options.messages.value.length).toBe(2)
+
+    // Load more (older) messages
+    await session.loadMoreMessages()
+
+    // Should use before_id=50 (oldest message id) in the fetch URL
+    const secondCallUrl = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[1]?.[0] as string
+    expect(secondCallUrl).toContain('before_id=50')
+    expect(secondCallUrl).toContain('limit=20')
+
+    // Older messages should be prepended
+    expect(options.messages.value.length).toBe(4)
+    expect(options.messages.value[0].id).toBe(42)
+  })
+
+  it('skips when loadingMore is already true', async () => {
+    globalThis.fetch = vi.fn()
+
+    const options = {
+      currentSessionId: ref('current-s1'),
+      messages: ref([{ id: 1, role: 'user' }]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    session.loadingMore.value = true
+
+    await session.loadMoreMessages()
+
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  it('skips when hasMore is false', async () => {
+    globalThis.fetch = vi.fn()
+
+    const options = {
+      currentSessionId: ref('current-s1'),
+      messages: ref([{ id: 1, role: 'user' }]),
+      loading: ref(false),
+      inputDisabled: ref(false),
+      blockTasks: {},
+      blockAskQuestions: {},
+      expandedTools: ref({}),
+      onParseAssistantContent: vi.fn(),
+      onExtractScheduledTasks: vi.fn(),
+      onRenderUpdate: vi.fn(),
+      onScrollBottom: vi.fn(),
+      onConnectStream: vi.fn(),
+      onStopPolling: vi.fn(),
+      onDisconnectStream: vi.fn(),
+      onOpen: vi.fn(),
+    }
+    const session = useChatSession(options)
+    session.hasMore.value = false
+
+    await session.loadMoreMessages()
+
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+})

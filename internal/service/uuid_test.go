@@ -37,9 +37,12 @@ func setupUUIDTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("failed to create tables: %v", err)
 	}
 	origDB := DB
+	origDBRead := DBRead
 	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
 	t.Cleanup(func() {
 		DB = origDB
+		DBRead = origDBRead
 		db.Close()
 	})
 	return db

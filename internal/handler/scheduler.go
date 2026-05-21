@@ -34,8 +34,14 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 		for i := range tasks {
 			tasks[i].RunningCount = runningCounts[tasks[i].ID]
 		}
-		// Check if any task has unread executions
-		hasUnread, _ := service.HasUnreadTasks(projectPath)
+		// Derive hasUnread from already-fetched tasks (avoid redundant DB query)
+		hasUnread := false
+		for _, t := range tasks {
+			if t.UnreadCount > 0 {
+				hasUnread = true
+				break
+			}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"tasks": tasks, "hasUnread": hasUnread})
 
 	case http.MethodPost:

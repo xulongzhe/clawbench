@@ -262,8 +262,10 @@ func setupTestDB(t *testing.T) *sql.DB {
 func TestProxyRegistry_PortPersistence_RegisterAndLoad(t *testing.T) {
 	// Set up in-memory DB and make it available globally
 	origDB := DB
+	origDBRead := DBRead
 	DB = setupTestDB(t)
-	defer func() { DB = origDB }()
+	DBRead = DB // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// Create registry and register ports — should persist to DB
 	r := NewProxyRegistry("1024-65535", 0)
@@ -295,8 +297,10 @@ func TestProxyRegistry_PortPersistence_RegisterAndLoad(t *testing.T) {
 
 func TestProxyRegistry_PortPersistence_UnregisterDeletesFromDB(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	DB = setupTestDB(t)
-	defer func() { DB = origDB }()
+	DBRead = DB
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	r := NewProxyRegistry("1024-65535", 0)
 	defer r.Stop()
@@ -323,8 +327,10 @@ func TestProxyRegistry_PortPersistence_UnregisterDeletesFromDB(t *testing.T) {
 
 func TestProxyRegistry_PortPersistence_RestoreOnStartup(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	DB = setupTestDB(t)
-	defer func() { DB = origDB }()
+	DBRead = DB
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// First registry: register ports (persists to DB)
 	r1 := NewProxyRegistry("1024-65535", 0)
@@ -351,8 +357,10 @@ func TestProxyRegistry_PortPersistence_RestoreOnStartup(t *testing.T) {
 
 func TestProxyRegistry_PortPersistence_FullLifecycle(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	DB = setupTestDB(t)
-	defer func() { DB = origDB }()
+	DBRead = DB
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// Phase 1: Create, register, verify
 	r1 := NewProxyRegistry("1024-65535", 0)
@@ -394,8 +402,10 @@ func TestProxyRegistry_PortPersistence_FullLifecycle(t *testing.T) {
 
 func TestProxyRegistry_PortPersistence_SkipsOutOfAllowedRange(t *testing.T) {
 	origDB := DB
+	origDBRead := DBRead
 	DB = setupTestDB(t)
-	defer func() { DB = origDB }()
+	DBRead = DB
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// Insert a port directly into DB that is outside the new allowed range
 	_, err := DB.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (80, 'system', 'http')")
@@ -413,8 +423,10 @@ func TestProxyRegistry_PortPersistence_SkipsOutOfAllowedRange(t *testing.T) {
 func TestProxyRegistry_PortPersistence_NoDB(t *testing.T) {
 	// When DB is nil, persistence methods should be no-ops (not panic)
 	origDB := DB
+	origDBRead := DBRead
 	DB = nil
-	defer func() { DB = origDB }()
+	DBRead = nil
+	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	r := NewProxyRegistry("1024-65535", 0)
 	defer r.Stop()

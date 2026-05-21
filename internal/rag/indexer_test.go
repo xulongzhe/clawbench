@@ -64,9 +64,12 @@ func setupIndexerDB(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 
 	origDB := service.DB
+	origDBRead := service.DBRead
 	service.DB = db
+	service.DBRead = db // Same instance for :memory: SQLite — data is shared
 	t.Cleanup(func() {
 		service.DB = origDB
+		service.DBRead = origDBRead
 		db.Close()
 	})
 	return db

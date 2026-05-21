@@ -694,6 +694,106 @@ func TestServeGitWorkingTreeFiles_NoChanges(t *testing.T) {
 	assert.Equal(t, false, resp["hasUncommitted"])
 }
 
+// --- ServeGitVerifyCommits ---
+
+func TestServeGitVerifyCommits_SingleCommit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+	sha := getHeadSHA(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-commits", map[string]interface{}{
+		"shas": []string{sha},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyCommits, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results, ok := resp["results"].(map[string]interface{})
+	assert.True(t, ok)
+	info, ok := results[sha].(map[string]interface{})
+	assert.True(t, ok, "SHA should be a valid commit")
+	assert.Equal(t, sha, info["sha"])
+	assert.Equal(t, "initial commit", info["msg"])
+}
+
+func TestServeGitVerifyCommits_MultipleCommits(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+	sha1 := getHeadSHA(t, env.ProjectDir)
+
+	createTestFile(t, env.ProjectDir, "newfile.txt", "hello")
+	gitCommitAll(t, env.ProjectDir, "add newfile")
+	sha2 := getHeadSHA(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-commits", map[string]interface{}{
+		"shas": []string{sha1, sha2},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyCommits, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results := resp["results"].(map[string]interface{})
+	assert.NotNil(t, results[sha1])
+	assert.NotNil(t, results[sha2])
+}
+
+func TestServeGitVerifyCommits_MixedValidInvalid(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+	sha := getHeadSHA(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-commits", map[string]interface{}{
+		"shas": []string{sha, "0000000000000000000000000000000000000000"},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyCommits, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results := resp["results"].(map[string]interface{})
+	assert.NotNil(t, results[sha])
+	assert.Nil(t, results["0000000000000000000000000000000000000000"])
+}
+
+func TestServeGitVerifyCommits_AbbreviatedSHA(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+	sha := getHeadSHA(t, env.ProjectDir)
+	abbrevSHA := sha[:7] // Frontend may send abbreviated SHAs
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-commits", map[string]interface{}{
+		"shas": []string{abbrevSHA},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyCommits, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results := resp["results"].(map[string]interface{})
+	// Result should be keyed by the requested abbreviated SHA, not the full SHA
+	info, ok := results[abbrevSHA].(map[string]interface{})
+	assert.True(t, ok, "abbreviated SHA should resolve to a valid commit")
+	assert.Equal(t, sha, info["sha"])
+}
+
 // --- validateFilePath ---
 
 func TestValidateFilePath_ValidRelative(t *testing.T) {

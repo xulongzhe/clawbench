@@ -1247,3 +1247,88 @@ func createTestSession(t *testing.T, projectPath string) string {
 	})
 	return id
 }
+
+// ---------- hasUnread logic (derived from tasks.UnreadCount) ----------
+
+// TestServeTasks_Get_HasUnreadTrue verifies that hasUnread is true when at
+// least one task has UnreadCount > 0.
+func TestServeTasks_Get_HasUnreadTrue(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{
+		"coder": {ID: "coder", Name: "Coder", Backend: "claude"},
+	}
+	defer func() { model.Agents = nil }()
+
+	s := service.NewScheduler()
+	defer s.Stop()
+	service.GlobalScheduler = s
+	defer func() { service.GlobalScheduler = nil }()
+
+	// Create a task
+	task := &model.ScheduledTask{
+		ProjectPath: env.ProjectDir,
+		Name:        "Unread Task",
+		CronExpr:    "0 * * * *",
+		AgentID:     "coder",
+		Prompt:      "Test",
+		RepeatMode:  "unlimited",
+	}
+	err := s.AddTask(task)
+	assert.NoError(t, err)
+
+	// Create a completed execution (not read) → makes UnreadCount = 1
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Exec", "coder", "", "default", "scheduled")
+	assert.NoError(t, err)
+	_, err = service.AddTaskExecution(task.ID, sessionID, "auto")
+	assert.NoError(t, err)
+	service.UpdateExecutionStatus(sessionID, "completed")
+
+	req := newRequest(t, http.MethodGet, "/api/tasks", nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(ServeTasks, req)
+
+	assertOK(t, w)
+	var result map[string]any
+	json.Unmarshal(w.Body.Bytes(), &result)
+	assert.Equal(t, true, result["hasUnread"], "hasUnread should be true when a task has unread executions")
+}
+
+// TestServeTasks_Get_HasUnreadFalse verifies that hasUnread is false when
+// all tasks have UnreadCount == 0.
+func TestServeTasks_Get_HasUnreadFalse(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{
+		"coder": {ID: "coder", Name: "Coder", Backend: "claude"},
+	}
+	defer func() { model.Agents = nil }()
+
+	s := service.NewScheduler()
+	defer s.Stop()
+	service.GlobalScheduler = s
+	defer func() { service.GlobalScheduler = nil }()
+
+	// Create a task with no executions → UnreadCount = 0
+	task := &model.ScheduledTask{
+		ProjectPath: env.ProjectDir,
+		Name:        "Read Task",
+		CronExpr:    "0 * * * *",
+		AgentID:     "coder",
+		Prompt:      "Test",
+		RepeatMode:  "unlimited",
+	}
+	err := s.AddTask(task)
+	assert.NoError(t, err)
+
+	req := newRequest(t, http.MethodGet, "/api/tasks", nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(ServeTasks, req)
+
+	assertOK(t, w)
+	var result map[string]any
+	json.Unmarshal(w.Body.Bytes(), &result)
+	assert.Equal(t, false, result["hasUnread"], "hasUnread should be false when no tasks have unread executions")
+}

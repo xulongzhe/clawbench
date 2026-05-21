@@ -11,25 +11,25 @@ import (
 
 // GetChatHistory retrieves all chat messages for a given project path, backend, and session.
 func GetChatHistory(projectPath, backend, sessionID string) ([]model.ChatMessage, error) {
-	return GetChatHistoryPaged(projectPath, backend, sessionID, 0, "")
+	return GetChatHistoryPaged(projectPath, backend, sessionID, 0, 0)
 }
 
 // GetChatHistoryPaged retrieves chat messages with pagination.
 // limit=0 means no limit (all messages).
-// beforeTime: if non-empty, only return messages created before this timestamp (cursor-based for lazy load).
-// When beforeTime is empty and limit > 0, returns the most recent (limit) messages.
+// beforeID: if > 0, only return messages with id < beforeID (cursor-based for lazy load).
+// When beforeID == 0 and limit > 0, returns the most recent (limit) messages.
 // Returns messages in chronological (ASC) order.
-func GetChatHistoryPaged(projectPath, backend, sessionID string, limit int, beforeTime string) ([]model.ChatMessage, error) {
+func GetChatHistoryPaged(projectPath, backend, sessionID string, limit int, beforeID int) ([]model.ChatMessage, error) {
 	messages := []model.ChatMessage{}
 
-	if limit > 0 && beforeTime != "" {
-		// Cursor-based: load messages older than beforeTime
+	if limit > 0 && beforeID > 0 {
+		// Cursor-based: load messages older than beforeID
 		query := `SELECT id, role, content, files, backend, streaming, created_at, indexed FROM (
 			SELECT id, role, content, files, backend, streaming, created_at, indexed FROM chat_history
-			WHERE project_path = ? AND session_id = ? AND created_at < ? AND deleted = 0
-			ORDER BY created_at DESC LIMIT ?
-		) sub ORDER BY created_at ASC`
-		rows, err := DB.Query(query, projectPath, sessionID, beforeTime, limit)
+			WHERE project_path = ? AND session_id = ? AND id < ? AND deleted = 0
+			ORDER BY id DESC LIMIT ?
+		) sub ORDER BY id ASC`
+		rows, err := DBRead.Query(query, projectPath, sessionID, beforeID, limit)
 		if err != nil {
 			return messages, err
 		}
@@ -42,9 +42,9 @@ func GetChatHistoryPaged(projectPath, backend, sessionID string, limit int, befo
 		query := `SELECT id, role, content, files, backend, streaming, created_at, indexed FROM (
 			SELECT id, role, content, files, backend, streaming, created_at, indexed FROM chat_history
 			WHERE project_path = ? AND session_id = ? AND deleted = 0
-			ORDER BY created_at DESC LIMIT ?
-		) sub ORDER BY created_at ASC`
-		rows, err := DB.Query(query, projectPath, sessionID, limit)
+			ORDER BY id DESC LIMIT ?
+		) sub ORDER BY id ASC`
+		rows, err := DBRead.Query(query, projectPath, sessionID, limit)
 		if err != nil {
 			return messages, err
 		}
@@ -53,8 +53,8 @@ func GetChatHistoryPaged(projectPath, backend, sessionID string, limit int, befo
 	}
 
 	// No limit: return all messages in chronological order
-	query := `SELECT id, role, content, files, backend, streaming, created_at, indexed FROM chat_history WHERE project_path = ? AND session_id = ? AND deleted = 0 ORDER BY created_at ASC`
-	rows, err := DB.Query(query, projectPath, sessionID)
+	query := `SELECT id, role, content, files, backend, streaming, created_at, indexed FROM chat_history WHERE project_path = ? AND session_id = ? AND deleted = 0 ORDER BY id ASC`
+	rows, err := DBRead.Query(query, projectPath, sessionID)
 	if err != nil {
 		return messages, err
 	}
@@ -87,7 +87,7 @@ func scanMessages(rows *sql.Rows, sessionID string) ([]model.ChatMessage, error)
 // GetChatMessageCount returns the number of messages in a session.
 func GetChatMessageCount(sessionID string) int {
 	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = ? AND deleted = 0", sessionID).Scan(&count)
+	DBRead.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = ? AND deleted = 0", sessionID).Scan(&count)
 	return count
 }
 
@@ -99,7 +99,7 @@ func GetMessageByID(id int64) (*model.ChatMessage, error) {
 	var streaming int
 	var indexed int
 
-	err := DB.QueryRow(
+	err := DBRead.QueryRow(
 		"SELECT id, role, content, files, backend, streaming, created_at, indexed, session_id, project_path FROM chat_history WHERE id = ?",
 		id,
 	).Scan(&msg.ID, &msg.Role, &msg.Content, &filesJSON, &msg.Backend, &streaming, &msg.CreatedAt, &indexed, &msg.SessionID, &msg.ProjectPath)
@@ -118,8 +118,8 @@ func GetMessageByID(id int64) (*model.ChatMessage, error) {
 // Unlike GetChatHistory, this does not require projectPath or backend — session_id is globally unique.
 // Returns messages in chronological order with all content blocks (text, thinking, tool_use).
 func GetMessagesBySessionID(sessionID string) ([]model.ChatMessage, error) {
-	rows, err := DB.Query(
-		"SELECT id, role, content, files, backend, streaming, created_at, indexed FROM chat_history WHERE session_id = ? AND streaming = 0 ORDER BY created_at ASC",
+	rows, err := DBRead.Query(
+		"SELECT id, role, content, files, backend, streaming, created_at, indexed FROM chat_history WHERE session_id = ? AND streaming = 0 ORDER BY id ASC",
 		sessionID,
 	)
 	if err != nil {
@@ -202,7 +202,7 @@ func AddChatMessage(projectPath, backend, sessionID, role, content string, files
 // GetRecentProjects returns the most recent 10 project paths.
 func GetRecentProjects() ([]string, error) {
 	var paths []string
-	rows, err := DB.Query("SELECT project_path FROM recent_projects ORDER BY accessed_at DESC LIMIT 10")
+	rows, err := DBRead.Query("SELECT project_path FROM recent_projects ORDER BY accessed_at DESC LIMIT 10")
 	if err != nil {
 		return nil, err
 	}
@@ -256,19 +256,20 @@ func GetSessions(projectPath, backend string) ([]model.ChatSession, error) {
 			SELECT h.session_id, COUNT(*) AS cnt
 			FROM chat_history h
 			JOIN chat_sessions s2 ON s2.id = h.session_id
-			WHERE h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
+			WHERE h.project_path = ?
+			  AND h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
 			  AND (s2.last_read_at IS NULL OR h.created_at > s2.last_read_at)
 			GROUP BY h.session_id
 		) unread ON unread.session_id = s.id
 		WHERE s.project_path = ? AND s.deleted = 0 AND s.session_type = 'chat'`
-	args := []interface{}{projectPath}
+	args := []interface{}{projectPath, projectPath}
 	if backend != "" {
 		query += " AND s.backend = ?"
 		args = append(args, backend)
 	}
 	query += " ORDER BY s.updated_at DESC, s.id DESC"
 
-	rows, err := DB.Query(query, args...)
+	rows, err := DBRead.Query(query, args...)
 	if err != nil {
 		return sessions, err
 	}
@@ -311,12 +312,13 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 			SELECT h.session_id, COUNT(*) AS cnt
 			FROM chat_history h
 			JOIN chat_sessions s2 ON s2.id = h.session_id
-			WHERE h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
+			WHERE h.project_path = ?
+			  AND h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
 			  AND (s2.last_read_at IS NULL OR h.created_at > s2.last_read_at)
 			GROUP BY h.session_id
 		) unread ON unread.session_id = s.id
 		WHERE s.project_path = ? AND s.deleted = 0 AND s.session_type = 'chat'`
-	args := []interface{}{projectPath}
+	args := []interface{}{projectPath, projectPath}
 	if backend != "" {
 		query += " AND s.backend = ?"
 		args = append(args, backend)
@@ -328,7 +330,7 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 	query += " ORDER BY s.updated_at DESC, s.id DESC LIMIT ?"
 	args = append(args, limit+1)
 
-	rows, err := DB.Query(query, args...)
+	rows, err := DBRead.Query(query, args...)
 	if err != nil {
 		return nil, false, err
 	}
@@ -366,7 +368,7 @@ func UpdateLastRead(sessionID string) {
 // GetSessionBackend returns the backend of a session, or empty string if not found or deleted.
 func GetSessionBackend(sessionID string) string {
 	var backend string
-	err := DB.QueryRow("SELECT backend FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&backend)
+	err := DBRead.QueryRow("SELECT backend FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&backend)
 	if err != nil {
 		return ""
 	}
@@ -376,17 +378,47 @@ func GetSessionBackend(sessionID string) string {
 // GetSessionProjectPath returns the project path of a session, or empty string if not found.
 func GetSessionProjectPath(sessionID string) string {
 	var projectPath string
-	err := DB.QueryRow("SELECT project_path FROM chat_sessions WHERE id = ?", sessionID).Scan(&projectPath)
+	err := DBRead.QueryRow("SELECT project_path FROM chat_sessions WHERE id = ?", sessionID).Scan(&projectPath)
 	if err != nil {
 		return ""
 	}
 	return projectPath
 }
 
+// GetLatestSessionID returns the ID and backend of the most recently updated chat session
+// for a project. Returns sql.ErrNoRows if no sessions exist.
+func GetLatestSessionID(projectPath string) (sessionID, backend string, err error) {
+	err = DBRead.QueryRow(
+		`SELECT id, backend FROM chat_sessions
+		 WHERE project_path = ? AND deleted = 0 AND session_type = 'chat'
+		 ORDER BY updated_at DESC, id DESC LIMIT 1`,
+		projectPath,
+	).Scan(&sessionID, &backend)
+	return
+}
+
+// GetMessageIDBeforeTime resolves a legacy "before" (created_at timestamp) cursor
+// to the corresponding message ID. This provides backward compatibility for older
+// clients that still send ?before=<timestamp> instead of ?before_id=<id>.
+// Returns the max ID of messages created before the given timestamp, or 0 if none found.
+func GetMessageIDBeforeTime(projectPath, backend, sessionID, beforeTime string) (int, error) {
+	var id sql.NullInt64
+	err := DBRead.QueryRow(
+		`SELECT MAX(id) FROM chat_history
+		 WHERE project_path = ? AND backend = ? AND session_id = ?
+		 AND created_at < ? AND deleted = 0`,
+		projectPath, backend, sessionID, beforeTime,
+	).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return int(id.Int64), nil
+}
+
 // GetSessionModel returns the model ID of a session, or empty string if not found or deleted.
 func GetSessionModel(sessionID string) string {
 	var modelID string
-	err := DB.QueryRow("SELECT model FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&modelID)
+	err := DBRead.QueryRow("SELECT model FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&modelID)
 	if err != nil {
 		return ""
 	}
@@ -404,7 +436,7 @@ func UpdateSessionModel(sessionID, modelID string) error {
 // GetSessionThinkingEffort returns the thinking effort level for a session, or empty string if not set.
 func GetSessionThinkingEffort(sessionID string) string {
 	var effort string
-	err := DB.QueryRow("SELECT thinking_effort FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&effort)
+	err := DBRead.QueryRow("SELECT thinking_effort FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&effort)
 	if err != nil {
 		return ""
 	}
@@ -422,7 +454,7 @@ func UpdateSessionThinkingEffort(sessionID, effort string) error {
 // preference exists (caller should fall back to agent defaults).
 // Used by scheduled tasks to respect the user's global model preference.
 func GetLatestUserModel(agentID, projectPath string) (modelID, thinkingEffort string) {
-	err := DB.QueryRow(
+	err := DBRead.QueryRow(
 		"SELECT model, thinking_effort FROM chat_sessions WHERE agent_id = ? AND project_path = ? AND deleted = 0 AND model != '' ORDER BY updated_at DESC LIMIT 1",
 		agentID, projectPath,
 	).Scan(&modelID, &thinkingEffort)
@@ -471,14 +503,14 @@ func DeleteSession(projectPath, backend, sessionID string) error {
 // Only counts sessions with session_type='chat' (excludes scheduled sessions).
 func GetSessionCount(projectPath string) (int, error) {
 	var count int
-	err := DB.QueryRow("SELECT COUNT(*) FROM chat_sessions WHERE project_path = ? AND deleted = 0 AND session_type = 'chat'", projectPath).Scan(&count)
+	err := DBRead.QueryRow("SELECT COUNT(*) FROM chat_sessions WHERE project_path = ? AND deleted = 0 AND session_type = 'chat'", projectPath).Scan(&count)
 	return count, err
 }
 
 // GetSessionTitle returns the title of an active (non-deleted) session.
 func GetSessionTitle(sessionID string) (string, error) {
 	var title string
-	err := DB.QueryRow("SELECT title FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&title)
+	err := DBRead.QueryRow("SELECT title FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&title)
 	if err != nil {
 		return "", err
 	}
@@ -501,7 +533,7 @@ func GetSessionTitlesBatch(sessionIDs []string) (map[string]string, error) {
 		args[i] = id
 	}
 
-	rows, err := DB.Query("SELECT id, title FROM chat_sessions WHERE id IN ("+placeholders+") AND deleted = 0", args...)
+	rows, err := DBRead.Query("SELECT id, title FROM chat_sessions WHERE id IN ("+placeholders+") AND deleted = 0", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -520,10 +552,34 @@ func GetSessionTitlesBatch(sessionIDs []string) (map[string]string, error) {
 	return titles, rows.Err()
 }
 
+// SessionInfo contains session metadata for the chat view.
+type SessionInfo struct {
+	Title          string
+	Backend        string
+	AgentID        string
+	Model          string
+	ThinkingEffort string
+}
+
+// GetSessionInfo fetches session metadata (title, backend, agent_id, model, thinking_effort)
+// in a single query instead of 5 separate queries.
+func GetSessionInfo(sessionID string) (*SessionInfo, error) {
+	info := &SessionInfo{}
+	err := DBRead.QueryRow(
+		`SELECT title, backend, agent_id, model, thinking_effort
+		 FROM chat_sessions WHERE id = ? AND deleted = 0`,
+		sessionID,
+	).Scan(&info.Title, &info.Backend, &info.AgentID, &info.Model, &info.ThinkingEffort)
+	if err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
 // GetSessionAgentID returns the agent_id of an active (non-deleted) session.
 func GetSessionAgentID(sessionID string) string {
 	var agentID string
-	DB.QueryRow("SELECT agent_id FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&agentID)
+	DBRead.QueryRow("SELECT agent_id FROM chat_sessions WHERE id = ? AND deleted = 0", sessionID).Scan(&agentID)
 	return agentID
 }
 
@@ -536,7 +592,7 @@ func SessionHasAssistant(sessionID string) bool {
 // Used to determine when to re-inject the system prompt for CLI backends without --system-prompt.
 func GetAssistantMessageCount(sessionID string) int {
 	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = ? AND role = 'assistant' AND streaming = 0 AND deleted = 0", sessionID).Scan(&count)
+	DBRead.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = ? AND role = 'assistant' AND streaming = 0 AND deleted = 0", sessionID).Scan(&count)
 	return count
 }
 
@@ -563,7 +619,7 @@ func FinalizeStreamingMessage(projectPath, backend, sessionID, content string) e
 // Returns 0 if not found.
 func GetStreamingMessageID(sessionID string) int64 {
 	var id int64
-	err := DB.QueryRow(
+	err := DBRead.QueryRow(
 		"SELECT id FROM chat_history WHERE session_id = ? AND role = 'assistant' AND streaming = 0 ORDER BY id DESC LIMIT 1",
 		sessionID,
 	).Scan(&id)
@@ -598,7 +654,7 @@ func UpdateExternalSessionID(sessionID, externalID string) error {
 // GetExternalSessionID returns the external session ID for a ClawBench session.
 func GetExternalSessionID(sessionID string) string {
 	var externalID string
-	err := DB.QueryRow("SELECT external_session_id FROM chat_sessions WHERE id = ?", sessionID).Scan(&externalID)
+	err := DBRead.QueryRow("SELECT external_session_id FROM chat_sessions WHERE id = ?", sessionID).Scan(&externalID)
 	if err != nil {
 		return ""
 	}
@@ -619,7 +675,7 @@ type UnindexedMessage struct {
 // GetUnindexedMessages fetches chat messages that have not been indexed by RAG.
 // Returns up to limit messages ordered by creation time DESC (newest first).
 func GetUnindexedMessages(limit int) ([]UnindexedMessage, error) {
-	rows, err := DB.Query(
+	rows, err := DBRead.Query(
 		"SELECT id, content, role, session_id, project_path, backend, created_at FROM chat_history WHERE indexed = 0 AND streaming = 0 ORDER BY created_at DESC LIMIT ?",
 		limit,
 	)
@@ -648,14 +704,14 @@ func MarkMessageIndexed(messageID int64) error {
 // UnindexedCount returns the number of messages waiting to be indexed by RAG.
 func UnindexedCount() (int, error) {
 	var count int
-	err := DB.QueryRow("SELECT COUNT(*) FROM chat_history WHERE indexed = 0 AND streaming = 0").Scan(&count)
+	err := DBRead.QueryRow("SELECT COUNT(*) FROM chat_history WHERE indexed = 0 AND streaming = 0").Scan(&count)
 	return count, err
 }
 
 // GetExpiredDeletedSessions returns session IDs of soft-deleted sessions
 // whose updated_at (set to deletion time) is older than the cutoff.
 func GetExpiredDeletedSessions(cutoff time.Time) ([]string, error) {
-	rows, err := DB.Query("SELECT id FROM chat_sessions WHERE deleted = 1 AND updated_at < ?", cutoff)
+	rows, err := DBRead.Query("SELECT id FROM chat_sessions WHERE deleted = 1 AND updated_at < ?", cutoff)
 	if err != nil {
 		return nil, err
 	}

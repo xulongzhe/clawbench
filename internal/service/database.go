@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"clawbench/internal/model"
 
@@ -14,6 +15,10 @@ import (
 )
 
 var DB *sql.DB
+
+// DBRead is the read-only connection pool (MaxOpenConns=2) for SELECT queries.
+// In WAL mode, reads never block writes and vice versa.
+var DBRead *sql.DB
 
 // InitDB initializes the SQLite database with latest schema.
 // When runFromServer is true (server startup), orphaned streaming messages
@@ -126,6 +131,12 @@ func InitDB(runFromServer ...bool) error {
 		CREATE INDEX IF NOT EXISTS idx_executions_session ON task_executions(session_id);
 		CREATE INDEX IF NOT EXISTS idx_sessions_type ON chat_sessions(session_type, project_path, deleted);
 
+		-- Covering index for session-based queries (GetChatMessageCount, GetAssistantMessageCount,
+		-- unread subquery, GetChatHistoryPaged) — avoids full table scan through large content rows.
+		CREATE INDEX IF NOT EXISTS idx_history_session_id ON chat_history(session_id, deleted, role, streaming, created_at);
+		-- Index for task listing by project
+		CREATE INDEX IF NOT EXISTS idx_tasks_project ON scheduled_tasks(project_path, created_at DESC);
+
 		CREATE TABLE IF NOT EXISTS tts_summaries (
 			cache_key TEXT PRIMARY KEY,
 			summary TEXT NOT NULL,
@@ -200,6 +211,25 @@ func InitDB(runFromServer ...bool) error {
 	// SKIP when called from CLI subcommands (task/rag) — the server process
 	// may still be actively streaming, and these are NOT orphaned messages.
 	isServerStartup := len(runFromServer) > 0 && runFromServer[0]
+
+	// Initialize read connection pool for concurrent reads (WAL mode).
+	// WAL contract: DB (MaxOpenConns=1) serializes writes; DBRead (MaxOpenConns=2)
+	// allows concurrent reads that never block writes and vice versa.
+	// Both pools must use WAL mode + busy_timeout for this to work correctly.
+	DBRead, err = sql.Open("sqlite", dbPath)
+	if err != nil {
+		return fmt.Errorf("failed to open read database: %w", err)
+	}
+	DBRead.SetMaxOpenConns(2)
+	DBRead.SetMaxIdleConns(2)           // match MaxOpenConns to avoid churn
+	DBRead.SetConnMaxLifetime(0)        // unlimited — SQLite file DB, no reconnection needed
+	DBRead.SetConnMaxIdleTime(30 * time.Minute) // close idle conns after 30min
+	if _, err := DBRead.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return fmt.Errorf("failed to set read DB WAL mode: %w", err)
+	}
+	if _, err := DBRead.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		return fmt.Errorf("failed to set read DB busy_timeout: %w", err)
+	}
 	if isServerStartup {
 		rows, err := DB.Query("SELECT id, content FROM chat_history WHERE streaming = 1")
 		if err != nil {
@@ -252,11 +282,21 @@ func InitDB(runFromServer ...bool) error {
 	return nil
 }
 
+// CloseDB closes both write and read database connections.
+func CloseDB() {
+	if DB != nil {
+		DB.Close()
+	}
+	if DBRead != nil {
+		DBRead.Close()
+	}
+}
+
 // GetTTSSummary looks up a cached TTS summary by cache key.
 // Returns (summary, found).
 func GetTTSSummary(cacheKey string) (string, bool) {
 	var summary string
-	err := DB.QueryRow(
+	err := DBRead.QueryRow(
 		"SELECT summary FROM tts_summaries WHERE cache_key = ?",
 		cacheKey,
 	).Scan(&summary)
@@ -336,7 +376,7 @@ type crudHelpers[T any, E any] struct {
 
 // list returns all rows from the helper's table ordered by sort_order.
 func (h crudHelpers[T, E]) list() ([]T, error) {
-	rows, err := DB.Query("SELECT " + h.scanCols + " FROM " + h.table + " ORDER BY sort_order")
+	rows, err := DBRead.Query("SELECT " + h.scanCols + " FROM " + h.table + " ORDER BY sort_order")
 	if err != nil {
 		return nil, err
 	}

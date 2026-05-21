@@ -104,8 +104,13 @@ func setupDB(t *testing.T) *sql.DB {
 	_, err = db.Exec(schema)
 	assert.NoError(t, err)
 
+	origDB := service.DB
+	origDBRead := service.DBRead
 	service.DB = db
+	service.DBRead = db // Same instance for :memory: SQLite — data is shared
 	t.Cleanup(func() {
+		service.DB = origDB
+		service.DBRead = origDBRead
 		db.Close()
 	})
 	return db
@@ -890,6 +895,57 @@ func TestGetChatHistory_DifferentBackendsIsolated(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, msgsCB, 1)
 	assert.Equal(t, "codebuddy msg", msgsCB[0].Content)
+}
+
+// TestGetChatHistory_SameSecondOrdering verifies that messages inserted in the
+// same second (identical created_at due to CURRENT_TIMESTAMP second precision)
+// are returned in insertion order (id ASC) rather than non-deterministic order.
+// This is the root cause of the bug where assistant output appeared above user input.
+func TestGetChatHistory_SameSecondOrdering(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Same Second")
+
+	// Insert user then assistant within the same second — no sleep
+	userID, err := service.AddChatMessage("/project", "claude", sid, "user", "我自己定 AI-Driven Engineering", nil, false, "")
+	assert.NoError(t, err)
+
+	assistantID, err := service.AddChatMessage("/project", "claude", sid, "assistant", "很好！AI-Driven Engineering — 精准", nil, false, "")
+	assert.NoError(t, err)
+
+	// assistantID > userID since AUTOINCREMENT guarantees this
+	assert.Greater(t, assistantID, userID, "assistant message should have higher ID than user message")
+
+	// Verify chronological order: user first, assistant second
+	msgs, err := service.GetChatHistory("/project", "claude", sid)
+	assert.NoError(t, err)
+	assert.Len(t, msgs, 2)
+	assert.Equal(t, "user", msgs[0].Role, "user message must come first")
+	assert.Equal(t, "assistant", msgs[1].Role, "assistant message must come second")
+}
+
+func TestGetMessageIDBeforeTime(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "BeforeTime")
+
+	// Insert messages with known timestamps
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "user", "msg1", "2025-01-01 10:00:00", 0)
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "assistant", "msg2", "2025-01-01 10:00:01", 0)
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "user", "msg3", "2025-01-01 10:00:02", 0)
+
+	// Query for messages before 10:00:02 — should return max ID of messages before that time
+	id, err := service.GetMessageIDBeforeTime("/project", "claude", sid, "2025-01-01 10:00:02")
+	assert.NoError(t, err)
+	assert.Greater(t, id, 0, "should find a message ID before the given time")
+
+	// Query with a time before all messages — should return 0
+	id, err = service.GetMessageIDBeforeTime("/project", "claude", sid, "2025-01-01 09:00:00")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, id, "should return 0 when no messages before the given time")
 }
 
 // Ensure TestMain-like global DB save/restore works correctly
@@ -1842,6 +1898,39 @@ func TestGetSessionTitlesBatch_NonExistentID(t *testing.T) {
 	assert.False(t, ok, "non-existent ID should not appear in titles")
 }
 
+// ---------- GetSessionInfo ----------
+
+func TestGetSessionInfo(t *testing.T) {
+	_ = setupDB(t)
+
+	s1, _ := service.CreateSession("/project", "claude", "My Session", "claude", "claude-sonnet-4-6", "default", "chat")
+
+	info, err := service.GetSessionInfo(s1)
+	assert.NoError(t, err)
+	assert.Equal(t, "My Session", info.Title)
+	assert.Equal(t, "claude", info.Backend)
+	assert.Equal(t, "claude", info.AgentID)
+	assert.Equal(t, "claude-sonnet-4-6", info.Model)
+	assert.Equal(t, "", info.ThinkingEffort)
+}
+
+func TestGetSessionInfo_NotFound(t *testing.T) {
+	_ = setupDB(t)
+
+	_, err := service.GetSessionInfo("nonexistent")
+	assert.Error(t, err)
+}
+
+func TestGetSessionInfo_Deleted(t *testing.T) {
+	_ = setupDB(t)
+
+	s1, _ := service.CreateSession("/project", "claude", "Deleted", "claude", "", "default", "chat")
+	service.DeleteSession("/project", "claude", s1)
+
+	_, err := service.GetSessionInfo(s1)
+	assert.Error(t, err)
+}
+
 // ---------- GetSessions UnreadCount ----------
 
 func TestGetSessions_UnreadCount_NoMessages(t *testing.T) {
@@ -1979,6 +2068,31 @@ func TestGetSessions_UnreadCount_DeletedMessagesExcluded(t *testing.T) {
 	assert.Equal(t, 1, sessions[0].UnreadCount, "deleted messages should not count as unread")
 }
 
+func TestGetSessions_UnreadCountScopedToProject(t *testing.T) {
+	db := setupDB(t)
+	_ = db
+
+	// Create sessions in two different projects
+	s1, _ := service.CreateSession("/project-a", "claude", "S1", "claude", "", "default", "chat")
+	s2, _ := service.CreateSession("/project-b", "claude", "S2", "claude", "", "default", "chat")
+
+	// Add assistant messages to both sessions
+	service.AddChatMessage("/project-a", "claude", s1, "assistant", `{"blocks":[{"type":"text","text":"hello"}]}`, nil, false, "")
+	service.AddChatMessage("/project-b", "claude", s2, "assistant", `{"blocks":[{"type":"text","text":"world"}]}`, nil, false, "")
+
+	// Query project-a only — should have 1 unread
+	sessions, err := service.GetSessions("/project-a", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessions, 1)
+	assert.Equal(t, 1, sessions[0].UnreadCount, "unread count should only count messages in project-a")
+
+	// Verify project-b also has 1 unread independently
+	sessionsB, err := service.GetSessions("/project-b", "")
+	assert.NoError(t, err)
+	assert.Len(t, sessionsB, 1)
+	assert.Equal(t, 1, sessionsB[0].UnreadCount, "unread count should only count messages in project-b")
+}
+
 // ---------- GetSessionsPaged UnreadCount ----------
 
 func TestGetSessionsPaged_UnreadCount(t *testing.T) {
@@ -1993,6 +2107,13 @@ func TestGetSessionsPaged_UnreadCount(t *testing.T) {
 	assert.Len(t, sessions, 1)
 	assert.Equal(t, 1, sessions[0].UnreadCount)
 	assert.False(t, hasMore)
+}
+
+// ---------- DBRead initialization ----------
+
+func TestDBRead_Initialized_ChatDB(t *testing.T) {
+	_ = setupDB(t)
+	assert.NotNil(t, service.DBRead, "DBRead should be initialized in test setup")
 }
 
 // ---------- GetRunningSessionIDs ----------
@@ -2060,6 +2181,55 @@ func TestGetRunningSessionIDs_SomeRunning(t *testing.T) {
 
 	// Clean up
 	service.SetSessionRunning("sess-2", false)
+}
+
+// ---------- GetLatestSessionID ----------
+
+func TestGetLatestSessionID(t *testing.T) {
+	_ = setupDB(t)
+
+	// No sessions yet
+	_, _, err := service.GetLatestSessionID("/project")
+	assert.Error(t, err)
+
+	// Create a session
+	s1, _ := service.CreateSession("/project", "claude", "First", "claude", "", "default", "chat")
+
+	// Should return it
+	id, backend, err := service.GetLatestSessionID("/project")
+	assert.NoError(t, err)
+	assert.Equal(t, s1, id)
+	assert.Equal(t, "claude", backend)
+
+	// Create another and force its updated_at ahead (SQLite timestamps have second precision)
+	s2, _ := service.CreateSession("/project", "codebuddy", "Second", "codebuddy", "", "default", "chat")
+	service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now', '+1 second') WHERE id = ?", s2)
+
+	// Should return the newer one
+	id, backend, err = service.GetLatestSessionID("/project")
+	assert.NoError(t, err)
+	assert.Equal(t, s2, id)
+	assert.Equal(t, "codebuddy", backend)
+
+	// Different project should return error
+	_, _, err = service.GetLatestSessionID("/other-project")
+	assert.Error(t, err)
+}
+
+func TestGetLatestSessionID_ExcludesDeleted(t *testing.T) {
+	_ = setupDB(t)
+
+	s1, _ := service.CreateSession("/project", "claude", "First", "claude", "", "default", "chat")
+	s2, _ := service.CreateSession("/project", "codebuddy", "Second", "codebuddy", "", "default", "chat")
+
+	// Delete the most recent session
+	service.DeleteSession("/project", "codebuddy", s2)
+
+	// Should return the remaining session
+	id, backend, err := service.GetLatestSessionID("/project")
+	assert.NoError(t, err)
+	assert.Equal(t, s1, id)
+	assert.Equal(t, "claude", backend)
 }
 
 func TestGetRunningSessionIDs_AfterClearAll(t *testing.T) {

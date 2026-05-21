@@ -2,7 +2,9 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -79,35 +81,33 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				writeLocalizedErrorf(w, r, http.StatusNotFound, "SessionNotFound")
 				return
 			}
-		} else {
-			// No specific session requested, get the most recent session across all backends
-			allSessions, err := service.GetSessions(projectPath, "")
-			if err != nil {
-				model.WriteError(w, model.Internal(fmt.Errorf("failed to load sessions")))
+	} else {
+		// No specific session requested — use lightweight query to find the most recent session
+		latestID, latestBackend, err := service.GetLatestSessionID(projectPath)
+		if err != nil {
+			if !errors.Is(err, sql.ErrNoRows) {
+				model.WriteError(w, model.Internal(fmt.Errorf("failed to find latest session")))
 				return
 			}
-
-			if len(allSessions) == 0 {
-				// No sessions exist, create a new one with default agent.
-				// Don't pre-fill agent default model — leave empty so frontend
-				// falls back to global localStorage preference (cross-project).
-				agentID := model.GetDefaultAgentID()
-				sessionBackend2, _, _, _, ok := resolveAgentConfig(agentID)
-				if !ok {
-					writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
-					return
-				}
-				sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID, "", "default", "chat")
-				if err != nil {
-					model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
-					return
-				}
-			} else {
-				// Use the most recent session (already sorted by updated_at DESC)
-				sessionID = allSessions[0].ID
-				sessionBackend = allSessions[0].Backend
+			// No sessions exist, create a new one with default agent.
+			// Don't pre-fill agent default model — leave empty so frontend
+			// falls back to global localStorage preference (cross-project).
+			agentID := model.GetDefaultAgentID()
+			sessionBackend2, _, _, _, ok := resolveAgentConfig(agentID)
+			if !ok {
+				writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
+				return
 			}
+			sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID, "", "default", "chat")
+			if err != nil {
+				model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
+				return
+			}
+		} else {
+			sessionID = latestID
+			sessionBackend = latestBackend
 		}
+	}
 
 		// Always update cookie with current session ID
 		setSessionID(w, sessionID)
@@ -115,15 +115,28 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		service.UpdateLastRead(sessionID)
 
 		// Parse pagination params
+		// Supports both before_id (preferred, integer cursor) and before (legacy, timestamp cursor).
+		// before_id takes priority when both are provided.
 		limit := 0
-		beforeTime := ""
+		beforeID := 0
 		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
 				limit = l
 			}
 		}
-		if bt := r.URL.Query().Get("before"); bt != "" {
-			beforeTime = bt
+		if bid := r.URL.Query().Get("before_id"); bid != "" {
+			if id, err := strconv.Atoi(bid); err == nil && id > 0 {
+				beforeID = id
+			}
+		}
+		// Legacy: accept "before" (timestamp) for backward compatibility with older clients.
+		// When before_id is absent and before is present, fall back to timestamp-based lookup.
+		if beforeID == 0 {
+			if bt := r.URL.Query().Get("before"); bt != "" {
+				if id, err := service.GetMessageIDBeforeTime(projectPath, sessionBackend, sessionID, bt); err == nil && id > 0 {
+					beforeID = id
+				}
+			}
 		}
 
 		// If limit not specified, use config default
@@ -136,12 +149,21 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		}
 
 		totalCount := service.GetChatMessageCount(sessionID)
-		messages, err := service.GetChatHistoryPaged(projectPath, sessionBackend, sessionID, limit, beforeTime)
-		// Get session title and agent info
-		sessionTitle, _ := service.GetSessionTitle(sessionID)
-		sessionAgentID := service.GetSessionAgentID(sessionID)
-		sessionModelID := service.GetSessionModel(sessionID)
-		sessionThinkingEffort := service.GetSessionThinkingEffort(sessionID)
+		messages, err := service.GetChatHistoryPaged(projectPath, sessionBackend, sessionID, limit, beforeID)
+		// Get session metadata in a single query
+		sessionInfo, _ := service.GetSessionInfo(sessionID)
+		var sessionTitle, sessionAgentID, sessionModelID, sessionThinkingEffort string
+		var sessionInfoBackend string
+		if sessionInfo != nil {
+			sessionTitle = sessionInfo.Title
+			sessionInfoBackend = sessionInfo.Backend
+			sessionAgentID = sessionInfo.AgentID
+			sessionModelID = sessionInfo.Model
+			sessionThinkingEffort = sessionInfo.ThinkingEffort
+		}
+		if sessionInfoBackend != "" {
+			sessionBackend = sessionInfoBackend
+		}
 		running := service.IsSessionRunning(sessionID)
 		if err != nil {
 			writeJSON(w, http.StatusOK, map[string]any{"messages": []any{}, "running": running, "sessionId": sessionID, "sessionTitle": sessionTitle, "backend": sessionBackend, "agentId": sessionAgentID, "modelId": sessionModelID, "thinkingEffort": sessionThinkingEffort, "total": totalCount})

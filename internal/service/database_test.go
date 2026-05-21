@@ -16,6 +16,7 @@ import (
 func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 	origDB := DB
+	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -54,6 +55,7 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 			model TEXT DEFAULT '',
 			session_type TEXT NOT NULL DEFAULT 'chat',
 			external_session_id TEXT DEFAULT '',
+			thinking_effort TEXT DEFAULT '',
 			deleted INTEGER NOT NULL DEFAULT 0,
 			last_read_at DATETIME,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -66,8 +68,10 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 	}
 
 	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
 	teardown := func() {
 		DB = origDB
+		DBRead = origDBRead
 		db.Close()
 	}
 	return db, teardown
@@ -78,6 +82,7 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 	origDB := DB
+	origDBRead := DBRead
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -102,8 +107,10 @@ func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) {
 	}
 
 	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
 	teardown := func() {
 		DB = origDB
+		DBRead = origDBRead
 		db.Close()
 	}
 	return db, teardown
@@ -117,9 +124,13 @@ func TestSchema_SessionTypeColumnExists(t *testing.T) {
 	model.BinDir = tmpDir
 	defer func() { model.BinDir = origBinDir }()
 
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
 	err := InitDB()
 	assert.NoError(t, err)
-	defer DB.Close()
+	defer CloseDB()
 
 	columns := getTableColumns(t, DB, "chat_sessions")
 	assert.Contains(t, columns, "session_type", "chat_sessions should have session_type column")
@@ -131,9 +142,13 @@ func TestSchema_TaskExecutionsColumns(t *testing.T) {
 	model.BinDir = tmpDir
 	defer func() { model.BinDir = origBinDir }()
 
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
 	err := InitDB()
 	assert.NoError(t, err)
-	defer DB.Close()
+	defer CloseDB()
 
 	columns := getTableColumns(t, DB, "task_executions")
 	assert.Contains(t, columns, "session_id", "task_executions should have session_id column")
@@ -147,9 +162,13 @@ func TestSchema_NewIndexes(t *testing.T) {
 	model.BinDir = tmpDir
 	defer func() { model.BinDir = origBinDir }()
 
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
 	err := InitDB()
 	assert.NoError(t, err)
-	defer DB.Close()
+	defer CloseDB()
 
 	indexes := getIndexes(t, DB)
 	assert.Contains(t, indexes, "idx_executions_session", "idx_executions_session index should exist")
@@ -190,6 +209,113 @@ func getIndexes(t *testing.T, db *sql.DB) map[string]bool {
 		indexes[name] = true
 	}
 	return indexes
+}
+
+// ---------- Read-write connection separation ----------
+
+func TestInitDB_ReadWriteSeparation(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// DB (write pool) should be initialized
+	assert.NotNil(t, DB, "DB (write pool) should be initialized")
+
+	// DBRead (read pool) should be initialized
+	assert.NotNil(t, DBRead, "DBRead (read pool) should be initialized")
+
+	// Both should be different instances
+	assert.NotEqual(t, DB, DBRead, "DB and DBRead should be separate connections")
+
+	// Verify write pool has MaxOpenConns=1
+	stats := DB.Stats()
+	assert.Equal(t, 1, stats.MaxOpenConnections, "DB write pool should have MaxOpenConns=1")
+
+	// Verify read pool has MaxOpenConns=2
+	statsRead := DBRead.Stats()
+	assert.Equal(t, 2, statsRead.MaxOpenConnections, "DBRead pool should have MaxOpenConns=2")
+
+	// Verify both can query
+	var count int
+	err = DBRead.QueryRow("SELECT COUNT(*) FROM chat_sessions").Scan(&count)
+	assert.NoError(t, err, "DBRead should be able to query")
+
+	// Verify CloseDB closes both
+	CloseDB()
+}
+
+// TestCloseDB_NilDB verifies that CloseDB does not panic when DB and DBRead are nil.
+func TestCloseDB_NilDB(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	DB = nil
+	DBRead = nil
+
+	// Should not panic
+	CloseDB()
+}
+
+// TestCloseDB_NilDBRead verifies that CloseDB does not panic when DBRead is nil but DB is not.
+func TestCloseDB_NilDBRead(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	assert.NoError(t, err)
+	DB = db
+	DBRead = nil
+
+	// Should not panic, should close DB
+	CloseDB()
+}
+
+// ---------- Performance indexes ----------
+
+func TestSchema_HistorySessionIDIndex(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	indexes := getIndexes(t, DB)
+	assert.True(t, indexes["idx_history_session_id"], "expected idx_history_session_id index to exist")
+}
+
+func TestSchema_TasksProjectIndex(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	indexes := getIndexes(t, DB)
+	assert.True(t, indexes["idx_tasks_project"], "expected idx_tasks_project index to exist")
 }
 
 // ---------- Table creation ----------

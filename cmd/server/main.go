@@ -454,6 +454,7 @@ func main() {
 		slog.Error("failed to initialize database", slog.String("err", err.Error()))
 		os.Exit(1)
 	}
+	defer service.CloseDB()
 
 	// Initialize RAG history memory system (always enabled)
 	if err := rag.Init(cfg.RAG); err != nil {

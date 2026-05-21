@@ -798,33 +798,72 @@ func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Cap SHA count to prevent exceeding OS ARG_MAX (~2MB on Linux).
+	// 500 SHAs × 40 chars each ≈ 20KB — well within safe limits.
+	const maxSHAs = 500
+	if len(body.SHAs) > maxSHAs {
+		body.SHAs = body.SHAs[:maxSHAs]
+	}
+
 	results := make(map[string]interface{}, len(body.SHAs))
+
+	// Batch: use git log --no-walk=sorted to fetch all commit info in one command
+	// --ignore-missing skips invalid SHAs instead of erroring out
+	logArgs := []string{
+		"log", "--no-walk=sorted", "--ignore-missing",
+		"--format=%H|%P|%s|%ad|%an%d",
+		"--date=iso",
+	}
+	logArgs = append(logArgs, body.SHAs...)
+
+	logCmd := exec.Command("git", logArgs...)
+	logCmd.Dir = projectPath
+	logOutput, _ := logCmd.Output()
+
+	// Parse git log output — only valid commits appear
+	// Map full SHA → requested SHA for key normalization (frontend may send abbreviated SHAs)
+	// Build a prefix lookup map from requested SHAs for O(1) matching instead of O(N×M) scan.
+	reqSHAMap := make(map[string]string, len(body.SHAs)) // prefix→original
 	for _, sha := range body.SHAs {
-		cmd := exec.Command("git", "cat-file", "-t", sha)
-		cmd.Dir = projectPath
-		output, err := cmd.Output()
-		if err != nil {
-			results[sha] = nil
-		} else {
-			objType := strings.TrimSpace(string(output))
-			if objType == "commit" {
-				// Fetch commit info for breadcrumb display
-				logCmd := exec.Command("git", "log", "-1", "--format=%H|%P|%s|%ad|%an%d", "--date=iso", sha)
-				logCmd.Dir = projectPath
-				logOutput, logErr := logCmd.Output()
-				if logErr == nil && len(logOutput) > 0 {
-					parsed := parseGitLog(string(logOutput))
-					if len(parsed) > 0 {
-						results[sha] = parsed[0]
-					} else {
-						results[sha] = sha // fallback
-					}
-				} else {
-					results[sha] = sha // fallback
+		// Index by the minimum unique prefix length (at least 7 chars for abbreviated SHAs)
+		prefixLen := len(sha)
+		if prefixLen > 40 {
+			prefixLen = 40
+		}
+		reqSHAMap[sha[:prefixLen]] = sha
+	}
+
+	fullToRequested := map[string]string{}
+	if len(logOutput) > 0 {
+		commits := parseGitLog(string(logOutput))
+		for _, c := range commits {
+			// Find which requested SHA matches this full SHA (by prefix lookup)
+			for prefixLen := 7; prefixLen <= len(c.SHA); prefixLen++ {
+				if reqSHA, ok := reqSHAMap[c.SHA[:prefixLen]]; ok {
+					fullToRequested[c.SHA] = reqSHA
+					break
 				}
-			} else {
-				results[sha] = nil
 			}
+			// Store under both full SHA and (if matched) requested SHA
+			results[c.SHA] = c
+		}
+	}
+
+	// Re-key results under the original requested SHAs and mark unmatched as nil
+	for _, sha := range body.SHAs {
+		matched := false
+		for fullSHA, reqSHA := range fullToRequested {
+			if reqSHA == sha {
+				if fullSHA != sha {
+					results[sha] = results[fullSHA]
+					delete(results, fullSHA)
+				}
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			results[sha] = nil
 		}
 	}
 

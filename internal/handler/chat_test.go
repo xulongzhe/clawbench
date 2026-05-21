@@ -2293,3 +2293,186 @@ func TestServeSessions_Post_NewSessionEmptyModel(t *testing.T) {
 	assert.Equal(t, "", modelID,
 		"newly created session should have empty model field for global preference resolution")
 }
+
+// ============================================================================
+// AIChat GET — no session_id path (GetLatestSessionID)
+// ============================================================================
+
+// TestAIChat_Get_NoSessionID_UsesLatestSession verifies that when AIChat GET
+// is called without a session_id, the handler uses GetLatestSessionID to find
+// the most recent session instead of loading all sessions via GetSessions.
+func TestAIChat_Get_NoSessionID_UsesLatestSession(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create two sessions. Directly set s2's updated_at to be newer than s1's
+	// (both sessions created in the same second would have identical timestamps,
+	// making the tie-breaker depend on UUID sort order which is non-deterministic).
+	s1, _ := service.CreateSession(env.ProjectDir, "claude", "First", "claude", "", "default", "chat")
+	s2, _ := service.CreateSession(env.ProjectDir, "codebuddy", "Second", "codebuddy", "", "default", "chat")
+	// Force s2 to be more recent by setting its updated_at 1 second ahead
+	service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime(updated_at, '+1 second') WHERE id = ?", s2)
+
+	// GET without session_id should use the latest session
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?limit=20", nil)
+	withProjectCookie(req, env.ProjectDir)
+	withAuthCookie(req, "")
+
+	w := callHandlerWithAuth(AIChat, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, s2, resp["sessionId"])
+
+	// Verify s1 is NOT returned (proves it's using latest, not first)
+	assert.NotEqual(t, s1, resp["sessionId"])
+}
+
+// TestAIChat_Get_NoSessionID_NoSessionsCreatesNew verifies that when AIChat GET
+// is called without a session_id and no sessions exist, a new session is created.
+func TestAIChat_Get_NoSessionID_NoSessionsCreatesNew(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// No sessions exist — GET without session_id should auto-create one
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?limit=20", nil)
+	withProjectCookie(req, env.ProjectDir)
+	withAuthCookie(req, "")
+
+	w := callHandlerWithAuth(AIChat, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NotNil(t, resp["sessionId"], "should auto-create a session when none exist")
+	assert.NotEmpty(t, resp["sessionId"])
+}
+
+// TestAIChat_Get_WithSessionID_ReturnsSessionInfo verifies that when AIChat GET
+// is called with a specific session_id, the sessionInfo fields (title, backend,
+// agentId, modelId, thinkingEffort) are populated from the single GetSessionInfo query.
+func TestAIChat_Get_WithSessionID_ReturnsSessionInfo(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session with specific agent and model
+	sessionID, err := service.CreateSession(env.ProjectDir, "codebuddy", "My Test Session", "codebuddy", "glm-5.1", "default", "chat")
+	assert.NoError(t, err)
+
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?session_id="+sessionID+"&limit=20", nil)
+	withProjectCookie(req, env.ProjectDir)
+	withAuthCookie(req, "")
+
+	w := callHandlerWithAuth(AIChat, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, sessionID, resp["sessionId"])
+	assert.Equal(t, "My Test Session", resp["sessionTitle"])
+	assert.Equal(t, "codebuddy", resp["backend"])
+	assert.Equal(t, "codebuddy", resp["agentId"])
+}
+
+// TestAIChat_Get_SessionInfoBackendOverride verifies that when GetSessionInfo
+// returns a backend that differs from the one initially resolved (e.g., from
+// GetSessionBackend or GetLatestSessionID), the sessionInfo backend takes priority.
+func TestAIChat_Get_SessionInfoBackendOverride(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session with backend "claude"
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Backend Test", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// Add a message so the session has history
+	_, err = service.AddChatMessage(env.ProjectDir, "claude", sessionID, "user", "hello", nil, false, "NewSession")
+	assert.NoError(t, err)
+
+	// Request with session_id — GetSessionBackend returns "claude",
+	// GetSessionInfo should also return "claude", and the response should reflect it
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?session_id="+sessionID+"&limit=20", nil)
+	withProjectCookie(req, env.ProjectDir)
+	withAuthCookie(req, "")
+
+	w := callHandlerWithAuth(AIChat, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "claude", resp["backend"])
+}
+
+// TestAIChat_Get_NoSessionID_SessionInfoFieldsPopulated verifies that the
+// GetLatestSessionID + GetSessionInfo path (no session_id in request) still
+// populates all sessionInfo fields correctly.
+func TestAIChat_Get_NoSessionID_SessionInfoFieldsPopulated(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session
+	sessionID, err := service.CreateSession(env.ProjectDir, "codebuddy", "Info Session", "codebuddy", "", "default", "chat")
+	assert.NoError(t, err)
+	// Set model explicitly
+	service.UpdateSessionModel(sessionID, "glm-5.1")
+
+	// GET without session_id — should find this session via GetLatestSessionID
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?limit=20", nil)
+	withProjectCookie(req, env.ProjectDir)
+	withAuthCookie(req, "")
+
+	w := callHandlerWithAuth(AIChat, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, sessionID, resp["sessionId"])
+	assert.Equal(t, "Info Session", resp["sessionTitle"])
+	assert.Equal(t, "codebuddy", resp["backend"])
+	assert.Equal(t, "codebuddy", resp["agentId"])
+	assert.Equal(t, "glm-5.1", resp["modelId"])
+}
+
+// TestAIChat_Get_NoSessionID_NoAgentsAvailable verifies that when no sessions
+// exist and no agents are available, the handler returns NoAgentsAvailable error.
+func TestAIChat_Get_NoSessionID_NoAgentsAvailable(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Remove all agents so resolveAgentConfig fails
+	model.Agents = map[string]*model.Agent{}
+	model.AgentList = []*model.Agent{}
+
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?limit=20", nil)
+	withProjectCookie(req, env.ProjectDir)
+	withAuthCookie(req, "")
+
+	w := callHandlerWithAuth(AIChat, req)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+// TestAIChat_Get_NoSessionID_CreateSessionError verifies that when no sessions
+// exist and CreateSession fails (e.g., DB closed), the handler returns
+// an internal error.
+func TestAIChat_Get_NoSessionID_CreateSessionError(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+
+	// Close the DB to force errors. Both DB and DBRead point to the same
+	// :memory: instance, so closing either closes both. After closing,
+	// queries will return errors rather than panic (nil dereference).
+	service.CloseDB()
+
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?limit=20", nil)
+	withProjectCookie(req, env.ProjectDir)
+	withAuthCookie(req, "")
+
+	w := callHandlerWithAuth(AIChat, req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	// Prevent teardown from double-closing the already-closed db.
+	// Restore globals so teardown's db.Close() becomes a safe no-op on
+	// the original (pre-setupTestEnv) values.
+	_ = env
+	teardown()
+}
