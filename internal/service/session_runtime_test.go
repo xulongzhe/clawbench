@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -764,4 +765,226 @@ func TestSetSessionRunning_SkipEventTrue(t *testing.T) {
 	// Stop with skipEvent=true — should NOT emit completed event
 	SetSessionRunning("session-skip", false, true)
 	assert.False(t, IsSessionRunning("session-skip"))
+}
+
+// --- emitTaskEvent tests ---
+
+func TestEmitTaskEvent_WithSessionIDAndProjectPath(t *testing.T) {
+	mgr := ws.NewManagerForTest(nil)
+	ws.SetManagerForTest(mgr)
+	defer ws.SetManagerForTest(nil)
+
+	var writeMu sync.Mutex
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-task-emit")
+	_ = sub
+
+	emitTaskEvent("42", "completed", "100", "session-task-1", "/home/user/project")
+
+	buffered := sub.GetBufferedEvents()
+	if len(buffered) == 0 {
+		t.Fatal("expected at least one buffered event")
+	}
+	data, ok := buffered[0].Data.(*ws.TaskUpdateData)
+	if !ok {
+		t.Fatal("expected TaskUpdateData")
+	}
+	assert.Equal(t, "42", data.TaskID)
+	assert.Equal(t, "completed", data.Status)
+	assert.Equal(t, "100", data.ExecutionID)
+	assert.Equal(t, "session-task-1", data.SessionID)
+	assert.Equal(t, "/home/user/project", data.ProjectPath)
+}
+
+func TestEmitTaskEvent_EmptyOptionalFields(t *testing.T) {
+	mgr := ws.NewManagerForTest(nil)
+	ws.SetManagerForTest(mgr)
+	defer ws.SetManagerForTest(nil)
+
+	var writeMu sync.Mutex
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-task-emit2")
+	_ = sub
+
+	emitTaskEvent("43", "failed", "101", "", "")
+
+	buffered := sub.GetBufferedEvents()
+	if len(buffered) == 0 {
+		t.Fatal("expected at least one buffered event")
+	}
+	data, ok := buffered[0].Data.(*ws.TaskUpdateData)
+	if !ok {
+		t.Fatal("expected TaskUpdateData")
+	}
+	assert.Equal(t, "43", data.TaskID)
+	assert.Equal(t, "failed", data.Status)
+	assert.Equal(t, "", data.SessionID)
+	assert.Equal(t, "", data.ProjectPath)
+}
+
+func TestEmitTaskEvent_NilManager(t *testing.T) {
+	ws.SetManagerForTest(nil)
+
+	// Should not panic when ws manager is nil
+	assert.NotPanics(t, func() {
+		emitTaskEvent("44", "running", "102", "session-nil", "/project")
+	})
+}
+
+// --- executeTask tests (covers emitTaskEvent call sites in scheduler.go) ---
+
+const execTaskSchema = `
+CREATE TABLE IF NOT EXISTS chat_history (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	project_path TEXT NOT NULL,
+	role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+	content TEXT NOT NULL,
+	files TEXT,
+	session_id TEXT,
+	backend TEXT NOT NULL DEFAULT 'claude',
+	streaming INTEGER NOT NULL DEFAULT 0,
+	indexed INTEGER NOT NULL DEFAULT 0,
+	deleted INTEGER NOT NULL DEFAULT 0,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS chat_sessions (
+	id TEXT PRIMARY KEY,
+	project_path TEXT NOT NULL,
+	backend TEXT NOT NULL,
+	title TEXT NOT NULL,
+	agent_id TEXT DEFAULT '',
+	agent_source TEXT DEFAULT 'default',
+	model TEXT DEFAULT '',
+	session_type TEXT NOT NULL DEFAULT 'chat',
+	deleted INTEGER NOT NULL DEFAULT 0,
+	last_read_at DATETIME,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(project_path, backend, id)
+);
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	project_path TEXT NOT NULL,
+	name TEXT NOT NULL,
+	cron_expr TEXT NOT NULL,
+	agent_id TEXT NOT NULL,
+	prompt TEXT NOT NULL,
+	session_id TEXT,
+	status TEXT NOT NULL DEFAULT 'active',
+	repeat_mode TEXT NOT NULL DEFAULT 'unlimited',
+	max_runs INTEGER DEFAULT 0,
+	last_run_at DATETIME,
+	next_run_at DATETIME,
+	run_count INTEGER DEFAULT 0,
+	last_read_at DATETIME,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS task_executions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	task_id INTEGER NOT NULL,
+	session_id TEXT NOT NULL,
+	trigger_type TEXT NOT NULL DEFAULT 'auto',
+	status TEXT NOT NULL DEFAULT 'running',
+	read_at DATETIME,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_executions_task ON task_executions(task_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_history_session ON chat_history(project_path, backend, session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_backend ON chat_sessions(project_path, backend);
+CREATE INDEX IF NOT EXISTS idx_executions_session ON task_executions(session_id);
+CREATE TABLE IF NOT EXISTS ai_raw_responses (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id TEXT NOT NULL,
+	message_id INTEGER NOT NULL,
+	backend TEXT NOT NULL DEFAULT '',
+	raw_output TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+`
+
+func setupExecTaskDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	_, err = db.Exec(execTaskSchema)
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
+func TestExecuteTask_BackendCreationFailed(t *testing.T) {
+	// Set up DB with scheduler schema
+	origDB := DB
+	db := setupExecTaskDB(t)
+	DB = db
+	defer func() { DB = origDB }()
+
+	// Set up ws manager to capture events
+	mgr := ws.NewManagerForTest(nil)
+	ws.SetManagerForTest(mgr)
+	defer ws.SetManagerForTest(nil)
+
+	// Register an agent with an unsupported backend — ai.NewBackend will return error
+	origAgents := model.Agents
+	model.Agents = map[string]*model.Agent{
+		"test-unsupported-backend": {Backend: "nonexistent_backend_xyz"},
+	}
+	defer func() { model.Agents = origAgents }()
+
+	// Insert a task into DB so the foreign key in task_executions works
+	result, err := db.Exec(`INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, repeat_mode, status) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"/test-project", "Test Task", "0 * * * *", "test-unsupported-backend", "hello", "unlimited", "active")
+	require.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Construct task directly (GetTaskByID fails on NULL session_id with string Scan)
+	task := &model.ScheduledTask{
+		ID:          taskID,
+		ProjectPath: "/test-project",
+		Name:        "Test Task",
+		CronExpr:    "0 * * * *",
+		AgentID:     "test-unsupported-backend",
+		Prompt:      "hello",
+		RepeatMode:  "unlimited",
+		Status:      "active",
+	}
+
+	s := NewScheduler()
+	defer s.Stop()
+
+	// Subscribe a client to capture events
+	var writeMu sync.Mutex
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-exec")
+	_ = sub
+
+	// Execute the task — should fail at backend creation and emit "failed" event
+	s.executeTask(task, "/test-project", "manual")
+
+	// Give a small window for async processing
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify both "running" and "failed" events were broadcast
+	buffered := sub.GetBufferedEvents()
+	if len(buffered) < 2 {
+		t.Fatalf("expected at least 2 buffered events (running + failed), got %d", len(buffered))
+	}
+
+	// First event should be "running"
+	data1, ok := buffered[0].Data.(*ws.TaskUpdateData)
+	if !ok {
+		t.Fatal("expected TaskUpdateData for first event")
+	}
+	assert.Equal(t, "running", data1.Status)
+	assert.Equal(t, fmt.Sprintf("%d", taskID), data1.TaskID)
+	assert.NotEmpty(t, data1.SessionID, "running event should have session_id")
+	assert.Equal(t, "/test-project", data1.ProjectPath, "running event should have project_path")
+
+	// Second event should be "failed" (backend creation failed)
+	data2, ok := buffered[1].Data.(*ws.TaskUpdateData)
+	if !ok {
+		t.Fatal("expected TaskUpdateData for second event")
+	}
+	assert.Equal(t, "failed", data2.Status)
+	assert.NotEmpty(t, data2.SessionID, "failed event should have session_id")
+	assert.Equal(t, "/test-project", data2.ProjectPath, "failed event should have project_path")
 }

@@ -663,8 +663,13 @@ backend: codebuddy
 	})
 
 	// Make the directory read-only so WriteFile fails
+	// Note: root user bypasses filesystem permissions, so skip on root
 	require.NoError(t, os.Chmod(agentsDir, 0555))
 	defer os.Chmod(agentsDir, 0755) // restore for cleanup
+
+	if os.Getuid() == 0 {
+		t.Skip("skipping: root user bypasses filesystem permissions")
+	}
 
 	agent := model.Agents["test-agent"]
 	agent.PreferredModel = "new-model"
