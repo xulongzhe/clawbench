@@ -1,0 +1,17 @@
+name: 问题咨询
+description: 使用疑问或讨论
+labels: ["question"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: 你的问题
+      description: 详细描述你的疑问
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 相关上下文
+      description: 已查阅的文档、已尝试的操作等
