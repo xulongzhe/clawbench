@@ -79,35 +79,29 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				writeLocalizedErrorf(w, r, http.StatusNotFound, "SessionNotFound")
 				return
 			}
-		} else {
-			// No specific session requested, get the most recent session across all backends
-			allSessions, err := service.GetSessions(projectPath, "")
-			if err != nil {
-				model.WriteError(w, model.Internal(fmt.Errorf("failed to load sessions")))
+	} else {
+		// No specific session requested — use lightweight query to find the most recent session
+		latestID, latestBackend, err := service.GetLatestSessionID(projectPath)
+		if err != nil {
+			// No sessions exist, create a new one with default agent.
+			// Don't pre-fill agent default model — leave empty so frontend
+			// falls back to global localStorage preference (cross-project).
+			agentID := model.GetDefaultAgentID()
+			sessionBackend2, _, _, _, ok := resolveAgentConfig(agentID)
+			if !ok {
+				writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
 				return
 			}
-
-			if len(allSessions) == 0 {
-				// No sessions exist, create a new one with default agent.
-				// Don't pre-fill agent default model — leave empty so frontend
-				// falls back to global localStorage preference (cross-project).
-				agentID := model.GetDefaultAgentID()
-				sessionBackend2, _, _, _, ok := resolveAgentConfig(agentID)
-				if !ok {
-					writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
-					return
-				}
-				sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID, "", "default", "chat")
-				if err != nil {
-					model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
-					return
-				}
-			} else {
-				// Use the most recent session (already sorted by updated_at DESC)
-				sessionID = allSessions[0].ID
-				sessionBackend = allSessions[0].Backend
+			sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID, "", "default", "chat")
+			if err != nil {
+				model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
+				return
 			}
+		} else {
+			sessionID = latestID
+			sessionBackend = latestBackend
 		}
+	}
 
 		// Always update cookie with current session ID
 		setSessionID(w, sessionID)

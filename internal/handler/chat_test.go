@@ -2293,3 +2293,38 @@ func TestServeSessions_Post_NewSessionEmptyModel(t *testing.T) {
 	assert.Equal(t, "", modelID,
 		"newly created session should have empty model field for global preference resolution")
 }
+
+// ============================================================================
+// AIChat GET — no session_id path (GetLatestSessionID)
+// ============================================================================
+
+// TestAIChat_Get_NoSessionID_UsesLatestSession verifies that when AIChat GET
+// is called without a session_id, the handler uses GetLatestSessionID to find
+// the most recent session instead of loading all sessions via GetSessions.
+func TestAIChat_Get_NoSessionID_UsesLatestSession(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create two sessions. Directly set s2's updated_at to be newer than s1's
+	// (both sessions created in the same second would have identical timestamps,
+	// making the tie-breaker depend on UUID sort order which is non-deterministic).
+	s1, _ := service.CreateSession(env.ProjectDir, "claude", "First", "claude", "", "default", "chat")
+	s2, _ := service.CreateSession(env.ProjectDir, "codebuddy", "Second", "codebuddy", "", "default", "chat")
+	// Force s2 to be more recent by setting its updated_at 1 second ahead
+	service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime(updated_at, '+1 second') WHERE id = ?", s2)
+
+	// GET without session_id should use the latest session
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?limit=20", nil)
+	withProjectCookie(req, env.ProjectDir)
+	withAuthCookie(req, "")
+
+	w := callHandlerWithAuth(AIChat, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, s2, resp["sessionId"])
+
+	// Verify s1 is NOT returned (proves it's using latest, not first)
+	assert.NotEqual(t, s1, resp["sessionId"])
+}
