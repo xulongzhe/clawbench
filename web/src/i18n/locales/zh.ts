@@ -262,6 +262,7 @@ export default {
     },
     localhost: {
       openFailed: '打开本地地址失败',
+      sshDisabled: 'SSH 隧道已禁用，无法打开本地地址',
     },
   },
   session: {

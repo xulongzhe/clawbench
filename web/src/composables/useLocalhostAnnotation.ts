@@ -175,10 +175,14 @@ export function useLocalhostUrlClickHandler() {
 
     /**
      * Open a localhost URL: ensure port forwarding is set up, then open in WebView.
+     * Returns false if SSH is disabled (caller may choose to fall through to default navigation).
      */
-    async function openLocalhostUrl(element: Element, port: number, protocol: string) {
-        if (urlOpening.value) return
-        if (sshInfo.value?.enabled === false) return
+    async function openLocalhostUrl(element: Element, port: number, protocol: string): Promise<boolean> {
+        if (urlOpening.value) return true
+        if (sshInfo.value?.enabled === false) {
+            toast.show(gt('chat.localhost.sshDisabled'), { type: 'warning' })
+            return false
+        }
         urlOpening.value = true
         element.classList.add('loading')
 
@@ -191,6 +195,7 @@ export function useLocalhostUrlClickHandler() {
             urlOpening.value = false
             element.classList.remove('loading')
         }
+        return true
     }
 
     /**
@@ -200,8 +205,10 @@ export function useLocalhostUrlClickHandler() {
      * 1. .chat-url-open-btn — the icon button appended after localhost URLs
      * 2. <a href="localhost:..."> — direct link clicks on localhost URLs
      *
-     * If either is found, prevents default navigation, ensures the port is
-     * registered for forwarding, and opens via SSH tunnel + WebView.
+     * If either is found and SSH tunnel is available, prevents default navigation,
+     * ensures the port is registered for forwarding, and opens via SSH tunnel + WebView.
+     * If SSH is disabled, shows a warning toast and does NOT prevent default navigation
+     * (allows the <a> tag to fall through to the browser).
      *
      * Returns true if the click was handled (caller should stop processing).
      */
@@ -210,6 +217,8 @@ export function useLocalhostUrlClickHandler() {
 
         const urlBtn = (event.target as Element).closest('.chat-url-open-btn')
         if (urlBtn) {
+            // Icon button: always preventDefault (no useful default behavior),
+            // but show toast if SSH is disabled
             event.preventDefault()
             event.stopPropagation()
             const port = parseInt(urlBtn.getAttribute('data-port') || '0')
@@ -224,11 +233,21 @@ export function useLocalhostUrlClickHandler() {
         if (anchor) {
             const href = anchor.getAttribute('href') || ''
             if (isLocalhostUrl(href)) {
-                event.preventDefault()
-                event.stopPropagation()
                 const parsed = parseLocalhostUrl(href)
                 if (parsed) {
-                    openLocalhostUrl(anchor, parsed.port, parsed.protocol)
+                    // Fire-and-forget: the async result tells us whether to
+                    // prevent default navigation or let the browser handle it.
+                    // We must prevent navigation eagerly to avoid the race,
+                    // but if openLocalhostUrl returns false (SSH disabled),
+                    // we re-trigger the <a> navigation manually.
+                    event.preventDefault()
+                    event.stopPropagation()
+                    openLocalhostUrl(anchor, parsed.port, parsed.protocol).then(handled => {
+                        if (!handled) {
+                            // SSH disabled — fall through to default browser navigation
+                            window.open(href, '_blank')
+                        }
+                    })
                 }
                 return true
             }
