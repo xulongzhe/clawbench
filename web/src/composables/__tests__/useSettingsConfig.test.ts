@@ -94,6 +94,24 @@ describe('useSettingsConfig', () => {
     expect(getServerValue('nonexistent')).toBeUndefined()
   })
 
+  it('getServerValueWithDefault returns server value when present', async () => {
+    mockedApiGet.mockResolvedValue({ port_forward: { allowed_ports: '3000-4000' } })
+
+    const { loadConfig, getServerValueWithDefault } = useSettingsConfig()
+    await loadConfig()
+
+    expect(getServerValueWithDefault('port_forward.allowed_ports')).toBe('3000-4000')
+  })
+
+  it('getServerValueWithDefault falls back to serverDefaults when not present', async () => {
+    mockedApiGet.mockResolvedValue({ server: { port: 20000 } })
+
+    const { loadConfig, getServerValueWithDefault } = useSettingsConfig()
+    await loadConfig()
+
+    expect(getServerValueWithDefault('port_forward.allowed_ports')).toBe('1024-65535')
+  })
+
   it('localConfig has default keys', () => {
     const { localConfig } = useSettingsConfig()
 

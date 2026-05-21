@@ -200,6 +200,7 @@ var PatchableConfigPaths = map[string]bool{
 	"tts.api.base_url":            true,
 	"tts.api.key":                  true,
 	"tts.api.format":              true,
+	"tts.api.model":               true,
 	"rag.base_url":              true,
 	"rag.model":                 true,
 	"rag.api_key":               true,
