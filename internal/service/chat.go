@@ -11,27 +11,25 @@ import (
 
 // GetChatHistory retrieves all chat messages for a given project path, backend, and session.
 func GetChatHistory(projectPath, backend, sessionID string) ([]model.ChatMessage, error) {
-	return GetChatHistoryPaged(projectPath, backend, sessionID, 0, "")
+	return GetChatHistoryPaged(projectPath, backend, sessionID, 0, 0)
 }
 
 // GetChatHistoryPaged retrieves chat messages with pagination.
 // limit=0 means no limit (all messages).
-// beforeTime: if non-empty, only return messages created before this timestamp (cursor-based for lazy load).
-// When beforeTime is empty and limit > 0, returns the most recent (limit) messages.
+// beforeID: if > 0, only return messages with id < beforeID (cursor-based for lazy load).
+// When beforeID == 0 and limit > 0, returns the most recent (limit) messages.
 // Returns messages in chronological (ASC) order.
-func GetChatHistoryPaged(projectPath, backend, sessionID string, limit int, beforeTime string) ([]model.ChatMessage, error) {
+func GetChatHistoryPaged(projectPath, backend, sessionID string, limit int, beforeID int) ([]model.ChatMessage, error) {
 	messages := []model.ChatMessage{}
 
-	if limit > 0 && beforeTime != "" {
-		// Cursor-based: load messages older than beforeTime
-		// id is AUTOINCREMENT so ORDER BY id gives deterministic chronological order
-		// (unlike created_at which has only second-precision and can tie).
+	if limit > 0 && beforeID > 0 {
+		// Cursor-based: load messages older than beforeID
 		query := `SELECT id, role, content, files, backend, streaming, created_at, indexed FROM (
 			SELECT id, role, content, files, backend, streaming, created_at, indexed FROM chat_history
-			WHERE project_path = ? AND session_id = ? AND created_at < ? AND deleted = 0
+			WHERE project_path = ? AND session_id = ? AND id < ? AND deleted = 0
 			ORDER BY id DESC LIMIT ?
 		) sub ORDER BY id ASC`
-		rows, err := DBRead.Query(query, projectPath, sessionID, beforeTime, limit)
+		rows, err := DBRead.Query(query, projectPath, sessionID, beforeID, limit)
 		if err != nil {
 			return messages, err
 		}

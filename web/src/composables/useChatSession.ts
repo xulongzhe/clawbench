@@ -229,10 +229,10 @@ export function useChatSession(options: UseChatSessionOptions) {
     loadingMore.value = true
     try {
       const pageSize = store.state.chatPageSize
-      // Use cursor-based pagination: pass the created_at of the oldest loaded message
+      // Use cursor-based pagination: pass the id of the oldest loaded message
       const oldestMsg = messages.value[0]
-      const before = oldestMsg?.createdAt || ''
-      const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(currentSessionId.value)}&limit=${pageSize}&before=${encodeURIComponent(before)}`)
+      const beforeId = oldestMsg?.id || ''
+      const resp = await fetch(`/api/ai/chat?session_id=${encodeURIComponent(currentSessionId.value)}&limit=${pageSize}&before_id=${encodeURIComponent(beforeId)}`)
       if (!resp.ok) return
       const data = await resp.json()
       const olderMsgs = parseMessages(data.messages || [], onParseAssistantContent)

@@ -115,14 +115,16 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 
 		// Parse pagination params
 		limit := 0
-		beforeTime := ""
+		beforeID := 0
 		if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
 				limit = l
 			}
 		}
-		if bt := r.URL.Query().Get("before"); bt != "" {
-			beforeTime = bt
+		if bid := r.URL.Query().Get("before_id"); bid != "" {
+			if id, err := strconv.Atoi(bid); err == nil && id > 0 {
+				beforeID = id
+			}
 		}
 
 		// If limit not specified, use config default
@@ -135,7 +137,7 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 		}
 
 		totalCount := service.GetChatMessageCount(sessionID)
-		messages, err := service.GetChatHistoryPaged(projectPath, sessionBackend, sessionID, limit, beforeTime)
+		messages, err := service.GetChatHistoryPaged(projectPath, sessionBackend, sessionID, limit, beforeID)
 		// Get session metadata in a single query
 		sessionInfo, _ := service.GetSessionInfo(sessionID)
 		var sessionTitle, sessionAgentID, sessionModelID, sessionThinkingEffort string
