@@ -92,6 +92,8 @@ dependencies {
     testImplementation 'org.mockito:mockito-core:5.8.0'
     testImplementation 'androidx.test:core:1.5.0'
     testImplementation 'androidx.test.ext:junit:1.1.5'
+    // Real org.json implementation for unit tests (android.jar stubs return defaults with returnDefaultValues=true)
+    testImplementation 'org.json:json:20231013'
 }
 
 tasks.register('jacocoTestReport', JacocoReport) {

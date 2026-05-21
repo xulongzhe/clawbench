@@ -182,15 +182,9 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         instance = this;
-        AppLog.i(TAG, "MainActivity: onCreate, instance set to " + this);
 
         // Check if launched from notification
-        Intent launchIntent = getIntent();
-        if (launchIntent != null) {
-            String sid = launchIntent.getStringExtra("session_id");
-            String pp = launchIntent.getStringExtra("project_path");
-            AppLog.i(TAG, "MainActivity: onCreate intent extras: session_id=" + sid + ", project_path=" + pp);
-        }
+        logLaunchIntent(getIntent());
 
         // Keep screen on while app is in foreground (AI may take time to respond)
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -657,17 +651,31 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        AppLog.i(TAG, "MainActivity: onResume, instance=" + instance + ", webView=" + webView);
         // App returning to foreground — stop native WS (WebView WS handles events)
         BackgroundService.stopNativeEventWs(this);
-        // Handle notification tap intent
+        // Handle notification tap intent + re-dispatch pending navigation
+        handleResumeIntent();
+    }
+
+    /**
+     * Handle notification intent and re-dispatch pending navigation on resume.
+     * Extracted from onResume() for testability (lifecycle methods call super which
+     * requires Android framework, making them untestable in pure JUnit).
+     */
+    void handleResumeIntent() {
         Intent intent = getIntent();
         AppLog.i(TAG, "MainActivity: onResume intent=" + intent
                 + ", action=" + (intent != null ? intent.getAction() : "null")
                 + ", extras=" + (intent != null ? intent.getExtras() : "null"));
         handleNotificationIntent(intent);
-        // Re-dispatch pending navigation if it wasn't consumed yet
-        // (e.g., CustomEvent was dispatched while WebView was paused/suspended)
+        redispatchPendingNavigation();
+    }
+
+    /**
+     * Re-dispatch pending navigation if it wasn't consumed yet.
+     * (e.g., CustomEvent was dispatched while WebView was paused/suspended)
+     */
+    void redispatchPendingNavigation() {
         if (pendingNavigation != null && webView != null) {
             AppLog.i(TAG, "MainActivity: onResume - re-dispatching pendingNavigation=" + pendingNavigation.toString());
             final String jsArg = pendingNavigation.toString();
@@ -681,9 +689,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        AppLog.i(TAG, "MainActivity: onNewIntent, intent=" + intent
-                + ", action=" + (intent != null ? intent.getAction() : "null")
-                + ", extras=" + (intent != null ? intent.getExtras() : "null"));
         setIntent(intent);
         handleNotificationIntent(intent);
     }
@@ -693,7 +698,7 @@ public class MainActivity extends AppCompatActivity {
      * Extracts session_id or task_id and dispatches a clawbench-open-session
      * event to the WebView (same behavior as JPush notification taps).
      */
-    private void handleNotificationIntent(Intent intent) {
+    void handleNotificationIntent(Intent intent) {
         AppLog.i(TAG, "MainActivity: handleNotificationIntent called, intent=" + intent);
         if (intent == null) {
             AppLog.i(TAG, "MainActivity: handleNotificationIntent - intent is null, skipping");
@@ -747,6 +752,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
+     * Log launch intent extras (session_id/project_path from notification).
+     * Extracted from onCreate() for testability.
+     */
+    void logLaunchIntent(Intent launchIntent) {
+        if (launchIntent != null) {
+            String sid = launchIntent.getStringExtra("session_id");
+            String pp = launchIntent.getStringExtra("project_path");
+            AppLog.i(TAG, "MainActivity: onCreate intent extras: session_id=" + sid + ", project_path=" + pp);
+        }
+    }
+
+    /**
      * Intercept volume key events when volumeKeyMode is enabled (terminal panel open).
      * Instead of adjusting system volume, dispatch them to the WebView as JS callbacks.
      * All other keys fall through to the default handling.
@@ -781,7 +798,7 @@ public class MainActivity extends AppCompatActivity {
     private void fetchPushConfig() {
         String serverUrl = prefs.getString(KEY_SERVER_URL, "");
         if (serverUrl.isEmpty()) {
-            AppLog.w(TAG, "No server URL configured, skipping push config fetch");
+            Log.w(TAG, "No server URL configured, skipping push config fetch");
             return;
         }
 
@@ -810,7 +827,7 @@ public class MainActivity extends AppCompatActivity {
 
                 int responseCode = conn.getResponseCode();
                 if (responseCode != 200) {
-                    AppLog.w(TAG, "Push config endpoint returned " + responseCode);
+                    Log.w(TAG, "Push config endpoint returned " + responseCode);
                     conn.disconnect();
                     return;
                 }
@@ -835,20 +852,20 @@ public class MainActivity extends AppCompatActivity {
                 // This lets native WS suppress notifications during the init window.
                 if (jpushEnabled && !jpushAppKey.isEmpty()) {
                     jpushEnabledOnServer = true;
-                    AppLog.i(TAG, "JPush enabled on server, initializing with AppKey: " + jpushAppKey.substring(0, 4) + "...");
+                    Log.i(TAG, "JPush enabled on server, initializing with AppKey: " + jpushAppKey.substring(0, 4) + "...");
                     runOnUiThread(() -> {
                         JPushInterface.setDebugMode(false);
                         JPushConfig config = new JPushConfig();
                         config.setjAppKey(jpushAppKey);
                         JPushInterface.init(this, config);
                         pushAvailable = true;
-                        AppLog.i(TAG, "JPush initialized with server-provided AppKey");
+                        Log.i(TAG, "JPush initialized with server-provided AppKey");
                     });
                 } else {
-                    AppLog.i(TAG, "JPush not configured on server — will keep WebSocket alive in background");
+                    Log.i(TAG, "JPush not configured on server — will keep WebSocket alive in background");
                 }
             } catch (Exception e) {
-                AppLog.w(TAG, "Failed to fetch push config: " + e.getMessage());
+                Log.w(TAG, "Failed to fetch push config: " + e.getMessage());
             }
         }).start();
     }
