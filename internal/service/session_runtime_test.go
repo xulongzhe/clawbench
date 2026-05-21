@@ -529,6 +529,259 @@ func TestGetSessionResponsePreview_SkipsToolUseBlocks(t *testing.T) {
 	assert.Equal(t, "工具执行后的文本", result)
 }
 
+func TestGetSessionResponsePreview_PrefersTextAfterLastToolUse(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Scenario: [text("Reading file..."), tool_use, text("Here is the analysis")]
+	// The preview should return "Here is the analysis", not "Reading file..."
+	textBeforeTool := model.ContentBlock{Type: "text", Text: "正在读取文件…"}
+	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
+	textAfterTool := model.ContentBlock{Type: "text", Text: "这是最终的分析结果"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{textBeforeTool, toolBlock, textAfterTool}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-after-tool", "user", "分析代码")
+	insertTestMessage(t, db, "session-preview-after-tool", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-after-tool")
+	assert.Equal(t, "这是最终的分析结果", result)
+}
+
+func TestGetSessionResponsePreview_MultipleToolUses(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Scenario: [tool_use, text("intermediate"), tool_use, text("final answer")]
+	// Should return "final answer" — text after the LAST tool_use
+	tool1 := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
+	textMiddle := model.ContentBlock{Type: "text", Text: "中间结果"}
+	tool2 := model.ContentBlock{Type: "tool_use", Name: "Grep", ID: "tool-2"}
+	textFinal := model.ContentBlock{Type: "text", Text: "最终结论"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{tool1, textMiddle, tool2, textFinal}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-multi-tool", "user", "搜索代码")
+	insertTestMessage(t, db, "session-preview-multi-tool", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-multi-tool")
+	assert.Equal(t, "最终结论", result)
+}
+
+func TestGetSessionResponsePreview_OnlyToolUses(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Only tool_use blocks, no text after — should return empty
+	tool1 := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
+	tool2 := model.ContentBlock{Type: "tool_use", Name: "Grep", ID: "tool-2"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{tool1, tool2}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-only-tools", "user", "搜索代码")
+	insertTestMessage(t, db, "session-preview-only-tools", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-only-tools")
+	assert.Equal(t, "", result)
+}
+
+func TestGetSessionResponsePreview_TextBeforeToolOnly(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// [text("thinking..."), tool_use] — no text AFTER tool_use, should return empty
+	textBlock := model.ContentBlock{Type: "text", Text: "让我思考一下"}
+	toolBlock := model.ContentBlock{Type: "tool_use", Name: "Read", ID: "tool-1"}
+	blocks := map[string]any{"blocks": []model.ContentBlock{textBlock, toolBlock}}
+	contentJSON, _ := json.Marshal(blocks)
+	insertTestMessage(t, db, "session-preview-text-before-tool", "user", "分析代码")
+	insertTestMessage(t, db, "session-preview-text-before-tool", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-preview-text-before-tool")
+	assert.Equal(t, "", result)
+}
+
+// --- Real-data based tests (extracted from ClawBench production database) ---
+
+func TestGetSessionResponsePreview_RealData_TextThenToolThenSummary(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Real pattern from session 93c986e1, message id=1063:
+	//   [thinking, text("方案一已经在上一轮实现了。验证一下当前状态："), tool_use(Bash), tool_use(Bash), text("方案一已在 commit b4d7b73 中实现完毕...")]
+	// Before fix: would return "方案一已经在上一轮实现了..." (intermediate commentary)
+	// After fix: should return "方案一已在 commit b4d7b73 中实现完毕..." (final answer)
+	blocks := []model.ContentBlock{
+		{Type: "thinking", Text: "Let me verify the current state of the implementation."},
+		{Type: "text", Text: "方案一已经在上一轮实现了。验证一下当前状态："},
+		{Type: "tool_use", Name: "Bash", ID: "tool-verify-1"},
+		{Type: "tool_use", Name: "Bash", ID: "tool-verify-2"},
+		{Type: "text", Text: "方案一已在 commit `b4d7b73` 中实现完毕，全部 14 个测试通过。"},
+	}
+	contentJSON, _ := json.Marshal(map[string]any{"blocks": blocks})
+	insertTestMessage(t, db, "session-real-text-tool-summary", "user", "实现方案一")
+	insertTestMessage(t, db, "session-real-text-tool-summary", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-real-text-tool-summary")
+	assert.Equal(t, "方案一已在 commit `b4d7b73` 中实现完毕，全部 14 个测试通过。", result)
+}
+
+func TestGetSessionResponsePreview_RealData_ToolThenWorktreeReport(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Real pattern from session dd1968cf, message id=1059:
+	//   [thinking, tool_use(Bash), text("Worktree 已创建：\n\n- **路径**: `/root/code/clawbench/.worktrees/fix-push-summary-55`...")]
+	// Simple case: tool then final answer text — should return the text
+	finalText := "Worktree 已创建：\n\n- **路径**: `/root/code/clawbench/.worktrees/fix-push-summary-55`\n- **分支**: `fix/push-summary-55`"
+	blocks := []model.ContentBlock{
+		{Type: "thinking", Text: "I'll create a worktree for this fix."},
+		{Type: "tool_use", Name: "Bash", ID: "tool-worktree"},
+		{Type: "text", Text: finalText},
+	}
+	contentJSON, _ := json.Marshal(map[string]any{"blocks": blocks})
+	insertTestMessage(t, db, "session-real-tool-worktree", "user", "创建worktree")
+	insertTestMessage(t, db, "session-real-tool-worktree", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-real-tool-worktree")
+	// Should start with the final answer, not with thinking or tool output
+	assert.Contains(t, result, "Worktree 已创建")
+	// Verify truncation kicks in (finalText is 110 runes, exceeds responsePreviewMaxRunes=64)
+	assert.True(t, utf8.RuneCountInString(result) <= responsePreviewMaxRunes+1, "result should be truncated")
+	assert.True(t, strings.HasSuffix(result, "…"), "truncated result should end with ellipsis")
+}
+
+func TestGetSessionResponsePreview_RealData_MultiToolInterleavedWithText(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Real pattern from session da4003a0, message id=1047:
+	//   [thinking, tool_use(Bash), text("有问题！..."), tool_use(Bash), tool_use(Bash),
+	//    text("确认问题：..."), tool_use(Bash), text("两个文件..."), tool_use(Bash),
+	//    tool_use(Bash), text("等等..."), tool_use(Bash), text("现在删除..."),
+	//    tool_use(Bash), tool_use(Bash), text("最后验证..."), tool_use(Bash),
+	//    tool_use(Bash), text("清理完成！总结一下做了什么：...")]
+	// 18 blocks total — should return the LAST text after the LAST tool_use
+	blocks := []model.ContentBlock{
+		{Type: "thinking", Text: "Let me investigate the root directory."},
+		{Type: "tool_use", Name: "Bash", ID: "tool-ls"},
+		{Type: "text", Text: "有问题！`/root/code/` 根目录下出现了不该有的文件。"},
+		{Type: "tool_use", Name: "Bash", ID: "tool-check-1"},
+		{Type: "tool_use", Name: "Bash", ID: "tool-check-2"},
+		{Type: "text", Text: "确认问题：这是某个子 Agent 误执行了 pnpm 命令。"},
+		{Type: "tool_use", Name: "Bash", ID: "tool-rm"},
+		{Type: "text", Text: "清理完成！总结一下做了什么：\n\n### 清理操作\n\n1. **删除了根目录误创建的文件**"},
+	}
+	contentJSON, _ := json.Marshal(map[string]any{"blocks": blocks})
+	insertTestMessage(t, db, "session-real-multi-interleaved", "user", "检查根目录")
+	insertTestMessage(t, db, "session-real-multi-interleaved", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-real-multi-interleaved")
+	// Should return text after last tool_use (tool-rm), not the earlier texts
+	assert.Equal(t, "清理完成！总结一下做了什么：\n\n### 清理操作\n\n1. **删除了根目录误创建的文件**", result)
+}
+
+func TestGetSessionResponsePreview_RealData_ThinkingThenToolThenIssueLink(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Real pattern from session bb92e480, message id=1039:
+	//   [thinking, tool_use(Bash), text("已创建 Issue: https://github.com/xulongzhe/clawbench/issues/55")]
+	// Short final text — perfect for push notification
+	blocks := []model.ContentBlock{
+		{Type: "thinking", Text: "I should create a GitHub issue for this bug."},
+		{Type: "tool_use", Name: "Bash", ID: "tool-gh-issue"},
+		{Type: "text", Text: "已创建 Issue: https://github.com/xulongzhe/clawbench/issues/55"},
+	}
+	contentJSON, _ := json.Marshal(map[string]any{"blocks": blocks})
+	insertTestMessage(t, db, "session-real-issue-link", "user", "创建Issue")
+	insertTestMessage(t, db, "session-real-issue-link", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-real-issue-link")
+	assert.Equal(t, "已创建 Issue: https://github.com/xulongzhe/clawbench/issues/55", result)
+}
+
+func TestGetSessionResponsePreview_RealData_ThreeToolsThenWorktreeReport(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Real pattern from session bb92e480, message id=1055:
+	//   [thinking, tool_use(Bash), tool_use(Bash), tool_use(Bash), text("Worktree 已创建：...")]
+	// Multiple consecutive tool_use blocks, then final text
+	finalText := "Worktree 已创建：\n\n- **路径**: `/root/code/clawbench/.worktrees/fix-jpush-init-timing`"
+	blocks := []model.ContentBlock{
+		{Type: "thinking", Text: "I need to create a worktree for the JPush fix."},
+		{Type: "tool_use", Name: "Bash", ID: "tool-fetch"},
+		{Type: "tool_use", Name: "Bash", ID: "tool-branch"},
+		{Type: "tool_use", Name: "Bash", ID: "tool-worktree"},
+		{Type: "text", Text: finalText},
+	}
+	contentJSON, _ := json.Marshal(map[string]any{"blocks": blocks})
+	insertTestMessage(t, db, "session-real-three-tools", "user", "创建worktree")
+	insertTestMessage(t, db, "session-real-three-tools", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-real-three-tools")
+	assert.Contains(t, result, "Worktree 已创建")
+	assert.True(t, utf8.RuneCountInString(result) <= responsePreviewMaxRunes+1, "result should be truncated")
+}
+
+func TestGetSessionResponsePreview_RealData_PureTextSummary(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Real pattern from session id=726 (no tool_use at all):
+	//   [text("好的。后台耗电优化到此为止，总结已完成的改动：\n\n1. **webView.onPause()**...")]
+	// Pure text response — should return as-is (lastToolIdx=-1, scan from start)
+	finalText := "好的。后台耗电优化到此为止，总结已完成的改动：\n\n1. **`webView.onPause()`** — 后台停止渲染管线，释放 CPU/GPU\n2. **`webView.pauseTimers()`** — 强制停止所有 JS 定时器"
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: finalText},
+	}
+	contentJSON, _ := json.Marshal(map[string]any{"blocks": blocks})
+	insertTestMessage(t, db, "session-real-pure-text", "user", "还有其他优化吗")
+	insertTestMessage(t, db, "session-real-pure-text", "assistant", string(contentJSON))
+
+	result := getSessionResponsePreview("session-real-pure-text")
+	assert.Contains(t, result, "后台耗电优化到此为止")
+	assert.True(t, utf8.RuneCountInString(result) <= responsePreviewMaxRunes+1, "result should be truncated")
+}
+
 func TestGetSessionResponsePreview_UsesLastAssistantMessage(t *testing.T) {
 	origDB := DB
 	origDBRead := DBRead

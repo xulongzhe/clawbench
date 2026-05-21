@@ -286,6 +286,19 @@ else:
             for ln in range(start_line, end_line + 1):
                 line_coverage[file_path][ln] = covered
 
+    # Files exempt from Tier 2 because they contain code that is fundamentally
+    # untestable without integration setup (CLI subprocess spawning, system-level
+    # port detection, etc.). This is more precise than exempting entire packages —
+    # testable files within previously-exempt packages are now checked normally.
+    exempt_files = {
+        "cmd/server/main.go",                    # package main: -coverprofile empty in certain modes
+        "internal/ai/cli_backend.go",            # ExecuteStream spawns CLI subprocesses
+        "internal/ai/codex_stream.go",           # ExecuteStream spawns CLI subprocesses
+        "internal/ai/vecli.go",                  # ExecuteStream spawns CLI subprocesses
+        "internal/ai/vecli_stream.go",           # parseVeCLISessionSummary: integration-only
+        "internal/service/scheduler.go",         # executeTask spawns CLI subprocesses
+    }
+
     # Cross-reference: match git diff files with coverage profile files
     diff_stats = {}
     pkg_diff_stats = defaultdict(lambda: {"total": 0, "covered": 0})
@@ -293,6 +306,9 @@ else:
     for file_path, lines in sorted(changed_lines.items()):
         if not file_path.endswith(".go") or file_path.endswith("_test.go"):
             continue
+
+        # Check per-file exemption
+        is_exempt = file_path in exempt_files
 
         # Try direct match then suffix match
         cov_data = line_coverage.get(file_path)
@@ -314,7 +330,11 @@ else:
                     covered_changed += 1
 
         if total_changed > 0:
-            diff_stats[file_path] = {"total": total_changed, "covered": covered_changed}
+            diff_stats[file_path] = {
+                "total": total_changed,
+                "covered": covered_changed,
+                "exempt": is_exempt,
+            }
             # Derive package from file path
             pkg = "/".join(file_path.split("/")[:-1])
             if not pkg.startswith("clawbench/"):
@@ -322,8 +342,10 @@ else:
                     if cov_path.endswith("/" + file_path):
                         pkg = "/".join(cov_path.split("/")[:-1])
                         break
-            pkg_diff_stats[pkg]["total"] += total_changed
-            pkg_diff_stats[pkg]["covered"] += covered_changed
+            # Exempt files do NOT count toward package or overall stats
+            if not is_exempt:
+                pkg_diff_stats[pkg]["total"] += total_changed
+                pkg_diff_stats[pkg]["covered"] += covered_changed
 
     if not diff_stats:
         tier2_skipped = True
@@ -345,23 +367,22 @@ else:
             covered = stats["covered"]
             pct = (covered / total * 100) if total > 0 else 100.0
 
-            # Packages exempt from per-package Tier 2 because they cannot produce
-            # coverage data (e.g., package main cannot be coverage-profiled when
-            # run as a single test binary — Go's -coverprofile produces empty
-            # profiles for package main in certain execution modes).
-            if pkg in {"clawbench/cmd/server", "clawbench/internal/ai", "clawbench/internal/service"}:
-                print(f"{pkg:<40} {covered:>8} {total:>8} {pct:>7.1f}%  {YELLOW}EXEMPT{RESET}")
-                continue
-
             passed = pct >= DIFF_THRESHOLD
             if not passed:
                 tier2_pass = False
             print(f"{pkg:<40} {covered:>8} {total:>8} {pct:>7.1f}%  {pass_fail(passed)}")
 
-        # Overall diff coverage (exclude EXEMPT packages from total)
-        exempt_pkgs = {"clawbench/cmd/server", "clawbench/internal/ai", "clawbench/internal/service"}
-        total_all = sum(s["total"] for pkg, s in pkg_diff_stats.items() if pkg not in exempt_pkgs)
-        covered_all = sum(s["covered"] for pkg, s in pkg_diff_stats.items() if pkg not in exempt_pkgs)
+        # Show exempt file details (informational, not gate-blocking)
+        exempt_changed = {fp: s for fp, s in diff_stats.items() if s.get("exempt")}
+        if exempt_changed:
+            print(f"\n{YELLOW}{BOLD}Exempt files (not counted toward gate):{RESET}")
+            for fp, stats in sorted(exempt_changed.items()):
+                pct = (stats["covered"] / stats["total"] * 100) if stats["total"] > 0 else 100.0
+                print(f"  {YELLOW}{fp:<50} {stats['covered']}/{stats['total']} ({pct:.1f}%){RESET}")
+
+        # Overall diff coverage (exempt files already excluded from pkg_diff_stats)
+        total_all = sum(s["total"] for s in pkg_diff_stats.values())
+        covered_all = sum(s["covered"] for s in pkg_diff_stats.values())
         overall_pct = (covered_all / total_all * 100) if total_all > 0 else 100.0
         overall_pass = overall_pct >= DIFF_THRESHOLD
         if not overall_pass:
@@ -370,9 +391,11 @@ else:
         print(f"{'─'*40} {'─'*8} {'─'*8} {'─'*8}  {'─'*8}")
         print(f"{BOLD}{'TOTAL':<40} {covered_all:>8} {total_all:>8} {overall_pct:>7.1f}%  {pass_fail(overall_pass)}{RESET}")
 
-        # Show uncovered files
+        # Show uncovered files (excluding exempt)
         uncovered_files = []
         for file_path, stats in sorted(diff_stats.items()):
+            if stats.get("exempt"):
+                continue
             if stats["covered"] < stats["total"]:
                 pct = (stats["covered"] / stats["total"] * 100) if stats["total"] > 0 else 0
                 uncovered_files.append((file_path, stats["covered"], stats["total"], pct))

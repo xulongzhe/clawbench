@@ -65,7 +65,10 @@ func EmitSessionEvent(sessionID, status string, hasNewMessages bool) {
 	})
 }
 
-// getSessionResponsePreview returns the first responsePreviewMaxRunes runes of the AI's final reply text.
+// getSessionResponsePreview returns a preview of the AI's final reply text.
+// It extracts text from after the last tool_use block in the last assistant
+// message, since the final text block(s) contain the AI's actual answer
+// rather than intermediate reasoning or tool-call commentary.
 func getSessionResponsePreview(sessionID string) string {
 	messages, err := GetMessagesBySessionID(sessionID)
 	if err != nil {
@@ -83,8 +86,16 @@ func getSessionResponsePreview(sessionID string) string {
 		if err := json.Unmarshal([]byte(messages[i].Content), &content); err != nil {
 			continue
 		}
-		// Extract text from text-type blocks
-		for _, b := range content.Blocks {
+		// Find the last tool_use block index to skip intermediate text
+		lastToolIdx := -1
+		for j, b := range content.Blocks {
+			if b.Type == "tool_use" {
+				lastToolIdx = j
+			}
+		}
+		// Extract text from blocks after the last tool_use
+		for j := lastToolIdx + 1; j < len(content.Blocks); j++ {
+			b := content.Blocks[j]
 			if b.Type == "text" && b.Text != "" {
 				if utf8.RuneCountInString(b.Text) > responsePreviewMaxRunes {
 					return string([]rune(b.Text)[:responsePreviewMaxRunes]) + "…"
