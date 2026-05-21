@@ -289,6 +289,7 @@ import { store } from '@/stores/app.ts'
 import { localConfig, setLocalConfig, useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAppMode } from '@/composables/useAppMode.ts'
 import { useDialog } from '@/composables/useDialog.ts'
+import { useTerminalStatus } from '@/composables/useTerminalStatus.ts'
 import SearchInput from '@/components/common/SearchInput.vue'
 import DirBreadcrumb from './DirBreadcrumb.vue'
 
@@ -296,8 +297,8 @@ const toast = inject('toast', null)
 const { isAppMode } = useAppMode()
 const { t, locale } = useI18n()
 const dialog = useDialog()
-const { getServerValueWithDefault } = useSettingsConfig()
-const isTerminalDisabled = computed(() => !getServerValueWithDefault('terminal.enabled'))
+const { terminalRuntimeEnabled } = useTerminalStatus()
+const isTerminalDisabled = computed(() => terminalRuntimeEnabled.value !== true)
 
 const props = defineProps({
     entries: Array,

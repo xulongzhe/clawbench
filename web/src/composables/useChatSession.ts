@@ -374,6 +374,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             // No sessions left, create a default one
             await createSession()
           }
+        } else {
+          // Deleted a non-current session — refresh global state (chatUnread, chatRunning, runningSessions)
+          await loadSessionsOnce()
         }
         const maxCount = store.state.sessionMaxCount
         toast.show(gt('chat.session.deleted', { count: data.sessionCount ?? '', max: maxCount }), { icon: '🗑️', type: 'success', duration: 2000 })
