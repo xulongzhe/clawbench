@@ -484,7 +484,7 @@ func TestAndroidLogFilePath(t *testing.T) {
 
 	model.ConfigInstance.LogDir = "/tmp/test-logs"
 	got := androidLogFilePath()
-	assert.Equal(t, "/tmp/test-logs/android.log", got)
+	assert.Equal(t, filepath.Join("/tmp/test-logs", "android.log"), got)
 }
 
 // ============================================================================
