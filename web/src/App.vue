@@ -274,6 +274,7 @@ import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'
 import { useTerminalKeyboard } from './composables/useTerminalKeyboard.ts'
 import { usePortForward } from './composables/usePortForward.ts'
+import { useTerminalStatus } from './composables/useTerminalStatus.ts'
 import { useFileWatch } from './composables/useFileWatch.ts'
 import { refreshCurrentFile } from './composables/useFileRefresh.ts'
 import { useGlobalEvents } from './composables/useGlobalEvents'
@@ -342,8 +343,13 @@ useFileWatch({
 
 const { isAppMode } = useAppMode()
 const { syncToNative, sshInfo, loadSSHInfo } = usePortForward()
+const { terminalRuntimeEnabled, loadTerminalStatus } = useTerminalStatus()
 const isSSHDisabled = computed(() => sshInfo.value?.enabled === false)
-const isTerminalDisabled = computed(() => !getServerValueWithDefault('terminal.enabled'))
+// Use runtime status (actual server state) not config value — mirrors SSH pattern.
+// Config may say enabled=true before restart; the runtime API returns false until
+// the terminal manager actually exists.  `null` means "not yet loaded" → treat as
+// disabled to avoid a flash of the terminal button on first mount.
+const isTerminalDisabled = computed(() => terminalRuntimeEnabled.value !== true)
 watch(isSSHDisabled, (disabled) => {
   if (disabled && activeTab.value === 'proxy') {
     switchTab('chat')
@@ -680,7 +686,7 @@ function playQuoteEmitAnimation(e) {
 onMounted(async () => {
     initGlobalEvents()
     loadTasks()
-    loadConfig() // Load server config early for terminal.enabled check
+    loadConfig() // Load server config early for settings page
     window.addEventListener('open-file-manager', handleOpenFileManager)
     window.addEventListener('navigate-to-commit', handleNavigateToCommit)
     window.addEventListener('quote-sent', playQuoteEmitAnimation)
@@ -742,6 +748,7 @@ onMounted(async () => {
     } catch (_) {}
     if (isAppMode.value) syncToNative().catch(() => {})
     loadSSHInfo().catch(() => {})
+    loadTerminalStatus().catch(() => {})
     try { await store.loadProject() } catch (_) {
         toast.show(t('toast.projectLoadFailed'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() }); return
     }

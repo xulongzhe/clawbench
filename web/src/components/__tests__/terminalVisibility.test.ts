@@ -3,8 +3,8 @@ import { nextTick, ref, computed } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 
-// Mutable ref that tests can flip to control terminal.enabled
-const mockTerminalEnabled = ref(true)
+// Mutable ref that tests can flip to control terminal runtime status
+const mockTerminalRuntimeEnabled = ref<boolean | null>(true)
 
 vi.mock('@/composables/useAppMode.ts', () => ({
   useAppMode: () => ({ isAppMode: { value: false } }),
@@ -31,13 +31,17 @@ vi.mock('@/utils/path.ts', () => ({
 
 vi.mock('@/composables/useSettingsConfig', () => ({
   useSettingsConfig: () => ({
-    getServerValueWithDefault: (key: string) => {
-      if (key === 'terminal.enabled') return mockTerminalEnabled.value
-      return undefined
-    },
+    getServerValueWithDefault: (_key: string) => undefined,
   }),
   localConfig: {},
   setLocalConfig: vi.fn(),
+}))
+
+vi.mock('@/composables/useTerminalStatus.ts', () => ({
+  useTerminalStatus: () => ({
+    terminalRuntimeEnabled: mockTerminalRuntimeEnabled,
+    loadTerminalStatus: vi.fn(),
+  }),
 }))
 
 // Minimal i18n for component mount
@@ -95,7 +99,7 @@ import FileManagerContent from '@/components/file/FileManagerContent.vue'
 
 describe('FileManagerContent — terminal context menu visibility', () => {
   beforeEach(() => {
-    mockTerminalEnabled.value = true
+    mockTerminalRuntimeEnabled.value = true
     // Clean up any leftover teleported context menus from previous tests
     document.querySelectorAll('.context-menu').forEach(el => el.remove())
     document.querySelectorAll('.ctx-overlay').forEach(el => el.remove())
@@ -124,7 +128,7 @@ describe('FileManagerContent — terminal context menu visibility', () => {
   }
 
   it('shows "Open in Terminal" context menu item when terminal is enabled', async () => {
-    mockTerminalEnabled.value = true
+    mockTerminalRuntimeEnabled.value = true
     const wrapper = mountComponent()
 
     // Open context menu by right-clicking the file list (empty area)
@@ -141,7 +145,7 @@ describe('FileManagerContent — terminal context menu visibility', () => {
   })
 
   it('hides "Open in Terminal" context menu item when terminal is disabled', async () => {
-    mockTerminalEnabled.value = false
+    mockTerminalRuntimeEnabled.value = false
     const wrapper = mountComponent()
 
     // Open context menu by right-clicking the file list (empty area)
@@ -158,7 +162,7 @@ describe('FileManagerContent — terminal context menu visibility', () => {
   })
 
   it('shows terminal context menu item for directory entries when terminal is enabled', async () => {
-    mockTerminalEnabled.value = true
+    mockTerminalRuntimeEnabled.value = true
     const entries = [
       { name: 'src', type: 'dir', modified: '2025-01-01T00:00:00Z' },
     ]
@@ -177,7 +181,7 @@ describe('FileManagerContent — terminal context menu visibility', () => {
   })
 
   it('hides terminal context menu item for directory entries when terminal is disabled', async () => {
-    mockTerminalEnabled.value = false
+    mockTerminalRuntimeEnabled.value = false
     const entries = [
       { name: 'src', type: 'dir', modified: '2025-01-01T00:00:00Z' },
     ]
@@ -243,33 +247,27 @@ describe('overflowTabs — terminal exclusion logic', () => {
 })
 
 // ============================================================
-// Part 3: isTerminalDisabled computed logic
+// Part 3: isTerminalDisabled computed logic (runtime-based)
 // ============================================================
 
-describe('isTerminalDisabled — computed from getServerValueWithDefault', () => {
-  it('returns false when terminal.enabled is true', () => {
-    const getServerValueWithDefault = (_key: string) => true
-    const isTerminalDisabled = computed(() => !getServerValueWithDefault('terminal.enabled'))
+describe('isTerminalDisabled — computed from terminalRuntimeEnabled', () => {
+  it('returns false when terminalRuntimeEnabled is true', () => {
+    const terminalRuntimeEnabled = ref<boolean | null>(true)
+    const isTerminalDisabled = computed(() => terminalRuntimeEnabled.value !== true)
     expect(isTerminalDisabled.value).toBe(false)
   })
 
-  it('returns true when terminal.enabled is false', () => {
-    const getServerValueWithDefault = (_key: string) => false
-    const isTerminalDisabled = computed(() => !getServerValueWithDefault('terminal.enabled'))
+  it('returns true when terminalRuntimeEnabled is false', () => {
+    const terminalRuntimeEnabled = ref<boolean | null>(false)
+    const isTerminalDisabled = computed(() => terminalRuntimeEnabled.value !== true)
     expect(isTerminalDisabled.value).toBe(true)
   })
 
-  it('returns true when terminal.enabled is undefined (fallback default is true, negated)', () => {
-    // When the API hasn't loaded, getServerValueWithDefault returns
-    // the serverDefault (true), so !true = false → not disabled.
-    // But if the API returns undefined for an unexpected reason,
-    // !undefined = true, meaning terminal is disabled by default.
-    // This is a safety consideration: the serverDefaults in
-    // useSettingsConfig.ts default to true, so in practice
-    // undefined shouldn't happen via getServerValueWithDefault.
-    const getServerValueWithDefault = (_key: string) => undefined
-    const isTerminalDisabled = computed(() => !getServerValueWithDefault('terminal.enabled'))
-    // !undefined = true, so terminal appears disabled if config missing
+  it('returns true when terminalRuntimeEnabled is null (not yet loaded)', () => {
+    // Before the runtime status API responds, treat terminal as disabled
+    // to avoid flashing the terminal button during mount.
+    const terminalRuntimeEnabled = ref<boolean | null>(null)
+    const isTerminalDisabled = computed(() => terminalRuntimeEnabled.value !== true)
     expect(isTerminalDisabled.value).toBe(true)
   })
 })

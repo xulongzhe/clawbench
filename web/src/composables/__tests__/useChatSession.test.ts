@@ -1818,8 +1818,8 @@ describe('deleteSession', () => {
       expect.any(String),
       expect.objectContaining({ icon: '🗑️', type: 'success' })
     )
-    // Only one fetch call (the delete), no sessions list or switch fetches
-    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    // Two fetch calls: 1) delete API 2) loadSessionsOnce (refresh global state)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2)
   })
 
   it('API returns ok=false: no toast shown', async () => {
