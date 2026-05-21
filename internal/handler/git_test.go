@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"clawbench/internal/model"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // initGitRepo initializes a real git repo in dir with an initial commit.
@@ -471,6 +473,73 @@ func TestServeGitCommitFiles_MissingSHA(t *testing.T) {
 
 	w := callHandler(ServeGitCommitFiles, req)
 	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestServeGitCommitFiles_MergeCommit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Create a branch, add a file, commit
+	run("git", "checkout", "-b", "feature-branch")
+	createTestFile(t, env.ProjectDir, "feature.txt", "feature work")
+	gitCommitAll(t, env.ProjectDir, "add feature.txt")
+
+	// Switch back to main, add a different file, commit
+	run("git", "checkout", "main")
+	createTestFile(t, env.ProjectDir, "main.txt", "main work")
+	gitCommitAll(t, env.ProjectDir, "add main.txt")
+
+	// Merge feature-branch into main
+	run("git", "merge", "feature-branch", "-m", "Merge branch 'feature-branch' into main")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodGet, "/api/git/commit-files?sha="+mergeSHA, nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitCommitFiles, req)
+	assertOK(t, w)
+
+	var result map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &result)
+
+	// Verify it's a merge response
+	assert.Equal(t, true, result["merge"])
+
+	// Verify groups exist
+	groups, ok := result["groups"].([]interface{})
+	assert.True(t, ok, "expected groups array")
+	assert.GreaterOrEqual(t, len(groups), 2, "expected at least 2 groups for a merge commit")
+
+	// Verify each group has label and files
+	for _, g := range groups {
+		group := g.(map[string]interface{})
+		assert.NotEmpty(t, group["label"])
+		files, ok := group["files"].([]interface{})
+		assert.True(t, ok, "expected files array in group")
+		assert.Greater(t, len(files), 0, "each group should have at least one file")
+	}
+
+	// Verify no duplicate files across groups (dedup works)
+	allPaths := map[string]bool{}
+	for _, g := range groups {
+		group := g.(map[string]interface{})
+		for _, f := range group["files"].([]interface{}) {
+			file := f.(map[string]interface{})
+			path := file["path"].(string)
+			assert.False(t, allPaths[path], "duplicate file path: %s", path)
+			allPaths[path] = true
+		}
+	}
 }
 
 // --- ServeGitFileDiff ---
@@ -1282,4 +1351,531 @@ func TestServeGitCheckout_ForceFlag(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["success"])
 	assert.Equal(t, "feature-force", resp["branch"])
+}
+
+// --- getCommitParents ---
+
+func TestGetCommitParents_RegularCommit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Make a second commit so HEAD has a parent
+	createTestFile(t, env.ProjectDir, "second.txt", "content")
+	gitCommitAll(t, env.ProjectDir, "second commit")
+	sha := getHeadSHA(t, env.ProjectDir)
+
+	parents := getCommitParents(env.ProjectDir, sha)
+	assert.Len(t, parents, 1, "regular commit should have 1 parent")
+}
+
+func TestGetCommitParents_InitialCommit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	sha := getHeadSHA(t, env.ProjectDir)
+	parents := getCommitParents(env.ProjectDir, sha)
+	assert.Len(t, parents, 0, "initial commit should have 0 parents")
+}
+
+func TestGetCommitParents_MergeCommit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	run("git", "checkout", "-b", "feature-branch")
+	createTestFile(t, env.ProjectDir, "feature.txt", "feature work")
+	gitCommitAll(t, env.ProjectDir, "add feature.txt")
+
+	run("git", "checkout", "main")
+	createTestFile(t, env.ProjectDir, "main.txt", "main work")
+	gitCommitAll(t, env.ProjectDir, "add main.txt")
+
+	run("git", "merge", "feature-branch", "-m", "Merge branch 'feature-branch' into main")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+
+	parents := getCommitParents(env.ProjectDir, mergeSHA)
+	assert.Len(t, parents, 2, "merge commit should have 2 parents")
+}
+
+func TestGetCommitParents_InvalidSHA(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	parents := getCommitParents(env.ProjectDir, "0000000000000000000")
+	assert.Nil(t, parents, "invalid SHA should return nil")
+}
+
+// --- extractMergeLabels ---
+
+func TestExtractMergeLabels_IntoFormat(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	run("git", "checkout", "-b", "feature-xyz")
+	createTestFile(t, env.ProjectDir, "feature.txt", "content")
+	gitCommitAll(t, env.ProjectDir, "add feature.txt")
+
+	run("git", "checkout", "main")
+	createTestFile(t, env.ProjectDir, "main.txt", "main content")
+	gitCommitAll(t, env.ProjectDir, "add main.txt")
+
+	run("git", "merge", "feature-xyz", "-m", "Merge branch 'feature-xyz' into main")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+	parents := getCommitParents(env.ProjectDir, mergeSHA)
+
+	labels := extractMergeLabels(env.ProjectDir, mergeSHA, parents)
+	assert.Equal(t, "main", labels[0])
+	assert.Equal(t, "feature-xyz", labels[1])
+}
+
+func TestExtractMergeLabels_NoInto(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	run("git", "checkout", "-b", "my-branch")
+	createTestFile(t, env.ProjectDir, "feature.txt", "content")
+	gitCommitAll(t, env.ProjectDir, "add feature.txt")
+
+	run("git", "checkout", "main")
+
+	// Use --no-ff to force a merge commit even when fast-forward is possible
+	// Default merge message "Merge branch 'my-branch'" doesn't have "into"
+	run("git", "merge", "--no-ff", "my-branch")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+	parents := getCommitParents(env.ProjectDir, mergeSHA)
+
+	labels := extractMergeLabels(env.ProjectDir, mergeSHA, parents)
+	// Default merge into current branch doesn't have "into" in message
+	assert.Equal(t, "my-branch", labels[1], "source branch should be parsed from 'Merge branch X'")
+}
+
+func TestExtractMergeLabels_PullRequestFormat(t *testing.T) {
+	// Test parsing "Merge pull request #N from user/branch" format
+	// This is a unit test of the parsing logic, not a full integration test
+	// We test indirectly via a repo with a manually crafted merge commit
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	run("git", "checkout", "-b", "fix/some-bug")
+	createTestFile(t, env.ProjectDir, "fix.txt", "fix content")
+	gitCommitAll(t, env.ProjectDir, "add fix")
+
+	run("git", "checkout", "main")
+	createTestFile(t, env.ProjectDir, "main2.txt", "main content")
+	gitCommitAll(t, env.ProjectDir, "add main2")
+
+	// Create merge with PR-style message
+	run("git", "merge", "fix/some-bug", "-m", "Merge pull request #42 from user/fix/some-bug")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+	parents := getCommitParents(env.ProjectDir, mergeSHA)
+
+	labels := extractMergeLabels(env.ProjectDir, mergeSHA, parents)
+	assert.Equal(t, "some-bug", labels[1], "should extract branch name after last slash from PR merge")
+}
+
+func TestExtractMergeLabels_FallbackToShortSHA(t *testing.T) {
+	// When the merge message doesn't match known patterns,
+	// extractMergeLabels should fall back to short SHAs
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	run("git", "checkout", "-b", "branch-a")
+	createTestFile(t, env.ProjectDir, "a.txt", "a")
+	gitCommitAll(t, env.ProjectDir, "add a")
+
+	run("git", "checkout", "main")
+	createTestFile(t, env.ProjectDir, "b.txt", "b")
+	gitCommitAll(t, env.ProjectDir, "add b")
+
+	// Custom merge message that doesn't match any pattern
+	run("git", "merge", "branch-a", "-m", "Custom merge message")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+	parents := getCommitParents(env.ProjectDir, mergeSHA)
+
+	labels := extractMergeLabels(env.ProjectDir, mergeSHA, parents)
+	// Should fall back to short SHAs since message doesn't match patterns
+	assert.NotEmpty(t, labels[0], "should have a fallback label for parent 0")
+	assert.NotEmpty(t, labels[1], "should have a fallback label for parent 1")
+	// Verify it's a valid short SHA (7+ hex chars)
+	assert.Regexp(t, `^[0-9a-f]{7,}$`, labels[0])
+	assert.Regexp(t, `^[0-9a-f]{7,}$`, labels[1])
+}
+
+// --- fallbackMergeFiles ---
+
+func TestFallbackMergeFiles(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	run("git", "checkout", "-b", "feature-fallback")
+	createTestFile(t, env.ProjectDir, "fb.txt", "fallback content")
+	gitCommitAll(t, env.ProjectDir, "add fb")
+
+	run("git", "checkout", "main")
+	createTestFile(t, env.ProjectDir, "main3.txt", "main3 content")
+	gitCommitAll(t, env.ProjectDir, "add main3")
+
+	run("git", "merge", "feature-fallback", "-m", "Merge for fallback test")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+
+	result := fallbackMergeFiles(env.ProjectDir, mergeSHA)
+	assert.Equal(t, true, result["merge"])
+
+	groups, ok := result["groups"].([]mergeFileGroup)
+	assert.True(t, ok, "expected groups to be []mergeFileGroup")
+	assert.GreaterOrEqual(t, len(groups), 1, "should have at least one group")
+
+	// The "all changes" group should have files
+	allChangesGroup := groups[0]
+	assert.Equal(t, "all changes", allChangesGroup.Label)
+	assert.Greater(t, len(allChangesGroup.Files), 0, "all changes group should have files")
+}
+
+func TestFallbackMergeFiles_InvalidSHA(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	result := fallbackMergeFiles(env.ProjectDir, "invalidsha")
+	assert.Equal(t, true, result["merge"])
+
+	groups, ok := result["groups"].([]mergeFileGroup)
+	assert.True(t, ok)
+	// With invalid SHA, diff-tree will fail so files will be empty
+	assert.Equal(t, 1, len(groups))
+	assert.Equal(t, 0, len(groups[0].Files))
+}
+
+// --- buildMergeFileGroups ---
+
+func TestBuildMergeFileGroups_DeduplicatesFiles(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Create a branch that adds a unique file (no conflicts)
+	run("git", "checkout", "-b", "dedup-branch")
+	createTestFile(t, env.ProjectDir, "branch-file.txt", "branch content")
+	gitCommitAll(t, env.ProjectDir, "add branch-file")
+
+	run("git", "checkout", "main")
+	// Add a different file on main
+	createTestFile(t, env.ProjectDir, "main-file.txt", "main content")
+	gitCommitAll(t, env.ProjectDir, "add main-file")
+
+	run("git", "merge", "dedup-branch", "-m", "Merge branch 'dedup-branch' into main")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+	parents := getCommitParents(env.ProjectDir, mergeSHA)
+
+	result := buildMergeFileGroups(env.ProjectDir, mergeSHA, parents)
+	assert.Equal(t, true, result["merge"])
+
+	groups, ok := result["groups"].([]mergeFileGroup)
+	assert.True(t, ok)
+	assert.GreaterOrEqual(t, len(groups), 2, "should have at least 2 groups")
+
+	// Verify no duplicate paths across groups
+	allPaths := map[string]bool{}
+	for _, g := range groups {
+		for _, f := range g.Files {
+			assert.False(t, allPaths[f.Path], "duplicate path %s in merge file groups", f.Path)
+			allPaths[f.Path] = true
+		}
+	}
+}
+
+func TestBuildMergeFileGroups_LabelsFromMergeMessage(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	initGitRepo(t, env.ProjectDir)
+
+	run("git", "checkout", "-b", "label-branch")
+	createTestFile(t, env.ProjectDir, "label.txt", "label content")
+	gitCommitAll(t, env.ProjectDir, "add label.txt")
+
+	run("git", "checkout", "main")
+	createTestFile(t, env.ProjectDir, "label-main.txt", "main content")
+	gitCommitAll(t, env.ProjectDir, "add label-main.txt")
+
+	run("git", "merge", "label-branch", "-m", "Merge branch 'label-branch' into main")
+	mergeSHA := getHeadSHA(t, env.ProjectDir)
+	parents := getCommitParents(env.ProjectDir, mergeSHA)
+
+	result := buildMergeFileGroups(env.ProjectDir, mergeSHA, parents)
+	groups, ok := result["groups"].([]mergeFileGroup)
+	assert.True(t, ok)
+	assert.GreaterOrEqual(t, len(groups), 2)
+
+	// First group should be labeled "main" (destination)
+	assert.Equal(t, "main", groups[0].Label)
+	// Second group should be labeled "label-branch" (source)
+	assert.Equal(t, "label-branch", groups[1].Label)
+}
+
+// --- ServeGitVerifyCommits edge cases ---
+
+func TestServeGitVerifyCommits_NonCommitObject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Create a tree object (not a commit)
+	cmd := exec.Command("git", "mktree")
+	cmd.Dir = env.ProjectDir
+	cmd.Stdin = strings.NewReader("")
+	treeOut, treeErr := cmd.Output()
+	if treeErr != nil {
+		t.Fatalf("failed to create tree object: %v", treeErr)
+	}
+	treeSHA := strings.TrimSpace(string(treeOut))
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-commits", map[string]any{
+		"shas": []string{treeSHA},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyCommits, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	results, ok := result["results"].(map[string]interface{})
+	require.True(t, ok)
+	// Tree objects are not commits, should be null
+	assert.Nil(t, results[treeSHA], "non-commit object should have null result")
+}
+
+func TestServeGitVerifyCommits_MalformedBody(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-commits", strings.NewReader("not json"))
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyCommits, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	results, ok := result["results"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Empty(t, results, "malformed body should return empty results")
+}
+
+// --- parseGitStatusPorcelain edge cases ---
+
+func TestParseGitStatusPorcelain_Rename(t *testing.T) {
+	output := "R  old.txt -> new.txt\n"
+	files := parseGitStatusPorcelain(output)
+	assert.Len(t, files, 1)
+	assert.Equal(t, "new.txt", files[0].Path)
+	assert.Equal(t, "R", files[0].Type)
+	assert.True(t, files[0].Staged)
+}
+
+func TestParseGitStatusPorcelain_StagedModifiedAlsoDirty(t *testing.T) {
+	// AM = staged add, also modified in worktree
+	output := "AM file.txt\n"
+	files := parseGitStatusPorcelain(output)
+	assert.Len(t, files, 2)
+	assert.Equal(t, "A", files[0].Type)
+	assert.True(t, files[0].Staged)
+	assert.Equal(t, "M", files[1].Type)
+	assert.False(t, files[1].Staged)
+}
+
+func TestParseGitStatusPorcelain_Untracked(t *testing.T) {
+	output := "?? newfile.txt\n"
+	files := parseGitStatusPorcelain(output)
+	assert.Len(t, files, 1)
+	assert.Equal(t, "?", files[0].Type)
+	assert.False(t, files[0].Staged)
+	assert.Equal(t, "newfile.txt", files[0].Path)
+}
+
+func TestParseGitStatusPorcelain_UnstagedModification(t *testing.T) {
+	// Use a multi-line input so TrimSpace doesn't strip the leading space from the " M" line.
+	// The first line "A  staged.txt" ensures TrimSpace only strips outer whitespace.
+	output := "A  staged.txt\n M modified.txt\n"
+	files := parseGitStatusPorcelain(output)
+	assert.Len(t, files, 2)
+	// First file: staged add
+	assert.Equal(t, "A", files[0].Type)
+	assert.True(t, files[0].Staged)
+	// Second file: unstaged modification (space M)
+	assert.Equal(t, "M", files[1].Type)
+	assert.False(t, files[1].Staged)
+}
+
+func TestParseGitStatusPorcelain_Deleted(t *testing.T) {
+	// Use multi-line to preserve leading space in " D"
+	output := "A  staged.txt\n D deleted.txt\n"
+	files := parseGitStatusPorcelain(output)
+	assert.Len(t, files, 2)
+	assert.Equal(t, "D", files[1].Type)
+	assert.False(t, files[1].Staged)
+}
+
+func TestParseGitStatusPorcelain_Empty(t *testing.T) {
+	files := parseGitStatusPorcelain("")
+	assert.Len(t, files, 0)
+}
+
+func TestParseGitStatusPorcelain_QuotedPath(t *testing.T) {
+	output := `?? "path with spaces.txt"` + "\n"
+	files := parseGitStatusPorcelain(output)
+	assert.Len(t, files, 1)
+	assert.Equal(t, "path with spaces.txt", files[0].Path)
+}
+
+// --- gitDiff staged + unstaged combination ---
+
+func TestGitDiff_StagedAndUnstaged(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Stage some changes
+	createTestFile(t, env.ProjectDir, "README.md", "# Staged")
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+	run("git", "add", "README.md")
+
+	// Also make unstaged changes on top
+	createTestFile(t, env.ProjectDir, "README.md", "# Staged + Unstaged")
+
+	output, err := gitDiff(env.ProjectDir, "README.md", "HEAD")
+	assert.NoError(t, err)
+	// Should contain both staged and unstaged changes
+	assert.Contains(t, string(output), "# Staged")
+}
+
+func TestGitDiff_SpecificCommit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Make a commit
+	createTestFile(t, env.ProjectDir, "README.md", "# Updated")
+	gitCommitAll(t, env.ProjectDir, "update readme")
+	sha := getHeadSHA(t, env.ProjectDir)
+
+	output, err := gitDiff(env.ProjectDir, "README.md", sha)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, output)
+}
+
+// --- writeDiffResponse edge cases ---
+
+func TestWriteDiffResponse_ErrorWithNoOutput(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeDiffResponse(w, nil, fmt.Errorf("some error"))
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	assert.Equal(t, "", result["diff"])
+	assert.Equal(t, true, result["empty"])
+}
+
+func TestWriteDiffResponse_EmptyDiffOutput(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeDiffResponse(w, []byte(""), nil)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	assert.Equal(t, true, result["empty"])
 }

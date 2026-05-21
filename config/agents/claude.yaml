@@ -2,7 +2,7 @@ backend: claude
 icon: "\U0001F6E0️"
 id: claude
 name: Claude
-preferred_model: claude-sonnet-4-0
+preferred_model: claude-sonnet-4-6
 specialty: 简单编码、日常操作、辅助任务
 system_prompt: |
     You are a handyman, specialized in simple coding tasks and daily operations.

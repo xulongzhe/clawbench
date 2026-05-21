@@ -332,16 +332,26 @@ func ServeGitCommitFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// git diff-tree -m --no-commit-id --name-status -r <sha>
-	// -m splits merge commits so their diffs are shown (otherwise empty)
-	cmd := exec.Command("git", "diff-tree", "-m", "--no-commit-id", "--name-status", "-r", sha)
-	cmd.Dir = projectPath
-	output, err := cmd.CombinedOutput()
-
 	type fileInfo struct {
 		Path string `json:"path"`
 		Type string `json:"type"` // A=added, M=modified, D=deleted
 	}
+
+	// Detect merge commit by checking number of parents
+	parents := getCommitParents(projectPath, sha)
+
+	if len(parents) >= 2 {
+		// Merge commit: show files grouped by which parent introduced them
+		groups := buildMergeFileGroups(projectPath, sha, parents)
+		writeJSON(w, http.StatusOK, groups)
+		return
+	}
+
+	// Regular commit (or orphan): use diff-tree as before
+	// -m splits merge commits so their diffs are shown (otherwise empty)
+	cmd := exec.Command("git", "diff-tree", "-m", "--no-commit-id", "--name-status", "-r", sha)
+	cmd.Dir = projectPath
+	output, err := cmd.CombinedOutput()
 
 	var files []fileInfo
 	if err == nil {
@@ -362,6 +372,247 @@ func ServeGitCommitFiles(w http.ResponseWriter, r *http.Request) {
 		files = []fileInfo{}
 	}
 	writeJSON(w, http.StatusOK, files)
+}
+
+// getCommitParents returns the parent SHAs of a commit.
+func getCommitParents(projectPath, sha string) []string {
+	cmd := exec.Command("git", "cat-file", "-p", sha)
+	cmd.Dir = projectPath
+	output, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var parents []string
+	for _, line := range strings.Split(string(output), "\n") {
+		if strings.HasPrefix(line, "parent ") {
+			parents = append(parents, strings.TrimPrefix(line, "parent "))
+		}
+		if line == "" {
+			break
+		}
+	}
+	return parents
+}
+
+// mergeFileGroup represents a group of files introduced by one side of a merge.
+type mergeFileGroup struct {
+	Label string          `json:"label"`
+	Files []mergeFileInfo `json:"files"`
+}
+
+type mergeFileInfo struct {
+	Path string `json:"path"`
+	Type string `json:"type"`
+}
+
+// buildMergeFileGroups computes per-parent file groups for a merge commit.
+// Files changed by both parents are assigned to parent1 (the current branch).
+func buildMergeFileGroups(projectPath, sha string, parents []string) map[string]interface{} {
+	// Get merge-base between first two parents
+	cmd := exec.Command("git", "merge-base", parents[0], parents[1])
+	cmd.Dir = projectPath
+	output, err := cmd.Output()
+	if err != nil {
+		return fallbackMergeFiles(projectPath, sha)
+	}
+	mergeBase := strings.TrimSpace(string(output))
+
+	// Extract branch labels from merge commit message
+	labels := extractMergeLabels(projectPath, sha, parents)
+
+	// Collect files per parent: diff merge-base -> parentN
+	seen := make(map[string]bool)
+	groups := make([]mergeFileGroup, 0, len(parents))
+
+	for i, parent := range parents {
+		cmd := exec.Command("git", "diff", "--name-status", mergeBase, parent)
+		cmd.Dir = projectPath
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		var files []mergeFileInfo
+		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			if line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, "\t", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			path := parts[1]
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			files = append(files, mergeFileInfo{
+				Type: parts[0],
+				Path: path,
+			})
+		}
+
+		label := labels[i]
+		if label == "" {
+			label = fmt.Sprintf("Parent %d", i+1)
+		}
+
+		groups = append(groups, mergeFileGroup{
+			Label: label,
+			Files: files,
+		})
+	}
+
+	// Also include files only in the merge result (conflict resolutions)
+	cmd = exec.Command("git", "diff", "--name-status", mergeBase, sha)
+	cmd.Dir = projectPath
+	output, err = cmd.Output()
+	if err == nil {
+		var resolutionFiles []mergeFileInfo
+		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			if line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, "\t", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			path := parts[1]
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			resolutionFiles = append(resolutionFiles, mergeFileInfo{
+				Type: parts[0],
+				Path: path,
+			})
+		}
+		if len(resolutionFiles) > 0 {
+			groups = append(groups, mergeFileGroup{
+				Label: "conflict resolution",
+				Files: resolutionFiles,
+			})
+		}
+	}
+
+	return map[string]interface{}{
+		"merge":  true,
+		"groups": groups,
+	}
+}
+
+// extractMergeLabels parses branch names from the merge commit message.
+// For "Merge branch 'X' into Y", returns [Y, X].
+// For "Merge branch 'X'" (no into), returns ["", X].
+// Falls back to short SHA if parsing fails.
+func extractMergeLabels(projectPath, sha string, parents []string) []string {
+	labels := make([]string, len(parents))
+
+	cmd := exec.Command("git", "log", "--format=%s", "-1", sha)
+	cmd.Dir = projectPath
+	output, err := cmd.Output()
+	if err != nil {
+		return labels
+	}
+	msg := strings.TrimSpace(string(output))
+
+	// Try "Merge branch 'src' into dst" format
+	// e.g. "Merge branch 'main' into fix/android-coverage-gate"
+	if idx := strings.Index(msg, "Merge branch '"); idx != -1 {
+		rest := msg[idx+len("Merge branch '"):]
+		endSrc := strings.Index(rest, "'")
+		if endSrc != -1 {
+			src := rest[:endSrc]
+			// afterSrc starts after the closing quote, e.g. " into fix/..."
+			afterSrc := rest[endSrc+1:]
+			if strings.HasPrefix(afterSrc, " into ") {
+				dst := strings.TrimPrefix(afterSrc, " into ")
+				if len(labels) >= 1 {
+					labels[0] = dst
+				}
+				if len(labels) >= 2 {
+					labels[1] = src
+				}
+			} else {
+				// "Merge branch 'X'" without into
+				if len(labels) >= 2 {
+					labels[1] = src
+				}
+			}
+		}
+	}
+
+	// Try "Merge pull request #N from user/branch" format
+	if labels[1] == "" && strings.HasPrefix(msg, "Merge pull request") {
+		if idx := strings.LastIndex(msg, "from "); idx != -1 {
+			src := msg[idx+5:]
+			if slashIdx := strings.LastIndex(src, "/"); slashIdx != -1 {
+				src = src[slashIdx+1:]
+			}
+			if len(labels) >= 2 {
+				labels[1] = src
+			}
+		}
+	}
+
+	// Fallback: short SHA for unlabeled parents
+	for i, label := range labels {
+		if label == "" && i < len(parents) {
+			cmd := exec.Command("git", "rev-parse", "--short", parents[i])
+			cmd.Dir = projectPath
+			output, err := cmd.Output()
+			if err == nil {
+				labels[i] = strings.TrimSpace(string(output))
+			}
+		}
+	}
+
+	return labels
+}
+
+// fallbackMergeFiles uses diff-tree -m with dedup when merge-base fails.
+func fallbackMergeFiles(projectPath, sha string) map[string]interface{} {
+	cmd := exec.Command("git", "diff-tree", "-m", "--no-commit-id", "--name-status", "-r", sha)
+	cmd.Dir = projectPath
+	output, err := cmd.CombinedOutput()
+
+	type fileInfo struct {
+		Path string
+		Type string
+	}
+
+	var files []fileInfo
+	if err == nil {
+		seen := make(map[string]bool)
+		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			if line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, "\t", 2)
+			if len(parts) == 2 && !seen[parts[1]] {
+				seen[parts[1]] = true
+				files = append(files, fileInfo{
+					Type: parts[0],
+					Path: parts[1],
+				})
+			}
+		}
+	}
+	if files == nil {
+		files = []fileInfo{}
+	}
+
+	mergeFiles := make([]mergeFileInfo, len(files))
+	for i, f := range files {
+		mergeFiles[i] = mergeFileInfo{Path: f.Path, Type: f.Type}
+	}
+
+	return map[string]interface{}{
+		"merge": true,
+		"groups": []mergeFileGroup{
+			{Label: "all changes", Files: mergeFiles},
+		},
+	}
 }
 
 // ServeGitHistory returns commit history for a specific file.

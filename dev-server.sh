@@ -107,8 +107,22 @@ start_dev() {
     echo ""
 
     # Start Vite dev server — proxy to production backend's dev HTTP port
-    VITE_BACKEND_PORT=$DEV_HTTP_PORT VITE_FRONTEND_PORT=$FRONTEND_PORT nohup npx vite --port $FRONTEND_PORT > "$VITE_LOG" 2>&1 &
-    echo $! > "$VITE_PID_FILE"
+    # Use setsid to create new session so Vite survives parent shell exit
+    VITE_BACKEND_PORT=$DEV_HTTP_PORT VITE_FRONTEND_PORT=$FRONTEND_PORT setsid npx vite --port $FRONTEND_PORT > "$VITE_LOG" 2>&1 &
+    VITE_PID=$!
+    # setsid spawns a new process; find the actual Vite node process
+    sleep 1
+    # The PID we got is the setsid wrapper which may have exited;
+    # find the real Vite process listening on the port
+    REAL_PID=""
+    if command -v ss >/dev/null 2>&1; then
+        REAL_PID=$(ss -tlnp 2>/dev/null | grep ":$FRONTEND_PORT " | grep -oP 'pid=\K[0-9]+' | head -1)
+    fi
+    if [[ -n "$REAL_PID" ]]; then
+        echo "$REAL_PID" > "$VITE_PID_FILE"
+    else
+        echo "$VITE_PID" > "$VITE_PID_FILE"
+    fi
 
     sleep 1
     if ! kill -0 $(cat "$VITE_PID_FILE") 2>/dev/null; then

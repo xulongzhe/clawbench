@@ -178,18 +178,24 @@
       <div v-if="isAuthenticated" v-show="!terminalKeyboardActive" class="bottom-dock-wrapper">
         <div class="bottom-dock">
           <div class="dock-center">
-            <button class="dock-btn" :class="{ active: activeTab === 'chat', 'has-unread': store.state.chatUnread && activeTab !== 'chat', 'has-running': store.state.chatRunning && activeTab !== 'chat' && !store.state.chatUnread }" @click.stop="switchTab('chat')" :title="t('nav.chat')">
-              <MessageSquare />
-            </button>
+            <div class="dock-btn-wrap">
+              <button class="dock-btn" :class="{ active: activeTab === 'chat', 'has-unread': store.state.chatUnread && activeTab !== 'chat', 'has-running': store.state.chatRunning && activeTab !== 'chat' }" @click.stop="switchTab('chat')" :title="t('nav.chat')">
+                <MessageSquare />
+              </button>
+              <span v-if="store.state.chatUnread && activeTab !== 'chat'" class="dock-badge"></span>
+            </div>
             <button class="dock-btn" :class="{ active: activeTab === 'viewer' }" @click.stop="switchTab('viewer')" :title="t('nav.fileViewer')">
               <FileText />
             </button>
             <button class="dock-btn" :class="{ active: activeTab === 'browse' }" @click.stop="switchTab('browse')" :title="t('nav.fileManager')">
               <FolderOpen />
             </button>
-            <button class="dock-btn" :class="{ active: activeTab === 'tasks', 'has-unread': store.state.taskUnread && activeTab !== 'tasks', 'just-completed': store.state.taskJustCompleted && activeTab !== 'tasks' && !store.state.taskUnread, 'has-running': store.state.taskRunning && activeTab !== 'tasks' && !store.state.taskUnread && !store.state.taskJustCompleted }" @click.stop="switchTab('tasks')" :title="t('nav.tasks')">
-              <CalendarClock />
-            </button>
+            <div class="dock-btn-wrap">
+              <button class="dock-btn" :class="{ active: activeTab === 'tasks', 'has-unread': store.state.taskUnread && activeTab !== 'tasks', 'just-completed': store.state.taskJustCompleted && activeTab !== 'tasks', 'has-running': store.state.taskRunning && activeTab !== 'tasks' }" @click.stop="switchTab('tasks')" :title="t('nav.tasks')">
+                <CalendarClock />
+              </button>
+              <span v-if="store.state.taskUnread && activeTab !== 'tasks'" class="dock-badge"></span>
+            </div>
             <div class="dock-overflow-wrapper">
               <button
                 ref="overflowBtnRef"
@@ -982,13 +988,26 @@ onUnmounted(() => {
     cursor: default;
 }
 
-.dock-btn.has-unread {
-    animation: dock-unread-flash 0.8s ease-in-out infinite;
+/* Unread indicator — static badge dot (top-right corner).
+ * Uses a real <span> element outside the button so it's not clipped by overflow:hidden.
+ * Positioned on .dock-btn-wrap which wraps both button and badge. */
+.dock-btn-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-@keyframes dock-unread-flash {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color, #0066cc) 0%, transparent); }
-    50% { box-shadow: 0 0 8px 3px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent); }
+.dock-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-color, #0066cc);
+    z-index: 2;
+    pointer-events: none;
 }
 
 .dock-btn.has-running {

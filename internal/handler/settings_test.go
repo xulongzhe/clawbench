@@ -118,10 +118,10 @@ func TestServeConfig_Get(t *testing.T) {
 	pf, _ := resp["port_forward"].(map[string]any)
 	assert.NotContains(t, pf, "host_key")
 
-	// Verify Push doesn't expose master_secret
+	// Verify Push exposes master_secret (masked)
 	push, _ := resp["push"].(map[string]any)
 	jpush, _ := push["jpush"].(map[string]any)
-	assert.NotContains(t, jpush, "master_secret")
+	assert.Contains(t, jpush, "master_secret")
 }
 
 func TestServeConfig_Get_ConditionalPiperSubConfig(t *testing.T) {
@@ -497,17 +497,19 @@ func TestServeConfig_Patch_ForbiddenField_TLS(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestServeConfig_Patch_ForbiddenField_MasterSecret(t *testing.T) {
+func TestServeConfig_Patch_MasterSecret(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	body := `{"push":{"jpush":{"master_secret":"stolen"}}}`
+	// master_secret is now patchable and should be accepted
+	body := `{"push":{"jpush":{"master_secret":"newsecret1234567890"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfig, req)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "newsecret1234567890", model.ConfigInstance.Push.JPush.MasterSecret)
 }
 
 func TestServeConfig_Patch_InvalidEngine(t *testing.T) {

@@ -154,8 +154,9 @@ type configPush struct {
 }
 
 type configJPush struct {
-	Enabled bool   `json:"enabled"`
-	AppKey  string `json:"app_key"`
+	Enabled      bool   `json:"enabled"`
+	AppKey       string `json:"app_key"`
+	MasterSecret string `json:"master_secret"`
 }
 
 type configTasks struct {
@@ -213,6 +214,7 @@ var PatchableConfigPaths = map[string]bool{
 	"port_forward.allowed_ports":           true,
 	"push.jpush.enabled":          true,
 	"push.jpush.app_key":          true,
+	"push.jpush.master_secret":    true,
 	"tasks.summarize_backend":     true,
 	"tasks.summarize_model":       true,
 }
@@ -354,8 +356,9 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 		},
 		Push: configPush{
 			JPush: configJPush{
-				Enabled: cfg.Push.JPush.Enabled,
-				AppKey:  maskAPIKey(cfg.Push.JPush.AppKey), // ISS-119: mask semi-secret AppKey
+				Enabled:      cfg.Push.JPush.Enabled,
+				AppKey:       cfg.Push.JPush.AppKey, // AppKey is not a secret, no need to mask
+				MasterSecret: maskAPIKey(cfg.Push.JPush.MasterSecret),
 			},
 		},
 		Tasks: configTasks{
@@ -894,6 +897,9 @@ func applyConfigPatch(patch map[string]any) error {
 			}
 			if v, ok := jpush["app_key"].(string); ok {
 				cfg.Push.JPush.AppKey = v
+			}
+			if v, ok := jpush["master_secret"].(string); ok {
+				cfg.Push.JPush.MasterSecret = v
 			}
 		}
 	}

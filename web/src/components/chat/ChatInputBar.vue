@@ -6,7 +6,7 @@
         <span class="chat-group-label" :title="t('chat.actions.session')">
           <MessageSquare :size="12" />
         </span>
-        <button class="chat-action-btn" :class="{ 'has-unread': chatUnread, 'has-running': chatRunning && !chatUnread }"
+        <button class="chat-action-btn" :class="{ 'has-unread': chatUnread, 'has-running': chatRunning }"
           @click="$emit('open-session-tab', 'sessions')"
           :title="t('chat.actions.session')">
           <List :size="14" />
@@ -520,6 +520,7 @@ defineExpose({
     background: var(--bg-tertiary, #f0f0f0);
     pointer-events: none;
     user-select: none;
+    border-right: 1px solid var(--border-color, #e5e5e5);
 }
 
 .chat-action-group .chat-action-btn:last-child {
@@ -588,13 +589,12 @@ defineExpose({
   cursor: not-allowed;
 }
 
-/* Unread session indicator — static highlight (no flash animation).
+/* Unread session indicator — static accent dot only (no background tint, no flash animation).
  * The user is already on the chat tab, so flashing is unnecessary and distracting.
- * A subtle color change + accent dot is enough to indicate other sessions have unread messages. */
+ * A small dot is enough to indicate other sessions have unread messages.
+ * Can stack with .has-running sweep light: unread = dot, running = sweep. */
 .chat-action-btn.has-unread {
     position: relative;
-    color: var(--accent-color, #0066cc);
-    background: color-mix(in srgb, var(--accent-color, #0066cc) 16%, transparent);
 }
 
 .chat-action-btn.has-unread::after {
@@ -606,19 +606,20 @@ defineExpose({
     height: 6px;
     border-radius: 50%;
     background: var(--accent-color, #0066cc);
-}
-
-.chat-action-btn.has-unread:active {
-    background: color-mix(in srgb, var(--accent-color, #0066cc) 30%, transparent);
-    transform: scale(0.92);
+    z-index: 1;
 }
 
 /* Running session indicator — refined sweep light with accent color blend */
+/* Stacks with .has-unread: sweep light (::before) + unread dot (::after) coexist */
 .chat-action-btn.has-running {
     position: relative;
     overflow: hidden;
     color: var(--accent-color, #0066cc);
     background: color-mix(in srgb, var(--accent-color, #0066cc) 8%, transparent);
+}
+
+/* When both unread and running, keep running's background as-is */
+.chat-action-btn.has-unread.has-running {
 }
 
 .chat-action-btn.has-running:active {

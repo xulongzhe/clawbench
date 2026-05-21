@@ -366,19 +366,13 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* ── Unread dot ── */
+/* ── Unread dot (static) ── */
 .exec-unread-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--accent-color, #0066cc);
   flex-shrink: 0;
-  animation: exec-unread-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes exec-unread-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(0, 102, 204, 0.4); }
-  50% { opacity: 0.6; box-shadow: 0 0 6px 2px rgba(0, 102, 204, 0.2); }
 }
 
 .execution-item.unread {

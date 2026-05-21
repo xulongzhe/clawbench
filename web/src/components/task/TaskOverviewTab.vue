@@ -525,13 +525,9 @@ const renderedPrompt = computed(() => {
   }
 }
 
-/* Flash animation for history button when task has unread messages */
+/* Static indicator for history button when task has unread messages */
 .action-btn.has-unread-flash {
-  animation: overview-history-flash 0.8s ease-in-out infinite;
-}
-
-@keyframes overview-history-flash {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color, #0066cc) 0%, transparent); }
-  50% { box-shadow: 0 0 8px 3px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent); }
+  color: var(--accent-color, #0066cc);
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 12%, var(--bg-secondary, #f1f3f5));
 }
 </style>

@@ -291,7 +291,7 @@ onMounted(refresh)
   padding: 2px 6px;
   border-radius: 10px;
   font-weight: 600;
-  background: #ef4444;
+  background: var(--accent-color, #0066cc);
   color: #fff;
   flex-shrink: 0;
   min-width: 16px;
@@ -300,16 +300,23 @@ onMounted(refresh)
 }
 
 .task-item.has-unread {
-  border-left: 3px solid #ef4444;
+  border-left: 3px solid var(--accent-color, #0066cc);
 }
 
 .task-item.has-unread .task-item-icon {
-  animation: task-unread-flash 0.8s ease-in-out infinite;
+  /* static accent highlight, no animation */
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent));
 }
 
-@keyframes task-unread-flash {
-  0%, 100% { opacity: 1; text-shadow: 0 0 0 transparent; }
-  50% { opacity: 0.7; text-shadow: 0 0 8px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent); }
+/* When both unread and running, keep the unread left border + icon highlight
+ * but also apply running border pulse via box-shadow to avoid animation conflict */
+.task-item.has-unread.is-running {
+  border-left: 3px solid var(--accent-color, #0066cc);
+  animation: task-card-running 2s ease-in-out infinite;
+}
+
+.task-item.has-unread.is-running .task-item-icon {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent));
 }
 
 .task-item-status {
@@ -352,6 +359,7 @@ onMounted(refresh)
 }
 
 .task-item.is-running {
+  background: rgba(34, 197, 94, 0.05);
   animation: task-card-running 2s ease-in-out infinite;
 }
 
@@ -447,13 +455,9 @@ onMounted(refresh)
   background: var(--border-color, #e5e5e5);
 }
 
-/* Flash animation for history button when task has unread messages */
+/* Static indicator for history button when task has unread messages */
 .task-item-history-btn.has-unread-flash {
-  animation: history-unread-flash 0.8s ease-in-out infinite;
-}
-
-@keyframes history-unread-flash {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-color, #0066cc) 0%, transparent); }
-  50% { box-shadow: 0 0 8px 3px color-mix(in srgb, var(--accent-color, #0066cc) 40%, transparent); }
+  color: var(--accent-color, #0066cc);
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 12%, var(--bg-tertiary, #eef1f4));
 }
 </style>
