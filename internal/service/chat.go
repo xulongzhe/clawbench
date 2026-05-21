@@ -385,6 +385,18 @@ func GetSessionProjectPath(sessionID string) string {
 	return projectPath
 }
 
+// GetLatestSessionID returns the ID and backend of the most recently updated chat session
+// for a project. Returns sql.ErrNoRows if no sessions exist.
+func GetLatestSessionID(projectPath string) (sessionID, backend string, err error) {
+	err = DBRead.QueryRow(
+		`SELECT id, backend FROM chat_sessions
+		 WHERE project_path = ? AND deleted = 0 AND session_type = 'chat'
+		 ORDER BY updated_at DESC, id DESC LIMIT 1`,
+		projectPath,
+	).Scan(&sessionID, &backend)
+	return
+}
+
 // GetSessionModel returns the model ID of a session, or empty string if not found or deleted.
 func GetSessionModel(sessionID string) string {
 	var modelID string

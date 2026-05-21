@@ -2096,6 +2096,54 @@ func TestGetRunningSessionIDs_SomeRunning(t *testing.T) {
 	service.SetSessionRunning("sess-2", false)
 }
 
+// ---------- GetLatestSessionID ----------
+
+func TestGetLatestSessionID(t *testing.T) {
+	_ = setupDB(t)
+
+	// No sessions yet
+	_, _, err := service.GetLatestSessionID("/project")
+	assert.Error(t, err)
+
+	// Create a session
+	s1, _ := service.CreateSession("/project", "claude", "First", "claude", "", "default", "chat")
+
+	// Should return it
+	id, backend, err := service.GetLatestSessionID("/project")
+	assert.NoError(t, err)
+	assert.Equal(t, s1, id)
+	assert.Equal(t, "claude", backend)
+
+	// Create another with more recent timestamp
+	s2, _ := service.CreateSession("/project", "codebuddy", "Second", "codebuddy", "", "default", "chat")
+
+	// Should return the newer one
+	id, backend, err = service.GetLatestSessionID("/project")
+	assert.NoError(t, err)
+	assert.Equal(t, s2, id)
+	assert.Equal(t, "codebuddy", backend)
+
+	// Different project should return error
+	_, _, err = service.GetLatestSessionID("/other-project")
+	assert.Error(t, err)
+}
+
+func TestGetLatestSessionID_ExcludesDeleted(t *testing.T) {
+	_ = setupDB(t)
+
+	s1, _ := service.CreateSession("/project", "claude", "First", "claude", "", "default", "chat")
+	s2, _ := service.CreateSession("/project", "codebuddy", "Second", "codebuddy", "", "default", "chat")
+
+	// Delete the most recent session
+	service.DeleteSession("/project", "codebuddy", s2)
+
+	// Should return the remaining session
+	id, backend, err := service.GetLatestSessionID("/project")
+	assert.NoError(t, err)
+	assert.Equal(t, s1, id)
+	assert.Equal(t, "claude", backend)
+}
+
 func TestGetRunningSessionIDs_AfterClearAll(t *testing.T) {
 	setupDB(t)
 
