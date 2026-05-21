@@ -295,7 +295,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	// No need for a separate HTTP endpoint.
 
 	// SSH tunnel info — intentionally unauthenticated:
-	// 1. Android PortForwardService.fetchSSHPort() calls this from native Java
+	// 1. Android BackgroundService.fetchSSHPort() calls this from native Java
 	//    (no WebView cookies available) to discover the SSH port before connecting.
 	// 2. Without this, fetchSSHPort gets 401, falls back to httpPort+1 (wrong port),
 	//    and SSH tunnel silently fails with no error reported to the user.
