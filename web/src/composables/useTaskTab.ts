@@ -60,13 +60,14 @@ function onTaskCompleted(task: any) {
     } catch {
         // Non-critical
     }
-    // Toast — informational only, no click-to-navigate (avoids accidental tab switching)
+    // Toast — include task name, icon, and click-to-navigate
     try {
         const taskName = task.name || gt('task.title')
         useToast().show(`${taskName} — ${gt('task.exec.completed')}`, {
             icon: '✅',
             type: 'success',
             duration: 5000,
+            onClick: navigateToHistory,
         })
     } catch {
         // Non-critical
