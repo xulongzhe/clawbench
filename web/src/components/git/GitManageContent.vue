@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { store } from '@/stores/app.ts'
 import { apiGet, apiPost } from '@/utils/api'
@@ -42,6 +42,7 @@ import GitBranchList from './GitBranchList.vue'
 
 const { t } = useI18n()
 const dialog = useDialog()
+const hotSwitchProject = inject('hotSwitchProject', null) as ((path: string, pendingSessionId?: string) => Promise<void>) | null
 
 const worktrees = ref<any[]>([])
 const branches = ref<any[]>([])
@@ -103,7 +104,11 @@ async function onSwitchWorktree(wt: any) {
     { title: t('git.manage.switchWorktree') },
   )
   if (!confirmed) return
-  await store.setProject(wt.path)
+  if (hotSwitchProject) {
+    await hotSwitchProject(wt.path)
+  } else {
+    await store.setProject(wt.path)
+  }
 }
 
 async function onSwitchBranch(branch: any) {

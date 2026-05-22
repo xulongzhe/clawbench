@@ -7,6 +7,13 @@ const agents = ref<any[]>([])
 const defaultAgentId = ref('')
 let loadPromise: Promise<void> | null = null
 
+/** Reset all module-level singleton refs — used by SPA hot project switch. */
+export function resetAgents(): void {
+    agents.value = []
+    defaultAgentId.value = ''
+    loadPromise = null
+}
+
 async function loadAgents(force = false): Promise<void> {
     if (!force && agents.value.length > 0) return // already loaded
     if (!force && loadPromise) return loadPromise  // load in progress

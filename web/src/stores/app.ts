@@ -161,9 +161,43 @@ async function loadProject(): Promise<void> {
     }
 }
 
-async function setProject(path: string): Promise<void> {
-    await apiPost('/api/project', { path })
-    window.location.reload()
+async function setProject(path: string): Promise<string> {
+    const data = await apiPost<{ ok: string; path: string }>('/api/project', { path })
+    resetProjectState()
+    return data.path || path
+}
+
+function resetProjectState(): void {
+    // Project
+    state.projectRoot = ''
+    state.projectName = ''
+    state.watchDir = ''
+    // File browser
+    state.currentDir = ''
+    state.dirEntries = []
+    state.dirLoading = false
+    state.currentFile = null
+    state.fileHistory = []
+    state.fileHistoryIndex = -1
+    // Git
+    state.gitBranch = ''
+    state.gitHead = ''
+    state.gitDirty = false
+    // Chat/task badges
+    state.chatUnread = false
+    state.chatRunning = false
+    state.taskUnread = false
+    state.taskRunning = false
+    state.taskJustCompleted = false
+    state.tasks = []
+    // Config defaults
+    state.uploadMaxSizeMB = 100
+    state.uploadMaxFiles = 20
+    state.chatInitialMessages = 20
+    state.chatPageSize = 20
+    state.chatSessionPageSize = 10
+    state.chatCollapsedHeight = 150
+    state.sessionMaxCount = 10
 }
 
 // =============================================
@@ -428,6 +462,7 @@ export const store = {
     state,
     loadProject,
     setProject,
+    resetProjectState,
     loadGitBranch,
     loadFiles,
     selectFile,

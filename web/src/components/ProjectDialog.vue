@@ -72,6 +72,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['close'])
 const toast = inject('toast', null)
+const hotSwitchProject = inject('hotSwitchProject', null)
 
 const loading = ref(false)
 const selectedPath = ref('')
@@ -204,18 +205,24 @@ async function confirm() {
     }
     if (!path) return
     try {
-        const resp = await fetch('/api/project', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path })
-        })
-        if (resp.ok) {
-            window.location.reload()
+        if (hotSwitchProject) {
+            emit('close')
+            await hotSwitchProject(path)
         } else {
-            const text = await resp.text()
-            let msg = text
-            try { msg = JSON.parse(text).error || msg } catch (_) {}
-            await dialog.alert(t('projectDialog.setProjectFailedDetail', { error: msg }))
+            // Fallback: legacy full reload
+            const resp = await fetch('/api/project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            })
+            if (resp.ok) {
+                window.location.reload()
+            } else {
+                const text = await resp.text()
+                let msg = text
+                try { msg = JSON.parse(text).error || msg } catch (_) {}
+                await dialog.alert(t('projectDialog.setProjectFailedDetail', { error: msg }))
+            }
         }
     } catch (err) {
         await dialog.alert(t('projectDialog.setProjectFailedDetail', { error: err.message }))

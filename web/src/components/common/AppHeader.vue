@@ -84,6 +84,7 @@ const props = defineProps({
 const emit = defineEmits(['openProjectDialog'])
 
 const toast = inject('toast')
+const hotSwitchProject = inject('hotSwitchProject')
 
 // Connection status menu state
 const statusBtnRef = ref(null)
@@ -204,14 +205,19 @@ async function selectRecent(item) {
     dropdownOpen.value = false
     if (item.path === props.projectRoot) return
     try {
-        const resp = await fetch('/api/project', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: item.path })
-        })
-        if (resp.ok) {
-            window.location.reload()
+        if (hotSwitchProject) {
+            await hotSwitchProject(item.path)
         } else {
+            // Fallback: legacy full reload
+            const resp = await fetch('/api/project', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: item.path })
+            })
+            if (resp.ok) {
+                window.location.reload()
+                return
+            }
             const text = await resp.text()
             let msg = text
             let msgKey = ''
@@ -222,13 +228,11 @@ async function selectRecent(item) {
             } catch (_) {}
             if (msgKey === 'NotADirectory') {
                 toast?.show(t('appHeader.projectPathNotFound'), { icon: '⚠️', type: 'error', duration: 3000 })
-                // Remove stale entry from recent projects
                 fetch('/api/recent-projects', {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ path: item.path })
                 }).catch(() => {})
-                // Remove from local list immediately
                 recentItems.value = recentItems.value.filter(r => r.path !== item.path)
             } else {
                 toast?.show(t('appHeader.switchProjectFailed', { error: msg }), { icon: '⚠️', type: 'error', duration: 3000 })

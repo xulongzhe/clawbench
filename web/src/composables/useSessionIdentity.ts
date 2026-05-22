@@ -27,6 +27,26 @@ const runningSessionsVersion = ref(0)
 // instance that's accessible from any tab (chat, viewer, QuoteQuestionBar).
 const sessionDrawerOpen = ref(false)
 
+/** Reset all module-level singleton refs — used by SPA hot project switch. */
+export function resetIdentity(): void {
+  currentSessionId.value = ''
+  currentSessionTitle.value = ''
+  currentBackend.value = ''
+  currentAgentId.value = ''
+  currentModelId.value = ''
+  currentModelName.value = ''
+  currentThinkingEffort.value = ''
+  runningSessions.value = new Set()
+  runningSessionsVersion.value = 0
+  sessionDrawerOpen.value = false
+  _switchSession = null
+  _createSession = null
+  _deleteSession = null
+  _sendMessage = null
+  _openChatPanel = null
+  _sessionDrawerRef = null
+}
+
 // ───────────────────────────────────────────────────────────
 // Agent preference persistence — stored in agent YAML files via PATCH /api/agents.
 // preferredModel / preferredThinkingEffort are the source of truth for

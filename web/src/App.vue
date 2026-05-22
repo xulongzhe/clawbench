@@ -7,7 +7,7 @@
     <LoginView v-else-if="!isAuthenticated" @login-success="handleLoginSuccess" />
 
     <!-- Main app -->
-    <div v-else class="app-container" :class="{ 'chrome-hidden': terminalKeyboardActive, 'chat-keyboard-open': chatKeyboardActive }">
+    <div v-else class="app-container" :class="{ 'chrome-hidden': terminalKeyboardActive, 'chat-keyboard-open': chatKeyboardActive, 'project-switching': switchingProject }" :key="projectKey">
       <AppHeader
         :hidden="terminalActive"
         :project-root="projectRoot"
@@ -274,7 +274,8 @@ import SettingsPage from './components/settings/SettingsPage.vue'
 import TaskTab from '@/components/task/TaskTab.vue'
 import { useQuoteQuestion } from './composables/useQuoteQuestion.ts'
 import { useTaskTab, registerSwitchTab, onTaskEvent } from '@/composables/useTaskTab.ts'
-import { useSessionIdentity, registerSessionDrawerRef } from './composables/useSessionIdentity.ts'
+import { resetAgents } from '@/composables/useAgents'
+import { useSessionIdentity, registerSessionDrawerRef, resetIdentity } from './composables/useSessionIdentity.ts'
 import { loadSessionsOnce } from './composables/useChatSession.ts'
 import { useToast } from './composables/useToast.ts'
 import { useAppMode } from './composables/useAppMode.ts'
@@ -295,6 +296,65 @@ import './assets/hljs-light-override.css'
 
 const isAuthenticated = ref(null)
 const { t } = useI18n()
+
+// SPA hot project switch: key forces Vue to destroy/rebuild the app-container subtree
+const projectKey = ref('initial')
+const switchingProject = ref(false)
+
+async function hotSwitchProject(newProjectPath, pendingSessionId) {
+  // ── Phase 1: Fade out ──
+  switchingProject.value = true
+  await nextTick()
+  await new Promise(r => setTimeout(r, 150))
+
+  // ── Phase 2: Reset module-level singletons ──
+  store.resetProjectState()
+  resetIdentity()
+  resetAgents()
+
+  // ── Phase 3: Change key → Vue destroys old component tree & builds new one ──
+  projectKey.value = newProjectPath
+
+  // ── Phase 4: Reload all project-scoped data (mirrors onMounted after auth) ──
+  try { await store.loadProject() } catch (_) {
+    toast.show(t('toast.projectLoadFailed'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
+  }
+  await sessionIdentity.initSessionFromAPI()
+  loadSessionsOnce()
+  try { await store.loadFiles('') } catch (_) {}
+  store.loadGitBranch().catch(() => {})
+  loadTasks()
+  loadConfig()
+  loadSSHInfo().catch(() => {})
+  loadTerminalStatus().catch(() => {})
+  if (isAppMode.value) syncToNative().catch(() => {})
+
+  // ── Phase 5: Restore last opened file for the new project ──
+  const lastFile = localStorage.getItem('clawbenchLastFile_' + store.state.projectRoot)
+  if (lastFile && lastFile !== store.state.currentFile?.path) {
+    const lastSlash = lastFile.lastIndexOf('/')
+    store.state.currentDir = lastSlash > 0 ? lastFile.slice(0, lastSlash) : ''
+    await store.loadFiles(store.state.currentDir)
+    await store.selectFile(lastFile)
+    if (store.state.currentFile?.error) store.state.currentFile = null
+  }
+
+  // ── Phase 6: Handle cross-project pending navigation ──
+  if (pendingSessionId) {
+    const checkReady = () => {
+      if (sessionIdentity.currentSessionId.value) {
+        switchTab('chat')
+        sessionIdentity.switchSession(pendingSessionId)
+      } else {
+        setTimeout(checkReady, 100)
+      }
+    }
+    checkReady()
+  }
+
+  // ── Phase 7: Fade in ──
+  switchingProject.value = false
+}
 
 const activeTab = ref('chat')
 
@@ -330,16 +390,9 @@ function handleOpenSession(e) {
   const { sessionId, projectPath } = detail
   console.log('[ClawBench] clawbench-open-session: sessionId=', sessionId, 'projectPath=', projectPath, 'currentProject=', store.state.projectRoot)
   if (projectPath && projectPath !== store.state.projectRoot) {
-    // Cross-project: switch project, store pending session, then reload
+    // Cross-project: hot switch without page reload
     console.log('[ClawBench] cross-project navigation, switching to', projectPath)
-    localStorage.setItem('clawbenchPendingNav', JSON.stringify({ sessionId }))
-    fetch('/api/project', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: projectPath }),
-    }).then(() => {
-      window.location.reload()
-    }).catch(() => {
+    hotSwitchProject(projectPath, sessionId).catch(() => {
       // If project switch fails, try same-project switch as fallback
       console.warn('[ClawBench] project switch failed, falling back to same-project switch')
       switchTab('chat')
@@ -702,6 +755,7 @@ provide('theme', theme)
 provide('applyTheme', applyTheme)
 provide('activeTab', activeTab)
 provide('switchTab', switchTab)
+provide('hotSwitchProject', hotSwitchProject)
 
 function handleOpenFileManager() {
     activeTab.value = 'browse'
@@ -864,13 +918,8 @@ onMounted(async () => {
               // Navigation data found — stop polling
               pollCleared = true
               if (projectPath && projectPath !== store.state.projectRoot) {
-                // Need to switch project first
-                localStorage.setItem('clawbenchPendingNav', JSON.stringify({ sessionId }))
-                fetch('/api/project', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ path: projectPath }),
-                }).then(() => window.location.reload())
+                // Need to switch project first — use hot switch instead of reload
+                hotSwitchProject(projectPath, sessionId)
               } else {
                 processPendingNav(sessionId)
               }
@@ -913,6 +962,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* SPA hot project switch: fade transition to mask intermediate state */
+.app-container {
+    transition: opacity 0.15s ease;
+}
+.app-container.project-switching {
+    opacity: 0;
+}
+
 .viewer-panel {
   flex: 1;
   display: flex;
