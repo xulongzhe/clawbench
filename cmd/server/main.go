@@ -602,6 +602,9 @@ func main() {
 	// standalone purpose without the SSH tunnel to transport traffic.
 	if cfg.PortForward.Enabled {
 		proxyService := service.NewProxyRegistry(port)
+		if cfg.PortForward.AllowedPorts != "" {
+			proxyService.SetAllowedPorts(cfg.PortForward.AllowedPorts)
+		}
 		service.ProxyService = proxyService
 		defer proxyService.Stop()
 

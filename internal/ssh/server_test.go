@@ -99,7 +99,7 @@ func startEchoServer(t *testing.T) int {
 
 func newTestRegistry(t *testing.T) *service.ProxyRegistry {
 	t.Helper()
-	r := service.NewProxyRegistry("1024-65535", 0)
+	r := service.NewProxyRegistry(0)
 	t.Cleanup(func() { r.Stop() })
 	return r
 }
@@ -200,7 +200,8 @@ func TestSSHPortForward_AllowedButUnregisteredPortWorks(t *testing.T) {
 
 func TestSSHPortForward_DisallowedPortRejectedByTunnel(t *testing.T) {
 	// Create a registry that only allows specific ports
-	r := service.NewProxyRegistry("3000-4000", 0)
+	r := service.NewProxyRegistry(0)
+	r.SetAllowedPorts("3000-4000")
 	defer r.Stop()
 
 	srv := testServerHelper(t, "test-password", r)
@@ -292,7 +293,8 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 
 func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
 	// Create a registry that only allows specific ports
-	r := service.NewProxyRegistry("3000-4000", 0)
+	r := service.NewProxyRegistry(0)
+	r.SetAllowedPorts("3000-4000")
 	defer r.Stop()
 
 	// RegisterPort should reject a port outside the allowed range

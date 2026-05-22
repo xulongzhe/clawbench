@@ -36,11 +36,13 @@ rag:
     search_pool_size: 0
 session:
     max_count: 20
-tasks:
+summarize:
     api:
         base_url: https://api.openai.com/v1
-    summarize_backend: api
-    summarize_model: codebuddy-latest
+        format: openai
+        key: sk-1234567890abcdef
+    backend: api
+    model: codebuddy-latest
 terminal:
     buffer_lines: 0
     enabled: false
@@ -53,10 +55,6 @@ tls:
     enabled: false
     key_file: ""
 tts:
-    api:
-        base_url: https://api.example.com/v1/chat
-        format: openai
-        key: sk-1234567890abcdef
     engine: moss-nano
     format: ""
     inline_code_max_len: 0
@@ -77,8 +75,6 @@ tts:
         noise_scale: 0.5
         sentence_silence: 0.3
     speed: 0
-    summarize_backend: api
-    summarize_model: gpt-4o-mini
     tts_model: ""
     voice: ""
 upload:

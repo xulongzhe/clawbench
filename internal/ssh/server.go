@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -383,7 +384,7 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 	go gossh.DiscardRequests(requests)
 
 	// Connect to the target host:port
-	targetAddr := fmt.Sprintf("%s:%d", targetHost, targetPort)
+	targetAddr := net.JoinHostPort(targetHost, strconv.Itoa(targetPort))
 	backend, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		slog.Debug("ssh: backend unreachable", slog.String("target", targetAddr), slog.String("err", err.Error()))
@@ -393,7 +394,7 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 
 	slog.Debug("ssh: forwarding connection",
 		slog.String("target", targetAddr),
-		slog.String("originator", fmt.Sprintf("%s:%d", d.OriginatorAddress, d.OriginatorPort)),
+		slog.String("originator", net.JoinHostPort(d.OriginatorAddress, strconv.FormatUint(uint64(d.OriginatorPort), 10))),
 	)
 
 	// Bidirectional relay

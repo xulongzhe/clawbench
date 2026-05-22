@@ -60,8 +60,9 @@ var ProxyService *ProxyRegistry
 // NewProxyRegistry creates a new port registry and starts background health checks.
 // It also restores any previously persisted ports from the database.
 // The caller (main.go) decides whether to create this based on port_forward.enabled.
-func NewProxyRegistry(allowedPorts string, selfPort int) *ProxyRegistry {
+func NewProxyRegistry(selfPort int) *ProxyRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
+	allowedPorts := "1024-65535" // default allowed port range
 	r := &ProxyRegistry{
 		ports:    make(map[int]*model.ForwardedPort),
 		cfg:      model.ProxyConfig{AllowedPorts: allowedPorts},
@@ -82,6 +83,12 @@ func NewProxyRegistry(allowedPorts string, selfPort int) *ProxyRegistry {
 	go r.healthCheckLoop(ctx)
 
 	return r
+}
+
+// SetAllowedPorts overrides the default allowed port range.
+// Must be called before any RegisterPort calls.
+func (r *ProxyRegistry) SetAllowedPorts(allowedPorts string) {
+	r.cfg.AllowedPorts = allowedPorts
 }
 
 // Stop shuts down the proxy registry and all health check goroutines.
@@ -383,7 +390,7 @@ func checkPortActive(port int, host string) bool {
 	if targetHost != "127.0.0.1" && targetHost != "localhost" {
 		timeout = 5 * time.Second
 	}
-	addr := fmt.Sprintf("%s:%d", targetHost, port)
+	addr := net.JoinHostPort(targetHost, strconv.Itoa(port))
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		return false

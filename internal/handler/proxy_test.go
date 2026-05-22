@@ -35,7 +35,7 @@ func getProxyPortProtocol(r *service.ProxyRegistry, port int) string {
 func setupProxyTest(t *testing.T) func() {
 	t.Helper()
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry("1024-65535", 0)
+	service.ProxyService = service.NewProxyRegistry(0)
 	return func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
@@ -129,7 +129,8 @@ func TestRegisterPort_Duplicate(t *testing.T) {
 
 func TestRegisterPort_DisallowedRange(t *testing.T) {
 	origProxy := service.ProxyService
-	service.ProxyService = service.NewProxyRegistry("3000-4000", 0)
+	service.ProxyService = service.NewProxyRegistry(0)
+	service.ProxyService.SetAllowedPorts("3000-4000")
 	defer func() {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy

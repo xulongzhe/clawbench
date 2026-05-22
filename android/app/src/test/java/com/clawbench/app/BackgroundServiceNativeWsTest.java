@@ -6,7 +6,7 @@ import org.junit.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.Assert.*;
@@ -33,12 +33,12 @@ public class BackgroundServiceNativeWsTest {
 
     // A simple struct to represent the stopSelf decision state
     private static class ServiceState {
-        final Set<Integer> forwardedPorts;
+        final Map<Integer, String> forwardedPorts;
         boolean nativeWsNeeded;
         boolean nativeWsActive;
 
         ServiceState() {
-            forwardedPorts = ConcurrentHashMap.newKeySet();
+            forwardedPorts = new ConcurrentHashMap<>();
             nativeWsNeeded = false;
             nativeWsActive = false;
         }
@@ -123,7 +123,7 @@ public class BackgroundServiceNativeWsTest {
     @Test
     public void shouldStopService_hasPortsNoNativeWs_returnsFalse() {
         ServiceState state = new ServiceState();
-        state.forwardedPorts.add(20000);
+        state.forwardedPorts.put(20000, "");
         assertFalse("Has ports + no native WS → should NOT stop",
                 state.shouldStopService());
     }
@@ -132,7 +132,7 @@ public class BackgroundServiceNativeWsTest {
     public void shouldStopService_hasPortsAndNativeWs_returnsFalse() {
         ServiceState state = new ServiceState();
         state.nativeWsNeeded = true;
-        state.forwardedPorts.add(20000);
+        state.forwardedPorts.put(20000, "");
         assertFalse("Has ports + native WS → should NOT stop",
                 state.shouldStopService());
     }
@@ -224,7 +224,7 @@ public class BackgroundServiceNativeWsTest {
         setStaticField("nativeWsNeeded", true);
 
         ServiceState state = new ServiceState();
-        state.forwardedPorts.add(20000);
+        state.forwardedPorts.put(20000, "");
         Object service = createMinimalInstance();
         setForwardedPorts(service, state.forwardedPorts);
         setStaticField("instance", service);
@@ -245,7 +245,7 @@ public class BackgroundServiceNativeWsTest {
     @Test
     public void removePortForward_lastPortNoNativeWs_shouldStop() {
         ServiceState state = new ServiceState();
-        state.forwardedPorts.add(20000);
+        state.forwardedPorts.put(20000, "");
         state.forwardedPorts.remove(20000);
         assertTrue("Should stop after removing last port with no native WS",
                 state.shouldStopService());
@@ -255,7 +255,7 @@ public class BackgroundServiceNativeWsTest {
     public void removePortForward_lastPortWithNativeWs_shouldNotStop() {
         ServiceState state = new ServiceState();
         state.nativeWsNeeded = true;
-        state.forwardedPorts.add(20000);
+        state.forwardedPorts.put(20000, "");
         state.forwardedPorts.remove(20000);
         assertFalse("Should NOT stop because native WS still needs it",
                 state.shouldStopService());
@@ -264,8 +264,8 @@ public class BackgroundServiceNativeWsTest {
     @Test
     public void removePortForward_notLastPort_shouldNotStop() {
         ServiceState state = new ServiceState();
-        state.forwardedPorts.add(20000);
-        state.forwardedPorts.add(30000);
+        state.forwardedPorts.put(20000, "");
+        state.forwardedPorts.put(30000, "");
         state.forwardedPorts.remove(20000);
         assertFalse("Should NOT stop when other ports still exist",
                 state.shouldStopService());
@@ -359,7 +359,7 @@ public class BackgroundServiceNativeWsTest {
     @Test
     public void fullLifecycle_backgroundForeground_withPorts() {
         ServiceState state = new ServiceState();
-        state.forwardedPorts.add(20000);
+        state.forwardedPorts.put(20000, "");
 
         // Background: native WS also starts
         state.nativeWsNeeded = true;
@@ -379,7 +379,7 @@ public class BackgroundServiceNativeWsTest {
         assertFalse(state.shouldStopService());
 
         // Port gets added (SSH tunnel established while backgrounded)
-        state.forwardedPorts.add(20000);
+        state.forwardedPorts.put(20000, "");
         assertFalse(state.shouldStopService());
 
         // Foreground: native WS stops, but port still exists
@@ -411,7 +411,7 @@ public class BackgroundServiceNativeWsTest {
         assertTrue(state.shouldStopService());
 
         // Add port
-        state.forwardedPorts.add(20000);
+        state.forwardedPorts.put(20000, "");
         assertFalse(state.shouldStopService());
 
         // Background 2 (port + native WS)
@@ -622,7 +622,8 @@ public class BackgroundServiceNativeWsTest {
         }
     }
 
-    private void setForwardedPorts(Object service, Set<Integer> ports) throws Exception {
+    @SuppressWarnings("unchecked")
+    private void setForwardedPorts(Object service, Map<Integer, String> ports) throws Exception {
         if (service == null) return;
         Field field = BackgroundService.class.getDeclaredField("forwardedPorts");
         field.setAccessible(true);

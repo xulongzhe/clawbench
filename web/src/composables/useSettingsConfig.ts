@@ -243,6 +243,7 @@ const serverDefaults: Record<string, any> = {
   'summarize.backend': 'simple',
   'summarize.model': '',
   'summarize.api.format': 'openai',
+  'port_forward.allowed_ports': '1024-65535',
 }
 
 // ── Agent preference helpers ──────────────────────────────
