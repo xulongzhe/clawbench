@@ -20,11 +20,11 @@
           @click="selectSession(session.id, session.backend)"
         >
           <div class="session-item-main">
-            <span v-if="session.running" class="session-running-dot"></span>
             <div class="session-item-info">
               <div class="session-item-header">
                 <span class="session-item-title">{{ session.title }}</span>
                 <span v-if="session.unreadCount > 0" class="session-item-unread">{{ session.unreadCount }}</span>
+                <span v-if="session.running" class="session-running-dot"></span>
               </div>
               <div class="session-item-meta">
                 <span class="session-item-time">{{ formatRelativeTime(session.updatedAt) }}</span>
@@ -363,8 +363,8 @@ onUnmounted(() => {
 }
 
 .session-running-dot {
-  width: 10px;
-  height: 10px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: #22c55e;
   flex-shrink: 0;
