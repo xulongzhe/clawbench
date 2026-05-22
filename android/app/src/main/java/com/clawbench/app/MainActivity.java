@@ -59,6 +59,7 @@ import java.security.cert.X509Certificate;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -152,8 +153,8 @@ public class MainActivity extends AppCompatActivity {
                 cameraImageUri = null;
             });
 
-    // Set of ports currently being forwarded (thread-safe for access from WebView background threads)
-    final Set<Integer> forwardedPorts = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    // Map of ports currently being forwarded: port -> host (thread-safe for access from WebView background threads)
+    final Map<Integer, String> forwardedPorts = new java.util.concurrent.ConcurrentHashMap<>();
 
     // Volume key interception mode: when true, volume up/down are forwarded to WebView
     // as JS calls instead of adjusting system volume. Controlled by the terminal panel.
@@ -1069,10 +1070,10 @@ public class MainActivity extends AppCompatActivity {
          * Also requests battery optimization exemption on first port forward.
          */
         @JavascriptInterface
-        public void addForwardedPort(int port) {
+        public void addForwardedPort(int port, String host) {
             activity.runOnUiThread(() -> {
-                activity.forwardedPorts.add(port);
-                BackgroundService.addForwardedPort(activity, port);
+                activity.forwardedPorts.put(port, host != null ? host : "");
+                BackgroundService.addForwardedPort(activity, port, host != null ? host : "");
 
                 // Request battery optimization exemption if not already granted.
                 // Re-check every time in case the user previously dismissed the dialog.
@@ -1138,7 +1139,18 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public String getForwardedPorts() {
-            return new JSONArray(activity.forwardedPorts).toString();
+            try {
+                JSONArray arr = new JSONArray();
+                for (Map.Entry<Integer, String> entry : activity.forwardedPorts.entrySet()) {
+                    org.json.JSONObject obj = new org.json.JSONObject();
+                    obj.put("port", entry.getKey());
+                    obj.put("host", entry.getValue());
+                    arr.put(obj);
+                }
+                return arr.toString();
+            } catch (Exception e) {
+                return "[]";
+            }
         }
 
         @JavascriptInterface
@@ -1198,10 +1210,11 @@ public class MainActivity extends AppCompatActivity {
          * Called from the port forwarding panel "open" button.
          */
         @JavascriptInterface
-        public void openInBrowser(int port, String protocol) {
+        public void openInBrowser(int port, String protocol, String host) {
             activity.runOnUiThread(() -> {
                 String scheme = "https".equalsIgnoreCase(protocol) ? "https" : "http";
-                String url = scheme + "://localhost:" + port;
+                String targetHost = (host != null && !host.isEmpty()) ? host : "localhost";
+                String url = scheme + "://" + targetHost + ":" + port;
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 activity.startActivity(intent);
@@ -1214,12 +1227,13 @@ public class MainActivity extends AppCompatActivity {
          * Called from the port forwarding panel "open" button (preferred over openInBrowser).
          */
         @JavascriptInterface
-        public void openInSandbox(int port, String protocol) {
+        public void openInSandbox(int port, String protocol, String host) {
             activity.runOnUiThread(() -> {
                 String scheme = "https".equalsIgnoreCase(protocol) ? "https" : "http";
                 Intent intent = new Intent(activity, BrowserActivity.class);
                 intent.putExtra("port", port);
                 intent.putExtra("protocol", scheme);
+                intent.putExtra("host", host != null ? host : "");
                 activity.startActivity(intent);
             });
         }

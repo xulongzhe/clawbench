@@ -5,6 +5,7 @@
 
 export interface ForwardedPort {
   port: number
+  host: string
   name: string
   protocol: string
   autoDetect: boolean
@@ -34,7 +35,8 @@ export function tunnelStatusFromPorts(ports: ForwardedPort[]): 'ok' | 'degraded'
 /**
  * Build the URL for opening a forwarded port.
  */
-export function buildPortUrl(port: number, protocol?: string): string {
+export function buildPortUrl(port: number, protocol?: string, host?: string): string {
   const scheme = protocol === 'https' ? 'https' : 'http'
-  return `${scheme}://localhost:${port}`
+  const targetHost = host || 'localhost'
+  return `${scheme}://${targetHost}:${port}`
 }

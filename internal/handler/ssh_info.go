@@ -52,7 +52,11 @@ func ServeSSHInfo(w http.ResponseWriter, r *http.Request) {
 	if service.ProxyService != nil {
 		ports := service.ProxyService.ListPorts()
 		for _, p := range ports {
-			forwardArgs = append(forwardArgs, fmt.Sprintf("-L %d:localhost:%d", p.Port, p.Port))
+			targetHost := p.Host
+			if targetHost == "" {
+				targetHost = "localhost"
+			}
+			forwardArgs = append(forwardArgs, fmt.Sprintf("-L %d:%s:%d", p.Port, targetHost, p.Port))
 		}
 	}
 
