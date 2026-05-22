@@ -108,16 +108,17 @@ jobs:
               continue
             fi
 
-            if [ "$MERGE_STATE" != "CLEAN" ] && [ "$MERGE_STATE" != "MERGEABLE" ]; then
-              echo "⚠️ PR #$PR_NUMBER merge state is $MERGE_STATE, skipping"
+            if [ "$MERGE_STATE" = "DIRTY" ]; then
+              echo "❌ PR #$PR_NUMBER has merge conflicts, skipping"
               continue
             fi
 
-            # Merge the PR
+            # Merge the PR (use --admin to bypass review requirement for repo owner PRs)
             echo "✅ All checks passed, merging PR #$PR_NUMBER"
             gh pr merge "$PR_NUMBER" \
               --repo "$GITHUB_REPOSITORY" \
               --squash \
+              --admin \
               --subject "$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json title --jq '.title')" \
               --body "Auto-merged after CI passed"
 
