@@ -99,7 +99,7 @@ func startEchoServer(t *testing.T) int {
 
 func newTestRegistry(t *testing.T) *service.ProxyRegistry {
 	t.Helper()
-	r := service.NewProxyRegistry("1024-65535", 0)
+	r := service.NewProxyRegistry(0)
 	t.Cleanup(func() { r.Stop() })
 	return r
 }
@@ -170,7 +170,7 @@ func TestSSHPortForward_AllowedButUnregisteredPortWorks(t *testing.T) {
 	// Registration is for the HTTP reverse-proxy (protocol metadata), not SSH tunnels.
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	// Deliberately do NOT register echoPort — it's in the allowed range (1024-65535)
+	// Deliberately do NOT register echoPort — it's in the allowed range (1-65535)
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -195,21 +195,6 @@ func TestSSHPortForward_AllowedButUnregisteredPortWorks(t *testing.T) {
 	}
 	if string(buf[:n]) != string(testMsg) {
 		t.Errorf("echo mismatch: got %q, want %q", string(buf[:n]), string(testMsg))
-	}
-}
-
-func TestSSHPortForward_DisallowedPortRejectedByTunnel(t *testing.T) {
-	// Create a registry that only allows specific ports
-	r := service.NewProxyRegistry("3000-4000", 0)
-	defer r.Stop()
-
-	srv := testServerHelper(t, "test-password", r)
-	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
-
-	// Port 9999 is outside the allowed range (3000-4000)
-	_, err := client.Dial("tcp", "127.0.0.1:9999")
-	if err == nil {
-		t.Error("expected port forwarding to be rejected for port outside allowed range")
 	}
 }
 
@@ -287,23 +272,6 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 	n2, _ := conn2.Read(buf2)
 	if string(buf2[:n2]) != string(testMsg2) {
 		t.Errorf("port2 echo mismatch: got %q", string(buf2[:n2]))
-	}
-}
-
-func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
-	// Create a registry that only allows specific ports
-	r := service.NewProxyRegistry("3000-4000", 0)
-	defer r.Stop()
-
-	// RegisterPort should reject a port outside the allowed range
-	err := r.RegisterPort(8080, "", "outside-range", "http")
-	if err == nil {
-		t.Error("expected RegisterPort to reject port 8080 (outside allowed range 3000-4000)")
-	}
-	for _, p := range r.ListPorts() {
-		if p.Port == 8080 {
-			t.Error("port 8080 should not be registered since it's outside allowed range")
-		}
 	}
 }
 

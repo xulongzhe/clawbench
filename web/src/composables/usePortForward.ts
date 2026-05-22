@@ -85,14 +85,23 @@ export function usePortForward() {
     }
   }
 
+  /** Register a single port with Android native layer */
+  function nativeAddPort(p: ForwardedPort) {
+    ;(window as any).AndroidNative?.addForwardedPort(p.localPort, p.host || '', p.port)
+  }
+
   async function registerPort(port: number, name?: string, protocol?: string, host?: string) {
     await apiPost('/api/proxy/ports', { port, host: host || '', name: name || '', protocol: protocol || 'http' })
-    // Register with Android native layer
-    if (isAppMode.value) {
-      ;(window as any).AndroidNative?.addForwardedPort(port, host || '')
-    }
     // Silent refresh: don't flicker the port list with loading state
     await Promise.all([loadPorts(true), loadSSHInfo()])
+    // After refresh, find the newly registered port and sync to native
+    // (localPort may differ from port if auto-allocated)
+    if (isAppMode.value) {
+      const registered = ports.value.find(p => p.port === port && (p.host || '') === (host || ''))
+      if (registered) {
+        nativeAddPort(registered)
+      }
+    }
   }
 
   async function updatePort(localPort: number, port: number, host: string, name: string, protocol: string) {
@@ -100,9 +109,16 @@ export function usePortForward() {
     // Re-sync native layer after update
     if (isAppMode.value) {
       ;(window as any).AndroidNative?.removeForwardedPort(localPort)
-      ;(window as any).AndroidNative?.addForwardedPort(port, host || '')
     }
     await Promise.all([loadPorts(true), loadSSHInfo()])
+    // After refresh, find the updated port and re-add to native
+    // (localPort may have changed if target port changed)
+    if (isAppMode.value) {
+      const updated = ports.value.find(p => p.port === port && (p.host || '') === (host || ''))
+      if (updated) {
+        nativeAddPort(updated)
+      }
+    }
   }
 
   async function unregisterPort(localPort: number) {
@@ -130,7 +146,7 @@ export function usePortForward() {
       return
     }
     for (const p of ports.value) {
-      ;(window as any).AndroidNative?.addForwardedPort(p.localPort, p.host || '')
+      nativeAddPort(p)
     }
   }
 
@@ -338,14 +354,21 @@ export function usePortForward() {
   }
 
   /** Open a forwarded port — in app mode opens sandbox browser, otherwise window.open */
-  function openPort(localPort: number, protocol?: string) {
+  function openPort(localPort: number, protocol?: string, host?: string) {
     if (isAppMode.value) {
       const native = (window as any).AndroidNative
+      const scheme = protocol === 'https' ? 'https' : 'http'
+      // Build targetHost ("host:targetPort") for Host header rewriting in BrowserActivity
+      let hostVal = host || ''
+      if (hostVal) {
+        const p = ports.value.find(p => p.localPort === localPort)
+        if (p) hostVal = hostVal + ':' + p.port
+      }
       // Prefer sandbox browser (isolated process), fall back to external browser
       if (native?.openInSandbox) {
-        native.openInSandbox(localPort, protocol === 'https' ? 'https' : 'http', '')
+        native.openInSandbox(localPort, scheme, hostVal)
       } else if (native?.openInBrowser) {
-        native.openInBrowser(localPort, protocol === 'https' ? 'https' : 'http', '')
+        native.openInBrowser(localPort, scheme)
       }
     } else {
       window.open(buildPortUrl(localPort, protocol), '_blank')
@@ -353,11 +376,12 @@ export function usePortForward() {
   }
 
   /** Open a forwarded port in external/system browser */
-  function openInExternalBrowser(localPort: number, protocol?: string) {
+  function openInExternalBrowser(localPort: number, protocol?: string, _host?: string) {
     if (isAppMode.value) {
       const native = (window as any).AndroidNative
+      const scheme = protocol === 'https' ? 'https' : 'http'
       if (native?.openInBrowser) {
-        native.openInBrowser(localPort, protocol === 'https' ? 'https' : 'http', '')
+        native.openInBrowser(localPort, scheme)
       }
     } else {
       window.open(buildPortUrl(localPort, protocol), '_blank')

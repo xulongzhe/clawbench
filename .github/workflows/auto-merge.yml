@@ -3,8 +3,6 @@ name: Auto Merge
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-  pull_request_review:
-    types: [submitted]
   check_suite:
     types: [completed]
 
@@ -35,16 +33,25 @@ jobs:
       - name: Check if CI passed
         if: steps.wait-for-checks.outputs.status != 'success'
         run: |
-          echo "❌ CI checks did not pass (status: ${{ steps.wait-for-checks.outputs.status }})"
+          echo "CI checks did not pass (status: ${{ steps.wait-for-checks.outputs.status }})"
           exit 1
+
+      - name: Approve PR
+        if: steps.wait-for-checks.outputs.status == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_PAT }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          echo "CI passed, approving PR #${PR_NUMBER}"
+          gh pr review "$PR_NUMBER" --approve --body "Auto-approved: CI passed, owner PR with auto-merge label"
 
       - name: Auto merge PR
         if: steps.wait-for-checks.outputs.status == 'success'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_PAT }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
-          echo "✅ All CI checks passed, merging PR #${PR_NUMBER}"
+          echo "Merging PR #${PR_NUMBER}"
           gh pr merge "$PR_NUMBER" \
             --squash \
             --subject "$(gh pr view "$PR_NUMBER" --json title -q .title)" \

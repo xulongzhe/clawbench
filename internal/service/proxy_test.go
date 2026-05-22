@@ -13,7 +13,7 @@ import (
 
 func newTestRegistry(t *testing.T) *ProxyRegistry {
 	t.Helper()
-	return NewProxyRegistry("1024-65535", 0)
+	return NewProxyRegistry(0)
 }
 
 // isPortRegistered is a test helper that checks if a port is in the registry via ListPorts.
@@ -120,48 +120,6 @@ func TestProxyRegistry_ListPorts_Empty(t *testing.T) {
 	ports := r.ListPorts()
 	assert.Empty(t, ports)
 }
-
-func TestProxyRegistry_IsPortAllowed(t *testing.T) {
-	r := newTestRegistry(t)
-	defer r.Stop()
-
-	assert.False(t, isPortRegistered(r, 8080))
-	_ = r.RegisterPort(8080, "", "", "")
-	assert.True(t, isPortRegistered(r, 8080))
-}
-
-func TestIsPortInRange(t *testing.T) {
-	tests := []struct {
-		name     string
-		port     int
-		rangeStr string
-		expected bool
-	}{
-		{"in range", 3000, "1024-65535", true},
-		{"below range", 80, "1024-65535", false},
-		{"above range", 70000, "1024-65535", false},
-		{"exact match", 8080, "3000,8080,9090", true},
-		{"not in list", 4000, "3000,8080,9090", false},
-		{"mixed range+single in range", 5000, "1024-5000,8080", true},
-		{"mixed range+single exact", 8080, "1024-5000,8080", true},
-		{"mixed range+single not match", 6000, "1024-5000,8080", false},
-		{"empty range allows all", 1234, "", true},
-		{"boundary low", 1024, "1024-65535", true},
-		{"boundary high", 65535, "1024-65535", true},
-		{"just below boundary", 1023, "1024-65535", false},
-		{"just above boundary", 65536, "1024-65535", false},
-		{"single port match", 3000, "3000", true},
-		{"single port no match", 3001, "3000", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isPortInRange(tt.port, tt.rangeStr)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
 
 func TestProxyRegistry_RegisterPort_Protocol(t *testing.T) {
 	r := newTestRegistry(t)
@@ -270,7 +228,7 @@ func TestProxyRegistry_PortPersistence_RegisterAndLoad(t *testing.T) {
 	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// Create registry and register ports — should persist to DB
-	r := NewProxyRegistry("1024-65535", 0)
+	r := NewProxyRegistry(0)
 	defer r.Stop()
 
 	err := r.RegisterPort(5173, "", "Vite Dev", "http")
@@ -304,7 +262,7 @@ func TestProxyRegistry_PortPersistence_UnregisterDeletesFromDB(t *testing.T) {
 	DBRead = DB
 	defer func() { DB = origDB; DBRead = origDBRead }()
 
-	r := NewProxyRegistry("1024-65535", 0)
+	r := NewProxyRegistry(0)
 	defer r.Stop()
 
 	r.RegisterPort(3000, "", "app", "http")
@@ -335,13 +293,13 @@ func TestProxyRegistry_PortPersistence_RestoreOnStartup(t *testing.T) {
 	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// First registry: register ports (persists to DB)
-	r1 := NewProxyRegistry("1024-65535", 0)
+	r1 := NewProxyRegistry(0)
 	r1.RegisterPort(5173, "", "Vite Dev", "http")
 	r1.RegisterPort(8080, "", "API", "https")
 	r1.Stop()
 
 	// Second registry: should load ports from DB
-	r2 := NewProxyRegistry("1024-65535", 0)
+	r2 := NewProxyRegistry(0)
 	defer r2.Stop()
 
 	ports := r2.ListPorts()
@@ -365,14 +323,14 @@ func TestProxyRegistry_PortPersistence_FullLifecycle(t *testing.T) {
 	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	// Phase 1: Create, register, verify
-	r1 := NewProxyRegistry("1024-65535", 0)
+	r1 := NewProxyRegistry(0)
 	r1.RegisterPort(3000, "", "frontend", "http")
 	r1.RegisterPort(4000, "", "backend", "http")
 	r1.RegisterPort(5432, "", "database", "http")
 	r1.Stop()
 
 	// Phase 2: Load, remove one, add another, verify
-	r2 := NewProxyRegistry("1024-65535", 0)
+	r2 := NewProxyRegistry(0)
 	assert.True(t, isPortRegistered(r2, 3000))
 	assert.True(t, isPortRegistered(r2, 4000))
 	assert.True(t, isPortRegistered(r2, 5432))
@@ -382,7 +340,7 @@ func TestProxyRegistry_PortPersistence_FullLifecycle(t *testing.T) {
 	r2.Stop()
 
 	// Phase 3: Load again, verify final state
-	r3 := NewProxyRegistry("1024-65535", 0)
+	r3 := NewProxyRegistry(0)
 	defer r3.Stop()
 
 	ports := r3.ListPorts()
@@ -402,26 +360,6 @@ func TestProxyRegistry_PortPersistence_FullLifecycle(t *testing.T) {
 	assert.NotContains(t, portMap, 4000) // was removed
 }
 
-func TestProxyRegistry_PortPersistence_SkipsOutOfAllowedRange(t *testing.T) {
-	origDB := DB
-	origDBRead := DBRead
-	DB = setupTestDB(t)
-	DBRead = DB
-	defer func() { DB = origDB; DBRead = origDBRead }()
-
-	// Insert a port directly into DB that is outside the new allowed range
-	_, err := DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (80, 80, '', 'system', 'http')")
-	assert.NoError(t, err)
-
-	// Create registry with restricted range — port 80 should be skipped
-	r := NewProxyRegistry("1024-65535", 0)
-	defer r.Stop()
-
-	assert.False(t, isPortRegistered(r, 80))
-	ports := r.ListPorts()
-	assert.Empty(t, ports)
-}
-
 func TestProxyRegistry_PortPersistence_NoDB(t *testing.T) {
 	// When DB is nil, persistence methods should be no-ops (not panic)
 	origDB := DB
@@ -430,7 +368,7 @@ func TestProxyRegistry_PortPersistence_NoDB(t *testing.T) {
 	DBRead = nil
 	defer func() { DB = origDB; DBRead = origDBRead }()
 
-	r := NewProxyRegistry("1024-65535", 0)
+	r := NewProxyRegistry(0)
 	defer r.Stop()
 
 	// Register should work (in-memory only)
@@ -447,7 +385,7 @@ func TestProxyRegistry_PortPersistence_NoDB(t *testing.T) {
 // ---------- Stop ----------
 
 func TestProxyRegistry_Stop_CancelsContext(t *testing.T) {
-	r := NewProxyRegistry("1024-65535", 0)
+	r := NewProxyRegistry(0)
 
 	// Stop should not panic
 	r.Stop()
@@ -458,7 +396,7 @@ func TestProxyRegistry_Stop_CancelsContext(t *testing.T) {
 
 func TestProxyRegistry_Stop_DoubleStop(t *testing.T) {
 	// Calling Stop twice should be safe
-	r := NewProxyRegistry("1024-65535", 0)
+	r := NewProxyRegistry(0)
 	r.Stop()
 	r.Stop() // should not panic
 }

@@ -356,9 +356,8 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 	// SSH tunnels operate at the transport layer and don't need URL-rewriting
 	// metadata, so IsPortRegistered (which tracks protocol info for the HTTP
 	// reverse-proxy) is irrelevant here.
-	if s.portReg == nil || !s.portReg.IsPortAllowed(targetPort) {
-		slog.Debug("ssh: port not allowed", slog.Int("port", targetPort))
-		newChannel.Reject(gossh.Prohibited, fmt.Sprintf("port %d is not allowed", targetPort))
+	if s.portReg == nil {
+		newChannel.Reject(gossh.Prohibited, "port forwarding not enabled")
 		return
 	}
 

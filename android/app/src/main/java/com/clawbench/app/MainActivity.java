@@ -153,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
                 cameraImageUri = null;
             });
 
-    // Map of ports currently being forwarded: port -> host (thread-safe for access from WebView background threads)
+    // Map of ports currently being forwarded: localPort -> "host:targetPort" (thread-safe for access from WebView background threads)
     final Map<Integer, String> forwardedPorts = new java.util.concurrent.ConcurrentHashMap<>();
 
     // Volume key interception mode: when true, volume up/down are forwarded to WebView
@@ -1070,10 +1070,11 @@ public class MainActivity extends AppCompatActivity {
          * Also requests battery optimization exemption on first port forward.
          */
         @JavascriptInterface
-        public void addForwardedPort(int port, String host) {
+        public void addForwardedPort(int localPort, String host, int targetPort) {
             activity.runOnUiThread(() -> {
-                activity.forwardedPorts.put(port, host != null ? host : "");
-                BackgroundService.addForwardedPort(activity, port, host != null ? host : "");
+                String hostVal = host != null ? host : "";
+                activity.forwardedPorts.put(localPort, hostVal + ":" + targetPort);
+                BackgroundService.addForwardedPort(activity, localPort, hostVal, targetPort);
 
                 // Request battery optimization exemption if not already granted.
                 // Re-check every time in case the user previously dismissed the dialog.
@@ -1143,8 +1144,17 @@ public class MainActivity extends AppCompatActivity {
                 JSONArray arr = new JSONArray();
                 for (Map.Entry<Integer, String> entry : activity.forwardedPorts.entrySet()) {
                     org.json.JSONObject obj = new org.json.JSONObject();
-                    obj.put("port", entry.getKey());
-                    obj.put("host", entry.getValue());
+                    obj.put("localPort", entry.getKey());
+                    // Parse "host:targetPort" format
+                    String val = entry.getValue();
+                    int colonIdx = val.lastIndexOf(':');
+                    if (colonIdx > 0) {
+                        obj.put("host", val.substring(0, colonIdx));
+                        obj.put("port", Integer.parseInt(val.substring(colonIdx + 1)));
+                    } else {
+                        obj.put("host", "");
+                        obj.put("port", entry.getKey());
+                    }
                     arr.put(obj);
                 }
                 return arr.toString();
@@ -1213,8 +1223,8 @@ public class MainActivity extends AppCompatActivity {
         public void openInBrowser(int port, String protocol, String host) {
             activity.runOnUiThread(() -> {
                 String scheme = "https".equalsIgnoreCase(protocol) ? "https" : "http";
-                String targetHost = (host != null && !host.isEmpty()) ? host : "localhost";
-                String url = scheme + "://" + targetHost + ":" + port;
+                // port is the localPort — forwarded port is always on localhost
+                String url = scheme + "://localhost:" + port;
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 activity.startActivity(intent);
@@ -1231,9 +1241,9 @@ public class MainActivity extends AppCompatActivity {
             activity.runOnUiThread(() -> {
                 String scheme = "https".equalsIgnoreCase(protocol) ? "https" : "http";
                 Intent intent = new Intent(activity, BrowserActivity.class);
-                intent.putExtra("port", port);
+                intent.putExtra("port", port);  // localPort — forwarded port is always on localhost
                 intent.putExtra("protocol", scheme);
-                intent.putExtra("host", host != null ? host : "");
+                intent.putExtra("host", host != null ? host : "");  // target host for Host header rewrite
                 activity.startActivity(intent);
             });
         }

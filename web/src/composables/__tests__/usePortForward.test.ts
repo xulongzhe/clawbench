@@ -245,7 +245,7 @@ describe('usePortForward', () => {
 
             openPort(3000, 'https')
 
-            expect(mockOpenInBrowser).toHaveBeenCalledWith(3000, 'https', '')
+            expect(mockOpenInBrowser).toHaveBeenCalledWith(3000, 'https')
 
             delete (window as any).AndroidNative
         })

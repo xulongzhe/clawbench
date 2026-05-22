@@ -36,10 +36,21 @@ rag:
     search_pool_size: 0
 session:
     max_count: 20
+summarize:
+    api:
+        base_url: https://api.openai.com/v1
+        format: openai
+        key: sk-1234567890abcdef
+    backend: api
+    model: codebuddy-latest
+    tasks_backend: api
+    tasks_model: codebuddy-latest
+    tts_backend: api
+    tts_model: gpt-4o-mini
 tasks:
     api:
         base_url: https://api.openai.com/v1
-    summarize_backend: api
+    summarize_backend: codebuddy
     summarize_model: codebuddy-latest
 terminal:
     buffer_lines: 0

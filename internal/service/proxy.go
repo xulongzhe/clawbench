@@ -25,7 +25,6 @@ import (
 type ProxyRegistry struct {
 	mu       sync.RWMutex
 	ports    map[int]*model.ForwardedPort // key = localPort (auto-assigned, unique)
-	cfg      model.ProxyConfig
 	selfPort int // ClawBench's own port, excluded from detection
 	cancel   context.CancelFunc
 }
@@ -60,11 +59,10 @@ var ProxyService *ProxyRegistry
 // NewProxyRegistry creates a new port registry and starts background health checks.
 // It also restores any previously persisted ports from the database.
 // The caller (main.go) decides whether to create this based on port_forward.enabled.
-func NewProxyRegistry(allowedPorts string, selfPort int) *ProxyRegistry {
+func NewProxyRegistry(selfPort int) *ProxyRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &ProxyRegistry{
 		ports:    make(map[int]*model.ForwardedPort),
-		cfg:      model.ProxyConfig{AllowedPorts: allowedPorts},
 		selfPort: selfPort,
 		cancel:   cancel,
 	}
@@ -73,7 +71,6 @@ func NewProxyRegistry(allowedPorts string, selfPort int) *ProxyRegistry {
 	r.loadPortsFromDB()
 
 	slog.Info("proxy service initialized",
-		slog.String("allowed_ports", r.cfg.AllowedPorts),
 		slog.Int("self_port", selfPort),
 		slog.Int("restored_ports", len(r.ports)),
 	)
@@ -98,9 +95,6 @@ func (r *ProxyRegistry) Stop() {
 func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protocol string) error {
 	if port <= 0 || port > 65535 {
 		return fmt.Errorf("invalid port number: %d", port)
-	}
-	if !r.IsPortAllowed(port) {
-		return fmt.Errorf("port %d is not in the allowed range", port)
 	}
 	if protocol != "https" {
 		protocol = "http"
@@ -148,9 +142,6 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 func (r *ProxyRegistry) UpdatePort(localPort int, port int, host string, name string, protocol string) error {
 	if port <= 0 || port > 65535 {
 		return fmt.Errorf("invalid port number: %d", port)
-	}
-	if !r.IsPortAllowed(port) {
-		return fmt.Errorf("port %d is not in the allowed range", port)
 	}
 	if protocol != "https" {
 		protocol = "http"
@@ -247,11 +238,6 @@ func (r *ProxyRegistry) ListPorts() []model.ForwardedPort {
 	})
 
 	return result
-}
-
-// IsPortAllowed checks whether a port falls within the configured allowed range.
-func (r *ProxyRegistry) IsPortAllowed(port int) bool {
-	return isPortInRange(port, r.cfg.AllowedPorts)
 }
 
 // DetectedPort represents an auto-detected listening port with its protocol and process.
@@ -713,43 +699,6 @@ func resolveWindowsPIDs(portPID map[int]int) map[int]string {
 	return pidProcess
 }
 
-// isPortInRange checks if a port number falls within the allowed range string.
-// Supported formats: "1024-65535", "3000,5173,8080", "1024-5000,8080"
-func isPortInRange(port int, rangeStr string) bool {
-	if rangeStr == "" {
-		return true // empty = allow all
-	}
-
-	parts := strings.Split(rangeStr, ",")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if strings.Contains(part, "-") {
-			rangeParts := strings.SplitN(part, "-", 2)
-			if len(rangeParts) != 2 {
-				continue
-			}
-			low, err1 := strconv.Atoi(strings.TrimSpace(rangeParts[0]))
-			high, err2 := strconv.Atoi(strings.TrimSpace(rangeParts[1]))
-			if err1 != nil || err2 != nil {
-				continue
-			}
-			if port >= low && port <= high {
-				return true
-			}
-		} else {
-			p, err := strconv.Atoi(part)
-			if err != nil {
-				continue
-			}
-			if port == p {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
 // loadPortsFromDB restores previously persisted forwarded ports from the database.
 // Called once during ProxyRegistry initialization.
 func (r *ProxyRegistry) loadPortsFromDB() {
@@ -768,10 +717,6 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 		var localPort, port int
 		var host, name, protocol string
 		if err := rows.Scan(&localPort, &port, &host, &name, &protocol); err != nil {
-			continue
-		}
-		if !r.IsPortAllowed(port) {
-			slog.Warn("skipping persisted port outside allowed range", slog.Int("port", port))
 			continue
 		}
 		if protocol != "https" {

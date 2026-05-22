@@ -29,7 +29,7 @@ import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAgents } from '@/composables/useAgents'
 import { useToast } from '@/composables/useToast'
 import { useAppMode } from '@/composables/useAppMode'
-import { categoryItems, type ItemSpec } from './settingsFieldMap'
+import { categoryItems, type ItemSpec, type DependsOn } from './settingsFieldMap'
 
 const props = defineProps<{
   categoryId: string
@@ -60,6 +60,12 @@ function resolveConfigValue(key: string): any {
 
 function isDependsOnMet(dependsOn: ItemSpec['dependsOn']): boolean {
   if (!dependsOn) return true
+  // Array = OR logic (any condition met)
+  if (Array.isArray(dependsOn)) return dependsOn.some(d => isSingleDependsOnMet(d))
+  return isSingleDependsOnMet(dependsOn)
+}
+
+function isSingleDependsOnMet(dependsOn: DependsOn): boolean {
   const currentValue = resolveConfigValue(dependsOn.key)
   if ('value' in dependsOn) return currentValue === dependsOn.value
   return dependsOn.values!.includes(currentValue)

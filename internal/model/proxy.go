@@ -12,10 +12,6 @@ type ForwardedPort struct {
 }
 
 // ProxyConfig holds the proxy section from config/config.yaml.
-// Note: Enabled field was removed — ProxyRegistry is now automatically enabled
-// when port_forward (SSH tunnel) is enabled. AllowedPorts has moved to
-// PortForwardConfig, but ProxyConfig.AllowedPorts is kept for backward-compatible
-// YAML reading (proxy.allowed_ports → port_forward.allowed_ports migration).
+// Kept for backward-compatible YAML reading only — all fields have been migrated.
 type ProxyConfig struct {
-	AllowedPorts string `yaml:"allowed_ports"` // Port ranges, e.g. "1024-65535" or "3000,5173,8080" (default: "1024-65535")
 }

@@ -95,12 +95,12 @@ describe('useSettingsConfig', () => {
   })
 
   it('getServerValueWithDefault returns server value when present', async () => {
-    mockedApiGet.mockResolvedValue({ port_forward: { allowed_ports: '3000-4000' } })
+    mockedApiGet.mockResolvedValue({ port_forward: { port: 20001 } })
 
     const { loadConfig, getServerValueWithDefault } = useSettingsConfig()
     await loadConfig()
 
-    expect(getServerValueWithDefault('port_forward.allowed_ports')).toBe('3000-4000')
+    expect(getServerValueWithDefault('port_forward.port')).toBe(20001)
   })
 
   it('getServerValueWithDefault falls back to serverDefaults when not present', async () => {
@@ -109,7 +109,7 @@ describe('useSettingsConfig', () => {
     const { loadConfig, getServerValueWithDefault } = useSettingsConfig()
     await loadConfig()
 
-    expect(getServerValueWithDefault('port_forward.allowed_ports')).toBe('1024-65535')
+    expect(getServerValueWithDefault('chat.page_size')).toBe(20)
   })
 
   it('localConfig has default keys', () => {
