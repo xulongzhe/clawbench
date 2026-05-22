@@ -123,7 +123,12 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.mossNanoBackendOnnx', value: 'onnx' },
       { labelKey: 'settings.items.mossNanoBackendPytorch', value: 'pytorch' },
     ]},
-    // Summarization
+    // Cache
+    { labelKey: 'settings.items.ttsMaxCacheFiles', descriptionKey: 'settings.items.ttsMaxCacheFilesDesc', key: 'tts.max_cache_files', type: 'number', source: 'server',
+      sectionHeader: 'settings.items.ttsCacheHeader' },
+  ],
+  summarization: [
+    // TTS Summarization
     { labelKey: 'settings.items.ttsSummarizeBackend', descriptionKey: 'settings.items.ttsSummarizeBackendDesc', key: 'tts.summarize_backend', type: 'select', source: 'server',
       sectionHeader: 'settings.items.ttsSummarizeHeader', options: [
       { labelKey: 'settings.items.ttsSummarizeSimple', value: 'simple' },
@@ -139,26 +144,9 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
     ]},
     { labelKey: 'settings.items.ttsSummarizeModel', descriptionKey: 'settings.items.ttsSummarizeModelDesc', key: 'tts.summarize_model', type: 'text', source: 'server' },
-    // API sub-config (when summarize_backend=api)
-    { labelKey: 'settings.items.apiBaseUrl', descriptionKey: 'settings.items.apiBaseUrlDesc', key: 'tts.api.base_url', type: 'text', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' }, sectionHeader: 'settings.items.ttsApiHeader' },
-    { labelKey: 'settings.items.apiKey', descriptionKey: 'settings.items.apiKeyDesc', key: 'tts.api.key', type: 'password', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
-    { labelKey: 'settings.items.apiFormat', descriptionKey: 'settings.items.apiFormatDesc', key: 'tts.api.format', type: 'select', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' }, options: [
-      { labelKey: 'settings.items.apiFormatOpenai', value: 'openai' },
-      { labelKey: 'settings.items.apiFormatAnthropic', value: 'anthropic' },
-    ]},
-    { labelKey: 'settings.items.apiModel', descriptionKey: 'settings.items.apiModelDesc', key: 'tts.api.model', type: 'text', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
-    // Cache
-    { labelKey: 'settings.items.ttsMaxCacheFiles', descriptionKey: 'settings.items.ttsMaxCacheFilesDesc', key: 'tts.max_cache_files', type: 'number', source: 'server',
-      sectionHeader: 'settings.items.ttsCacheHeader' },
-  ],
-  tasks: [
-    // Task summarization
+    // Tasks Summarization
     { labelKey: 'settings.items.tasksSummarizeBackend', descriptionKey: 'settings.items.tasksSummarizeBackendDesc', key: 'tasks.summarize_backend', type: 'select', source: 'server',
-      options: [
+      sectionHeader: 'settings.items.tasksHeader', options: [
       { labelKey: 'settings.items.tasksSummarizeDisabled', value: '' },
       { labelKey: 'settings.items.ttsSummarizeSimple', value: 'simple' },
       { labelKey: 'settings.items.ttsSummarizeApi', value: 'api' },
@@ -173,16 +161,18 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
     ]},
     { labelKey: 'settings.items.tasksSummarizeModel', descriptionKey: 'settings.items.tasksSummarizeModelDesc', key: 'tasks.summarize_model', type: 'text', source: 'server' },
-    // Tasks API sub-config (when summarize_backend=api)
-    { labelKey: 'settings.items.tasksApiBaseUrl', descriptionKey: 'settings.items.tasksApiBaseUrlDesc', key: 'tasks.api.base_url', type: 'text', source: 'server',
-      dependsOn: { key: 'tasks.summarize_backend', value: 'api' }, sectionHeader: 'settings.items.tasksApiHeader' },
-    { labelKey: 'settings.items.tasksApiKey', descriptionKey: 'settings.items.tasksApiKeyDesc', key: 'tasks.api.key', type: 'password', source: 'server',
-      dependsOn: { key: 'tasks.summarize_backend', value: 'api' } },
-    { labelKey: 'settings.items.tasksApiFormat', descriptionKey: 'settings.items.tasksApiFormatDesc', key: 'tasks.api.format', type: 'select', source: 'server',
-      dependsOn: { key: 'tasks.summarize_backend', value: 'api' }, options: [
+    // Shared API sub-config (shown when either TTS or Tasks uses "api" backend)
+    { labelKey: 'settings.items.apiBaseUrl', descriptionKey: 'settings.items.apiBaseUrlDesc', key: 'tts.api.base_url', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' }, sectionHeader: 'settings.items.ttsApiHeader' },
+    { labelKey: 'settings.items.apiKey', descriptionKey: 'settings.items.apiKeyDesc', key: 'tts.api.key', type: 'password', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
+    { labelKey: 'settings.items.apiFormat', descriptionKey: 'settings.items.apiFormatDesc', key: 'tts.api.format', type: 'select', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' }, options: [
       { labelKey: 'settings.items.apiFormatOpenai', value: 'openai' },
       { labelKey: 'settings.items.apiFormatAnthropic', value: 'anthropic' },
     ]},
+    { labelKey: 'settings.items.apiModel', descriptionKey: 'settings.items.apiModelDesc', key: 'tts.api.model', type: 'text', source: 'server',
+      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
   ],
   rag: [
     { labelKey: 'settings.items.ragOllamaUrl', descriptionKey: 'settings.items.ragOllamaUrlDesc', key: 'rag.ollama_base_url', type: 'text', source: 'server' },

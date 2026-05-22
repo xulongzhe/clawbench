@@ -289,14 +289,11 @@ port_forward:
 # Scheduled task summarization configuration / 定时任务摘要配置
 # When a scheduled task finishes execution, its output can be summarized for display.
 # By default, task summarization is disabled (summarize_backend left empty).
+# When using "api" backend, the shared tts.api.* config is used.
 # 定时任务执行完成后，可对其输出进行摘要以便展示。默认禁用。
+# 使用 "api" 后端时，共享 tts.api.* 配置。
 # tasks:
 #   summarize_backend: "simple"   # Summarization backend (empty = disabled) / 摘要后端（留空 = 禁用）
 #                                  # Same options as TTS: simple, api, claude, codebuddy, gemini, opencode, codex, qoder, vecli, deepseek, pi
 #                                  # 与 TTS 相同选项：simple, api, claude, codebuddy, gemini, opencode, codex, qoder, vecli, deepseek, pi
 #   summarize_model: ""           # Model for summarization (leave empty for backend default) / 摘要模型（留空则使用后端默认）
-#   # API sub-config (only used when summarize_backend: "api") / API 子配置（仅在 summarize_backend: "api" 时使用）
-#   # api:
-#   #   base_url: "https://api.openai.com/v1/chat/completions"  # Full endpoint URL / 完整端点URL
-#   #   key: "sk-xxx"                                         # API key / API密钥
-#   #   format: "openai"                                      # "openai" (default) or "anthropic" / "openai"（默认）或 "anthropic"

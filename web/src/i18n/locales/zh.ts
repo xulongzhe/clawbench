@@ -755,7 +755,7 @@ export default {
       files: '文件',
       terminal: '终端',
       tts: 'TTS语音',
-      tasks: '定时任务',
+      summarization: '总结',
       rag: 'RAG记忆',
       network: '网络',
       android: 'Android',
