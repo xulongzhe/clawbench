@@ -680,13 +680,14 @@ func TestManager_BroadcastEvent_JPushAlert_WithoutTitleOrPreview(t *testing.T) {
 }
 
 func TestManager_BroadcastEvent_JPushAlert_TaskUpdate(t *testing.T) {
-	var receivedAlert string
+	var receivedTitle, receivedAlert string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var payload map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
 			if n, ok := payload["notification"].(map[string]any); ok {
 				if a, ok := n["android"].(map[string]any); ok {
 					receivedAlert, _ = a["alert"].(string)
+					receivedTitle, _ = a["title"].(string)
 				}
 			}
 		}
@@ -713,14 +714,19 @@ func TestManager_BroadcastEvent_JPushAlert_TaskUpdate(t *testing.T) {
 		ID:    "evt_1",
 		Event: "task_update",
 		Data: &TaskUpdateData{
-			TaskID: "t1",
-			Status: "completed",
+			TaskID:         "t1",
+			Status:         "completed",
+			SessionTitle:   "自动修复Bug",
+			ResponsePreview: "已修复空指针异常，添加了nil检查",
 		},
 	}
 	mgr.BroadcastEvent(msg)
 
-	if receivedAlert != "计划任务已完成" {
-		t.Errorf("expected task alert, got %q", receivedAlert)
+	if receivedTitle != "Done:自动修复Bug" {
+		t.Errorf("expected title with task name, got %q", receivedTitle)
+	}
+	if receivedAlert != "已修复空指针异常，添加了nil检查" {
+		t.Errorf("expected response preview alert, got %q", receivedAlert)
 	}
 }
 

@@ -304,15 +304,24 @@ func (m *Manager) broadcastToSubscription(key string, msg ServerMessage, deliver
 		if msg.Event == "task_update" {
 			alert = "计划任务已完成"
 		}
-		// For session events: put session title in the notification title (more visible),
-		// and use response preview as the alert body (the actual AI answer content).
-		if d, ok := msg.Data.(*SessionUpdateData); ok {
-			if d.SessionTitle != "" {
-				title = "Done:" + d.SessionTitle
-			}
-			if d.ResponsePreview != "" {
-				alert = truncateForPush(d.ResponsePreview)
-			}
+		// Extract session title and response preview from event data for both
+		// session_update and task_update events, then format the notification:
+		//   title = "Done:" + session title
+		//   alert = response preview (the actual AI answer content)
+		var sessionTitle, responsePreview string
+		switch d := msg.Data.(type) {
+		case *SessionUpdateData:
+			sessionTitle = d.SessionTitle
+			responsePreview = d.ResponsePreview
+		case *TaskUpdateData:
+			sessionTitle = d.SessionTitle
+			responsePreview = d.ResponsePreview
+		}
+		if sessionTitle != "" {
+			title = "Done:" + sessionTitle
+		}
+		if responsePreview != "" {
+			alert = truncateForPush(responsePreview)
 		}
 		slog.Debug("ws: sending jpush notification", "event", msg.Event, "client_id", key, "reg_id", pushRegID, "title", title, "extras", extras)
 		if err := m.jpush.SendNotification(pushRegID, title, alert, extras); err != nil {

@@ -423,22 +423,32 @@ func UpdateTaskStats(task *model.ScheduledTask, newStatus string) {
 }
 
 // emitTaskEvent broadcasts a task_update event to connected clients.
-func emitTaskEvent(taskID, status, executionID, sessionID, projectPath string) {
+func emitTaskEvent(taskID, status, executionID, sessionID, projectPath, taskName string) {
 	mgr := ws.GetManager()
 	if mgr == nil {
 		return
+	}
+	data := &ws.TaskUpdateData{
+		TaskID:      taskID,
+		Status:      status,
+		ExecutionID: executionID,
+		SessionID:   sessionID,
+		ProjectPath: projectPath,
+	}
+	// For completed tasks, include session title (task name) and response preview
+	if status == "completed" || status == "cancelled" {
+		if taskName != "" {
+			data.SessionTitle = taskName
+		}
+		if status == "completed" && sessionID != "" {
+			data.ResponsePreview = getSessionResponsePreview(sessionID)
+		}
 	}
 	mgr.BroadcastEvent(ws.ServerMessage{
 		Type:  "event",
 		ID:    ws.GenerateEventID(),
 		Event: "task_update",
-		Data: &ws.TaskUpdateData{
-			TaskID:      taskID,
-			Status:      status,
-			ExecutionID: executionID,
-			SessionID:   sessionID,
-			ProjectPath: projectPath,
-		},
+		Data:  data,
 	})
 }
 
@@ -483,7 +493,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		slog.Error("failed to record task execution", slog.String("err", err.Error()))
 	}
 
-	emitTaskEvent(fmt.Sprintf("%d", task.ID), "running", fmt.Sprintf("%d", executionID), sessionID, projectPath)
+	emitTaskEvent(fmt.Sprintf("%d", task.ID), "running", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
 
 	// Write user message (the prompt)
 	if _, err := AddChatMessage(projectPath, backendName, sessionID, "user", task.Prompt, nil, false, task.Name); err != nil {
@@ -561,7 +571,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to create backend for task", slog.String("err", err.Error()))
 		UpdateExecutionStatus(sessionID, "failed")
-		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath)
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
 		return
 	}
 
@@ -569,7 +579,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	if err != nil {
 		slog.Error("failed to execute stream for task", slog.String("err", err.Error()))
 		UpdateExecutionStatus(sessionID, "failed")
-		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath)
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
 		return
 	}
 
@@ -599,7 +609,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			slog.String("session_id", sessionID),
 		)
 		UpdateExecutionStatus(sessionID, "cancelled")
-		emitTaskEvent(fmt.Sprintf("%d", task.ID), "cancelled", fmt.Sprintf("%d", executionID), sessionID, projectPath)
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "cancelled", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
 		newStatus := task.Status
 		UpdateTaskStats(task, newStatus)
 		return
@@ -614,7 +624,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 			slog.String("session_id", sessionID),
 		)
 		UpdateExecutionStatus(sessionID, "failed")
-		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath)
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
 		newStatus := task.Status
 		UpdateTaskStats(task, newStatus)
 		return
@@ -639,7 +649,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 
 	// Mark execution as completed
 	UpdateExecutionStatus(sessionID, "completed")
-	emitTaskEvent(fmt.Sprintf("%d", task.ID), "completed", fmt.Sprintf("%d", executionID), sessionID, projectPath)
+	emitTaskEvent(fmt.Sprintf("%d", task.ID), "completed", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
 
 	// Update task execution stats
 	newStatus := task.Status

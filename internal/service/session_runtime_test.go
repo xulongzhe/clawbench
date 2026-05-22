@@ -1059,6 +1059,13 @@ func TestSetSessionRunning_SkipEventTrue(t *testing.T) {
 // --- emitTaskEvent tests ---
 
 func TestEmitTaskEvent_WithSessionIDAndProjectPath(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	db := setupChatTestDB(t)
+	DB = db
+	DBRead = db // Same instance for :memory: SQLite — data is shared
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
 	mgr := ws.NewManagerForTest(nil)
 	ws.SetManagerForTest(mgr)
 	defer ws.SetManagerForTest(nil)
@@ -1067,7 +1074,7 @@ func TestEmitTaskEvent_WithSessionIDAndProjectPath(t *testing.T) {
 	sub := mgr.Subscribe(nil, &writeMu, "test-client-task-emit")
 	_ = sub
 
-	emitTaskEvent("42", "completed", "100", "session-task-1", "/home/user/project")
+	emitTaskEvent("42", "completed", "100", "session-task-1", "/home/user/project", "test task")
 
 	buffered := sub.GetBufferedEvents()
 	if len(buffered) == 0 {
@@ -1082,6 +1089,7 @@ func TestEmitTaskEvent_WithSessionIDAndProjectPath(t *testing.T) {
 	assert.Equal(t, "100", data.ExecutionID)
 	assert.Equal(t, "session-task-1", data.SessionID)
 	assert.Equal(t, "/home/user/project", data.ProjectPath)
+	assert.Equal(t, "test task", data.SessionTitle)
 }
 
 func TestEmitTaskEvent_EmptyOptionalFields(t *testing.T) {
@@ -1093,7 +1101,7 @@ func TestEmitTaskEvent_EmptyOptionalFields(t *testing.T) {
 	sub := mgr.Subscribe(nil, &writeMu, "test-client-task-emit2")
 	_ = sub
 
-	emitTaskEvent("43", "failed", "101", "", "")
+	emitTaskEvent("43", "failed", "101", "", "", "")
 
 	buffered := sub.GetBufferedEvents()
 	if len(buffered) == 0 {
@@ -1114,7 +1122,7 @@ func TestEmitTaskEvent_NilManager(t *testing.T) {
 
 	// Should not panic when ws manager is nil
 	assert.NotPanics(t, func() {
-		emitTaskEvent("44", "running", "102", "session-nil", "/project")
+		emitTaskEvent("44", "running", "102", "session-nil", "/project", "")
 	})
 }
 
