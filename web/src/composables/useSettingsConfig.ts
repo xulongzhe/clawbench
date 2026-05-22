@@ -225,7 +225,6 @@ const serverDefaults: Record<string, any> = {
   'default_agent': '',
   'tts.engine': 'edge',
   'tts.format': '',
-  'tts.summarize_backend': 'simple',
   'tts.speed': 1.0,
   'tts.max_cache_files': 100,
   'rag.ollama_base_url': 'http://localhost:11434',
@@ -234,7 +233,6 @@ const serverDefaults: Record<string, any> = {
   'rag.search_limit': 5,
   'rag.search_pool_size': 20,
   'rag.retention_days': 90,
-  'port_forward.allowed_ports': '1024-65535',
   'push.jpush.enabled': false,
   'tts.piper.noise_scale': 0.667,
   'tts.piper.length_scale': 1.0,
@@ -242,9 +240,9 @@ const serverDefaults: Record<string, any> = {
   'tts.kokoro.lang': 'cmn',
   'tts.moss_nano.voice': 'Junhao',
   'tts.moss_nano.backend': 'onnx',
-  'tts.api.format': 'openai',
-  'tasks.summarize_backend': '',
-  'tasks.summarize_model': '',
+  'summarize.backend': 'simple',
+  'summarize.model': '',
+  'summarize.api.format': 'openai',
 }
 
 // ── Agent preference helpers ──────────────────────────────

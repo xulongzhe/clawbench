@@ -32,8 +32,6 @@ type Config struct {
 	} `yaml:"session"`
 	TTS struct {
 		Engine            string         `yaml:"engine"`             // TTS engine: "edge" (default), "piper", "kokoro", "moss-nano"
-		SummarizeBackend  string         `yaml:"summarize_backend"`  // Summarization backend: "simple" (default), "api", "claude", "codebuddy", "gemini", "opencode", "codex", "qoder", "vecli", "deepseek", "pi"
-		SummarizeModel    string         `yaml:"summarize_model"`    // Model for summarization (empty = backend default)
 		TTSModel          string         `yaml:"tts_model"`          // TTS model for speech synthesis (default: "Speech-2.8-Turbo")
 		Voice             string         `yaml:"voice"`              // Voice ID for TTS (default: "female-chengshu")
 		Speed             float64        `yaml:"speed"`              // Speech speed multiplier (default: 1.0)
@@ -44,13 +42,12 @@ type Config struct {
 		Piper             PiperConfig    `yaml:"piper"`              // Piper-specific configuration (only used when engine: "piper")
 		Kokoro            KokoroConfig   `yaml:"kokoro"`             // Kokoro-specific configuration (only used when engine: "kokoro")
 		MossNano          MossNanoConfig `yaml:"moss_nano"`          // MOSS-TTS-Nano-specific configuration (only used when engine: "moss-nano")
-		API               APIConfig      `yaml:"api"`               // API-based summarization (only used when summarize_backend: "api")
 	} `yaml:"tts"`
-	Proxy       ProxyConfig       `yaml:"proxy"`          // Legacy: only allowed_ports for backward compat; see PortForward
+	Summarize  SummarizeConfig  `yaml:"summarize"`  // Shared summarization configuration (TTS + Tasks)
+	Proxy       ProxyConfig       `yaml:"proxy"`          // Legacy: kept for backward-compatible YAML reading
 	PortForward PortForwardConfig `yaml:"port_forward"`   // SSH tunnel server + port forwarding configuration
 	RAG      RAGConfig      `yaml:"rag"`       // RAG history memory configuration
 	Terminal TerminalConfig `yaml:"terminal"`  // Interactive web terminal configuration
-	Tasks    TasksConfig    `yaml:"tasks"`     // Scheduled task configuration
 	Push     PushConfig     `yaml:"push"`      // Push notification configuration
 }
 
@@ -64,10 +61,11 @@ type TerminalConfig struct {
 	MaxSessions  int    `yaml:"max_sessions"`     // Max concurrent terminal sessions (default: 10)
 }
 
-// TasksConfig holds configuration for scheduled task execution.
-type TasksConfig struct {
-	SummarizeBackend string `yaml:"summarize_backend"` // Summarization backend for task executions (empty = disabled)
-	SummarizeModel   string `yaml:"summarize_model"`   // Model for task summarization (empty = backend default)
+// SummarizeConfig holds unified summarization configuration shared by TTS and scheduled tasks.
+type SummarizeConfig struct {
+	Backend string    `yaml:"backend"`  // Summarization backend: "simple" (default), "api", "claude", "codebuddy", etc.
+	Model   string    `yaml:"model"`    // Model for summarization (empty = backend default)
+	API     APIConfig `yaml:"api"`      // API-based summarization (used when backend is "api")
 }
 
 // PushConfig holds configuration for push notifications.

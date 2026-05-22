@@ -66,7 +66,7 @@ type configResponse struct {
 	RAG           configRAG      `json:"rag"`
 	PortForward    configPortForward `json:"port_forward"`
 	Push          configPush     `json:"push"`
-	Tasks         configTasks    `json:"tasks"`
+	Summarize      configSummarize `json:"summarize"`
 }
 
 type configChat struct {
@@ -93,18 +93,15 @@ type configTerminal struct {
 }
 
 type configTTS struct {
-	Engine           string          `json:"engine"`
-	TTSModel         string          `json:"tts_model"`
-	Format           string          `json:"format"`
-	SummarizeBackend string          `json:"summarize_backend"`
-	SummarizeModel   string          `json:"summarize_model"`
-	Speed            float64         `json:"speed"`
-	Voice            string          `json:"voice"`
-	MaxCacheFiles    int             `json:"max_cache_files"`
-	Piper            *configPiper    `json:"piper,omitempty"`
-	Kokoro           *configKokoro   `json:"kokoro,omitempty"`
-	MossNano         *configMossNano `json:"moss_nano,omitempty"`
-	API              *configAPI     `json:"api,omitempty"`
+	Engine        string          `json:"engine"`
+	TTSModel      string          `json:"tts_model"`
+	Format        string          `json:"format"`
+	Speed         float64         `json:"speed"`
+	Voice         string          `json:"voice"`
+	MaxCacheFiles int             `json:"max_cache_files"`
+	Piper         *configPiper    `json:"piper,omitempty"`
+	Kokoro        *configKokoro   `json:"kokoro,omitempty"`
+	MossNano      *configMossNano `json:"moss_nano,omitempty"`
 }
 
 type configPiper struct {
@@ -144,9 +141,8 @@ type configRAG struct {
 }
 
 type configPortForward struct {
-	Enabled      bool   `json:"enabled"`
-	Port         int    `json:"port"`
-	AllowedPorts string `json:"allowed_ports"`
+	Enabled bool `json:"enabled"`
+	Port    int  `json:"port"`
 }
 
 type configPush struct {
@@ -159,9 +155,10 @@ type configJPush struct {
 	MasterSecret string `json:"master_secret"`
 }
 
-type configTasks struct {
-	SummarizeBackend string `json:"summarize_backend"`
-	SummarizeModel   string `json:"summarize_model"`
+type configSummarize struct {
+	Backend string     `json:"backend"`
+	Model   string     `json:"model"`
+	API     *configAPI `json:"api,omitempty"`
 }
 
 // PatchableConfigPaths defines the whitelist of config paths that PATCH /api/config accepts.
@@ -182,8 +179,6 @@ var PatchableConfigPaths = map[string]bool{
 	"tts.engine":                   true,
 	"tts.tts_model":                true,
 	"tts.format":                   true,
-	"tts.summarize_backend":        true,
-	"tts.summarize_model":          true,
 	"tts.speed":                    true,
 	"tts.voice":                    true,
 	"tts.max_cache_files":          true,
@@ -198,10 +193,6 @@ var PatchableConfigPaths = map[string]bool{
 	"tts.moss_nano.prompt_speech": true,
 	"tts.moss_nano.voice":         true,
 	"tts.moss_nano.backend":       true,
-	"tts.api.base_url":            true,
-	"tts.api.key":                  true,
-	"tts.api.format":              true,
-	"tts.api.model":               true,
 	"rag.base_url":              true,
 	"rag.model":                 true,
 	"rag.api_key":               true,
@@ -211,12 +202,14 @@ var PatchableConfigPaths = map[string]bool{
 	"rag.retention_days":        true,
 	"port_forward.enabled":                 true,
 	"port_forward.port":                    true,
-	"port_forward.allowed_ports":           true,
 	"push.jpush.enabled":          true,
 	"push.jpush.app_key":          true,
 	"push.jpush.master_secret":    true,
-	"tasks.summarize_backend":     true,
-	"tasks.summarize_model":       true,
+	"summarize.backend":           true,
+	"summarize.model":             true,
+	"summarize.api.base_url":      true,
+	"summarize.api.key":           true,
+	"summarize.api.format":        true,
 }
 
 // validTTSEngines is the set of valid TTS engine values.
@@ -224,7 +217,7 @@ var validTTSEngines = map[string]bool{
 	"edge": true, "piper": true, "kokoro": true, "moss-nano": true,
 }
 
-// validSummarizeBackends is the set of valid TTS summarization backend values.
+// validSummarizeBackends is the set of valid summarization backend values.
 var validSummarizeBackends = map[string]bool{
 	"simple": true, "api": true,
 	"claude": true, "codebuddy": true, "gemini": true,
@@ -331,14 +324,12 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 			BufferLines: cfg.Terminal.BufferLines,
 		},
 		TTS: configTTS{
-			Engine:           cfg.TTS.Engine,
-			TTSModel:         cfg.TTS.TTSModel,
-			Format:           cfg.TTS.Format,
-			SummarizeBackend: cfg.TTS.SummarizeBackend,
-			SummarizeModel:   cfg.TTS.SummarizeModel,
-			Speed:            cfg.TTS.Speed,
-			Voice:            cfg.TTS.Voice,
-			MaxCacheFiles:    cfg.TTS.MaxCacheFiles,
+			Engine:        cfg.TTS.Engine,
+			TTSModel:      cfg.TTS.TTSModel,
+			Format:        cfg.TTS.Format,
+			Speed:         cfg.TTS.Speed,
+			Voice:         cfg.TTS.Voice,
+			MaxCacheFiles: cfg.TTS.MaxCacheFiles,
 		},
 		RAG: configRAG{
 			BaseURL:        cfg.RAG.BaseURL,
@@ -350,9 +341,8 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 			RetentionDays:  cfg.RAG.RetentionDays,
 		},
 		PortForward: configPortForward{
-			Enabled:      cfg.PortForward.Enabled,
-			Port:         cfg.PortForward.Port,
-			AllowedPorts: cfg.PortForward.AllowedPorts,
+			Enabled: cfg.PortForward.Enabled,
+			Port:    cfg.PortForward.Port,
 		},
 		Push: configPush{
 			JPush: configJPush{
@@ -361,10 +351,19 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 				MasterSecret: maskAPIKey(cfg.Push.JPush.MasterSecret),
 			},
 		},
-		Tasks: configTasks{
-			SummarizeBackend: cfg.Tasks.SummarizeBackend,
-			SummarizeModel:   cfg.Tasks.SummarizeModel,
+		Summarize: configSummarize{
+			Backend: cfg.Summarize.Backend,
+			Model:   cfg.Summarize.Model,
 		},
+	}
+
+	// Conditionally populate Summarize API sub-config when backend is "api"
+	if cfg.Summarize.Backend == "api" {
+		resp.Summarize.API = &configAPI{
+			BaseURL: cfg.Summarize.API.BaseURL,
+			Key:     maskAPIKey(cfg.Summarize.API.Key),
+			Format:  cfg.Summarize.API.Format,
+		}
 	}
 
 	// Conditionally populate engine-specific sub-configs
@@ -391,14 +390,6 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Conditionally populate API sub-config when summarize_backend is "api"
-	if cfg.TTS.SummarizeBackend == "api" || cfg.Tasks.SummarizeBackend == "api" {
-		resp.TTS.API = &configAPI{
-			BaseURL: cfg.TTS.API.BaseURL,
-			Key:     maskAPIKey(cfg.TTS.API.Key),
-			Format:  cfg.TTS.API.Format,
-		}
-	}
 
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -514,11 +505,6 @@ func validatePatchValues(patch map[string]any) error {
 				return fmt.Errorf("tts.engine must be one of: edge,piper,kokoro,moss-nano")
 			}
 		}
-		if backend, ok := tts["summarize_backend"].(string); ok {
-			if !validSummarizeBackends[backend] {
-				return fmt.Errorf("tts.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi")
-			}
-		}
 		if format, ok := tts["format"].(string); ok {
 			if format != "" && !validTTSFormats[format] {
 				return fmt.Errorf("tts.format must be one of: mp3,wav,pcm")
@@ -553,47 +539,35 @@ func validatePatchValues(patch map[string]any) error {
 				}
 			}
 		}
-		// Validate API sub-config
-		if api, ok := tts["api"].(map[string]any); ok {
-			if v, ok := api["format"].(string); ok {
-				if !validAPIFormats[v] {
-					return fmt.Errorf("tts.api.format must be one of: openai,anthropic")
-				}
-			}
-			if v, ok := api["key"].(string); ok && strings.Contains(v, "***") {
-				return fmt.Errorf("tts.api.key must not contain '***' — please provide the full key value")
-			}
-		}
 	}
 
 	// ── Cross-field consistency checks ──────────────────────────
 	cfg := model.ConfigInstance
 
-	// 1. When tts.summarize_backend or tasks.summarize_backend is "api",
-	//    tts.api.base_url must not be empty.
-	effectiveSummarizeBackend := cfg.TTS.SummarizeBackend
-	if tts, ok := patch["tts"].(map[string]any); ok {
-		if v, ok := tts["summarize_backend"].(string); ok {
-			effectiveSummarizeBackend = v
+	// 1. When summarize.backend is "api", summarize.api.base_url must not be empty.
+	//    Skip when the patch *switches* backend to "api" — the user hasn't had a
+	//    chance to fill in the API sub-config yet (frontend auto-saves one field at a time).
+	effectiveBackend := cfg.Summarize.Backend
+	backendSwitchedToAPI := false
+	if summarize, ok := patch["summarize"].(map[string]any); ok {
+		if v, ok := summarize["backend"].(string); ok {
+			if v == "api" && cfg.Summarize.Backend != "api" {
+				backendSwitchedToAPI = true
+			}
+			effectiveBackend = v
 		}
 	}
-	effectiveTasksBackend := cfg.Tasks.SummarizeBackend
-	if tasks, ok := patch["tasks"].(map[string]any); ok {
-		if v, ok := tasks["summarize_backend"].(string); ok {
-			effectiveTasksBackend = v
-		}
-	}
-	if effectiveSummarizeBackend == "api" || effectiveTasksBackend == "api" {
-		effectiveBaseURL := cfg.TTS.API.BaseURL
-		if tts, ok := patch["tts"].(map[string]any); ok {
-			if api, ok := tts["api"].(map[string]any); ok {
+	if effectiveBackend == "api" && !backendSwitchedToAPI {
+		effectiveBaseURL := cfg.Summarize.API.BaseURL
+		if summarize, ok := patch["summarize"].(map[string]any); ok {
+			if api, ok := summarize["api"].(map[string]any); ok {
 				if v, ok := api["base_url"].(string); ok {
 					effectiveBaseURL = v
 				}
 			}
 		}
 		if effectiveBaseURL == "" {
-			return fmt.Errorf("tts.api.base_url is required when summarize_backend is \"api\"")
+			return fmt.Errorf("summarize.api.base_url is required when summarize.backend is \"api\"")
 		}
 	}
 
@@ -679,11 +653,22 @@ func validatePatchValues(patch map[string]any) error {
 		}
 	}
 
-	// Validate tasks section
-	if tasks, ok := patch["tasks"].(map[string]any); ok {
-		if v, ok := tasks["summarize_backend"].(string); ok && v != "" {
+	// Validate summarize section
+	if summarize, ok := patch["summarize"].(map[string]any); ok {
+		if v, ok := summarize["backend"].(string); ok && v != "" {
 			if !validSummarizeBackends[v] {
-				return fmt.Errorf("tasks.summarize_backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi")
+				return fmt.Errorf("summarize.backend must be one of: simple,api,claude,codebuddy,gemini,opencode,codex,qoder,vecli,deepseek,pi")
+			}
+		}
+		// Validate Summarize API sub-config
+		if api, ok := summarize["api"].(map[string]any); ok {
+			if v, ok := api["format"].(string); ok {
+				if v != "" && !validAPIFormats[v] {
+					return fmt.Errorf("summarize.api.format must be one of: openai, anthropic")
+				}
+			}
+			if v, ok := api["key"].(string); ok && strings.Contains(v, "***") {
+				return fmt.Errorf("summarize.api.key must not contain '***' — please provide the full key value")
 			}
 		}
 	}
@@ -779,12 +764,6 @@ func applyConfigPatch(patch map[string]any) error {
 		if v, ok := tts["format"].(string); ok {
 			cfg.TTS.Format = v
 		}
-		if v, ok := tts["summarize_backend"].(string); ok {
-			cfg.TTS.SummarizeBackend = v
-		}
-		if v, ok := tts["summarize_model"].(string); ok {
-			cfg.TTS.SummarizeModel = v
-		}
 		if v, ok := tts["speed"].(float64); ok {
 			cfg.TTS.Speed = v
 		}
@@ -836,18 +815,6 @@ func applyConfigPatch(patch map[string]any) error {
 				cfg.TTS.MossNano.Backend = v
 			}
 		}
-		// API sub-config
-		if api, ok := tts["api"].(map[string]any); ok {
-			if v, ok := api["base_url"].(string); ok {
-				cfg.TTS.API.BaseURL = v
-			}
-			if v, ok := api["key"].(string); ok {
-				cfg.TTS.API.Key = v
-			}
-			if v, ok := api["format"].(string); ok {
-				cfg.TTS.API.Format = v
-			}
-		}
 	}
 
 	if rag, ok := patch["rag"].(map[string]any); ok {
@@ -884,10 +851,6 @@ func applyConfigPatch(patch map[string]any) error {
 		if v, ok := pf["port"].(float64); ok {
 			cfg.PortForward.Port = int(v)
 		}
-		if v, ok := pf["allowed_ports"].(string); ok {
-			cfg.PortForward.AllowedPorts = v
-			cfg.Proxy.AllowedPorts = v // keep in sync for backward compat
-		}
 	}
 
 	if push, ok := patch["push"].(map[string]any); ok {
@@ -904,12 +867,24 @@ func applyConfigPatch(patch map[string]any) error {
 		}
 	}
 
-	if tasks, ok := patch["tasks"].(map[string]any); ok {
-		if v, ok := tasks["summarize_backend"].(string); ok {
-			cfg.Tasks.SummarizeBackend = v
+	if summarize, ok := patch["summarize"].(map[string]any); ok {
+		if v, ok := summarize["backend"].(string); ok {
+			cfg.Summarize.Backend = v
 		}
-		if v, ok := tasks["summarize_model"].(string); ok {
-			cfg.Tasks.SummarizeModel = v
+		if v, ok := summarize["model"].(string); ok {
+			cfg.Summarize.Model = v
+		}
+		// Summarize API sub-config
+		if api, ok := summarize["api"].(map[string]any); ok {
+			if v, ok := api["base_url"].(string); ok {
+				cfg.Summarize.API.BaseURL = v
+			}
+			if v, ok := api["key"].(string); ok {
+				cfg.Summarize.API.Key = v
+			}
+			if v, ok := api["format"].(string); ok {
+				cfg.Summarize.API.Format = v
+			}
 		}
 	}
 

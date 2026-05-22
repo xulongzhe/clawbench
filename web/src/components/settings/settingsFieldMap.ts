@@ -26,7 +26,7 @@ export interface ItemSpec {
   min?: number
   max?: number
   step?: number
-  dependsOn?: DependsOn
+  dependsOn?: DependsOn | DependsOn[]
   sectionHeader?: string
 }
 
@@ -128,51 +128,31 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       sectionHeader: 'settings.items.ttsCacheHeader' },
   ],
   summarization: [
-    // TTS Summarization
-    { labelKey: 'settings.items.ttsSummarizeBackend', descriptionKey: 'settings.items.ttsSummarizeBackendDesc', key: 'tts.summarize_backend', type: 'select', source: 'server',
-      sectionHeader: 'settings.items.ttsSummarizeHeader', options: [
-      { labelKey: 'settings.items.ttsSummarizeSimple', value: 'simple' },
-      { labelKey: 'settings.items.ttsSummarizeApi', value: 'api' },
-      { labelKey: 'settings.items.ttsSummarizeClaude', value: 'claude' },
-      { labelKey: 'settings.items.ttsSummarizeCodebuddy', value: 'codebuddy' },
-      { labelKey: 'settings.items.ttsSummarizeGemini', value: 'gemini' },
-      { labelKey: 'settings.items.ttsSummarizeOpencode', value: 'opencode' },
-      { labelKey: 'settings.items.ttsSummarizeCodex', value: 'codex' },
-      { labelKey: 'settings.items.ttsSummarizeQoder', value: 'qoder' },
-      { labelKey: 'settings.items.ttsSummarizeVecli', value: 'vecli' },
-      { labelKey: 'settings.items.ttsSummarizeDeepseek', value: 'deepseek' },
-      { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
+    // Summarization backend (shared by TTS and tasks)
+    { labelKey: 'settings.items.summarizeBackend', descriptionKey: 'settings.items.summarizeBackendDesc', key: 'summarize.backend', type: 'select', source: 'server', options: [
+      { labelKey: 'settings.items.summarizeSimple', value: 'simple' },
+      { labelKey: 'settings.items.summarizeApi', value: 'api' },
+      { labelKey: 'settings.items.summarizeClaude', value: 'claude' },
+      { labelKey: 'settings.items.summarizeCodebuddy', value: 'codebuddy' },
+      { labelKey: 'settings.items.summarizeGemini', value: 'gemini' },
+      { labelKey: 'settings.items.summarizeOpencode', value: 'opencode' },
+      { labelKey: 'settings.items.summarizeCodex', value: 'codex' },
+      { labelKey: 'settings.items.summarizeQoder', value: 'qoder' },
+      { labelKey: 'settings.items.summarizeVecli', value: 'vecli' },
+      { labelKey: 'settings.items.summarizeDeepseek', value: 'deepseek' },
+      { labelKey: 'settings.items.summarizePi', value: 'pi' },
     ]},
-    { labelKey: 'settings.items.ttsSummarizeModel', descriptionKey: 'settings.items.ttsSummarizeModelDesc', key: 'tts.summarize_model', type: 'text', source: 'server' },
-    // Tasks Summarization
-    { labelKey: 'settings.items.tasksSummarizeBackend', descriptionKey: 'settings.items.tasksSummarizeBackendDesc', key: 'tasks.summarize_backend', type: 'select', source: 'server',
-      sectionHeader: 'settings.items.tasksHeader', options: [
-      { labelKey: 'settings.items.tasksSummarizeDisabled', value: '' },
-      { labelKey: 'settings.items.ttsSummarizeSimple', value: 'simple' },
-      { labelKey: 'settings.items.ttsSummarizeApi', value: 'api' },
-      { labelKey: 'settings.items.ttsSummarizeClaude', value: 'claude' },
-      { labelKey: 'settings.items.ttsSummarizeCodebuddy', value: 'codebuddy' },
-      { labelKey: 'settings.items.ttsSummarizeGemini', value: 'gemini' },
-      { labelKey: 'settings.items.ttsSummarizeOpencode', value: 'opencode' },
-      { labelKey: 'settings.items.ttsSummarizeCodex', value: 'codex' },
-      { labelKey: 'settings.items.ttsSummarizeQoder', value: 'qoder' },
-      { labelKey: 'settings.items.ttsSummarizeVecli', value: 'vecli' },
-      { labelKey: 'settings.items.ttsSummarizeDeepseek', value: 'deepseek' },
-      { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
-    ]},
-    { labelKey: 'settings.items.tasksSummarizeModel', descriptionKey: 'settings.items.tasksSummarizeModelDesc', key: 'tasks.summarize_model', type: 'text', source: 'server' },
-    // Shared API sub-config (shown when either TTS or Tasks uses "api" backend)
-    { labelKey: 'settings.items.apiBaseUrl', descriptionKey: 'settings.items.apiBaseUrlDesc', key: 'tts.api.base_url', type: 'text', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' }, sectionHeader: 'settings.items.ttsApiHeader' },
-    { labelKey: 'settings.items.apiKey', descriptionKey: 'settings.items.apiKeyDesc', key: 'tts.api.key', type: 'password', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
-    { labelKey: 'settings.items.apiFormat', descriptionKey: 'settings.items.apiFormatDesc', key: 'tts.api.format', type: 'select', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' }, options: [
+    { labelKey: 'settings.items.summarizeModel', descriptionKey: 'settings.items.summarizeModelDesc', key: 'summarize.model', type: 'text', source: 'server' },
+    // API sub-config (shown when backend is "api")
+    { labelKey: 'settings.items.apiBaseUrl', descriptionKey: 'settings.items.apiBaseUrlDesc', key: 'summarize.api.base_url', type: 'text', source: 'server',
+      dependsOn: { key: 'summarize.backend', value: 'api' }, sectionHeader: 'settings.items.apiHeader' },
+    { labelKey: 'settings.items.apiKey', descriptionKey: 'settings.items.apiKeyDesc', key: 'summarize.api.key', type: 'password', source: 'server',
+      dependsOn: { key: 'summarize.backend', value: 'api' } },
+    { labelKey: 'settings.items.apiFormat', descriptionKey: 'settings.items.apiFormatDesc', key: 'summarize.api.format', type: 'select', source: 'server',
+      dependsOn: { key: 'summarize.backend', value: 'api' }, options: [
       { labelKey: 'settings.items.apiFormatOpenai', value: 'openai' },
       { labelKey: 'settings.items.apiFormatAnthropic', value: 'anthropic' },
     ]},
-    { labelKey: 'settings.items.apiModel', descriptionKey: 'settings.items.apiModelDesc', key: 'tts.api.model', type: 'text', source: 'server',
-      dependsOn: { key: 'tts.summarize_backend', value: 'api' } },
   ],
   rag: [
     { labelKey: 'settings.items.ragOllamaUrl', descriptionKey: 'settings.items.ragOllamaUrlDesc', key: 'rag.ollama_base_url', type: 'text', source: 'server' },
@@ -185,7 +165,6 @@ export const categoryItems: Record<string, ItemSpec[]> = {
   network: [
     { labelKey: 'settings.items.portForwardEnabled', descriptionKey: 'settings.items.portForwardEnabledDesc', key: 'port_forward.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.portForwardHeader' },
     { labelKey: 'settings.items.portForwardPort', descriptionKey: 'settings.items.portForwardPortDesc', key: 'port_forward.port', type: 'number', source: 'server', needsRestart: true },
-    { labelKey: 'settings.items.portForwardAllowedPorts', descriptionKey: 'settings.items.portForwardAllowedPortsDesc', key: 'port_forward.allowed_ports', type: 'text', source: 'server' },
     { labelKey: 'settings.items.pushEnabled', descriptionKey: 'settings.items.pushEnabledDesc', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.pushHeader' },
     { labelKey: 'settings.items.pushAppKey', descriptionKey: 'settings.items.pushAppKeyDesc', key: 'push.jpush.app_key', type: 'text', source: 'server' },
     { labelKey: 'settings.items.pushMasterSecret', descriptionKey: 'settings.items.pushMasterSecretDesc', key: 'push.jpush.master_secret', type: 'password', source: 'server' },

@@ -93,23 +93,6 @@
 tts:
   engine: "edge"                                          # TTS engine / TTS引擎: "edge" (default/默认), "piper", "kokoro", "moss-nano"
 
-  # --- Summarization backend (compresses AI replies into TTS-friendly summaries) ---
-  # --- 总结后端（将AI回复压缩为适合朗读的摘要） ---
-  #   "simple"    — Pure text cleaning only (default) / 纯文本清洗（默认），零延迟
-  #   "api"       — Remote AI API (OpenAI/Anthropic format, configurable URL & key) / 远程AI API（OpenAI/Anthropic格式，可配置URL和密钥）
-  #   "claude"    — Claude CLI / 使用 Claude CLI
-  #   "codebuddy" — CodeBuddy CLI / 使用 CodeBuddy CLI
-  #   "gemini"    — Gemini CLI / 使用 Gemini CLI
-  #   "opencode"  — OpenCode CLI / 使用 OpenCode CLI
-  #   "codex"     — Codex CLI / 使用 Codex CLI
-  #   "qoder"     — Qoder CLI (Alibaba) / 使用 Qoder CLI（阿里编码智能体）
-  #   "vecli"     — VeCLI (Volcengine Doubao) / 使用 VeCLI（火山引擎 Doubao）
-  #   "deepseek"  — DeepSeek TUI (requires v0.8.33+) / 使用 DeepSeek TUI（需 v0.8.33+）
-  #   "pi"        — Pi CLI (minimalist coding agent) / 使用 Pi CLI（极简编程智能体）
-  summarize_backend: "simple"
-  # summarize_model: ""                                  # Summarization model (leave empty for backend default)
-                                                          # 总结模型（留空则使用后端默认）
-
   # --- Speed & Voice (shared across all engines) ---
   # --- 语速与音色（所有引擎共享） ---
   speed: 1                                             # Speed multiplier (1.0 = normal; edge auto-converts to % rate, e.g. 1.2 → +20%)
@@ -168,29 +151,29 @@ tts:
   #   voice: "Junhao"
   #   backend: "onnx"
 
-  # --- Combo 5: API summarization (OpenAI-compatible, e.g., DeepSeek, Groq, Ollama) ---
-  # --- 组合5: API总结（OpenAI兼容格式，如 DeepSeek、Groq、Ollama） ---
-  # engine: "edge"
-  # summarize_backend: "api"
-  # summarize_model: "gpt-4o-mini"                          # Model name (leave empty for default) / 模型名称（留空使用默认）
+# Summarization configuration / 总结配置
+# Shared by TTS voice summarization and scheduled task summarization.
+# TTS 语音总结和定时任务总结共用。
+# Backends / 总结后端：
+#   "simple"    — Pure text cleaning only (default) / 纯文本清洗（默认），零延迟
+#   "api"       — Remote AI API (OpenAI/Anthropic format) / 远程AI API（OpenAI/Anthropic格式）
+#   "claude"    — Claude CLI / 使用 Claude CLI
+#   "codebuddy" — CodeBuddy CLI / 使用 CodeBuddy CLI
+#   "gemini"    — Gemini CLI / 使用 Gemini CLI
+#   "opencode"  — OpenCode CLI / 使用 OpenCode CLI
+#   "codex"     — Codex CLI / 使用 Codex CLI
+#   "qoder"     — Qoder CLI (Alibaba) / 使用 Qoder CLI（阿里编码智能体）
+#   "vecli"     — VeCLI (Volcengine Doubao) / 使用 VeCLI（火山引擎 Doubao）
+#   "deepseek"  — DeepSeek TUI (requires v0.8.33+) / 使用 DeepSeek TUI（需 v0.8.33+）
+#   "pi"        — Pi CLI (minimalist coding agent) / 使用 Pi CLI（极简编程智能体）
+summarize:
+  backend: "simple"                                     # Summarization backend (default: "simple") / 总结后端（默认: simple）
+  # model: ""                                           # Summarization model (leave empty for backend default) / 总结模型（留空使用后端默认）
+  # API sub-config (only used when backend is "api") / API子配置（backend为api时使用）
   # api:
   #   base_url: "https://api.openai.com/v1/chat/completions"  # Full endpoint URL / 完整端点URL
   #   key: "sk-xxx"                                         # API key / API密钥
   #   format: "openai"                                      # "openai" (default) or "anthropic" / "openai"（默认）或 "anthropic"
-  # voice: "zh-CN-XiaoxiaoNeural"
-  # speed: 1
-
-  # --- Combo 6: API summarization (Anthropic format) ---
-  # --- 组合6: API总结（Anthropic格式） ---
-  # engine: "edge"
-  # summarize_backend: "api"
-  # summarize_model: "claude-3-5-haiku-latest"               # Model name (leave empty for default) / 模型名称（留空使用默认）
-  # api:
-  #   base_url: "https://api.anthropic.com/v1/messages"
-  #   key: "sk-ant-xxx"
-  #   format: "anthropic"
-  # voice: "zh-CN-XiaoxiaoNeural"
-  # speed: 1
 
 # Default agent (optional; leave empty to use the first agent in config/agents/ directory)
 # 默认智能体（可选，留空则使用 config/agents/ 目录下的第一个智能体）
@@ -285,15 +268,3 @@ port_forward:
 #     enabled: false            # Enable JPush notifications (default: false) / 启用极光推送（默认: false）
 #     app_key: ""               # JPush AppKey / 极光推送 AppKey
 #     master_secret: ""         # JPush Master Secret / 极光推送 Master Secret
-
-# Scheduled task summarization configuration / 定时任务摘要配置
-# When a scheduled task finishes execution, its output can be summarized for display.
-# By default, task summarization is disabled (summarize_backend left empty).
-# When using "api" backend, the shared tts.api.* config is used.
-# 定时任务执行完成后，可对其输出进行摘要以便展示。默认禁用。
-# 使用 "api" 后端时，共享 tts.api.* 配置。
-# tasks:
-#   summarize_backend: "simple"   # Summarization backend (empty = disabled) / 摘要后端（留空 = 禁用）
-#                                  # Same options as TTS: simple, api, claude, codebuddy, gemini, opencode, codex, qoder, vecli, deepseek, pi
-#                                  # 与 TTS 相同选项：simple, api, claude, codebuddy, gemini, opencode, codex, qoder, vecli, deepseek, pi
-#   summarize_model: ""           # Model for summarization (leave empty for backend default) / 摘要模型（留空则使用后端默认）

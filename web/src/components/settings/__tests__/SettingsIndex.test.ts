@@ -93,7 +93,7 @@ describe('SettingsIndex', () => {
 
     const expectedIds = [
       'appearance', 'chat', 'agents', 'files', 'terminal',
-      'tts', 'tasks', 'rag', 'network', 'about',
+      'tts', 'summarization', 'rag', 'network', 'about',
     ]
 
     const rows = wrapper.findAll('.settings-index__row')

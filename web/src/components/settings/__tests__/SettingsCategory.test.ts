@@ -33,11 +33,11 @@ const serverConfig = ref<Record<string, any>>({
   session: { max_count: 10 },
   upload: { max_size_mb: 100, max_files: 20 },
   terminal: { enabled: true, idle_timeout: '10m', max_sessions: 10, buffer_lines: 2000 },
-  tts: { engine: 'edge', voice: '', speed: 1.0, max_cache_files: 100, summarize_backend: 'simple', summarize_model: '', format: '' },
+  tts: { engine: 'edge', voice: '', speed: 1.0, max_cache_files: 100, format: '' },
   rag: { enabled: false, ollama_base_url: 'http://localhost:11434', ollama_model: 'bge-m3', chunk_size: 512, search_limit: 5, retention_days: 90 },
-  port_forward: { enabled: true, port: 0, allowed_ports: '1024-65535' },
+  port_forward: { enabled: true, port: 0 },
   push: { jpush: { enabled: false, app_key: '' } },
-  tasks: { summarize_backend: '', summarize_model: '' },
+  summarize: { backend: 'simple', model: '' },
 })
 
 const mockAgents = [
@@ -97,7 +97,7 @@ const i18n = createI18n({
       common: { ok: '确定' },
       settings: {
         needsRestart: '需重启',
-        categories: { chat: '聊天', agents: '智能体', appearance: '外观', tts: '语音', network: '网络', terminal: '终端', rag: 'RAG', files: '文件', about: '关于', android: 'Android' },
+        categories: { chat: '聊天', agents: '智能体', appearance: '外观', tts: '语音', summarization: '摘要', network: '网络', terminal: '终端', rag: 'RAG', files: '文件', about: '关于', android: 'Android' },
         items: {
           defaultAgent: '默认智能体',
           autoSpeech: '自动语音',
@@ -115,25 +115,25 @@ const i18n = createI18n({
           ttsEngineMossNano: 'MOSS-Nano',
           ttsVoice: '语音',
           ttsSpeed: '语速',
-          ttsSummarizeBackend: '摘要后端',
-          ttsSummarizeSimple: '简单',
-          ttsSummarizeApi: 'API',
-          ttsSummarizeModel: '摘要模型',
+          summarizeBackend: '摘要后端',
+          summarizeSimple: '简单',
+          summarizeApi: 'API',
+          summarizeModel: '摘要模型',
+          apiHeader: 'API',
+          apiBaseUrl: 'API地址',
+          apiKey: 'API密钥',
+          apiFormat: 'API格式',
+          apiFormatOpenai: 'OpenAI',
+          apiFormatAnthropic: 'Anthropic',
           ttsMaxCacheFiles: '缓存上限',
-          tasksSummarizeBackend: '任务摘要后端',
-          tasksSummarizeModel: '任务摘要模型',
-          tasksSummarizeDisabled: '禁用',
-          tasksHeader: '定时任务',
           ragSearchPoolSize: '搜索池大小',
           ragOllamaUrl: '嵌入接口地址',
           portForwardEnabled: '启用 SSH 隧道',
           portForwardPort: 'SSH 隧道端口',
-          portForwardAllowedPorts: '允许的端口范围',
           pushEnabled: '启用推送',
           pushAppKey: 'AppKey',
           portForwardHeader: 'SSH 隧道',
           pushHeader: '推送',
-          ttsSummarizeHeader: '摘要',
           ttsCacheHeader: '缓存',
           terminalEnabled: '启用终端',
           terminalIdleTimeout: '空闲超时',
@@ -312,7 +312,7 @@ describe('SettingsCategory', () => {
       const wrapper = mountCategory('tts')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
 
-      // Should show: engine, voice, speed, summarize_backend, summarize_model, cache, tasks header + 2 items
+      // Should show: engine, voice, speed, summarize items are in separate category
       const labels = allItems.map(i => i.props().label as string)
       expect(labels).toContain('TTS引擎')
       expect(labels).toContain('语音')
@@ -343,8 +343,8 @@ describe('SettingsCategory', () => {
       expect(mockSetServerValue).toHaveBeenCalledWith('tts.speed', 1.5)
     })
 
-    it('PATCHes tts.summarize_backend when selected', async () => {
-      const wrapper = mountCategory('tts')
+    it('PATCHes summarize.backend when selected', async () => {
+      const wrapper = mountCategory('summarization')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
       const summarizeItem = allItems.find(i => i.props().label === '摘要后端')
       expect(summarizeItem).toBeTruthy()
@@ -352,7 +352,7 @@ describe('SettingsCategory', () => {
       await summarizeItem!.vm.$emit('update:modelValue', 'api')
       await wrapper.vm.$nextTick()
 
-      expect(mockSetServerValue).toHaveBeenCalledWith('tts.summarize_backend', 'api')
+      expect(mockSetServerValue).toHaveBeenCalledWith('summarize.backend', 'api')
     })
 
     it('PATCHes tts.max_cache_files when changed', async () => {
@@ -367,29 +367,6 @@ describe('SettingsCategory', () => {
       expect(mockSetServerValue).toHaveBeenCalledWith('tts.max_cache_files', 200)
     })
 
-    it('PATCHes tasks.summarize_backend when selected', async () => {
-      const wrapper = mountCategory('tasks')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const taskBackendItem = allItems.find(i => i.props().label === '任务摘要后端')
-      expect(taskBackendItem).toBeTruthy()
-
-      await taskBackendItem!.vm.$emit('update:modelValue', 'simple')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('tasks.summarize_backend', 'simple')
-    })
-
-    it('PATCHes tasks.summarize_model when changed', async () => {
-      const wrapper = mountCategory('tasks')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const taskModelItem = allItems.find(i => i.props().label === '任务摘要模型')
-      expect(taskModelItem).toBeTruthy()
-
-      await taskModelItem!.vm.$emit('update:modelValue', 'gpt-4o-mini')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('tasks.summarize_model', 'gpt-4o-mini')
-    })
   })
 
   // ─── Terminal category ──────────────────────────────
@@ -530,18 +507,6 @@ describe('SettingsCategory', () => {
       await wrapper.vm.$nextTick()
 
       expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.enabled', false)
-    })
-
-    it('PATCHes port_forward.allowed_ports when changed', async () => {
-      const wrapper = mountCategory('network')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '允许的端口范围')
-      expect(item).toBeTruthy()
-
-      await item!.vm.$emit('update:modelValue', '8080,9090')
-      await wrapper.vm.$nextTick()
-
-      expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.allowed_ports', '8080,9090')
     })
 
     it('PATCHes port_forward.port when changed', async () => {

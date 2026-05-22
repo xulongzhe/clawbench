@@ -263,26 +263,26 @@ func TestPersist_TTSFormat(t *testing.T) {
 	assert.Equal(t, "mp3", getNestedValue(cfg, "tts.format"))
 }
 
-func TestPersist_TTSSummarizeBackend(t *testing.T) {
+func TestPersist_SummarizeBackend(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	// Set up initial config with base_url so the cross-field check passes
 	model.ConfigInstance = model.Config{}
-	model.ConfigInstance.TTS.API.BaseURL = "https://api.openai.com/v1"
+	model.ConfigInstance.Summarize.API.BaseURL = "https://api.openai.com/v1"
 
-	cfg := patchAndReadConfig(t, `{"tts":{"summarize_backend":"api"}}`)
-	assert.Equal(t, "api", getNestedValue(cfg, "tts.summarize_backend"))
+	cfg := patchAndReadConfig(t, `{"summarize":{"backend":"api"}}`)
+	assert.Equal(t, "api", getNestedValue(cfg, "summarize.backend"))
 }
 
-func TestPersist_TTSSummarizeModel(t *testing.T) {
+func TestPersist_SummarizeModel(t *testing.T) {
 	_, cleanup := setupPersistTestEnv(t)
 	defer cleanup()
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"tts":{"summarize_model":"gpt-4o-mini"}}`)
-	assert.Equal(t, "gpt-4o-mini", getNestedValue(cfg, "tts.summarize_model"))
+	cfg := patchAndReadConfig(t, `{"summarize":{"model":"gpt-4o-mini"}}`)
+	assert.Equal(t, "gpt-4o-mini", getNestedValue(cfg, "summarize.model"))
 }
 
 func TestPersist_TTSMaxCacheFiles(t *testing.T) {
@@ -419,8 +419,8 @@ func TestPersist_APIBaseURL(t *testing.T) {
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"tts":{"api":{"base_url":"https://api.openai.com/v1/chat"}}}`)
-	assert.Equal(t, "https://api.openai.com/v1/chat", getNestedValue(cfg, "tts.api.base_url"))
+	cfg := patchAndReadConfig(t, `{"summarize":{"api":{"base_url":"https://api.openai.com/v1/chat"}}}`)
+	assert.Equal(t, "https://api.openai.com/v1/chat", getNestedValue(cfg, "summarize.api.base_url"))
 }
 
 func TestPersist_APIKey(t *testing.T) {
@@ -429,8 +429,8 @@ func TestPersist_APIKey(t *testing.T) {
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"tts":{"api":{"key":"sk-1234567890abcdef"}}}`)
-	assert.Equal(t, "sk-1234567890abcdef", getNestedValue(cfg, "tts.api.key"))
+	cfg := patchAndReadConfig(t, `{"summarize":{"api":{"key":"sk-1234567890abcdef"}}}`)
+	assert.Equal(t, "sk-1234567890abcdef", getNestedValue(cfg, "summarize.api.key"))
 }
 
 func TestPersist_APIFormat(t *testing.T) {
@@ -439,8 +439,8 @@ func TestPersist_APIFormat(t *testing.T) {
 
 	model.ConfigInstance = model.Config{}
 
-	cfg := patchAndReadConfig(t, `{"tts":{"api":{"format":"anthropic"}}}`)
-	assert.Equal(t, "anthropic", getNestedValue(cfg, "tts.api.format"))
+	cfg := patchAndReadConfig(t, `{"summarize":{"api":{"format":"anthropic"}}}`)
+	assert.Equal(t, "anthropic", getNestedValue(cfg, "summarize.api.format"))
 }
 
 // ─── RAG section ──────────────────────────────────────
@@ -505,18 +505,6 @@ func TestPersist_RAGRetentionDays(t *testing.T) {
 	assert.Equal(t, 30, getNestedValue(cfg, "rag.retention_days"))
 }
 
-// ─── Proxy section ──────────────────────────────────────
-
-func TestPersist_PortForwardAllowedPorts(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"port_forward":{"allowed_ports":"8080,9090"}}`)
-	assert.Equal(t, "8080,9090", getNestedValue(cfg, "port_forward.allowed_ports"))
-}
-
 // ─── Port Forward section ──────────────────────────────────────
 
 func TestPersist_PortForwardEnabled(t *testing.T) {
@@ -567,28 +555,6 @@ func TestPersist_PushJPushAppKey(t *testing.T) {
 	jpush, ok := push["jpush"].(map[string]any)
 	require.True(t, ok, "jpush should be a map")
 	assert.Equal(t, "new-app-key", jpush["app_key"])
-}
-
-// ─── Tasks section ──────────────────────────────────────
-
-func TestPersist_TasksSummarizeBackend(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"tasks":{"summarize_backend":"codebuddy"}}`)
-	assert.Equal(t, "codebuddy", getNestedValue(cfg, "tasks.summarize_backend"))
-}
-
-func TestPersist_TasksSummarizeModel(t *testing.T) {
-	_, cleanup := setupPersistTestEnv(t)
-	defer cleanup()
-
-	model.ConfigInstance = model.Config{}
-
-	cfg := patchAndReadConfig(t, `{"tasks":{"summarize_model":"codebuddy-latest"}}`)
-	assert.Equal(t, "codebuddy-latest", getNestedValue(cfg, "tasks.summarize_model"))
 }
 
 // ─── Multi-field PATCH ──────────────────────────────────────
