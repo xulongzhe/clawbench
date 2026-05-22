@@ -3,49 +3,121 @@ name: Auto Merge
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
-  pull_request_review:
-    types: [submitted]
   check_suite:
     types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   auto-merge:
     name: Auto Merge to Main
     runs-on: ubuntu-latest
-    # Only auto-merge PRs by repo owner with auto-merge label targeting main
-    if: >
-      github.event.pull_request.base.ref == 'main' &&
-      contains(github.event.pull_request.labels.*.name, 'auto-merge') &&
-      github.event.pull_request.user.login == 'xulongzhe'
-    permissions:
-      contents: write
-      pull-requests: write
+    if: github.event_name == 'check_suite' || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'auto-merge'))
 
     steps:
-      - name: Wait for all status checks
-        uses: fountainhead/action-wait-for-check@v1.2.0
-        id: wait-for-checks
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          checkName: ""  # empty = wait for ALL checks
-          ref: ${{ github.event.pull_request.head.sha }}
-          timeoutSeconds: 600
-          intervalSeconds: 15
-
-      - name: Check if CI passed
-        if: steps.wait-for-checks.outputs.status != 'success'
-        run: |
-          echo "❌ CI checks did not pass (status: ${{ steps.wait-for-checks.outputs.status }})"
-          exit 1
-
-      - name: Auto merge PR
-        if: steps.wait-for-checks.outputs.status == 'success'
+      - name: Find eligible PRs
+        id: find-prs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          echo "✅ All CI checks passed, merging PR #${PR_NUMBER}"
-          gh pr merge "$PR_NUMBER" \
-            --squash \
-            --subject "$(gh pr view "$PR_NUMBER" --json title -q .title)" \
-            --body "Auto-merged after CI passed"
+          # Find open PRs targeting main with auto-merge label by repo owner
+          PRS=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --state open \
+            --label auto-merge \
+            --author xulongzhe \
+            --json number,headRefName \
+            --jq '.[] | "\(.number) \(.headRefName)"')
+
+          if [ -z "$PRS" ]; then
+            echo "No eligible PRs found, skipping."
+            echo "has_prs=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Eligible PRs:"
+          echo "$PRS"
+          echo "has_prs=true" >> "$GITHUB_OUTPUT"
+
+          # Export for next step
+          echo "$PRS" > /tmp/auto_merge_prs.txt
+
+      - name: Wait for CI and merge
+        if: steps.find-prs.outputs.has_prs == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MAX_ATTEMPTS=40
+          INTERVAL=15
+
+          while IFS=' ' read -r PR_NUMBER PR_BRANCH; do
+            echo "=== Processing PR #$PR_NUMBER ($PR_BRANCH) ==="
+
+            # Get the head SHA
+            HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')
+            echo "Head SHA: $HEAD_SHA"
+
+            ATTEMPT=0
+            while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+              ATTEMPT=$((ATTEMPT + 1))
+
+              # Get all check runs for this commit
+              STATUS=$(gh api \
+                "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
+                --jq '.check_runs | map(.status) | unique')
+
+              # Check if any are still in progress or queued
+              IN_PROGRESS=$(echo "$STATUS" | grep -c '"in_progress"\|"queued"' || true)
+
+              if [ "$IN_PROGRESS" -eq 0 ]; then
+                echo "All checks completed on attempt $ATTEMPT"
+                break
+              fi
+
+              echo "Attempt $ATTEMPT/$MAX_ATTEMPTS: checks still running, waiting ${INTERVAL}s..."
+              sleep "$INTERVAL"
+            done
+
+            if [ $ATTEMPT -eq $MAX_ATTEMPTS ]; then
+              echo "⚠️ Timeout waiting for checks on PR #$PR_NUMBER"
+              continue
+            fi
+
+            # Verify all checks passed
+            CONCLUSIONS=$(gh api \
+              "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
+              --jq '.check_runs | map(.conclusion) | unique')
+
+            echo "Check conclusions: $CONCLUSIONS"
+
+            if echo "$CONCLUSIONS" | grep -q '"failure"'; then
+              echo "❌ Some checks failed for PR #$PR_NUMBER, skipping"
+              continue
+            fi
+
+            # Check if branch is behind main (needs update before merge)
+            MERGE_STATE=$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json mergeStateStatus --jq '.mergeStateStatus')
+            echo "Merge state: $MERGE_STATE"
+
+            if [ "$MERGE_STATE" = "BEHIND" ]; then
+              echo "⚠️ PR #$PR_NUMBER is behind main, needs sync first"
+              continue
+            fi
+
+            if [ "$MERGE_STATE" != "CLEAN" ] && [ "$MERGE_STATE" != "MERGEABLE" ]; then
+              echo "⚠️ PR #$PR_NUMBER merge state is $MERGE_STATE, skipping"
+              continue
+            fi
+
+            # Merge the PR
+            echo "✅ All checks passed, merging PR #$PR_NUMBER"
+            gh pr merge "$PR_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --squash \
+              --subject "$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json title --jq '.title')" \
+              --body "Auto-merged after CI passed"
+
+          done < /tmp/auto_merge_prs.txt
