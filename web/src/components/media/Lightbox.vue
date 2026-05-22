@@ -552,7 +552,7 @@ onUnmounted(() => {
 
 .lightbox-toolbar {
     position: absolute;
-    top: 16px;
+    top: calc(16px + var(--header-safe-area-top, 0px));
     left: 16px;
     right: 16px;
     display: flex;

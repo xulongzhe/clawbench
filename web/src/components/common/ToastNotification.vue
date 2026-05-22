@@ -21,7 +21,7 @@ defineProps({
 <style>
 .toast {
     position: fixed;
-    top: 8px;
+    top: calc(8px + var(--header-safe-area-top, 0px));
     left: 0;
     right: 0;
     margin: 0 auto;

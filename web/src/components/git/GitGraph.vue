@@ -230,6 +230,8 @@ const tooltipStyle = computed(() => {
   let y = tooltip.value.y
   const vw = window.innerWidth
   const vh = window.innerHeight
+  // Account for iOS notch / safe area so tooltip isn't hidden behind it
+  const safeTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--header-safe-area-top')) || 0
   // Use measured dimensions if available, fall back to estimates
   const el = tooltipEl.value
   const tw = el ? el.offsetWidth : Math.max(80, tooltip.value.items.length * 80)
@@ -240,8 +242,9 @@ const tooltipStyle = computed(() => {
   if (x < 8) x = 8
   // Clamp bottom edge
   if (y + th > vh - 8) y = y - th - 16
-  // Clamp top edge
-  if (y < 8) y = 8
+  // Clamp top edge — respect safe area
+  const minTop = 8 + safeTop
+  if (y < minTop) y = minTop
   return {
     left: x + 'px',
     top: y + 'px',
