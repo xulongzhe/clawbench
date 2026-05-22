@@ -47,3 +47,19 @@ export function getFileInfo(container: HTMLElement): { filePath: string; languag
   }
   return { filePath: '', language: '' }
 }
+
+/**
+ * Truncate quote text to a maximum length, appending an ellipsis if truncated.
+ * Extracted from QuoteQuestionBar.vue's fullQuoteText computed.
+ */
+export function truncateQuoteText(text: string, maxLen = 150): string {
+  return text.length > maxLen ? text.slice(0, maxLen) + '…' : text
+}
+
+/**
+ * Check if the input text is non-empty after trimming.
+ * Extracted from QuoteQuestionBar.vue's canSend computed.
+ */
+export function canSendInput(inputText: string): boolean {
+  return inputText.trim().length > 0
+}
