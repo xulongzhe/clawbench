@@ -94,8 +94,9 @@ export function usePortForward() {
     await Promise.all([loadPorts(true), loadSSHInfo()])
   }
 
-  async function unregisterPort(port: number) {
-    await apiDelete(`/api/proxy/ports?port=${port}`)
+  async function unregisterPort(port: number, host?: string) {
+    const hostParam = host ?? ''
+    await apiDelete(`/api/proxy/ports?port=${port}&host=${encodeURIComponent(hostParam)}`)
     if (isAppMode.value) {
       ;(window as any).AndroidNative?.removeForwardedPort(port)
     }
