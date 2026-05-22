@@ -117,6 +117,99 @@ public class MainActivityNotificationTest {
         );
     }
 
+    // =====================================================
+    // Task notification tests (clawbench-open-task)
+    // =====================================================
+
+    @Test
+    public void handleNotificationIntent_withTaskId_dispatchesOpenTaskEvent() throws Exception {
+        Intent mockIntent = mock(Intent.class);
+        when(mockIntent.getStringExtra("task_id")).thenReturn("2");
+        when(mockIntent.getStringExtra("execution_id")).thenReturn("5");
+        when(mockIntent.getStringExtra("event_type")).thenReturn("task_update");
+        when(mockIntent.getStringExtra("session_id")).thenReturn("s-task");
+        when(mockIntent.getStringExtra("project_path")).thenReturn("/home/user/project");
+
+        android.webkit.WebView mockWebView = mock(android.webkit.WebView.class);
+        setField(activity, "webView", mockWebView);
+
+        invokeMethod(activity, "handleNotificationIntent", Intent.class, mockIntent);
+
+        // Should dispatch clawbench-open-task (not clawbench-open-session)
+        verify(mockWebView).evaluateJavascript(
+                org.mockito.ArgumentMatchers.contains("clawbench-open-task"),
+                org.mockito.ArgumentMatchers.any()
+        );
+
+        // Verify all task-related extras are cleared
+        verify(mockIntent).removeExtra("task_id");
+        verify(mockIntent).removeExtra("execution_id");
+        verify(mockIntent).removeExtra("event_type");
+        verify(mockIntent).removeExtra("session_id");
+        verify(mockIntent).removeExtra("project_path");
+    }
+
+    @Test
+    public void handleNotificationIntent_withTaskIdNoExecutionId_dispatchesOpenTask() throws Exception {
+        Intent mockIntent = mock(Intent.class);
+        when(mockIntent.getStringExtra("task_id")).thenReturn("3");
+        when(mockIntent.getStringExtra("execution_id")).thenReturn(null);
+        when(mockIntent.getStringExtra("event_type")).thenReturn("task_update");
+        when(mockIntent.getStringExtra("session_id")).thenReturn(null);
+        when(mockIntent.getStringExtra("project_path")).thenReturn("/home/user/project");
+
+        android.webkit.WebView mockWebView = mock(android.webkit.WebView.class);
+        setField(activity, "webView", mockWebView);
+
+        invokeMethod(activity, "handleNotificationIntent", Intent.class, mockIntent);
+
+        verify(mockWebView).evaluateJavascript(
+                org.mockito.ArgumentMatchers.contains("clawbench-open-task"),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    public void handleNotificationIntent_withEventTypeTaskUpdateButNoTaskId_fallsBackToSession() throws Exception {
+        Intent mockIntent = mock(Intent.class);
+        when(mockIntent.getStringExtra("task_id")).thenReturn(null);
+        when(mockIntent.getStringExtra("execution_id")).thenReturn(null);
+        when(mockIntent.getStringExtra("event_type")).thenReturn("task_update");
+        when(mockIntent.getStringExtra("session_id")).thenReturn("s-fallback");
+        when(mockIntent.getStringExtra("project_path")).thenReturn(null);
+
+        android.webkit.WebView mockWebView = mock(android.webkit.WebView.class);
+        setField(activity, "webView", mockWebView);
+
+        invokeMethod(activity, "handleNotificationIntent", Intent.class, mockIntent);
+
+        // Should dispatch clawbench-open-session (no task_id, falls back to session)
+        verify(mockWebView).evaluateJavascript(
+                org.mockito.ArgumentMatchers.contains("clawbench-open-session"),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    public void handleNotificationIntent_taskNotification_nullWebView_storesPendingNavigation() throws Exception {
+        Intent mockIntent = mock(Intent.class);
+        when(mockIntent.getStringExtra("task_id")).thenReturn("2");
+        when(mockIntent.getStringExtra("execution_id")).thenReturn("5");
+        when(mockIntent.getStringExtra("event_type")).thenReturn("task_update");
+        when(mockIntent.getStringExtra("session_id")).thenReturn(null);
+        when(mockIntent.getStringExtra("project_path")).thenReturn("/project");
+
+        setField(activity, "webView", null); // No WebView available
+
+        invokeMethod(activity, "handleNotificationIntent", Intent.class, mockIntent);
+
+        // pendingNavigation should be set with taskId
+        Object pendingNav = getField(activity, "pendingNavigation");
+        assertNotNull("pendingNavigation should be stored when webView is null", pendingNav);
+        assertTrue("pendingNavigation should contain taskId",
+                pendingNav.toString().contains("2"));
+    }
+
     @Test
     public void handleNotificationIntent_nullWebView_storesPendingNavigation() throws Exception {
         Intent mockIntent = mock(Intent.class);
@@ -229,6 +322,25 @@ public class MainActivityNotificationTest {
 
         verify(mockWebView).evaluateJavascript(
                 org.mockito.ArgumentMatchers.contains("clawbench-open-session"),
+                org.mockito.ArgumentMatchers.any()
+        );
+    }
+
+    @Test
+    public void redispatchPendingNavigation_withTaskNav_dispatchesOpenTask() throws Exception {
+        org.json.JSONObject nav = new org.json.JSONObject();
+        nav.put("taskId", "2");
+        nav.put("executionId", "5");
+        setField(activity, "pendingNavigation", nav);
+
+        android.webkit.WebView mockWebView = mock(android.webkit.WebView.class);
+        setField(activity, "webView", mockWebView);
+
+        invokeMethod(activity, "redispatchPendingNavigation");
+
+        // Should dispatch clawbench-open-task because pendingNavigation has taskId
+        verify(mockWebView).evaluateJavascript(
+                org.mockito.ArgumentMatchers.contains("clawbench-open-task"),
                 org.mockito.ArgumentMatchers.any()
         );
     }

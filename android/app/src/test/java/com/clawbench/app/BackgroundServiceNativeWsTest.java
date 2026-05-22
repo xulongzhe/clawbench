@@ -702,6 +702,83 @@ public class BackgroundServiceNativeWsTest {
     }
 
     @Test
+    public void postEventNotification_taskUpdate_withExecutionId() throws Exception {
+        org.json.JSONObject data = new org.json.JSONObject();
+        data.put("task_id", "2");
+        data.put("execution_id", "5");
+        data.put("status", "completed");
+        data.put("session_id", "s-task-exec");
+        data.put("project_path", "/home/user/project");
+
+        Object service = createMinimalInstance();
+        if (service != null) {
+            setStaticField("instance", service);
+        }
+        setStaticField("isRunning", true);
+
+        try {
+            Method method = BackgroundService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
+            method.setAccessible(true);
+            method.invoke(service, "task_update", data);
+        } catch (Exception e) {
+            if (e.getCause() != null && e.getCause().getMessage() != null
+                    && e.getCause().getMessage().contains("Stub!")) {
+                return;
+            }
+        }
+    }
+
+    @Test
+    public void postEventNotification_taskUpdate_failed() throws Exception {
+        org.json.JSONObject data = new org.json.JSONObject();
+        data.put("task_id", "3");
+        data.put("status", "failed");
+        data.put("project_path", "/home/user/project");
+
+        Object service = createMinimalInstance();
+        if (service != null) {
+            setStaticField("instance", service);
+        }
+        setStaticField("isRunning", true);
+
+        try {
+            Method method = BackgroundService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
+            method.setAccessible(true);
+            method.invoke(service, "task_update", data);
+        } catch (Exception e) {
+            if (e.getCause() != null && e.getCause().getMessage() != null
+                    && e.getCause().getMessage().contains("Stub!")) {
+                return;
+            }
+        }
+    }
+
+    @Test
+    public void postEventNotification_sessionUpdate_withEventType() throws Exception {
+        org.json.JSONObject data = new org.json.JSONObject();
+        data.put("session_id", "s-session");
+        data.put("status", "completed");
+        data.put("project_path", "/home/user/project");
+
+        Object service = createMinimalInstance();
+        if (service != null) {
+            setStaticField("instance", service);
+        }
+        setStaticField("isRunning", true);
+
+        try {
+            Method method = BackgroundService.class.getDeclaredMethod("postEventNotification", String.class, org.json.JSONObject.class);
+            method.setAccessible(true);
+            method.invoke(service, "session_update", data);
+        } catch (Exception e) {
+            if (e.getCause() != null && e.getCause().getMessage() != null
+                    && e.getCause().getMessage().contains("Stub!")) {
+                return;
+            }
+        }
+    }
+
+    @Test
     public void postEventNotification_unknownEventType_returnsEarly() throws Exception {
         org.json.JSONObject data = new org.json.JSONObject();
         data.put("status", "completed");

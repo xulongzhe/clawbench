@@ -255,6 +255,10 @@ export function useTaskTab() {
         selectedExecId.value = execId
         selectedExecData.value = execData || null
         execDetailOpen.value = true
+        // If no execData provided, auto-fetch from API (e.g. from push notification deep link)
+        if (!execData) {
+            refreshExecDetail()
+        }
     }
 
     function closeExecDetail() {

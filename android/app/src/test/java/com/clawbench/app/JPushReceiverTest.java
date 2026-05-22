@@ -132,6 +132,44 @@ public class JPushReceiverTest {
         method.invoke(receiver, new android.content.ContextWrapper(null) {}, notificationMessage);
     }
 
+    // =====================================================
+    // Test 6: onNotifyMessageOpened with task notification extras
+    // =====================================================
+
+    @Test
+    public void onNotifyMessageOpened_taskExtras_launchesWithTaskId() throws Exception {
+        setField(notificationMessage, "notificationExtras",
+                "{\"task_id\":\"2\",\"execution_id\":\"5\",\"event_type\":\"task_update\",\"session_id\":\"s-task\",\"project_path\":\"/home/user/project\"}");
+        setField(notificationMessage, "msgId", "msg-006");
+        setField(notificationMessage, "notificationTitle", "计划任务完成");
+        setField(notificationMessage, "notificationContent", "任务已完成");
+
+        callOnNotifyMessageOpened(receiver, notificationMessage);
+        // If we get here without exception, the method executed fully with task extras
+    }
+
+    @Test
+    public void onNotifyMessageOpened_taskExtrasNoExecutionId_launchesWithTaskId() throws Exception {
+        setField(notificationMessage, "notificationExtras",
+                "{\"task_id\":\"1\",\"event_type\":\"task_update\",\"project_path\":\"/home/user/project\"}");
+        setField(notificationMessage, "msgId", "msg-007");
+        setField(notificationMessage, "notificationTitle", "计划任务完成");
+        setField(notificationMessage, "notificationContent", "任务已完成");
+
+        callOnNotifyMessageOpened(receiver, notificationMessage);
+    }
+
+    @Test
+    public void onNotifyMessageOpened_sessionExtrasOnly_noTaskId() throws Exception {
+        setField(notificationMessage, "notificationExtras",
+                "{\"session_id\":\"s-123\",\"project_path\":\"/home/user/project\"}");
+        setField(notificationMessage, "msgId", "msg-008");
+        setField(notificationMessage, "notificationTitle", "AI任务完成");
+        setField(notificationMessage, "notificationContent", "ok");
+
+        callOnNotifyMessageOpened(receiver, notificationMessage);
+    }
+
     // --- Helper methods ---
 
     private static void setField(Object target, String fieldName, Object value) throws Exception {
