@@ -154,9 +154,11 @@ export const categoryItems: Record<string, ItemSpec[]> = {
     // Cache
     { labelKey: 'settings.items.ttsMaxCacheFiles', descriptionKey: 'settings.items.ttsMaxCacheFilesDesc', key: 'tts.max_cache_files', type: 'number', source: 'server',
       sectionHeader: 'settings.items.ttsCacheHeader' },
-    // Tasks summarize
+  ],
+  tasks: [
+    // Task summarization
     { labelKey: 'settings.items.tasksSummarizeBackend', descriptionKey: 'settings.items.tasksSummarizeBackendDesc', key: 'tasks.summarize_backend', type: 'select', source: 'server',
-      sectionHeader: 'settings.items.tasksHeader', options: [
+      options: [
       { labelKey: 'settings.items.tasksSummarizeDisabled', value: '' },
       { labelKey: 'settings.items.ttsSummarizeSimple', value: 'simple' },
       { labelKey: 'settings.items.ttsSummarizeApi', value: 'api' },
@@ -171,6 +173,16 @@ export const categoryItems: Record<string, ItemSpec[]> = {
       { labelKey: 'settings.items.ttsSummarizePi', value: 'pi' },
     ]},
     { labelKey: 'settings.items.tasksSummarizeModel', descriptionKey: 'settings.items.tasksSummarizeModelDesc', key: 'tasks.summarize_model', type: 'text', source: 'server' },
+    // Tasks API sub-config (when summarize_backend=api)
+    { labelKey: 'settings.items.tasksApiBaseUrl', descriptionKey: 'settings.items.tasksApiBaseUrlDesc', key: 'tasks.api.base_url', type: 'text', source: 'server',
+      dependsOn: { key: 'tasks.summarize_backend', value: 'api' }, sectionHeader: 'settings.items.tasksApiHeader' },
+    { labelKey: 'settings.items.tasksApiKey', descriptionKey: 'settings.items.tasksApiKeyDesc', key: 'tasks.api.key', type: 'password', source: 'server',
+      dependsOn: { key: 'tasks.summarize_backend', value: 'api' } },
+    { labelKey: 'settings.items.tasksApiFormat', descriptionKey: 'settings.items.tasksApiFormatDesc', key: 'tasks.api.format', type: 'select', source: 'server',
+      dependsOn: { key: 'tasks.summarize_backend', value: 'api' }, options: [
+      { labelKey: 'settings.items.apiFormatOpenai', value: 'openai' },
+      { labelKey: 'settings.items.apiFormatAnthropic', value: 'anthropic' },
+    ]},
   ],
   rag: [
     { labelKey: 'settings.items.ragOllamaUrl', descriptionKey: 'settings.items.ragOllamaUrlDesc', key: 'rag.ollama_base_url', type: 'text', source: 'server' },

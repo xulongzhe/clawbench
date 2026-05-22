@@ -368,7 +368,7 @@ describe('SettingsCategory', () => {
     })
 
     it('PATCHes tasks.summarize_backend when selected', async () => {
-      const wrapper = mountCategory('tts')
+      const wrapper = mountCategory('tasks')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
       const taskBackendItem = allItems.find(i => i.props().label === '任务摘要后端')
       expect(taskBackendItem).toBeTruthy()
@@ -380,7 +380,7 @@ describe('SettingsCategory', () => {
     })
 
     it('PATCHes tasks.summarize_model when changed', async () => {
-      const wrapper = mountCategory('tts')
+      const wrapper = mountCategory('tasks')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
       const taskModelItem = allItems.find(i => i.props().label === '任务摘要模型')
       expect(taskModelItem).toBeTruthy()

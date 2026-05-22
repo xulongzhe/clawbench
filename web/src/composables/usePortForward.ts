@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { apiGet, apiPost, apiDelete } from '@/utils/api'
+import { apiGet, apiPost, apiPut, apiDelete } from '@/utils/api'
 import { useAppMode } from './useAppMode.ts'
 import { gt } from '@/composables/useLocale'
 import { tunnelStatusFromPorts as tunnelStatusFromPortsUtil, buildPortUrl } from '@/utils/portForwardUtils.ts'
@@ -92,6 +92,16 @@ export function usePortForward() {
       ;(window as any).AndroidNative?.addForwardedPort(port, host || '')
     }
     // Silent refresh: don't flicker the port list with loading state
+    await Promise.all([loadPorts(true), loadSSHInfo()])
+  }
+
+  async function updatePort(localPort: number, port: number, host: string, name: string, protocol: string) {
+    await apiPut('/api/proxy/ports', { localPort, port, host, name, protocol })
+    // Re-sync native layer after update
+    if (isAppMode.value) {
+      ;(window as any).AndroidNative?.removeForwardedPort(localPort)
+      ;(window as any).AndroidNative?.addForwardedPort(port, host || '')
+    }
     await Promise.all([loadPorts(true), loadSSHInfo()])
   }
 
@@ -384,6 +394,7 @@ export function usePortForward() {
     tunnelErrorType,
     loadPorts,
     registerPort,
+    updatePort,
     unregisterPort,
     detectPorts,
     syncToNative,
