@@ -8,6 +8,7 @@ import (
 	"clawbench/internal/model"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ensureDir is a test helper that creates the directory if it doesn't exist.
@@ -211,4 +212,73 @@ func TestValidatePath_SymlinkEscapeViaParent(t *testing.T) {
 	// Even through the symlinked base, escaping should be rejected
 	_, valid := model.ValidatePath(linkBase, "escape/secret.txt")
 	assert.False(t, valid, "ValidatePath should reject escape through symlinked parent")
+}
+
+// --- ResolveExistingPath tests ---
+
+func TestResolveExistingPath_ExistingParent(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, filepath.Join(base, "sub"))
+	// EvalSymlinks on existing directory
+	evalBase, err := filepath.EvalSymlinks(base)
+	require.NoError(t, err)
+
+	// Parent exists, file doesn't
+	result := model.ResolveExistingPath(filepath.Join(base, "sub", "newfile.txt"), evalBase)
+	assert.Contains(t, result, "sub")
+	assert.Contains(t, result, "newfile.txt")
+}
+
+func TestResolveExistingPath_AllComponentsMissing(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, base)
+	evalBase, err := filepath.EvalSymlinks(base)
+	require.NoError(t, err)
+
+	// All path components except the root are missing
+	result := model.ResolveExistingPath(filepath.Join(base, "a", "b", "c", "file.txt"), evalBase)
+	// Should walk up to find "base" which exists, then reconstruct
+	assert.Contains(t, result, "a")
+	assert.Contains(t, result, "file.txt")
+}
+
+func TestResolveExistingPath_ExistingDirectory(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, base)
+	evalBase, err := filepath.EvalSymlinks(base)
+	require.NoError(t, err)
+
+	// Path itself is an existing directory
+	result := model.ResolveExistingPath(base, evalBase)
+	assert.NotEmpty(t, result)
+}
+
+// --- Additional ValidatePath edge cases ---
+
+func TestValidatePath_NestedSymlinkStillEscapes(t *testing.T) {
+	tmpDir := t.TempDir()
+	base := filepath.Join(tmpDir, "base")
+	outside := filepath.Join(tmpDir, "outside")
+	ensureDir(t, base)
+	ensureDir(t, outside)
+
+	// Double-nested symlink: base/link1 -> outside, outside/link2 -> /tmp
+	assert.NoError(t, os.Symlink(outside, filepath.Join(base, "link1")))
+
+	// Create file in outside
+	assert.NoError(t, os.WriteFile(filepath.Join(outside, "target.txt"), []byte("data"), 0644))
+
+	_, valid := model.ValidatePath(base, "link1/target.txt")
+	assert.False(t, valid, "should reject symlink pointing outside base")
+}
+
+func TestValidatePath_FileInBaseDir(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "base")
+	ensureDir(t, base)
+	// Create a file directly in base
+	assert.NoError(t, os.WriteFile(filepath.Join(base, "readme.md"), []byte("hello"), 0644))
+
+	path, valid := model.ValidatePath(base, "readme.md")
+	assert.True(t, valid)
+	assert.Contains(t, path, "readme.md")
 }

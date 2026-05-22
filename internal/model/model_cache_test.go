@@ -72,3 +72,34 @@ func TestModelCache_NonexistentDir(t *testing.T) {
 	require.Len(t, models, 1)
 	assert.Equal(t, "model-a", models[0].ID)
 }
+
+func TestModelCache_WriteMkdirAllError(t *testing.T) {
+	// On non-Windows, creating a directory under a read-only parent should fail
+	if os.PathSeparator == '\\' {
+		t.Skip("read-only directory test not reliable on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping: root user bypasses filesystem permissions")
+	}
+
+	parent := t.TempDir()
+	// Make parent read-only so MkdirAll fails
+	require.NoError(t, os.Chmod(parent, 0555))
+	defer os.Chmod(parent, 0755) // restore for cleanup
+
+	nestedDir := filepath.Join(parent, "sub", "cache")
+	err := model.WriteModelCache(nestedDir, "test", []model.AgentModel{
+		{ID: "model-a", Name: "Model A", Default: true},
+	})
+	assert.Error(t, err, "writing to read-only parent directory should fail")
+}
+
+func TestModelCache_ReadInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	// Write JSON that has the right structure but models is wrong type
+	cachePath := filepath.Join(dir, "bad.json")
+	require.NoError(t, os.WriteFile(cachePath, []byte(`{"updated_at":"2024-01-01","models":"not an array"}`), 0644))
+
+	models := model.ReadModelCache(dir, "bad")
+	assert.Nil(t, models, "should return nil for JSON with wrong models type")
+}

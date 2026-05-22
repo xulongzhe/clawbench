@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -433,15 +434,14 @@ preferred_thinking_effort: low
 	assert.NotContains(t, content, "preferred_thinking_effort")
 }
 
-func TestWriteAgentYAML_NotInitialized(t *testing.T) {
-	// Save and restore agentsDir
+func TestWriteAgentYAML_AgentYAMLNotFoundOnDisk(t *testing.T) {
+	// When LoadAgents has been called (agentsDir is set) but the agent's
+	// YAML file doesn't exist on disk, WriteAgentYAML should return an error.
 	t.Cleanup(func() {
 		model.Agents = nil
 		model.AgentList = nil
 	})
 
-	// LoadAgents sets agentsDir, so calling it on a valid dir then
-	// testing WriteAgentYAML for a nonexistent agent tests the read path
 	tmpDir := t.TempDir()
 	agentsDir := filepath.Join(tmpDir, "agents")
 	require.NoError(t, os.MkdirAll(agentsDir, 0755))
@@ -449,56 +449,7 @@ func TestWriteAgentYAML_NotInitialized(t *testing.T) {
 	err := model.LoadAgents(agentsDir)
 	require.NoError(t, err)
 
-	// Write an agent YAML that doesn't exist on disk
-	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent"})
-	assert.Error(t, err)
-}
-
-func TestWriteAgentYAML_AgentNotFound(t *testing.T) {
-	tmpDir := t.TempDir()
-	agentsDir := filepath.Join(tmpDir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
-
-	err := model.LoadAgents(agentsDir)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		model.Agents = nil
-		model.AgentList = nil
-	})
-
-	// Agent YAML doesn't exist
-	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent"})
-	assert.Error(t, err)
-}
-
-func TestWriteAgentYAML_NotInitializedNoDir(t *testing.T) {
-	t.Cleanup(func() {
-		model.Agents = nil
-		model.AgentList = nil
-	})
-
-	// LoadAgents on an empty dir sets agentsDir, but the agent won't exist on disk
-	// We need agentsDir to be empty to trigger "agents directory not initialized"
-	// Since agentsDir is unexported, we test by calling WriteAgentYAML before LoadAgents
-	// Reset state first
-	model.Agents = nil
-	model.AgentList = nil
-
-	// WriteAgentYAML checks agentsDir internally; calling before LoadAgents
-	// means agentsDir="" (the zero value). But since agentsDir persists across
-	// tests, we use LoadAgents on empty dir (which sets agentsDir) then
-	// test with a nonexistent agent which hits the read error instead.
-	// The "not initialized" path is actually untestable without modifying
-	// the source, so we test the behavior we can: calling WriteAgentYAML
-	// for an agent whose YAML doesn't exist on disk.
-	tmpDir := t.TempDir()
-	agentsDir := filepath.Join(tmpDir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
-
-	err := model.LoadAgents(agentsDir)
-	require.NoError(t, err)
-
-	// WriteAgentYAML for nonexistent agent — should fail with read error
+	// Agent YAML doesn't exist on disk
 	err = model.WriteAgentYAML(&model.Agent{ID: "nonexistent", PreferredModel: "m1"})
 	assert.Error(t, err)
 }
@@ -675,4 +626,66 @@ backend: codebuddy
 	agent.PreferredModel = "new-model"
 	err = model.WriteAgentYAML(agent)
 	assert.Error(t, err, "writing to read-only directory should fail")
+}
+
+func TestWriteAgentYAML_CorruptYAMLUnmarshalFails(t *testing.T) {
+	tmpDir := t.TempDir()
+	agentsDir := filepath.Join(tmpDir, "agents")
+	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+
+	// Write a valid YAML first so LoadAgents sets up agentsDir
+	yamlContent := `id: test-agent
+name: Test Agent
+backend: codebuddy
+`
+	err := os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	err = model.LoadAgents(agentsDir)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	// Now corrupt the YAML on disk so the read-unmarshal path fails
+	corruptContent := `id: test-agent
+name: Test Agent
+backend: !!binary invalid-binary-tag
+`
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(corruptContent), 0644))
+
+	agent := model.Agents["test-agent"]
+	agent.PreferredModel = "new-model"
+	err = model.WriteAgentYAML(agent)
+	assert.Error(t, err, "should fail when YAML on disk cannot be unmarshaled")
+}
+
+func TestLoadAgents_DeterministicOrder(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	dir := t.TempDir()
+	// Create agents that are NOT in alphabetical order on disk
+	for _, id := range []string{"zebra", "alpha", "middle"} {
+		yaml := fmt.Sprintf(`id: %s
+name: %s
+icon: "X"
+specialty: Test
+backend: codebuddy
+system_prompt: Prompt
+`, id, id)
+		require.NoError(t, os.WriteFile(filepath.Join(dir, id+".yaml"), []byte(yaml), 0644))
+	}
+
+	err := model.LoadAgents(dir)
+	require.NoError(t, err)
+
+	// AgentList should be sorted by ID
+	require.Len(t, model.AgentList, 3)
+	assert.Equal(t, "alpha", model.AgentList[0].ID)
+	assert.Equal(t, "middle", model.AgentList[1].ID)
+	assert.Equal(t, "zebra", model.AgentList[2].ID)
 }

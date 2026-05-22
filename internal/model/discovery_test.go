@@ -856,3 +856,30 @@ func TestSyncDiscoverModels_CoversClaudeDiscoverModelsFunc(t *testing.T) {
 	assert.Contains(t, entry, "models")
 	t.Logf("claude cache file created with models")
 }
+
+// --- Test 14: AsyncRefreshModelCache ---
+// AsyncRefreshModelCache is a fire-and-forget goroutine that iterates over
+// BackendRegistry, discovers models, and updates in-memory agents.
+// It cannot be tested safely with the race detector because:
+//   - It launches an untracked goroutine
+//   - The goroutine accesses global state (AgentList) concurrently
+//   - Test cleanup (setting Agents=nil) races with the goroutine
+//
+// The core model discovery logic is already covered by:
+//   - TestDiscoverModels_* (DiscoverModels function)
+//   - TestSyncDiscoverModels_* (SyncDiscoverModels synchronous path)
+//   - TestMergeDiscoveredData_* (MergeDiscoveredData agent update logic)
+//
+// AsyncRefreshModelCache is essentially the async composition of these,
+// and the composition itself is trivial (just a goroutine wrapper).
+// We test the one unique behavior: it should not panic when called.
+
+func TestAsyncRefreshModelCache_DoesNotPanic(t *testing.T) {
+	// Calling AsyncRefreshModelCache should not panic, even with no agents.
+	cacheDir := filepath.Join(t.TempDir(), "model-cache")
+	assert.NotPanics(t, func() {
+		model.AsyncRefreshModelCache(cacheDir)
+	})
+}
+
+// --- Test 15: ParseCodebuddyModels edge cases ---
