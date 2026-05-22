@@ -63,6 +63,7 @@ import { MessageSquare, ChevronDown, XCircle, Send } from 'lucide-vue-next'
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'
+import { truncateQuoteText, canSendInput } from '@/utils/quoteQuestionUtils'
 
 const { t } = useI18n()
 
@@ -82,12 +83,10 @@ const barRef = ref(null)
 
 const fullQuoteText = computed(() => {
   if (!props.quoteData) return ''
-  const text = props.quoteData.text || ''
-  // Show up to 3 lines when expanded; single-line will be truncated via CSS
-  return text.length > 150 ? text.slice(0, 150) + '…' : text
+  return truncateQuoteText(props.quoteData.text || '')
 })
 
-const canSend = computed(() => inputText.value.trim().length > 0)
+const canSend = computed(() => canSendInput(inputText.value))
 
 const displaySessionTitle = computed(() => props.sessionTitle || t('quoteBar.newSession'))
 
