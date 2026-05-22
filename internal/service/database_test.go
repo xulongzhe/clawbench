@@ -776,3 +776,175 @@ func TestGetChatQuickSend_OrderedBySortOrder(t *testing.T) {
 	assert.Equal(t, "A", items[1].Label)
 	assert.Equal(t, "B", items[2].Label)
 }
+
+// ---------- Forwarded ports schema: host, local_port columns ----------
+
+func TestSchema_ForwardedPortsColumns(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	columns := getTableColumns(t, DB, "forwarded_ports")
+	assert.Contains(t, columns, "local_port", "forwarded_ports should have local_port column")
+	assert.Contains(t, columns, "port", "forwarded_ports should have port column")
+	assert.Contains(t, columns, "host", "forwarded_ports should have host column")
+	assert.Contains(t, columns, "name", "forwarded_ports should have name column")
+	assert.Contains(t, columns, "protocol", "forwarded_ports should have protocol column")
+}
+
+func TestSchema_ForwardedPortsMigration_HostColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Create DB with old schema (no host column)
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Verify host column exists after migration
+	columns := getTableColumns(t, DB, "forwarded_ports")
+	assert.Contains(t, columns, "host", "host column should exist after migration")
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_LocalPortColumn(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Create DB with schema that includes all columns
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Insert a row and verify local_port defaults correctly
+	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (8080, 8080, '', 'test', 'http')")
+	assert.NoError(t, err)
+
+	var localPort, port int
+	var host string
+	err = DB.QueryRow("SELECT local_port, port, host FROM forwarded_ports WHERE local_port = 8080").Scan(&localPort, &port, &host)
+	assert.NoError(t, err)
+	assert.Equal(t, 8080, localPort)
+	assert.Equal(t, 8080, port)
+	assert.Equal(t, "", host)
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_LocalPortBackfill(t *testing.T) {
+	// Simulate migration: old table without local_port → add column + backfill
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// First init creates the full schema
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Insert with local_port = port (backward compatible default)
+	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (3000, 3000, '', 'app', 'http')")
+	assert.NoError(t, err)
+
+	var localPort, port int
+	err = DB.QueryRow("SELECT local_port, port FROM forwarded_ports WHERE port = 3000").Scan(&localPort, &port)
+	assert.NoError(t, err)
+	assert.Equal(t, port, localPort, "local_port should equal port for backward compatibility")
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_HostDefaultValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Insert without specifying host — should default to empty string
+	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, name, protocol) VALUES (5173, 5173, 'vite', 'http')")
+	assert.NoError(t, err)
+
+	var host string
+	err = DB.QueryRow("SELECT host FROM forwarded_ports WHERE local_port = 5173").Scan(&host)
+	assert.NoError(t, err)
+	assert.Equal(t, "", host, "host should default to empty string")
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_HostWithCustomValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Insert with a custom host value
+	_, err = DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (8081, 8080, '192.168.1.100', 'remote', 'http')")
+	assert.NoError(t, err)
+
+	var host string
+	err = DB.QueryRow("SELECT host FROM forwarded_ports WHERE local_port = 8081").Scan(&host)
+	assert.NoError(t, err)
+	assert.Equal(t, "192.168.1.100", host)
+
+	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_Idempotent(t *testing.T) {
+	// Running InitDB twice should not fail (migrations are idempotent)
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	CloseDB()
+
+	// Re-init should not fail even though columns already exist
+	err = InitDB()
+	assert.NoError(t, err)
+	CloseDB()
+}

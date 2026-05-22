@@ -692,3 +692,39 @@ func TestSSHServer_SuccessfulAuthResetsCounter(t *testing.T) {
 	client2 := testSSHClient(t, srv.addr, "clawbench", "correct-password")
 	client2.Close()
 }
+
+// --- IPv6 / JoinHostPort Tests ---
+
+func TestSSHServer_JoinHostPort_LocalhostTarget(t *testing.T) {
+	// Verify that the SSH server correctly uses net.JoinHostPort for localhost targets.
+	// This tests the fix from fmt.Sprintf("127.0.0.1:%d") → net.JoinHostPort.
+	portReg := newTestRegistry(t)
+	echoPort := startEchoServer(t)
+	portReg.RegisterPort(echoPort, "", "echo", "http")
+
+	srv := testServerHelper(t, "test-password", portReg)
+	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
+
+	// Connect using "localhost" as the target — should be normalized to 127.0.0.1
+	conn, err := client.Dial("tcp", fmt.Sprintf("localhost:%d", echoPort))
+	if err != nil {
+		t.Fatalf("expected port forwarding via localhost to work, got: %v", err)
+	}
+	defer conn.Close()
+
+	testMsg := []byte("hello via localhost")
+	_, err = conn.Write(testMsg)
+	if err != nil {
+		t.Fatalf("failed to write: %v", err)
+	}
+
+	buf := make([]byte, 1024)
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	n, err := conn.Read(buf)
+	if err != nil {
+		t.Fatalf("failed to read: %v", err)
+	}
+	if string(buf[:n]) != string(testMsg) {
+		t.Errorf("echo mismatch: got %q, want %q", string(buf[:n]), string(testMsg))
+	}
+}
