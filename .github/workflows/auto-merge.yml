@@ -22,28 +22,39 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Find open PRs targeting main with auto-merge label by repo owner
-          PRS=$(gh pr list \
-            --repo "$GITHUB_REPOSITORY" \
-            --base main \
-            --state open \
-            --label auto-merge \
-            --author xulongzhe \
-            --json number,headRefName \
-            --jq '.[] | "\(.number) \(.headRefName)"')
+          # Use GitHub API directly instead of gh pr list to avoid search index delay
+          # when triggered by pull_request: labeled events
+          PRS=$(gh api \
+            "repos/$GITHUB_REPOSITORY/pulls?state=open&base=main&per_page=100" \
+            --jq '[.[] | select(.user.login == "xulongzhe") | .number] | .[]')
 
-          if [ -z "$PRS" ]; then
+          ELIGIBLE=""
+          for PR_NUM in $PRS; do
+            # Check if PR has auto-merge label via API (avoids search index delay)
+            LABELS=$(gh api \
+              "repos/$GITHUB_REPOSITORY/issues/$PR_NUM/labels" \
+              --jq '[.[].name]')
+            if echo "$LABELS" | grep -q '"auto-merge"'; then
+              BRANCH=$(gh pr view "$PR_NUM" --repo "$GITHUB_REPOSITORY" --json headRefName --jq '.headRefName')
+              ELIGIBLE="$ELIGIBLE
+$PR_NUM $BRANCH"
+              echo "Found eligible PR #$PR_NUM ($BRANCH)"
+            fi
+          done
+
+          ELIGIBLE=$(echo "$ELIGIBLE" | sed '/^$/d')
+          if [ -z "$ELIGIBLE" ]; then
             echo "No eligible PRs found, skipping."
             echo "has_prs=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "Eligible PRs:"
-          echo "$PRS"
+          echo "$ELIGIBLE"
           echo "has_prs=true" >> "$GITHUB_OUTPUT"
 
           # Export for next step
-          echo "$PRS" > /tmp/auto_merge_prs.txt
+          echo "$ELIGIBLE" > /tmp/auto_merge_prs.txt
 
       - name: Wait for CI and merge
         if: steps.find-prs.outputs.has_prs == 'true'
