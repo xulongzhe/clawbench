@@ -1,6 +1,6 @@
 <template>
-  <div class="git-worktree-list" :class="{ collapsed }">
-    <div class="section-header" @click="toggleCollapse">
+  <div class="git-worktree-list" :class="{ collapsed, 'no-header': hideHeader }">
+    <div v-if="!hideHeader" class="section-header" @click="toggleCollapse">
       <div class="section-left">
         <span class="section-title">{{ t('git.manage.worktrees') }}</span>
         <span v-if="worktrees.length > 0" class="section-count">{{ worktrees.length }}</span>
@@ -8,7 +8,7 @@
       <ChevronDown v-if="!collapsed" :size="16" class="section-chevron" />
       <ChevronRight v-else :size="16" class="section-chevron" />
     </div>
-    <div v-if="!collapsed" class="section-body">
+    <div v-if="hideHeader || !collapsed" class="section-body">
       <div v-if="loading" class="section-loading">
         <div class="spinner" style="width:18px;height:18px;border-width:2px;" />
       </div>
@@ -17,7 +17,7 @@
         <button class="retry-btn" @click="$emit('retry')">{{ t('git.manage.retry') }}</button>
       </div>
       <div v-else-if="worktrees.length === 0" class="section-empty">{{ t('git.manage.noWorktrees') }}</div>
-      <div v-else class="wt-card-grid">
+      <div v-else class="wt-list-body">
         <GitWorktreeCard
           v-for="wt in worktrees"
           :key="wt.path"
@@ -42,11 +42,13 @@ const props = withDefaults(defineProps<{
   loading?: boolean
   error?: boolean
   initialCollapsed?: boolean
+  hideHeader?: boolean
 }>(), {
   worktrees: () => [],
   loading: false,
   error: false,
   initialCollapsed: false,
+  hideHeader: false,
 })
 
 defineEmits(['switch-worktree', 'retry'])
@@ -76,6 +78,10 @@ function toggleCollapse() {
   border-bottom: 1px solid var(--border-color, #dee2e6);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.git-worktree-list.no-header {
+  border-bottom: none;
 }
 
 .section-header {
@@ -120,7 +126,6 @@ function toggleCollapse() {
 }
 
 .section-body {
-  padding: 8px 12px;
 }
 
 .section-loading {
@@ -154,10 +159,9 @@ function toggleCollapse() {
   padding: 8px 0;
 }
 
-.wt-card-grid {
+.wt-list-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
 }
 
 .spinner {

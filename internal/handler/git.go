@@ -926,6 +926,7 @@ type worktreeInfo struct {
 	Branch       string `json:"branch"`
 	IsCurrent    bool   `json:"isCurrent"`
 	Dirty        bool   `json:"dirty"`
+	ChangeCount  int    `json:"changeCount"`
 	UntrackedCnt int    `json:"untrackedCount"`
 	Locked       bool   `json:"locked"`
 	Missing      bool   `json:"missing"`
@@ -1189,6 +1190,7 @@ func ServeGitWorktrees(w http.ResponseWriter, r *http.Request) {
 	type dirtyResult struct {
 		Index         int
 		Dirty         bool
+		ChangeCount   int
 		UntrackedCnt int
 	}
 	results := make(chan dirtyResult, len(trees))
@@ -1203,21 +1205,24 @@ func ServeGitWorktrees(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			dirty := false
+			changeCount := 0
 			untrackedCnt := 0
 			for _, line := range strings.Split(string(out), "\n") {
 				if len(line) >= 2 {
 					dirty = true
+					changeCount++
 					if line[0] == '?' && line[1] == '?' {
 						untrackedCnt++
 					}
 				}
 			}
-			results <- dirtyResult{Index: idx, Dirty: dirty, UntrackedCnt: untrackedCnt}
+			results <- dirtyResult{Index: idx, Dirty: dirty, ChangeCount: changeCount, UntrackedCnt: untrackedCnt}
 		}(i, wt.Path)
 	}
 	for range trees {
 		res := <-results
 		trees[res.Index].Dirty = res.Dirty
+		trees[res.Index].ChangeCount = res.ChangeCount
 		trees[res.Index].UntrackedCnt = res.UntrackedCnt
 	}
 
@@ -1355,5 +1360,97 @@ func ServeGitCheckout(w http.ResponseWriter, r *http.Request) {
 		"branch":    body.Branch,
 		"stashed":   stashed,
 		"stashCount": stashCount,
+	})
+}
+
+// tagInfo represents a git tag in API responses.
+type tagInfo struct {
+	Name   string `json:"name"`
+	SHA    string `json:"sha"`
+	Date   string `json:"date"`
+	Author string `json:"author"`
+	Msg    string `json:"msg"`
+}
+
+// ServeGitTags returns all tags with commit info.
+func ServeGitTags(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodGet) {
+		return
+	}
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
+	if !isGitRepo(projectPath) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"isGit": false,
+			"tags":  []interface{}{},
+		})
+		return
+	}
+
+	// List tags with commit metadata using for-each-ref
+	// Format: tagname|objectname|creatordate|creator
+	cmd := exec.Command("git", "for-each-ref",
+		"--format=%(refname:short)|%(objectname)|%(creatordate:iso)|%(creator)",
+		"refs/tags/")
+	cmd.Dir = projectPath
+	output, _ := cmd.CombinedOutput()
+
+	var tags []tagInfo
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 4)
+		if len(parts) < 2 {
+			continue
+		}
+		name := parts[0]
+		sha := parts[1]
+		date := ""
+		author := ""
+		if len(parts) > 2 {
+			date = parts[2]
+		}
+		if len(parts) > 3 {
+			// creator format: "Name email timestamp" — take name portion
+			author = parts[3]
+			if idx := strings.LastIndex(author, " "); idx > 0 {
+				author = author[:idx]
+			}
+		}
+
+		// Get tag message (annotated tags have messages, lightweight tags don't)
+		msg := ""
+		msgCmd := exec.Command("git", "tag", "-n1", name)
+		msgCmd.Dir = projectPath
+		msgOut, _ := msgCmd.Output()
+		if len(msgOut) > 0 {
+			// Output format: "tagname            message"
+			fields := strings.SplitN(strings.TrimSpace(string(msgOut)), "  ", 2)
+			if len(fields) > 1 {
+				msg = strings.TrimSpace(fields[1])
+			}
+		}
+
+		tags = append(tags, tagInfo{
+			Name:   name,
+			SHA:    sha,
+			Date:   date,
+			Author: author,
+			Msg:    msg,
+		})
+	}
+
+	if tags == nil {
+		tags = []tagInfo{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"isGit": true,
+		"tags":  tags,
 	})
 }

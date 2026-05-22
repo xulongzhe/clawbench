@@ -155,7 +155,7 @@ import GitBreadcrumb from './GitBreadcrumb.vue'
 import GitManageContent from './GitManageContent.vue'
 import { renderDiff } from '@/utils/diff.ts'
 import { store } from '@/stores/app.ts'
-import { useCommitNavigation, consumePendingCommitNavigation, pendingSha as pendingCommitSha, consumePendingManageNavigation } from '@/composables/useCommitNavigation.ts'
+import { useCommitNavigation, consumePendingCommitNavigation, pendingSha as pendingCommitSha, consumePendingManageNavigation, pendingManageView } from '@/composables/useCommitNavigation.ts'
 const { t } = useI18n()
 
 const switchTab = inject('switchTab', () => {})
@@ -445,6 +445,16 @@ watch(pendingCommitSha, async (sha) => {
   const consumed = consumePendingCommitNavigation()
   if (consumed) {
     await navigateToCommit(consumed)
+  }
+})
+
+// Watch for manage-view navigation requests from branch badge click
+// (handles the case where the history tab is already active)
+watch(pendingManageView, async (pending) => {
+  if (!pending || !props.active) return
+  const consumed = consumePendingManageNavigation()
+  if (consumed) {
+    currentView.value = 'manage'
   }
 })
 

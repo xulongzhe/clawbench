@@ -59,6 +59,12 @@ export function consumePendingManageNavigation(): boolean {
 export { pendingSha }
 
 /**
+ * The reactive pending manage-view ref. GitHistory components can watch this
+ * to handle navigation even when already mounted and active.
+ */
+export { pendingManageView }
+
+/**
  * Shared commit navigation logic for GitHistory components.
  * Takes the component's reactive state and functions as parameters.
  */

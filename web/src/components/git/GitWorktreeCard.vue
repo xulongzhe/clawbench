@@ -1,18 +1,18 @@
 <template>
   <div
-    class="git-worktree-card"
+    class="git-worktree-row"
     :class="{ current: worktree.isCurrent, locked: worktree.locked, missing: worktree.missing }"
     @click="!worktree.isCurrent && !worktree.missing && $emit('switch', worktree)"
   >
-    <div class="wt-card-main">
-      <div class="wt-card-name">
-        <GitBranch :size="14" />
+    <div class="wt-row-main">
+      <div class="wt-row-name">
+        <FolderTree :size="14" class="wt-row-icon" />
         <span>{{ worktree.branch || '—' }}</span>
       </div>
-      <div class="wt-card-path">{{ worktree.path }}</div>
+      <div class="wt-row-path">{{ worktree.path }}</div>
     </div>
-    <div class="wt-card-status">
-      <span v-if="worktree.dirty" class="wt-badge wt-badge-dirty">{{ t('git.manage.dirty', { count: worktree.untrackedCount }) }}</span>
+    <div class="wt-row-badges">
+      <span v-if="worktree.dirty" class="wt-badge wt-badge-dirty">{{ t('git.manage.dirty', { count: worktree.changeCount || worktree.untrackedCount }) }}</span>
       <span v-else class="wt-badge wt-badge-clean">{{ t('git.manage.clean') }}</span>
       <span v-if="worktree.locked" class="wt-badge wt-badge-locked">{{ t('git.manage.locked') }}</span>
       <span v-if="worktree.missing" class="wt-badge wt-badge-missing">{{ t('git.manage.pathMissing') }}</span>
@@ -22,7 +22,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { GitBranch } from 'lucide-vue-next'
+import { FolderTree } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -34,80 +34,72 @@ defineEmits(['switch'])
 </script>
 
 <style scoped>
-.git-worktree-card {
-  border: 1px solid var(--border-color, #dee2e6);
-  border-radius: 8px;
-  padding: 10px 12px;
+.git-worktree-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   min-height: 44px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color, #dee2e6);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: background 0.15s;
+  gap: 8px;
 }
 
 @media (hover: hover) {
-  .git-worktree-card:hover {
-    border-color: var(--accent-color, #4a90d9);
+  .git-worktree-row:hover {
+    background: var(--bg-secondary, #f8f9fa);
   }
 }
 
-.git-worktree-card.current {
-  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent-color) 30%, transparent);
+.git-worktree-row.current {
+  background: var(--bg-accent-subtle, rgba(74, 144, 217, 0.08));
   cursor: default;
 }
 
-.git-worktree-card.current .wt-card-name {
-  color: var(--accent-color, #4a90d9);
-}
-
-.git-worktree-card.current .wt-card-path {
-  color: var(--text-muted, #999);
-}
-
-.git-worktree-card.current .wt-badge-clean {
-  background: color-mix(in srgb, var(--accent-color) 18%, transparent);
-  color: var(--accent-color, #4a90d9);
-}
-
-.git-worktree-card.current .wt-badge-dirty {
-  background: color-mix(in srgb, var(--accent-color) 18%, transparent);
-  color: var(--accent-color, #4a90d9);
-}
-
-.git-worktree-card.missing {
+.git-worktree-row.missing {
   opacity: 0.6;
 }
 
-.git-worktree-card.locked {
+.git-worktree-row.locked {
   opacity: 0.8;
 }
 
-.wt-card-main {
+.wt-row-main {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 
-.wt-card-name {
+.wt-row-name {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--accent-color, #4a90d9);
+  color: var(--text-primary, #1a1a1a);
 }
 
-.wt-card-path {
+.wt-row-icon {
+  flex-shrink: 0;
+  color: var(--color-green, #16a34a);
+}
+
+.wt-row-path {
   font-size: 11px;
   color: var(--text-muted, #999);
   word-break: break-all;
   line-height: 1.4;
+  padding-left: 19px; /* align with name text after icon */
 }
 
-.wt-card-status {
+.wt-row-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 6px;
+  flex-shrink: 0;
 }
 
 .wt-badge {

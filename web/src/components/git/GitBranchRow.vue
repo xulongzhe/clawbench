@@ -5,11 +5,11 @@
     @click="handleClick"
   >
     <div class="branch-main">
-      <span v-if="branch.isDefault" class="branch-default-badge">{{ t('git.manage.default') }}</span>
+      <GitBranch :size="14" class="branch-icon" />
       <span class="branch-name">{{ branch.name }}</span>
-      <span v-if="branch.isCurrent" class="branch-current-indicator">{{ t('git.manage.current') }}</span>
     </div>
-    <div class="branch-track">
+    <div class="branch-right">
+      <span v-if="branch.isDefault" class="branch-default-badge">{{ t('git.manage.default') }}</span>
       <span v-if="branch.ahead > 0" class="track-ahead">{{ t('git.manage.ahead') }}{{ branch.ahead }}</span>
       <span v-if="branch.behind > 0" class="track-behind">{{ t('git.manage.behind') }}{{ branch.behind }}</span>
     </div>
@@ -22,6 +22,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { GitBranch } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -77,6 +78,30 @@ function handleClick() {
   min-width: 0;
 }
 
+.branch-icon {
+  color: var(--accent-color, #4a90d9);
+  flex-shrink: 0;
+}
+
+.branch-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #1a1a1a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .branch-default-badge {
   font-size: 10px;
   font-weight: 600;
@@ -85,31 +110,6 @@ function handleClick() {
   padding: 1px 5px;
   border-radius: 3px;
   flex-shrink: 0;
-}
-
-.branch-name {
-  font-size: 13px;
-  color: var(--text-primary, #1a1a1a);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.branch-current-indicator {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent-color, #4a90d9);
-  flex-shrink: 0;
-}
-
-.branch-track {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  margin-left: 8px;
-  font-size: 11px;
-  font-weight: 600;
 }
 
 .track-ahead {
