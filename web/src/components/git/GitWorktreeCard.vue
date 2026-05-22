@@ -57,6 +57,12 @@ defineEmits(['switch'])
   cursor: default;
 }
 
+.git-worktree-row.current .wt-row-name {
+  color: var(--accent-color, #4a90d9);
+  font-weight: bold;
+  text-shadow: 0 0 1px currentColor;
+}
+
 .git-worktree-row.missing {
   opacity: 0.6;
 }
@@ -84,7 +90,7 @@ defineEmits(['switch'])
 
 .wt-row-icon {
   flex-shrink: 0;
-  color: var(--color-green, #16a34a);
+  color: var(--accent-color, #4a90d9);
 }
 
 .wt-row-path {

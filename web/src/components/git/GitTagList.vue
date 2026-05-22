@@ -117,7 +117,7 @@ function shortDate(dateStr: string) {
 }
 
 .tag-icon {
-  color: var(--color-purple, #7c3aed);
+  color: var(--accent-color, #4a90d9);
   flex-shrink: 0;
 }
 

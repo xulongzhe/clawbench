@@ -65,6 +65,12 @@ function handleClick() {
   cursor: default;
 }
 
+.git-branch-row.current .branch-name {
+  color: var(--accent-color, #4a90d9);
+  font-weight: bold;
+  text-shadow: 0 0 1px currentColor;
+}
+
 .git-branch-row.switching {
   opacity: 0.7;
   pointer-events: none;

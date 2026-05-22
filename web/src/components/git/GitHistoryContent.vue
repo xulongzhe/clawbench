@@ -438,6 +438,15 @@ const { navigateToCommit, handleDrillBackToCommits } = useCommitNavigation({
     loadProjectHistory,
 })
 
+// Ensure IntersectionObserver is set up whenever user returns to the commits view.
+// This covers the case where observeList() was skipped due to early returns
+// (e.g. entering via Header branch badge → manage view → back to commits).
+watch(currentView, (view) => {
+  if (view === 'commits') {
+    nextTick(() => commitListRef.value?.observeList())
+  }
+})
+
 // Watch for commit navigation requests from chat (handles the case where
 // the history tab is already active and a commit hash link is clicked)
 watch(pendingCommitSha, async (sha) => {
