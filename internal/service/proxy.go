@@ -24,10 +24,23 @@ import (
 // ProxyRegistry manages forwarded ports: registration, health checks, and auto-detection.
 type ProxyRegistry struct {
 	mu       sync.RWMutex
-	ports    map[int]*model.ForwardedPort
+	ports    map[string]*model.ForwardedPort // key = "port:host" via portKey()
 	cfg      model.ProxyConfig
 	selfPort int // ClawBench's own port, excluded from detection
 	cancel   context.CancelFunc
+}
+
+// portKey returns a unique map key for a (port, host) combination.
+func portKey(port int, host string) string {
+	return fmt.Sprintf("%d:%s", port, host)
+}
+
+// hostDisplayName returns a human-readable host name for error messages.
+func hostDisplayName(host string) string {
+	if host == "" {
+		return "localhost"
+	}
+	return host
 }
 
 // ProxyService is the global singleton, initialized from main.go.
@@ -39,7 +52,7 @@ var ProxyService *ProxyRegistry
 func NewProxyRegistry(allowedPorts string, selfPort int) *ProxyRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &ProxyRegistry{
-		ports:    make(map[int]*model.ForwardedPort),
+		ports:    make(map[string]*model.ForwardedPort),
 		cfg:      model.ProxyConfig{AllowedPorts: allowedPorts},
 		selfPort: selfPort,
 		cancel:   cancel,
@@ -83,11 +96,13 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.ports[port]; exists {
-		return fmt.Errorf("port %d is already registered", port)
+	// Use (port, host) as the unique key — same port can be forwarded to different hosts
+	key := portKey(port, host)
+	if _, exists := r.ports[key]; exists {
+		return fmt.Errorf("port %d → %s is already registered", port, hostDisplayName(host))
 	}
 
-	r.ports[port] = &model.ForwardedPort{
+	r.ports[key] = &model.ForwardedPort{
 		Port:       port,
 		Host:       host,
 		Name:       name,
@@ -110,20 +125,23 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 }
 
 // UnregisterPort removes a port from the forwarding registry.
-func (r *ProxyRegistry) UnregisterPort(port int) error {
+// host is used to disambiguate when the same port is registered with different hosts.
+// If host is empty, it matches the entry with empty/localhost host.
+func (r *ProxyRegistry) UnregisterPort(port int, host string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if _, exists := r.ports[port]; !exists {
-		return fmt.Errorf("port %d is not registered", port)
+	key := portKey(port, host)
+	if _, exists := r.ports[key]; !exists {
+		return fmt.Errorf("port %d → %s is not registered", port, hostDisplayName(host))
 	}
 
-	delete(r.ports, port)
+	delete(r.ports, key)
 
 	// Remove from database
-	r.deletePortFromDB(port)
+	r.deletePortFromDB(port, host)
 
-	slog.Info("proxy port unregistered", slog.Int("port", port))
+	slog.Info("proxy port unregistered", slog.Int("port", port), slog.String("host", host))
 	return nil
 }
 
@@ -137,9 +155,12 @@ func (r *ProxyRegistry) ListPorts() []model.ForwardedPort {
 		result = append(result, *p)
 	}
 
-	// Sort by port number for stable output
+	// Sort by port number, then by host for stable output
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].Port < result[j].Port
+		if result[i].Port != result[j].Port {
+			return result[i].Port < result[j].Port
+		}
+		return result[i].Host < result[j].Host
 	})
 
 	return result
@@ -259,7 +280,8 @@ func (r *ProxyRegistry) checkAllPorts() {
 		active := checkPortActive(entry.port, entry.host)
 
 		r.mu.Lock()
-		if p, ok := r.ports[entry.port]; ok {
+		key := portKey(entry.port, entry.host)
+		if p, ok := r.ports[key]; ok {
 			p.Active = active
 		}
 		r.mu.Unlock()
@@ -267,13 +289,18 @@ func (r *ProxyRegistry) checkAllPorts() {
 }
 
 // checkPortActive attempts a TCP connection to determine if a port is listening.
+// Uses a longer timeout for non-localhost targets (LAN/remote hosts may have higher latency).
 func checkPortActive(port int, host string) bool {
 	targetHost := host
 	if targetHost == "" {
 		targetHost = "127.0.0.1"
 	}
+	timeout := 2 * time.Second
+	if targetHost != "127.0.0.1" && targetHost != "localhost" {
+		timeout = 5 * time.Second
+	}
 	addr := fmt.Sprintf("%s:%d", targetHost, port)
-	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
 		return false
 	}
@@ -666,7 +693,7 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 		if protocol != "https" {
 			protocol = "http"
 		}
-		r.ports[port] = &model.ForwardedPort{
+		r.ports[portKey(port, host)] = &model.ForwardedPort{
 			Port:       port,
 			Host:       host,
 			Name:       name,
@@ -696,12 +723,12 @@ func (r *ProxyRegistry) savePortToDB(port int, host string, name, protocol strin
 }
 
 // deletePortFromDB removes a forwarded port from the database.
-func (r *ProxyRegistry) deletePortFromDB(port int) {
+func (r *ProxyRegistry) deletePortFromDB(port int, host string) {
 	if DB == nil {
 		return
 	}
-	_, err := DB.Exec("DELETE FROM forwarded_ports WHERE port = ?", port)
+	_, err := DB.Exec("DELETE FROM forwarded_ports WHERE port = ? AND host = ?", port, host)
 	if err != nil {
-		slog.Error("failed to delete port from DB", slog.Int("port", port), slog.String("err", err.Error()))
+		slog.Error("failed to delete port from DB", slog.Int("port", port), slog.String("host", host), slog.String("err", err.Error()))
 	}
 }

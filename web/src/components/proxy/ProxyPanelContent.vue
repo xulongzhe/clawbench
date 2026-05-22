@@ -283,8 +283,8 @@ async function handleQuickAdd(port, protocol, processName) {
   await registerPort(port, processName || t('proxy.autoDetect'), protocol || 'http')
 }
 
-async function handleRemove(port) {
-  await unregisterPort(port)
+async function handleRemove(port, host) {
+  await unregisterPort(port, host)
 }
 
 async function handleDetect() {

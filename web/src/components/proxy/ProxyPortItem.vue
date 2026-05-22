@@ -20,7 +20,7 @@
       <button class="port-action-btn open" @click.stop="$emit('openExternal', port, protocol, host)" :title="t('proxy.openInBrowser')">
         <ExternalLink :size="14" />
       </button>
-      <button class="port-action-btn delete" @click.stop="$emit('remove', port)" :title="t('common.delete')">
+      <button class="port-action-btn delete" @click.stop="$emit('remove', port, host)" :title="t('common.delete')">
         <Trash2 :size="14" />
       </button>
     </div>

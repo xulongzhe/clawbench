@@ -84,7 +84,7 @@ func TestProxyRegistry_UnregisterPort(t *testing.T) {
 
 	_ = r.RegisterPort(9090, "", "metrics", "")
 
-	err := r.UnregisterPort(9090)
+	err := r.UnregisterPort(9090, "")
 	assert.NoError(t, err)
 	assert.False(t, isPortRegistered(r, 9090))
 }
@@ -93,7 +93,7 @@ func TestProxyRegistry_UnregisterPort_NotRegistered(t *testing.T) {
 	r := newTestRegistry(t)
 	defer r.Stop()
 
-	err := r.UnregisterPort(9999)
+	err := r.UnregisterPort(9999, "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "not registered")
 }
@@ -310,7 +310,7 @@ func TestProxyRegistry_PortPersistence_UnregisterDeletesFromDB(t *testing.T) {
 	r.RegisterPort(8080, "", "api", "http")
 
 	// Unregister one port
-	err := r.UnregisterPort(3000)
+	err := r.UnregisterPort(3000, "")
 	assert.NoError(t, err)
 
 	// Verify only one port remains in DB
@@ -376,7 +376,7 @@ func TestProxyRegistry_PortPersistence_FullLifecycle(t *testing.T) {
 	assert.True(t, isPortRegistered(r2, 4000))
 	assert.True(t, isPortRegistered(r2, 5432))
 
-	r2.UnregisterPort(4000)      // remove one
+	r2.UnregisterPort(4000, "")      // remove one
 	r2.RegisterPort(9090, "", "metrics", "http") // add new
 	r2.Stop()
 
@@ -438,7 +438,7 @@ func TestProxyRegistry_PortPersistence_NoDB(t *testing.T) {
 	assert.True(t, isPortRegistered(r, 8080))
 
 	// Unregister should work
-	err = r.UnregisterPort(8080)
+	err = r.UnregisterPort(8080, "")
 	assert.NoError(t, err)
 	assert.False(t, isPortRegistered(r, 8080))
 }
