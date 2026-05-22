@@ -245,6 +245,7 @@ const serverDefaults: Record<string, any> = {
   'tts.api.format': 'openai',
   'tasks.summarize_backend': '',
   'tasks.summarize_model': '',
+  'tasks.api.format': 'openai',
 }
 
 // ── Agent preference helpers ──────────────────────────────

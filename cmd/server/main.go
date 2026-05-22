@@ -741,13 +741,13 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 		return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 
 	case backend == "api":
-		if cfg.TTS.API.BaseURL == "" {
-			return nil, fmt.Errorf("tasks.summarize_backend is \"api\" but tts.api.base_url is not configured")
+		if cfg.Tasks.API.BaseURL == "" {
+			return nil, fmt.Errorf("tasks.summarize_backend is \"api\" but tasks.api.base_url is not configured")
 		}
 		// For API backends, create OpenAI/Anthropic summarizer and wrap its pass function
 		// in a pipeline with PreserveMarkdown=true and task-specific prompt.
-		if cfg.TTS.API.Format == "anthropic" {
-			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, modelName)
+		if cfg.Tasks.API.Format == "anthropic" {
+			s := summarize.NewAnthropic(cfg.Tasks.API.BaseURL, cfg.Tasks.API.Key, modelName)
 			pipeline := summarize.NewPipelineWithOpts(
 				s.DoSummarizePass,
 				summarize.TaskSummarizePrompt(),
@@ -755,7 +755,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 			)
 			return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 		}
-		s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, modelName)
+		s := summarize.NewOpenAI(cfg.Tasks.API.BaseURL, cfg.Tasks.API.Key, modelName)
 		pipeline := summarize.NewPipelineWithOpts(
 			s.DoSummarizePass,
 			summarize.TaskSummarizePrompt(),

@@ -23,7 +23,7 @@ push:
     jpush:
         app_key: ""
         enabled: false
-        master_secret: ""
+        master_secret: newsecret1234567890
 rag:
     batch_size: 0
     chunk_overlap: 0
@@ -37,6 +37,8 @@ rag:
 session:
     max_count: 20
 tasks:
+    api:
+        base_url: https://api.openai.com/v1
     summarize_backend: api
     summarize_model: codebuddy-latest
 terminal:
@@ -52,7 +54,7 @@ tls:
     key_file: ""
 tts:
     api:
-        base_url: https://api.openai.com/v1
+        base_url: https://api.example.com/v1/chat
         format: openai
         key: sk-1234567890abcdef
     engine: moss-nano

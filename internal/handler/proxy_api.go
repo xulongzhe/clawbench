@@ -17,7 +17,7 @@ func ServeProxyPorts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ports": ports})
 }
 
-// ServeProxyPortAction handles GET (list), POST (register) and DELETE (unregister)
+// ServeProxyPortAction handles GET (list), POST (register), PUT (update) and DELETE (unregister)
 // for proxy ports. DELETE uses query parameter: /api/proxy/ports?port=5173
 func ServeProxyPortAction(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -25,6 +25,8 @@ func ServeProxyPortAction(w http.ResponseWriter, r *http.Request) {
 		ServeProxyPorts(w, r)
 	case http.MethodPost:
 		registerPort(w, r)
+	case http.MethodPut:
+		updatePort(w, r)
 	case http.MethodDelete:
 		unregisterPortByQuery(w, r)
 	default:
@@ -49,6 +51,31 @@ func registerPort(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := service.ProxyService.RegisterPort(req.Port, req.Host, req.Name, req.Protocol); err != nil {
+		writeLocalizedError(w, r, model.Forbidden(err, "AccessDenied"))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func updatePort(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		LocalPort int    `json:"localPort"`
+		Port      int    `json:"port"`
+		Host      string `json:"host"`
+		Name      string `json:"name"`
+		Protocol  string `json:"protocol"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	if req.LocalPort <= 0 || req.LocalPort > 65535 {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidPortNumber", map[string]any{"Port": req.LocalPort})
+		return
+	}
+
+	if err := service.ProxyService.UpdatePort(req.LocalPort, req.Port, req.Host, req.Name, req.Protocol); err != nil {
 		writeLocalizedError(w, r, model.Forbidden(err, "AccessDenied"))
 		return
 	}

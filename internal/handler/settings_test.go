@@ -1248,8 +1248,8 @@ func TestServeConfig_Patch_TasksAPIWithBaseURLInPatch(t *testing.T) {
 	cfg.Tasks.SummarizeBackend = "simple"
 	model.ConfigInstance = cfg
 
-	// tasks.summarize_backend=api with tts.api.base_url provided in same patch
-	body := `{"tasks":{"summarize_backend":"api"},"tts":{"api":{"base_url":"https://api.openai.com/v1"}}}`
+	// tasks.summarize_backend=api with tasks.api.base_url provided in same patch
+	body := `{"tasks":{"summarize_backend":"api","api":{"base_url":"https://api.openai.com/v1"}}}`
 	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)

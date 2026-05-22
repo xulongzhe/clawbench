@@ -195,7 +195,7 @@ func TestServeProxyPortAction_MethodNotAllowed(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
+	req := newRequest(t, http.MethodPatch, "/api/proxy/ports", map[string]interface{}{
 		"port": 8080,
 	})
 	w := callHandler(ServeProxyPortAction, req)

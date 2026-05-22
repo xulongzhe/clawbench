@@ -143,6 +143,76 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 	return nil
 }
 
+// UpdatePort modifies an existing forwarded port's host, name, and protocol.
+// localPort is the immutable key; the target (port, host) must remain unique among other entries.
+func (r *ProxyRegistry) UpdatePort(localPort int, port int, host string, name string, protocol string) error {
+	if port <= 0 || port > 65535 {
+		return fmt.Errorf("invalid port number: %d", port)
+	}
+	if !r.IsPortAllowed(port) {
+		return fmt.Errorf("port %d is not in the allowed range", port)
+	}
+	if protocol != "https" {
+		protocol = "http"
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	existing, ok := r.ports[localPort]
+	if !ok {
+		return fmt.Errorf("local port %d is not registered", localPort)
+	}
+
+	// Check (port, host) uniqueness — skip self
+	for lp, p := range r.ports {
+		if lp == localPort {
+			continue
+		}
+		if p.Port == port && p.Host == host {
+			return fmt.Errorf("port %d → %s is already registered (local %d)", port, hostDisplayName(host), lp)
+		}
+	}
+
+	// If target port changed, may need to re-allocate local port
+	newLocalPort := localPort
+	if port != existing.Port {
+		if localPort == existing.Port {
+			if _, taken := r.ports[port]; !taken {
+				newLocalPort = port
+			}
+		}
+	}
+
+	// If localPort changed, move the entry in the map
+	if newLocalPort != localPort {
+		delete(r.ports, localPort)
+		r.deletePortFromDB(localPort)
+	}
+
+	r.ports[newLocalPort] = &model.ForwardedPort{
+		Port:       port,
+		LocalPort:  newLocalPort,
+		Host:       host,
+		Name:       name,
+		Protocol:   protocol,
+		AutoDetect: existing.AutoDetect,
+		Active:     checkPortActive(port, host),
+	}
+
+	r.savePortToDB(newLocalPort, port, host, name, protocol)
+
+	slog.Info("proxy port updated",
+		slog.Int("local_port", newLocalPort),
+		slog.Int("target_port", port),
+		slog.String("host", host),
+		slog.String("name", name),
+		slog.String("protocol", protocol),
+	)
+
+	return nil
+}
+
 // UnregisterPort removes a port from the forwarding registry by local port.
 func (r *ProxyRegistry) UnregisterPort(localPort int) error {
 	r.mu.Lock()

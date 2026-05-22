@@ -55,12 +55,12 @@ function mountIndex() {
 }
 
 describe('SettingsIndex', () => {
-  it('renders 9 category rows in web mode (no Android)', () => {
+  it('renders 10 category rows in web mode (no Android)', () => {
     isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(9)
+    expect(rows.length).toBe(10)
   })
 
   it('renders category labels in web mode', () => {
@@ -93,7 +93,7 @@ describe('SettingsIndex', () => {
 
     const expectedIds = [
       'appearance', 'chat', 'agents', 'files', 'terminal',
-      'tts', 'rag', 'network', 'about',
+      'tts', 'tasks', 'rag', 'network', 'about',
     ]
 
     const rows = wrapper.findAll('.settings-index__row')
@@ -103,12 +103,12 @@ describe('SettingsIndex', () => {
     }
   })
 
-  it('shows 10 categories including Android in app mode', () => {
+  it('shows 11 categories including Android in app mode', () => {
     isAppModeRef.value = true
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(10)
+    expect(rows.length).toBe(11)
 
     const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
     expect(labels).toContain('Android')

@@ -392,7 +392,7 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Conditionally populate API sub-config when summarize_backend is "api"
-	if cfg.TTS.SummarizeBackend == "api" {
+	if cfg.TTS.SummarizeBackend == "api" || cfg.Tasks.SummarizeBackend == "api" {
 		resp.TTS.API = &configAPI{
 			BaseURL: cfg.TTS.API.BaseURL,
 			Key:     maskAPIKey(cfg.TTS.API.Key),
