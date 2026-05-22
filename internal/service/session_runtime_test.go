@@ -1262,28 +1262,19 @@ func TestExecuteTask_BackendCreationFailed(t *testing.T) {
 	// Give a small window for async processing
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify both "running" and "failed" events were broadcast
+	// Verify only "failed" event was broadcast (no "running" event when backend creation fails — ISS-128)
 	buffered := sub.GetBufferedEvents()
-	if len(buffered) < 2 {
-		t.Fatalf("expected at least 2 buffered events (running + failed), got %d", len(buffered))
+	if len(buffered) < 1 {
+		t.Fatalf("expected at least 1 buffered event (failed), got %d", len(buffered))
 	}
 
-	// First event should be "running"
+	// Only event should be "failed" (backend creation failed — no "running" event per ISS-128 fix)
 	data1, ok := buffered[0].Data.(*ws.TaskUpdateData)
 	if !ok {
 		t.Fatal("expected TaskUpdateData for first event")
 	}
-	assert.Equal(t, "running", data1.Status)
+	assert.Equal(t, "failed", data1.Status)
 	assert.Equal(t, fmt.Sprintf("%d", taskID), data1.TaskID)
-	assert.NotEmpty(t, data1.SessionID, "running event should have session_id")
-	assert.Equal(t, "/test-project", data1.ProjectPath, "running event should have project_path")
-
-	// Second event should be "failed" (backend creation failed)
-	data2, ok := buffered[1].Data.(*ws.TaskUpdateData)
-	if !ok {
-		t.Fatal("expected TaskUpdateData for second event")
-	}
-	assert.Equal(t, "failed", data2.Status)
-	assert.NotEmpty(t, data2.SessionID, "failed event should have session_id")
-	assert.Equal(t, "/test-project", data2.ProjectPath, "failed event should have project_path")
+	assert.NotEmpty(t, data1.SessionID, "failed event should have session_id")
+	assert.Equal(t, "/test-project", data1.ProjectPath, "failed event should have project_path")
 }

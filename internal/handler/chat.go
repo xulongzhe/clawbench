@@ -20,6 +20,8 @@ import (
 	"clawbench/internal/model"
 	"clawbench/internal/platform"
 	"clawbench/internal/service"
+
+	"github.com/google/uuid"
 )
 
 const maxChatBodySize = 10 << 20 // 10MB
@@ -629,6 +631,13 @@ func executeStreamRun(
 					)
 				}
 			}
+		case <-ctx.Done():
+			// Context cancelled (user cancel or disconnect) — exit the event loop promptly.
+			// Without this branch, the goroutine blocks until the next event or 1s ticker.
+			slog.Info("executeStreamRun context cancelled, finalizing stream",
+				slog.String("session", sessionID),
+				slog.String("reason", ctx.Err().Error()))
+			return finalizeStreamRun(ctx, streamCh, projectPath, backendName, sessionID, agentID, chatReq, blocks, responseMetadata, rawOutput, eventCh, wallStart)
 		case <-flushTicker.C:
 			if len(blocks) > 0 {
 				if err := service.UpdateStreamingMessage(projectPath, backendName, sessionID, serializeBlocks()); err != nil {
@@ -1067,7 +1076,7 @@ func convertAskQuestionBlocks(blocks []model.ContentBlock) []model.ContentBlock 
 		toolBlock := model.ContentBlock{
 			Type:  "tool_use",
 			Name:  "AskUserQuestion",
-			ID:    fmt.Sprintf("ask-%d", time.Now().UnixNano()%1000000),
+			ID:    "ask-" + uuid.New().String(),
 			Input: c.input,
 			Done:  true,
 		}

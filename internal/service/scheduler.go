@@ -493,8 +493,6 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		slog.Error("failed to record task execution", slog.String("err", err.Error()))
 	}
 
-	emitTaskEvent(fmt.Sprintf("%d", task.ID), "running", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
-
 	// Write user message (the prompt)
 	if _, err := AddChatMessage(projectPath, backendName, sessionID, "user", task.Prompt, nil, false, task.Name); err != nil {
 		slog.Error("failed to write user message for task", slog.String("err", err.Error()))
@@ -553,7 +551,17 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	// Execute AI backend (no timeout - let AI run indefinitely)
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Register running execution
+	backend, err := ai.NewBackend(backendName)
+	if err != nil {
+		slog.Error("failed to create backend for task", slog.String("err", err.Error()))
+		cancel() // Release context resources
+		UpdateExecutionStatus(sessionID, "failed")
+		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
+		return
+	}
+
+	// Register running execution only after backend creation succeeds (ISS-128).
+	// This prevents the frontend from seeing a "running" state that immediately fails.
 	running := &RunningExecution{
 		ID:          sessionID,
 		TaskID:      task.ID,
@@ -567,13 +575,8 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		cancel()
 	}()
 
-	backend, err := ai.NewBackend(backendName)
-	if err != nil {
-		slog.Error("failed to create backend for task", slog.String("err", err.Error()))
-		UpdateExecutionStatus(sessionID, "failed")
-		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
-		return
-	}
+	// Emit "running" event after backend creation succeeds (ISS-128).
+	emitTaskEvent(fmt.Sprintf("%d", task.ID), "running", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
 
 	eventCh, err := backend.ExecuteStream(ctx, chatReq)
 	if err != nil {
