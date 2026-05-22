@@ -806,12 +806,21 @@ public class MainActivity extends AppCompatActivity {
      *
      * This runs on a background thread (OkHttp callback) and posts JPush init back to main thread.
      */
+    // Guards against double JPush init (onCreate + connectToServer race).
+    private volatile boolean jpushInitStarted = false;
+
     private void fetchPushConfig() {
         String serverUrl = prefs.getString(KEY_SERVER_URL, "");
         if (serverUrl.isEmpty()) {
             Log.w(TAG, "No server URL configured, skipping push config fetch");
             return;
         }
+
+        if (jpushInitStarted) {
+            Log.i(TAG, "JPush init already started, skipping duplicate fetchPushConfig");
+            return;
+        }
+        jpushInitStarted = true;
 
         new Thread(() -> {
             try {
@@ -869,8 +878,14 @@ public class MainActivity extends AppCompatActivity {
                         JPushConfig config = new JPushConfig();
                         config.setjAppKey(jpushAppKey);
                         JPushInterface.init(this, config);
-                        pushAvailable = true;
-                        Log.i(TAG, "JPush initialized with server-provided AppKey");
+                        // NOTE: pushAvailable is NOT set to true here.
+                        // JPushInterface.init() is asynchronous — the SDK validates the AppKey
+                        // with the JPush server before registration succeeds. Setting
+                        // pushAvailable=true now would cause BackgroundService to disconnect
+                        // the native WS prematurely, even if init fails (e.g. 1005 error).
+                        // Instead, pushAvailable is set in JPushReceiver.onRegister() only
+                        // after the SDK confirms successful registration.
+                        Log.i(TAG, "JPush init called with server-provided AppKey, awaiting onRegister callback");
                     });
                 } else {
                     Log.i(TAG, "JPush not configured on server — will keep WebSocket alive in background");

@@ -2,6 +2,7 @@ package com.clawbench.app;
 
 import android.content.Context;
 import android.content.Intent;
+import cn.jpush.android.api.CmdMessage;
 import cn.jpush.android.api.NotificationMessage;
 import cn.jpush.android.service.JPushMessageReceiver;
 
@@ -86,6 +87,48 @@ public class JPushReceiver extends JPushMessageReceiver {
     @Override
     public void onConnected(Context context, boolean isConnected) {
         AppLog.i(TAG, "JPush connected: " + isConnected);
+    }
+
+    /**
+     * Called when JPush SDK reports a command result, including errors.
+     * Error codes: 1005 = AppKey/package name mismatch, 1008 = AppKey not registered.
+     * These typically happen when the server-provided AppKey doesn't match the
+     * package name registered on the JPush dashboard, or in debug builds where
+     * the applicationId has a ".debug" suffix.
+     *
+     * On error, we reset pushAvailable so BackgroundService falls back to native WS,
+     * and log the error for diagnostics. The app degrades gracefully — push is
+     * unavailable but real-time events still arrive via WebSocket.
+     */
+    @Override
+    public void onCommandResult(Context context, CmdMessage cmdMessage) {
+        int errorCode = cmdMessage.errorCode;
+        if (errorCode != 0) {
+            AppLog.w(TAG, "JPush: command error, cmd=" + cmdMessage.cmd
+                    + ", code=" + errorCode
+                    + ", msg=" + cmdMessage.msg);
+
+            // Known init/registration errors that mean push won't work:
+            // 1005 = AppKey and package name don't match
+            // 1008 = AppKey is not registered on JPush dashboard
+            // 6001 = invalid AppKey format
+            if (errorCode == 1005 || errorCode == 1008 || errorCode == 6001) {
+                AppLog.w(TAG, "JPush: init/registration failed (code=" + errorCode
+                        + "), push unavailable — falling back to WebSocket");
+                // Reset pushAvailable on the main thread so BackgroundService
+                // can restore native WS for real-time event delivery.
+                if (MainActivity.instance != null) {
+                    MainActivity.instance.runOnUiThread(() -> {
+                        if (MainActivity.instance.pushAvailable) {
+                            MainActivity.instance.pushAvailable = false;
+                            AppLog.i(TAG, "JPush: pushAvailable reset to false, native WS will resume");
+                        }
+                    });
+                }
+            }
+        } else {
+            AppLog.d(TAG, "JPush: command success, cmd=" + cmdMessage.cmd);
+        }
     }
 
     /**

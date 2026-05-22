@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -78,6 +79,18 @@
             android:enabled="true"
             android:exported="false"
             android:process=":pushcore" />
+
+        <!-- Disable JPush InitProvider auto-initialization.
+             Since JPUSH_APPKEY is empty in manifest (set at runtime via JPushConfig),
+             the InitProvider would init JPush with an empty AppKey on every process
+             startup, causing 1005 "package name mismatch" errors and popup dialogs.
+             Instead, JPush is initialized manually in MainActivity.fetchPushConfig()
+             after the real AppKey is fetched from the server. -->
+        <provider
+            android:name="cn.jpush.android.service.InitProvider"
+            android:authorities="${applicationId}.jiguang.InitProvider"
+            android:exported="false"
+            tools:node="remove" />
 
     </application>
 
