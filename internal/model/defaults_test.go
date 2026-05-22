@@ -10,8 +10,7 @@ func TestParsePresenceMap(t *testing.T) {
 	raw := map[string]any{
 		"port": 20000,
 		"proxy": map[string]any{
-			"enabled":       true,
-			"allowed_ports": "1024-65535",
+			"enabled": true,
 		},
 		"ssh": map[string]any{
 			"enabled": false,
@@ -27,7 +26,6 @@ func TestParsePresenceMap(t *testing.T) {
 		"port",
 		"proxy",
 		"proxy.enabled",
-		"proxy.allowed_ports",
 		"ssh",
 		"ssh.enabled",
 		"tts",
@@ -145,14 +143,11 @@ func TestApplyDefaultsEmptyConfig(t *testing.T) {
 	if !cfg.PortForward.Enabled {
 		t.Error("PortForward.Enabled should default to true when not in config")
 	}
-	if cfg.PortForward.AllowedPorts != "1024-65535" {
-		t.Errorf("PortForward.AllowedPorts = %q, want %q", cfg.PortForward.AllowedPorts, "1024-65535")
-	}
 	if cfg.TTS.Engine != "edge" {
 		t.Errorf("TTS.Engine = %q, want %q", cfg.TTS.Engine, "edge")
 	}
-	if cfg.TTS.SummarizeBackend != "simple" {
-		t.Errorf("TTS.SummarizeBackend = %q, want %q", cfg.TTS.SummarizeBackend, "simple")
+	if cfg.Summarize.Backend != "simple" {
+		t.Errorf("Summarize.Backend = %q, want %q", cfg.Summarize.Backend, "simple")
 	}
 	if cfg.TTS.Speed != 1.0 {
 		t.Errorf("TTS.Speed = %v, want 1.0", cfg.TTS.Speed)
@@ -195,46 +190,6 @@ func TestApplyDefaultsPartialConfig(t *testing.T) {
 	// Unset values should get defaults
 	if cfg.Upload.MaxFiles != 20 {
 		t.Errorf("Upload.MaxFiles = %d, want 20 (default)", cfg.Upload.MaxFiles)
-	}
-}
-
-func TestApplyDefaults_ProxyAllowedPortsMigratedToPortForward(t *testing.T) {
-	cfg := Config{}
-	presence := map[string]bool{
-		"proxy":               true,
-		"proxy.allowed_ports": true,
-	}
-	cfg.Proxy.AllowedPorts = "3000-4000"
-
-	ApplyDefaults(&cfg, presence)
-
-	if cfg.PortForward.AllowedPorts != "3000-4000" {
-		t.Errorf("PortForward.AllowedPorts = %q, want %q (migrated from proxy)", cfg.PortForward.AllowedPorts, "3000-4000")
-	}
-}
-
-func TestApplyDefaults_PortForwardAllowedPortsNotOverwritten(t *testing.T) {
-	cfg := Config{}
-	presence := map[string]bool{
-		"port_forward":                true,
-		"port_forward.allowed_ports":  true,
-	}
-	cfg.PortForward.AllowedPorts = "5000-6000"
-	cfg.Proxy.AllowedPorts = "3000-4000"
-
-	ApplyDefaults(&cfg, presence)
-
-	if cfg.PortForward.AllowedPorts != "5000-6000" {
-		t.Errorf("PortForward.AllowedPorts = %q, want %q (should not be overwritten)", cfg.PortForward.AllowedPorts, "5000-6000")
-	}
-}
-
-func TestApplyDefaults_PortForwardAllowedPortsDefault(t *testing.T) {
-	cfg := Config{}
-	ApplyDefaults(&cfg, nil)
-
-	if cfg.PortForward.AllowedPorts != "1024-65535" {
-		t.Errorf("PortForward.AllowedPorts = %q, want %q (default)", cfg.PortForward.AllowedPorts, "1024-65535")
 	}
 }
 

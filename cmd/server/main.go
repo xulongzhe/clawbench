@@ -218,7 +218,7 @@ func main() {
 
 	// Initialize TTS summarizer from config
 	// Language is now per-request (sent from frontend), not configured at startup.
-	summarizeBackend := cfg.TTS.SummarizeBackend
+	summarizeBackend := cfg.Summarize.Backend
 
 	var ttsSummarizer summarize.Summarizer
 	if summarizeBackend == "simple" {
@@ -227,12 +227,12 @@ func main() {
 			slog.String("backend", "simple"),
 		)
 	} else if summarizeBackend == "api" {
-		if cfg.TTS.API.BaseURL == "" {
-			slog.Error("tts summarize_backend is \"api\" but tts.api.base_url is not configured")
+		if cfg.Summarize.API.BaseURL == "" {
+			slog.Error("summarize.backend is \"api\" but summarize.api.base_url is not configured")
 			os.Exit(1)
 		}
-		if cfg.TTS.API.Format == "anthropic" {
-			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.SummarizeModel)
+		if cfg.Summarize.API.Format == "anthropic" {
+			s := summarize.NewAnthropic(cfg.Summarize.API.BaseURL, cfg.Summarize.API.Key, cfg.Summarize.Model)
 			ttsSummarizer = s
 			slog.Info("tts summarizer configured",
 				slog.String("backend", "api"),
@@ -240,7 +240,7 @@ func main() {
 				slog.String("model", s.Model),
 			)
 		} else {
-			s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, cfg.TTS.SummarizeModel)
+			s := summarize.NewOpenAI(cfg.Summarize.API.BaseURL, cfg.Summarize.API.Key, cfg.Summarize.Model)
 			ttsSummarizer = s
 			slog.Info("tts summarizer configured",
 				slog.String("backend", "api"),
@@ -257,7 +257,7 @@ func main() {
 			)
 			ttsSummarizer = summarize.NewSimple()
 		} else {
-			s.Model = cfg.TTS.SummarizeModel // empty = use backend default
+			s.Model = cfg.Summarize.Model // empty = use backend default
 			ttsSummarizer = s
 			slog.Info("tts summarizer configured",
 				slog.String("backend", summarizeBackend),
@@ -542,18 +542,18 @@ func main() {
 	// Initialize and start scheduler (MUST be after LoadAgents so model.Agents is populated)
 	scheduler := service.NewScheduler()
 
-	// Initialize task summarizer if configured (MUST be before scheduler.Start())
-	if cfg.Tasks.SummarizeBackend != "" {
+	// Initialize task summarizer if summarization backend is configured (MUST be before scheduler.Start())
+	if cfg.Summarize.Backend != "" && cfg.Summarize.Backend != "simple" {
 		taskSummarizer, err := initTaskSummarizer(cfg)
 		if err != nil {
 			slog.Warn("failed to create task summarizer, task summaries will be disabled",
-				slog.String("backend", cfg.Tasks.SummarizeBackend),
+				slog.String("backend", cfg.Summarize.Backend),
 				slog.String("err", err.Error()),
 			)
 		} else {
 			scheduler.SetTaskSummarizer(taskSummarizer)
 			slog.Info("task summarizer configured",
-				slog.String("backend", cfg.Tasks.SummarizeBackend),
+				slog.String("backend", cfg.Summarize.Backend),
 			)
 		}
 	}
@@ -601,7 +601,7 @@ func main() {
 	// ProxyRegistry is only created when SSH tunnel is enabled — it has no
 	// standalone purpose without the SSH tunnel to transport traffic.
 	if cfg.PortForward.Enabled {
-		proxyService := service.NewProxyRegistry(cfg.PortForward.AllowedPorts, port)
+		proxyService := service.NewProxyRegistry(port)
 		service.ProxyService = proxyService
 		defer proxyService.Stop()
 
@@ -722,11 +722,11 @@ httpServer:
 	slog.Info("server stopped")
 }
 
-// initTaskSummarizer creates a TaskSummarizer based on the tasks.summarize_backend config.
+// initTaskSummarizer creates a TaskSummarizer based on the summarize.backend config.
 // Supports: AI CLI backends (claude/codebuddy/gemini/etc.), "api" (OpenAI/Anthropic HTTP), "simple".
 func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
-	backend := cfg.Tasks.SummarizeBackend
-	modelName := cfg.Tasks.SummarizeModel
+	backend := cfg.Summarize.Backend
+	modelName := cfg.Summarize.Model
 
 	switch {
 	case backend == "simple":
@@ -741,13 +741,13 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 		return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 
 	case backend == "api":
-		if cfg.TTS.API.BaseURL == "" {
-			return nil, fmt.Errorf("tasks.summarize_backend is \"api\" but tts.api.base_url is not configured")
+		if cfg.Summarize.API.BaseURL == "" {
+			return nil, fmt.Errorf("summarize.backend is \"api\" but summarize.api.base_url is not configured")
 		}
 		// For API backends, create OpenAI/Anthropic summarizer and wrap its pass function
 		// in a pipeline with PreserveMarkdown=true and task-specific prompt.
-		if cfg.TTS.API.Format == "anthropic" {
-			s := summarize.NewAnthropic(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, modelName)
+		if cfg.Summarize.API.Format == "anthropic" {
+			s := summarize.NewAnthropic(cfg.Summarize.API.BaseURL, cfg.Summarize.API.Key, modelName)
 			pipeline := summarize.NewPipelineWithOpts(
 				s.DoSummarizePass,
 				summarize.TaskSummarizePrompt(),
@@ -755,7 +755,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 			)
 			return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 		}
-		s := summarize.NewOpenAI(cfg.TTS.API.BaseURL, cfg.TTS.API.Key, modelName)
+		s := summarize.NewOpenAI(cfg.Summarize.API.BaseURL, cfg.Summarize.API.Key, modelName)
 		pipeline := summarize.NewPipelineWithOpts(
 			s.DoSummarizePass,
 			summarize.TaskSummarizePrompt(),

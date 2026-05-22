@@ -10,7 +10,6 @@ describe('settingsFieldMap', () => {
     expect(map['terminal.enabled']).toBeTruthy()
     expect(map['tts.engine']).toBeTruthy()
     expect(map['rag.ollama_base_url']).toBeTruthy()
-    expect(map['port_forward.allowed_ports']).toBeTruthy()
     expect(map['port_forward.enabled']).toBeTruthy()
     expect(map['push.jpush.enabled']).toBeTruthy()
 
@@ -40,7 +39,7 @@ describe('settingsFieldMap', () => {
     expect(map['tts.piper.model_path']).toBeTruthy()
     expect(map['tts.kokoro.model_path']).toBeTruthy()
     expect(map['tts.moss_nano.model_dir']).toBeTruthy()
-    expect(map['tts.api.base_url']).toBeTruthy()
+    expect(map['summarize.api.base_url']).toBeTruthy()
   })
 
   it('includes previously missing rag.search_pool_size', () => {
@@ -56,7 +55,7 @@ describe('settingsFieldMap', () => {
   })
 
   it('categoryItems covers all expected categories', () => {
-    const expectedCategories = ['appearance', 'chat', 'agents', 'files', 'terminal', 'tts', 'rag', 'network', 'android', 'about']
+    const expectedCategories = ['appearance', 'chat', 'agents', 'files', 'terminal', 'tts', 'summarization', 'rag', 'network', 'android', 'about']
     for (const cat of expectedCategories) {
       expect(categoryItems[cat]).toBeDefined()
     }

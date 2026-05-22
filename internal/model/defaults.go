@@ -14,9 +14,8 @@ import (
 //
 //	port_forward:
 //	  enabled: true
-//	  allowed_ports: "1024-65535"
 //
-// It returns: {"port_forward": true, "port_forward.enabled": true, "port_forward.allowed_ports": true}
+// It returns: {"port_forward": true, "port_forward.enabled": true}
 func ParsePresenceMap(raw map[string]any) map[string]bool {
 	presence := make(map[string]bool)
 	walkPresenceMap(raw, "", presence)
@@ -134,13 +133,8 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	}
 
 	// --- Proxy (legacy) ---
-	// proxy.enabled has been removed — ProxyRegistry is now auto-enabled when
-	// port_forward.enabled is true. proxy.allowed_ports is migrated to
-	// port_forward.allowed_ports below.
-	// Backward compat: if user has proxy.allowed_ports in YAML, migrate it.
-	if cfg.Proxy.AllowedPorts != "" && cfg.PortForward.AllowedPorts == "" {
-		cfg.PortForward.AllowedPorts = cfg.Proxy.AllowedPorts
-	}
+	// proxy.enabled and proxy.allowed_ports have been removed.
+	// ProxyConfig is kept for backward-compatible YAML reading only.
 
 	// --- Port Forward (SSH Tunnel) ---
 	// Same bool zero-value trap as Proxy.
@@ -151,16 +145,13 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 	if cfg.PortForward.HostKey == "" {
 		cfg.PortForward.HostKey = filepath.Join(BinDir, ".clawbench", "ssh_host_key")
 	}
-	if cfg.PortForward.AllowedPorts == "" {
-		cfg.PortForward.AllowedPorts = "1024-65535"
-	}
 
 	// --- TTS ---
 	if cfg.TTS.Engine == "" {
 		cfg.TTS.Engine = "edge"
 	}
-	if cfg.TTS.SummarizeBackend == "" {
-		cfg.TTS.SummarizeBackend = "simple"
+	if cfg.Summarize.Backend == "" {
+		cfg.Summarize.Backend = "simple"
 	}
 	if cfg.TTS.Speed <= 0 {
 		cfg.TTS.Speed = 1.0
