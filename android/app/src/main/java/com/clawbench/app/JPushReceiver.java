@@ -115,16 +115,28 @@ public class JPushReceiver extends JPushMessageReceiver {
             if (errorCode == 1005 || errorCode == 1008 || errorCode == 6001) {
                 AppLog.w(TAG, "JPush: init/registration failed (code=" + errorCode
                         + "), push unavailable — falling back to WebSocket");
-                // Reset pushAvailable on the main thread so BackgroundService
-                // can restore native WS for real-time event delivery.
+                // Reset both pushAvailable and jpushEnabledOnServer on the main thread
+                // so BackgroundService can restore native WS for real-time event delivery.
+                // jpushEnabledOnServer must also be reset because BackgroundService.onMessage
+                // checks (pushAvailable || jpushEnabledOnServer) — if jpushEnabledOnServer
+                // stays true, native WS won't be reconnected even though push is broken.
                 if (MainActivity.instance != null) {
                     MainActivity.instance.runOnUiThread(() -> {
                         if (MainActivity.instance.pushAvailable) {
                             MainActivity.instance.pushAvailable = false;
-                            AppLog.i(TAG, "JPush: pushAvailable reset to false, native WS will resume");
                         }
+                        if (MainActivity.instance.jpushEnabledOnServer) {
+                            MainActivity.instance.jpushEnabledOnServer = false;
+                        }
+                        AppLog.i(TAG, "JPush: pushAvailable and jpushEnabledOnServer reset to false, native WS will resume");
                     });
                 }
+                // Proactively restart native WS to ensure background event delivery.
+                // When the app is in the background, onPause() already ran and skipped
+                // starting native WS because jpushEnabledOnServer was true. Now that
+                // push has failed, we must start native WS immediately, otherwise the
+                // user gets no notifications until they bring the app to the foreground.
+                BackgroundService.startNativeEventWs(context);
             }
         } else {
             AppLog.d(TAG, "JPush: command success, cmd=" + cmdMessage.cmd);

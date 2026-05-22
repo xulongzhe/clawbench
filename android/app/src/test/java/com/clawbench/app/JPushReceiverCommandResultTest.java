@@ -146,9 +146,9 @@ public class JPushReceiverCommandResultTest {
 
     @Test
     public void lambda_onCommandResult_resetsPushAvailable() throws Exception {
-        setupMainActivity(true);
+        setupMainActivity(true, true);
 
-        // Directly invoke the lambda that resets pushAvailable
+        // Directly invoke the lambda that resets pushAvailable and jpushEnabledOnServer
         Method lambda = JPushReceiver.class.getDeclaredMethod("lambda$onCommandResult$0");
         lambda.setAccessible(true);
         lambda.invoke(null);
@@ -158,15 +158,21 @@ public class JPushReceiverCommandResultTest {
         paField.setAccessible(true);
         assertFalse("pushAvailable should be false after lambda resets it",
                 paField.getBoolean(MainActivity.instance));
+
+        // Verify jpushEnabledOnServer was also reset to false
+        Field jesField = MainActivity.class.getDeclaredField("jpushEnabledOnServer");
+        jesField.setAccessible(true);
+        assertFalse("jpushEnabledOnServer should be false after lambda resets it",
+                jesField.getBoolean(MainActivity.instance));
     }
 
     // =====================================================
-    // Test 10: Lambda does nothing when pushAvailable is already false
+    // Test 10: Lambda does nothing when already false
     // =====================================================
 
     @Test
     public void lambda_onCommandResult_alreadyFalse_noException() throws Exception {
-        setupMainActivity(false);
+        setupMainActivity(false, false);
 
         Method lambda = JPushReceiver.class.getDeclaredMethod("lambda$onCommandResult$0");
         lambda.setAccessible(true);
@@ -175,11 +181,19 @@ public class JPushReceiverCommandResultTest {
         Field paField = MainActivity.class.getDeclaredField("pushAvailable");
         paField.setAccessible(true);
         assertFalse("pushAvailable should still be false", paField.getBoolean(MainActivity.instance));
+
+        Field jesField = MainActivity.class.getDeclaredField("jpushEnabledOnServer");
+        jesField.setAccessible(true);
+        assertFalse("jpushEnabledOnServer should still be false", jesField.getBoolean(MainActivity.instance));
     }
 
     // --- Helper methods ---
 
     private void setupMainActivity(boolean pushAvailableValue) throws Exception {
+        setupMainActivity(pushAvailableValue, pushAvailableValue);
+    }
+
+    private void setupMainActivity(boolean pushAvailableValue, boolean jpushEnabledOnServerValue) throws Exception {
         // Create a minimal MainActivity instance via Unsafe allocation
         var unsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe");
         unsafeField.setAccessible(true);
@@ -195,6 +209,10 @@ public class JPushReceiverCommandResultTest {
         Field paField = MainActivity.class.getDeclaredField("pushAvailable");
         paField.setAccessible(true);
         paField.setBoolean(activity, pushAvailableValue);
+
+        Field jesField = MainActivity.class.getDeclaredField("jpushEnabledOnServer");
+        jesField.setAccessible(true);
+        jesField.setBoolean(activity, jpushEnabledOnServerValue);
     }
 
     private static void callOnCommandResult(JPushReceiver receiver, cn.jpush.android.api.CmdMessage cmdMessage) throws Exception {
