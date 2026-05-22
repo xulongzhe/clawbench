@@ -64,10 +64,11 @@ jobs:
             while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
               ATTEMPT=$((ATTEMPT + 1))
 
-              # Get all check runs for this commit
+              # Get non-self check runs for this commit
+              # Exclude "Auto Merge to Main" (this job itself) to avoid deadlock
               STATUS=$(gh api \
                 "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
-                --jq '.check_runs | map(.status) | unique')
+                --jq '[.check_runs[] | select(.name != "Auto Merge to Main")] | map(.status) | unique')
 
               # Check if any are still in progress or queued
               IN_PROGRESS=$(echo "$STATUS" | grep -c '"in_progress"\|"queued"' || true)
@@ -86,10 +87,10 @@ jobs:
               continue
             fi
 
-            # Verify all checks passed
+            # Verify all checks passed (exclude self and skipped)
             CONCLUSIONS=$(gh api \
               "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs" \
-              --jq '.check_runs | map(.conclusion) | unique')
+              --jq '[.check_runs[] | select(.name != "Auto Merge to Main" and .conclusion != "skipped")] | map(.conclusion) | unique')
 
             echo "Check conclusions: $CONCLUSIONS"
 
