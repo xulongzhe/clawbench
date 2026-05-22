@@ -56,7 +56,7 @@ func ServeSSHInfo(w http.ResponseWriter, r *http.Request) {
 			if targetHost == "" {
 				targetHost = "localhost"
 			}
-			forwardArgs = append(forwardArgs, fmt.Sprintf("-L %d:%s:%d", p.Port, targetHost, p.Port))
+			forwardArgs = append(forwardArgs, fmt.Sprintf("-L %d:%s:%d", p.LocalPort, targetHost, p.Port))
 		}
 	}
 

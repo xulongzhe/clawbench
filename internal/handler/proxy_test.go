@@ -150,7 +150,7 @@ func TestUnregisterPort_Valid(t *testing.T) {
 
 	_ = service.ProxyService.RegisterPort(9090, "", "metrics", "")
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9090&host=", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9090", nil)
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertOK(t, w)
@@ -162,7 +162,7 @@ func TestUnregisterPort_NotRegistered(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9999&host=", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9999", nil)
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertStatus(t, w, http.StatusNotFound)

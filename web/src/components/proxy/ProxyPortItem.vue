@@ -2,8 +2,9 @@
   <div class="proxy-port-item" :class="{ inactive: !active && !tunnelDisconnected }">
     <div class="port-info">
       <div class="port-main">
-        <span class="port-number">{{ port }}</span>
-        <span v-if="host" class="port-host">{{ host }}</span>
+        <span class="port-number">{{ localPort }}</span>
+        <span v-if="port !== localPort" class="port-target">→ {{ host || 'localhost' }}:{{ port }}</span>
+        <span v-else-if="host" class="port-host">{{ host }}</span>
         <span class="port-protocol" :class="protocol">{{ protocol }}</span>
         <span
           class="port-status"
@@ -14,13 +15,13 @@
       </div>
     </div>
     <div class="port-actions">
-      <button class="port-action-btn sandbox" @click.stop="$emit('open', port, protocol, host)" :title="t('proxy.openInSandbox')">
+      <button class="port-action-btn sandbox" @click.stop="$emit('open', localPort, protocol, host)" :title="t('proxy.openInSandbox')">
         <Box :size="14" />
       </button>
-      <button class="port-action-btn open" @click.stop="$emit('openExternal', port, protocol, host)" :title="t('proxy.openInBrowser')">
+      <button class="port-action-btn open" @click.stop="$emit('openExternal', localPort, protocol, host)" :title="t('proxy.openInBrowser')">
         <ExternalLink :size="14" />
       </button>
-      <button class="port-action-btn delete" @click.stop="$emit('remove', port, host)" :title="t('common.delete')">
+      <button class="port-action-btn delete" @click.stop="$emit('remove', localPort)" :title="t('common.delete')">
         <Trash2 :size="14" />
       </button>
     </div>
@@ -36,6 +37,7 @@ const { t } = useI18n()
 
 const props = defineProps({
   port: { type: Number, required: true },
+  localPort: { type: Number, required: true },
   host: { type: String, default: '' },
   name: { type: String, default: '' },
   protocol: { type: String, default: 'http' },
@@ -91,6 +93,16 @@ const statusTitle = computed(() => {
   font-weight: 600;
   font-family: monospace;
   color: var(--text-primary, #1a1a1a);
+}
+
+.port-target {
+  font-size: 10px;
+  font-family: monospace;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
 }
 
 .port-host {
