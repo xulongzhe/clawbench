@@ -89,6 +89,7 @@
           v-for="p in ports"
           :key="p.port"
           :port="p.port"
+          :host="p.host || ''"
           :name="p.name"
           :protocol="p.protocol"
           :active="p.active"
@@ -107,33 +108,8 @@
 
       <!-- Add port form -->
       <div class="proxy-add">
-        <div v-if="showAddForm" class="proxy-add-form">
-          <select v-model="newProtocol" class="proxy-add-select">
-            <option value="http">HTTP</option>
-            <option value="https">HTTPS</option>
-          </select>
-          <input
-            ref="portInputRef"
-            v-model="newPort"
-            type="number"
-            class="proxy-add-input"
-            :placeholder="t('proxy.portPlaceholder')"
-            min="1"
-            max="65535"
-            @keydown.enter="handleAdd"
-          />
-          <input
-            v-model="newName"
-            type="text"
-            class="proxy-add-input name-input"
-            :placeholder="t('proxy.namePlaceholder')"
-            @keydown.enter="handleAdd"
-          />
-          <button class="proxy-add-confirm" @click="handleAdd" :disabled="!isValidPort">{{ t('common.confirm') }}</button>
-          <button class="proxy-add-cancel" @click="showAddForm = false">{{ t('common.cancel') }}</button>
-        </div>
-        <div v-else class="proxy-add-buttons">
-          <button class="proxy-add-btn" @click="showAddForm = true; nextTick(() => portInputRef?.focus())">
+        <div class="proxy-add-buttons">
+          <button class="proxy-add-btn" @click="showAddForm = true">
             <Plus :size="14" />
             {{ t('proxy.addPort') }}
           </button>
@@ -146,6 +122,56 @@
           </button>
         </div>
       </div>
+
+      <ModalDialog :open="showAddForm" :title="t('proxy.addPort')" @close="showAddForm = false">
+        <div class="port-add-content">
+          <div v-if="formError" class="port-add-error">{{ formError }}</div>
+          <div class="port-add-row">
+            <label class="port-add-label">{{ t('proxy.protocolLabel') }}</label>
+            <select v-model="newProtocol" class="port-add-select">
+              <option value="http">HTTP</option>
+              <option value="https">HTTPS</option>
+            </select>
+          </div>
+          <div class="port-add-row">
+            <label class="port-add-label">{{ t('proxy.portPlaceholder') }} *</label>
+            <input
+              ref="portInputRef"
+              v-model="newPort"
+              type="number"
+              class="port-add-input"
+              :placeholder="t('proxy.portPlaceholder')"
+              min="1"
+              max="65535"
+              @keydown.enter="handleAdd"
+            />
+          </div>
+          <div class="port-add-row">
+            <label class="port-add-label">{{ t('proxy.hostPlaceholder') }}</label>
+            <input
+              v-model="newHost"
+              type="text"
+              class="port-add-input"
+              :placeholder="t('proxy.hostPlaceholder')"
+              @keydown.enter="handleAdd"
+            />
+          </div>
+          <div class="port-add-row">
+            <label class="port-add-label">{{ t('proxy.namePlaceholder') }}</label>
+            <input
+              v-model="newName"
+              type="text"
+              class="port-add-input"
+              :placeholder="t('proxy.namePlaceholder')"
+              @keydown.enter="handleAdd"
+            />
+          </div>
+        </div>
+        <template #footer>
+          <button class="port-add-cancel" @click="showAddForm = false">{{ t('common.cancel') }}</button>
+          <button class="port-add-confirm" @click="handleAdd" :disabled="!isValidPort || saving">{{ saving ? '...' : t('common.confirm') }}</button>
+        </template>
+      </ModalDialog>
 
       <!-- Detected ports (suggestion chips) -->
       <div v-if="detectedPorts.length > 0" class="proxy-detected">
@@ -172,9 +198,10 @@
 
 <script setup>
 import { EthernetPort, XCircle, RotateCcw, AlertTriangle, Info, Plus, Search, Lock, Copy, Smartphone, ChevronDown } from 'lucide-vue-next'
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import ProxyPortItem from './ProxyPortItem.vue'
+import ModalDialog from '@/components/common/ModalDialog.vue'
 import { usePortForward } from '@/composables/usePortForward.ts'
 import { useToast } from '@/composables/useToast.ts'
 
@@ -183,10 +210,26 @@ const { t } = useI18n()
 const showAddForm = ref(false)
 const newPort = ref('')
 const newName = ref('')
+const newHost = ref('')
 const newProtocol = ref('http')
 const detecting = ref(false)
 const portInputRef = ref(null)
+const formError = ref('')
+const saving = ref(false)
 const tunnelGuideExpanded = ref(false)
+
+// Reset form and auto-focus port input when modal opens
+watch(showAddForm, (val) => {
+  if (val) {
+    newPort.value = ''
+    newName.value = ''
+    newHost.value = ''
+    newProtocol.value = 'http'
+    formError.value = ''
+    saving.value = false
+    nextTick(() => portInputRef.value?.focus())
+  }
+})
 
 const { ports, detectedPorts, loading, isAppMode, sshInfo, tunnelStatus, tunnelMessage, tunnelChecking, tunnelError, tunnelErrorType, registerPort, unregisterPort, detectPorts, checkTunnelHealth, openPort, openInExternalBrowser } = usePortForward()
 const toast = useToast()
@@ -221,10 +264,19 @@ const detectedPortsNotRegistered = computed(() => {
 
 async function handleAdd() {
   if (!isValidPort.value) return
-  await registerPort(parseInt(newPort.value), newName.value || undefined, newProtocol.value)
-  newPort.value = ''
-  newName.value = ''
-  showAddForm.value = false
+  saving.value = true
+  formError.value = ''
+  try {
+    await registerPort(parseInt(newPort.value), newName.value || undefined, newProtocol.value, newHost.value || undefined)
+    newPort.value = ''
+    newName.value = ''
+    newHost.value = ''
+    showAddForm.value = false
+  } catch (e) {
+    formError.value = e?.message || t('proxy.addPort') + ' failed'
+  } finally {
+    saving.value = false
+  }
 }
 
 async function handleQuickAdd(port, protocol, processName) {
@@ -480,69 +532,6 @@ async function handleRetryTunnel() {
   align-items: center;
 }
 
-.proxy-add-input {
-  flex: 1;
-  min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 4px;
-  font-size: 13px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #1a1a1a);
-  font-family: inherit;
-}
-
-.proxy-add-input:focus {
-  outline: none;
-  border-color: var(--accent-color, #0066cc);
-}
-
-.proxy-add-select {
-  padding: 6px 4px;
-  border: 1px solid var(--border-color, #e5e5e5);
-  border-radius: 4px;
-  font-size: 13px;
-  background: var(--bg-primary, #fff);
-  color: var(--text-primary, #1a1a1a);
-  font-family: inherit;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.proxy-add-select:focus {
-  outline: none;
-  border-color: var(--accent-color, #0066cc);
-}
-
-.name-input {
-  flex: 2;
-}
-
-.proxy-add-confirm,
-.proxy-add-cancel {
-  padding: 6px 10px;
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.proxy-add-confirm {
-  background: var(--accent-color, #0066cc);
-  color: #fff;
-}
-
-.proxy-add-confirm:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.proxy-add-cancel {
-  background: var(--bg-tertiary, #f0f0f0);
-  color: var(--text-secondary, #666);
-}
-
 .proxy-detected {
   padding: 4px 0;
 }
@@ -794,5 +783,96 @@ async function handleRetryTunnel() {
   font-family: monospace;
   color: var(--text-muted, #999);
   word-break: break-all;
+}
+</style>
+
+<style>
+.port-add-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.port-add-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.port-add-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+}
+
+.port-add-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #1a1a1a);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.port-add-input:focus {
+  outline: none;
+  border-color: var(--accent-color, #0066cc);
+}
+
+.port-add-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color, #e5e5e5);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #1a1a1a);
+  font-family: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.port-add-select:focus {
+  outline: none;
+  border-color: var(--accent-color, #0066cc);
+}
+
+.port-add-error {
+  font-size: 12px;
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.08);
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+.port-add-confirm {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--accent-color, #0066cc);
+  color: #fff;
+  font-weight: 600;
+}
+
+.port-add-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.port-add-cancel {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  background: var(--bg-tertiary, #f0f0f0);
+  color: var(--text-secondary, #666);
+  font-weight: 600;
 }
 </style>

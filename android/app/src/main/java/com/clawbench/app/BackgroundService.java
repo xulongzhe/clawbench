@@ -33,7 +33,9 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -94,7 +96,7 @@ public class BackgroundService extends Service {
 
     private JSch jsch;
     private Session sshSession;
-    private final Set<Integer> forwardedPorts = ConcurrentHashMap.newKeySet();
+    private final Map<Integer, String> forwardedPorts = new java.util.concurrent.ConcurrentHashMap<>();
     private String serverHost;
     private int sshPort;
     private String password;
@@ -274,8 +276,11 @@ public class BackgroundService extends Service {
             String action = intent.getAction();
             if ("ADD_PORT".equals(action)) {
                 int port = intent.getIntExtra("port", 0);
+                String host = intent.getStringExtra("host");
+                if (host == null) host = "";
                 if (port > 0) {
-                    networkExecutor.execute(() -> addPortForward(port));
+                    String finalHost = host;
+                    networkExecutor.execute(() -> addPortForward(port, finalHost));
                 }
             } else if ("REMOVE_PORT".equals(action)) {
                 int port = intent.getIntExtra("port", 0);
@@ -380,8 +385,12 @@ public class BackgroundService extends Service {
      */
     private void saveForwardedPorts() {
         Set<String> portStrings = new HashSet<>();
-        for (int port : forwardedPorts) {
-            portStrings.add(String.valueOf(port));
+        for (Map.Entry<Integer, String> entry : forwardedPorts.entrySet()) {
+            if (entry.getValue().isEmpty()) {
+                portStrings.add(String.valueOf(entry.getKey()));
+            } else {
+                portStrings.add(entry.getKey() + ":" + entry.getValue());
+            }
         }
         getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                 .edit()
@@ -399,8 +408,18 @@ public class BackgroundService extends Service {
         if (portStrings != null && !portStrings.isEmpty()) {
             for (String ps : portStrings) {
                 try {
-                    int port = Integer.parseInt(ps);
-                    forwardedPorts.add(port);
+                    String host = "";
+                    int port;
+                    int colonIdx = ps.indexOf(':');
+                    if (colonIdx >= 0) {
+                        // "port:host" format
+                        port = Integer.parseInt(ps.substring(0, colonIdx));
+                        host = ps.substring(colonIdx + 1);
+                    } else {
+                        // Backward compat: plain port number
+                        port = Integer.parseInt(ps);
+                    }
+                    forwardedPorts.put(port, host);
                 } catch (NumberFormatException ignored) {}
             }
             AppLog.i(TAG, "SSH: restored " + forwardedPorts.size() + " forwarded ports from prefs");
@@ -637,11 +656,14 @@ public class BackgroundService extends Service {
 
         // Re-establish any previously forwarded ports
         int reEstablished = 0;
-        for (int port : forwardedPorts) {
+        for (Map.Entry<Integer, String> entry : forwardedPorts.entrySet()) {
+            int port = entry.getKey();
+            String host = entry.getValue();
+            String targetHost = host.isEmpty() ? "127.0.0.1" : host;
             try {
-                sshSession.setPortForwardingL("127.0.0.1", port, "127.0.0.1", port);
+                sshSession.setPortForwardingL("127.0.0.1", port, targetHost, port);
                 reEstablished++;
-                AppLog.i(TAG, "SSH: re-established port forward " + port);
+                AppLog.i(TAG, "SSH: re-established port forward " + port + " -> " + targetHost + ":" + port);
             } catch (Exception e) {
                 AppLog.e(TAG, "SSH: failed to re-establish port forward " + port, e);
             }
@@ -666,37 +688,33 @@ public class BackgroundService extends Service {
      *
      * MUST be called from a background thread (network I/O).
      */
-    private synchronized void addPortForward(int port) {
-        boolean alreadyInSet = forwardedPorts.contains(port);
+    private synchronized void addPortForward(int port, String host) {
+        boolean alreadyInSet = forwardedPorts.containsKey(port);
         boolean sessionAlive = sshSession != null && sshSession.isConnected();
 
         if (alreadyInSet && sessionAlive) {
             // Port is tracked and SSH session is alive — nothing to do.
-            // (ensureConnection() already re-established this forward when it reconnected.)
             AppLog.d(TAG, "SSH: port " + port + " already forwarded and session active");
             return;
         }
 
         // Port is in the set but session is dead — need to reconnect.
-        // Or port is new — need to add it.
         if (alreadyInSet && !sessionAlive) {
             AppLog.i(TAG, "SSH: port " + port + " in set but session disconnected, reconnecting...");
         }
+
+        String targetHost = (host == null || host.isEmpty()) ? "127.0.0.1" : host;
 
         try {
             ensureConnection();
             // ensureConnection() rebuilds ALL ports in forwardedPorts when it reconnects.
             // For new ports (not in set yet), we need to explicitly set up forwarding.
             if (!alreadyInSet) {
-                sshSession.setPortForwardingL("127.0.0.1", port, "127.0.0.1", port);
-                forwardedPorts.add(port);
+                sshSession.setPortForwardingL("127.0.0.1", port, targetHost, port);
+                forwardedPorts.put(port, host != null ? host : "");
                 saveForwardedPorts();
             }
-            // For already-tracked ports, ensureConnection() already called
-            // setPortForwardingL for all ports in forwardedPorts during reconnect.
-            // If ensureConnection() failed to set up this specific port, it logged
-            // the error — the connection monitor will retry later.
-            AppLog.i(TAG, "SSH: port forward ready: localhost:" + port + " → server:" + port);
+            AppLog.i(TAG, "SSH: port forward ready: localhost:" + port + " → " + targetHost + ":" + port);
             updateNotification(forwardedPorts.size(), null);
         } catch (Exception e) {
             lastError = e.getMessage();
@@ -706,11 +724,11 @@ public class BackgroundService extends Service {
             try {
                 ensureConnection();
                 if (!alreadyInSet) {
-                    sshSession.setPortForwardingL("127.0.0.1", port, "127.0.0.1", port);
-                    forwardedPorts.add(port);
+                    sshSession.setPortForwardingL("127.0.0.1", port, targetHost, port);
+                    forwardedPorts.put(port, host != null ? host : "");
                     saveForwardedPorts();
                 }
-                AppLog.i(TAG, "SSH: port forward added on retry: localhost:" + port + " → server:" + port);
+                AppLog.i(TAG, "SSH: port forward added on retry: localhost:" + port + " → " + targetHost + ":" + port);
                 updateNotification(forwardedPorts.size(), null);
             } catch (Exception e2) {
                 lastError = e2.getMessage();
@@ -723,7 +741,7 @@ public class BackgroundService extends Service {
      * Remove a local port forward.
      */
     synchronized void removePortForward(int port) {
-        if (!forwardedPorts.contains(port)) {
+        if (!forwardedPorts.containsKey(port)) {
             return;
         }
 
@@ -824,7 +842,7 @@ public class BackgroundService extends Service {
         if (sshSession != null) {
             try {
                 // Remove all port forwards before disconnecting
-                for (int port : new HashSet<>(forwardedPorts)) {
+                for (int port : new HashSet<>(forwardedPorts.keySet())) {
                     try {
                         sshSession.delPortForwardingL(port);
                     } catch (Exception ignored) {}
@@ -970,10 +988,11 @@ public class BackgroundService extends Service {
     /**
      * Add a port forward via the service.
      */
-    public static void addForwardedPort(Context context, int port) {
+    public static void addForwardedPort(Context context, int port, String host) {
         Intent intent = new Intent(context, BackgroundService.class);
         intent.setAction("ADD_PORT");
         intent.putExtra("port", port);
+        intent.putExtra("host", host != null ? host : "");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent);
         } else {

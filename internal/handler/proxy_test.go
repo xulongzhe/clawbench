@@ -57,7 +57,7 @@ func TestServeProxyPorts_AfterRegister(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(8080, "test", "")
+	_ = service.ProxyService.RegisterPort(8080, "", "test", "")
 
 	req := newRequest(t, http.MethodGet, "/api/proxy/ports", nil)
 	w := callHandler(ServeProxyPortAction, req)
@@ -116,7 +116,7 @@ func TestRegisterPort_Duplicate(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(3000, "first", "")
+	_ = service.ProxyService.RegisterPort(3000, "", "first", "")
 
 	req := newRequest(t, http.MethodPost, "/api/proxy/ports", map[string]interface{}{
 		"port": 3000,
@@ -148,7 +148,7 @@ func TestUnregisterPort_Valid(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(9090, "metrics", "")
+	_ = service.ProxyService.RegisterPort(9090, "", "metrics", "")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9090", nil)
 	w := callHandler(ServeProxyPortAction, req)
@@ -241,9 +241,9 @@ func TestRegisterAndListMultiple(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(3000, "app", "")
-	_ = service.ProxyService.RegisterPort(5173, "vite", "")
-	_ = service.ProxyService.RegisterPort(8080, "api", "")
+	_ = service.ProxyService.RegisterPort(3000, "", "app", "")
+	_ = service.ProxyService.RegisterPort(5173, "", "vite", "")
+	_ = service.ProxyService.RegisterPort(8080, "", "api", "")
 
 	req := newRequest(t, http.MethodGet, "/api/proxy/ports", nil)
 	w := callHandler(ServeProxyPortAction, req)

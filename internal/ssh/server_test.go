@@ -216,7 +216,7 @@ func TestSSHPortForward_DisallowedPortRejectedByTunnel(t *testing.T) {
 func TestSSHPortForward_RegisteredPortWorks(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	portReg.RegisterPort(echoPort, "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -250,8 +250,8 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 	// Start two echo servers
 	echoPort1 := startEchoServer(t)
 	echoPort2 := startEchoServer(t)
-	portReg.RegisterPort(echoPort1, "echo1", "http")
-	portReg.RegisterPort(echoPort2, "echo2", "http")
+	portReg.RegisterPort(echoPort1, "", "echo1", "http")
+	portReg.RegisterPort(echoPort2, "", "echo2", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -296,7 +296,7 @@ func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
 	defer r.Stop()
 
 	// RegisterPort should reject a port outside the allowed range
-	err := r.RegisterPort(8080, "outside-range", "http")
+	err := r.RegisterPort(8080, "", "outside-range", "http")
 	if err == nil {
 		t.Error("expected RegisterPort to reject port 8080 (outside allowed range 3000-4000)")
 	}
@@ -310,7 +310,7 @@ func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
 func TestSSHPortForward_LargeDataTransfer(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	portReg.RegisterPort(echoPort, "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -558,7 +558,7 @@ func TestSSHServer_ConnectionStats_MultipleClients(t *testing.T) {
 func TestSSHServer_ConnectionStats_ActiveChannels(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	portReg.RegisterPort(echoPort, "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")

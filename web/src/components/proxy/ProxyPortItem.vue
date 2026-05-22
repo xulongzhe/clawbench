@@ -3,6 +3,7 @@
     <div class="port-info">
       <div class="port-main">
         <span class="port-number">{{ port }}</span>
+        <span v-if="host" class="port-host">{{ host }}</span>
         <span class="port-protocol" :class="protocol">{{ protocol }}</span>
         <span
           class="port-status"
@@ -13,10 +14,10 @@
       </div>
     </div>
     <div class="port-actions">
-      <button class="port-action-btn sandbox" @click.stop="$emit('open', port, protocol)" :title="t('proxy.openInSandbox')">
+      <button class="port-action-btn sandbox" @click.stop="$emit('open', port, protocol, host)" :title="t('proxy.openInSandbox')">
         <Box :size="14" />
       </button>
-      <button class="port-action-btn open" @click.stop="$emit('openExternal', port, protocol)" :title="t('proxy.openInBrowser')">
+      <button class="port-action-btn open" @click.stop="$emit('openExternal', port, protocol, host)" :title="t('proxy.openInBrowser')">
         <ExternalLink :size="14" />
       </button>
       <button class="port-action-btn delete" @click.stop="$emit('remove', port)" :title="t('common.delete')">
@@ -35,6 +36,7 @@ const { t } = useI18n()
 
 const props = defineProps({
   port: { type: Number, required: true },
+  host: { type: String, default: '' },
   name: { type: String, default: '' },
   protocol: { type: String, default: 'http' },
   active: { type: Boolean, default: false },
@@ -89,6 +91,16 @@ const statusTitle = computed(() => {
   font-weight: 600;
   font-family: monospace;
   color: var(--text-primary, #1a1a1a);
+}
+
+.port-host {
+  font-size: 10px;
+  font-family: monospace;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(107, 114, 128, 0.1);
+  color: var(--text-secondary, #666);
 }
 
 .port-protocol {

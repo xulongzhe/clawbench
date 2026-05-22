@@ -23,7 +23,7 @@ vi.mock('@/composables/useLocale', () => ({
 
 vi.mock('@/utils/portForwardUtils', () => ({
     tunnelStatusFromPorts: () => 'ok',
-    buildPortUrl: (port: number, protocol?: string) => `${protocol || 'http'}://localhost:${port}`,
+    buildPortUrl: (port: number, protocol?: string, host?: string) => `${protocol || 'http'}://${host || 'localhost'}:${port}`,
 }))
 
 describe('usePortForward', () => {
@@ -230,7 +230,7 @@ describe('usePortForward', () => {
 
             openPort(3000, 'http')
 
-            expect(mockOpenInSandbox).toHaveBeenCalledWith(3000, 'http')
+            expect(mockOpenInSandbox).toHaveBeenCalledWith(3000, 'http', '')
 
             delete (window as any).AndroidNative
         })
@@ -245,7 +245,7 @@ describe('usePortForward', () => {
 
             openPort(3000, 'https')
 
-            expect(mockOpenInBrowser).toHaveBeenCalledWith(3000, 'https')
+            expect(mockOpenInBrowser).toHaveBeenCalledWith(3000, 'https', '')
 
             delete (window as any).AndroidNative
         })
@@ -262,7 +262,7 @@ describe('usePortForward', () => {
             await registerPort(3000, 'App', 'http')
 
             expect(mockApiPost).toHaveBeenCalledWith('/api/proxy/ports', {
-                port: 3000, name: 'App', protocol: 'http',
+                port: 3000, host: '', name: 'App', protocol: 'http',
             })
         })
     })

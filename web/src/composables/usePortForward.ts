@@ -6,6 +6,7 @@ import { tunnelStatusFromPorts as tunnelStatusFromPortsUtil, buildPortUrl } from
 
 interface ForwardedPort {
   port: number
+  host: string
   name: string
   protocol: string
   autoDetect: boolean
@@ -83,11 +84,11 @@ export function usePortForward() {
     }
   }
 
-  async function registerPort(port: number, name?: string, protocol?: string) {
-    await apiPost('/api/proxy/ports', { port, name: name || '', protocol: protocol || 'http' })
+  async function registerPort(port: number, name?: string, protocol?: string, host?: string) {
+    await apiPost('/api/proxy/ports', { port, host: host || '', name: name || '', protocol: protocol || 'http' })
     // Register with Android native layer
     if (isAppMode.value) {
-      ;(window as any).AndroidNative?.addForwardedPort(port)
+      ;(window as any).AndroidNative?.addForwardedPort(port, host || '')
     }
     // Silent refresh: don't flicker the port list with loading state
     await Promise.all([loadPorts(true), loadSSHInfo()])
@@ -118,7 +119,7 @@ export function usePortForward() {
       return
     }
     for (const p of ports.value) {
-      ;(window as any).AndroidNative?.addForwardedPort(p.port)
+      ;(window as any).AndroidNative?.addForwardedPort(p.port, p.host || '')
     }
   }
 
@@ -326,29 +327,29 @@ export function usePortForward() {
   }
 
   /** Open a forwarded port — in app mode opens sandbox browser, otherwise window.open */
-  function openPort(targetPort: number, protocol?: string) {
+  function openPort(targetPort: number, protocol?: string, host?: string) {
     if (isAppMode.value) {
       const native = (window as any).AndroidNative
       // Prefer sandbox browser (isolated process), fall back to external browser
       if (native?.openInSandbox) {
-        native.openInSandbox(targetPort, protocol === 'https' ? 'https' : 'http')
+        native.openInSandbox(targetPort, protocol === 'https' ? 'https' : 'http', host || '')
       } else if (native?.openInBrowser) {
-        native.openInBrowser(targetPort, protocol === 'https' ? 'https' : 'http')
+        native.openInBrowser(targetPort, protocol === 'https' ? 'https' : 'http', host || '')
       }
     } else {
-      window.open(buildPortUrl(targetPort, protocol), '_blank')
+      window.open(buildPortUrl(targetPort, protocol, host), '_blank')
     }
   }
 
   /** Open a forwarded port in external/system browser */
-  function openInExternalBrowser(targetPort: number, protocol?: string) {
+  function openInExternalBrowser(targetPort: number, protocol?: string, host?: string) {
     if (isAppMode.value) {
       const native = (window as any).AndroidNative
       if (native?.openInBrowser) {
-        native.openInBrowser(targetPort, protocol === 'https' ? 'https' : 'http')
+        native.openInBrowser(targetPort, protocol === 'https' ? 'https' : 'http', host || '')
       }
     } else {
-      window.open(buildPortUrl(targetPort, protocol), '_blank')
+      window.open(buildPortUrl(targetPort, protocol, host), '_blank')
     }
   }
 
