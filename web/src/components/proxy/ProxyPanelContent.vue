@@ -87,8 +87,9 @@
       <div v-else-if="ports.length > 0" class="proxy-list">
         <ProxyPortItem
           v-for="p in ports"
-          :key="p.port"
+          :key="p.localPort"
           :port="p.port"
+          :local-port="p.localPort"
           :host="p.host || ''"
           :name="p.name"
           :protocol="p.protocol"
@@ -283,8 +284,8 @@ async function handleQuickAdd(port, protocol, processName) {
   await registerPort(port, processName || t('proxy.autoDetect'), protocol || 'http')
 }
 
-async function handleRemove(port, host) {
-  await unregisterPort(port, host)
+async function handleRemove(localPort) {
+  await unregisterPort(localPort)
 }
 
 async function handleDetect() {

@@ -63,9 +63,8 @@ func unregisterPortByQuery(w http.ResponseWriter, r *http.Request) {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidPortInQuery")
 		return
 	}
-	host := r.URL.Query().Get("host")
 
-	if err := service.ProxyService.UnregisterPort(port, host); err != nil {
+	if err := service.ProxyService.UnregisterPort(port); err != nil {
 		writeLocalizedError(w, r, model.NotFound(err, "FileNotFoundShort"))
 		return
 	}

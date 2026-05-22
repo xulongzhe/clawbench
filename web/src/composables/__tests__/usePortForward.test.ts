@@ -277,7 +277,7 @@ describe('usePortForward', () => {
 
             await unregisterPort(3000)
 
-            expect(mockApiDelete).toHaveBeenCalledWith('/api/proxy/ports?port=3000&host=')
+            expect(mockApiDelete).toHaveBeenCalledWith('/api/proxy/ports?port=3000')
         })
     })
 

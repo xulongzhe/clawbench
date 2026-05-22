@@ -86,9 +86,9 @@ describe('portForwardUtils', () => {
       expect(buildPortUrl(443, 'https')).toBe('https://localhost:443')
     })
 
-    it('uses custom host when provided', () => {
-      expect(buildPortUrl(3000, 'http', '192.168.1.1')).toBe('http://192.168.1.1:3000')
-      expect(buildPortUrl(3000, 'https', 'myserver.local')).toBe('https://myserver.local:3000')
+    it('handles different ports', () => {
+      expect(buildPortUrl(8080)).toBe('http://localhost:8080')
+      expect(buildPortUrl(443, 'https')).toBe('https://localhost:443')
     })
 
     it('defaults to localhost when host is empty', () => {

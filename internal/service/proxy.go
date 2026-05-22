@@ -24,15 +24,26 @@ import (
 // ProxyRegistry manages forwarded ports: registration, health checks, and auto-detection.
 type ProxyRegistry struct {
 	mu       sync.RWMutex
-	ports    map[string]*model.ForwardedPort // key = "port:host" via portKey()
+	ports    map[int]*model.ForwardedPort // key = localPort (auto-assigned, unique)
 	cfg      model.ProxyConfig
 	selfPort int // ClawBench's own port, excluded from detection
 	cancel   context.CancelFunc
 }
 
-// portKey returns a unique map key for a (port, host) combination.
-func portKey(port int, host string) string {
-	return fmt.Sprintf("%d:%s", port, host)
+// allocateLocalPort finds an available local port for forwarding.
+// Prefers the requested port; if taken, scans upward until a free one is found.
+func (r *ProxyRegistry) allocateLocalPort(preferred int) int {
+	if _, taken := r.ports[preferred]; !taken {
+		return preferred
+	}
+	// Scan upward from preferred+1 to find a free local port
+	for p := preferred + 1; p <= 65535; p++ {
+		if _, taken := r.ports[p]; !taken {
+			return p
+		}
+	}
+	// Should never happen in practice
+	return preferred
 }
 
 // hostDisplayName returns a human-readable host name for error messages.
@@ -52,7 +63,7 @@ var ProxyService *ProxyRegistry
 func NewProxyRegistry(allowedPorts string, selfPort int) *ProxyRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &ProxyRegistry{
-		ports:    make(map[string]*model.ForwardedPort),
+		ports:    make(map[int]*model.ForwardedPort),
 		cfg:      model.ProxyConfig{AllowedPorts: allowedPorts},
 		selfPort: selfPort,
 		cancel:   cancel,
@@ -82,6 +93,8 @@ func (r *ProxyRegistry) Stop() {
 }
 
 // RegisterPort adds a port to the forwarding registry.
+// port is the target port on the remote host. If the same port is already
+// registered (with a different host), a nearby free local port is auto-assigned.
 func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protocol string) error {
 	if port <= 0 || port > 65535 {
 		return fmt.Errorf("invalid port number: %d", port)
@@ -96,14 +109,19 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Use (port, host) as the unique key — same port can be forwarded to different hosts
-	key := portKey(port, host)
-	if _, exists := r.ports[key]; exists {
-		return fmt.Errorf("port %d → %s is already registered", port, hostDisplayName(host))
+	// Check if this exact (port, host) is already registered
+	for _, p := range r.ports {
+		if p.Port == port && p.Host == host {
+			return fmt.Errorf("port %d → %s is already registered (local %d)", port, hostDisplayName(host), p.LocalPort)
+		}
 	}
 
-	r.ports[key] = &model.ForwardedPort{
+	// Auto-allocate a local port (prefers the target port if available)
+	localPort := r.allocateLocalPort(port)
+
+	r.ports[localPort] = &model.ForwardedPort{
 		Port:       port,
+		LocalPort:  localPort,
 		Host:       host,
 		Name:       name,
 		Protocol:   protocol,
@@ -112,10 +130,11 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 	}
 
 	// Persist to database
-	r.savePortToDB(port, host, name, protocol)
+	r.savePortToDB(localPort, port, host, name, protocol)
 
 	slog.Info("proxy port registered",
-		slog.Int("port", port),
+		slog.Int("local_port", localPort),
+		slog.Int("target_port", port),
 		slog.String("host", host),
 		slog.String("name", name),
 		slog.String("protocol", protocol),
@@ -124,24 +143,21 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 	return nil
 }
 
-// UnregisterPort removes a port from the forwarding registry.
-// host is used to disambiguate when the same port is registered with different hosts.
-// If host is empty, it matches the entry with empty/localhost host.
-func (r *ProxyRegistry) UnregisterPort(port int, host string) error {
+// UnregisterPort removes a port from the forwarding registry by local port.
+func (r *ProxyRegistry) UnregisterPort(localPort int) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	key := portKey(port, host)
-	if _, exists := r.ports[key]; !exists {
-		return fmt.Errorf("port %d → %s is not registered", port, hostDisplayName(host))
+	if _, exists := r.ports[localPort]; !exists {
+		return fmt.Errorf("local port %d is not registered", localPort)
 	}
 
-	delete(r.ports, key)
+	delete(r.ports, localPort)
 
 	// Remove from database
-	r.deletePortFromDB(port, host)
+	r.deletePortFromDB(localPort)
 
-	slog.Info("proxy port unregistered", slog.Int("port", port), slog.String("host", host))
+	slog.Info("proxy port unregistered", slog.Int("local_port", localPort))
 	return nil
 }
 
@@ -155,12 +171,9 @@ func (r *ProxyRegistry) ListPorts() []model.ForwardedPort {
 		result = append(result, *p)
 	}
 
-	// Sort by port number, then by host for stable output
+	// Sort by local port number for stable output
 	sort.Slice(result, func(i, j int) bool {
-		if result[i].Port != result[j].Port {
-			return result[i].Port < result[j].Port
-		}
-		return result[i].Host < result[j].Host
+		return result[i].LocalPort < result[j].LocalPort
 	})
 
 	return result
@@ -265,14 +278,16 @@ func (r *ProxyRegistry) healthCheckLoop(ctx context.Context) {
 func (r *ProxyRegistry) checkAllPorts() {
 	r.mu.RLock()
 	portList := make([]struct {
-		port int
-		host string
+		localPort int
+		port      int
+		host      string
 	}, 0, len(r.ports))
-	for _, p := range r.ports {
+	for lp, p := range r.ports {
 		portList = append(portList, struct {
-			port int
-			host string
-		}{port: p.Port, host: p.Host})
+			localPort int
+			port      int
+			host      string
+		}{localPort: lp, port: p.Port, host: p.Host})
 	}
 	r.mu.RUnlock()
 
@@ -280,8 +295,7 @@ func (r *ProxyRegistry) checkAllPorts() {
 		active := checkPortActive(entry.port, entry.host)
 
 		r.mu.Lock()
-		key := portKey(entry.port, entry.host)
-		if p, ok := r.ports[key]; ok {
+		if p, ok := r.ports[entry.localPort]; ok {
 			p.Active = active
 		}
 		r.mu.Unlock()
@@ -673,7 +687,7 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 		return
 	}
 
-	rows, err := DB.Query("SELECT port, host, name, protocol FROM forwarded_ports")
+	rows, err := DB.Query("SELECT local_port, port, host, name, protocol FROM forwarded_ports")
 	if err != nil {
 		slog.Warn("failed to load persisted ports from DB", slog.String("err", err.Error()))
 		return
@@ -681,9 +695,9 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 	defer rows.Close()
 
 	for rows.Next() {
-		var port int
+		var localPort, port int
 		var host, name, protocol string
-		if err := rows.Scan(&port, &host, &name, &protocol); err != nil {
+		if err := rows.Scan(&localPort, &port, &host, &name, &protocol); err != nil {
 			continue
 		}
 		if !r.IsPortAllowed(port) {
@@ -693,8 +707,9 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 		if protocol != "https" {
 			protocol = "http"
 		}
-		r.ports[portKey(port, host)] = &model.ForwardedPort{
+		r.ports[localPort] = &model.ForwardedPort{
 			Port:       port,
+			LocalPort:  localPort,
 			Host:       host,
 			Name:       name,
 			Protocol:   protocol,
@@ -709,26 +724,26 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 }
 
 // savePortToDB persists a single forwarded port to the database.
-func (r *ProxyRegistry) savePortToDB(port int, host string, name, protocol string) {
+func (r *ProxyRegistry) savePortToDB(localPort int, port int, host string, name, protocol string) {
 	if DB == nil {
 		return
 	}
 	_, err := DB.Exec(
-		"INSERT OR REPLACE INTO forwarded_ports (port, host, name, protocol) VALUES (?, ?, ?, ?)",
-		port, host, name, protocol,
+		"INSERT OR REPLACE INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (?, ?, ?, ?, ?)",
+		localPort, port, host, name, protocol,
 	)
 	if err != nil {
-		slog.Error("failed to persist port to DB", slog.Int("port", port), slog.String("err", err.Error()))
+		slog.Error("failed to persist port to DB", slog.Int("local_port", localPort), slog.String("err", err.Error()))
 	}
 }
 
 // deletePortFromDB removes a forwarded port from the database.
-func (r *ProxyRegistry) deletePortFromDB(port int, host string) {
+func (r *ProxyRegistry) deletePortFromDB(localPort int) {
 	if DB == nil {
 		return
 	}
-	_, err := DB.Exec("DELETE FROM forwarded_ports WHERE port = ? AND host = ?", port, host)
+	_, err := DB.Exec("DELETE FROM forwarded_ports WHERE local_port = ?", localPort)
 	if err != nil {
-		slog.Error("failed to delete port from DB", slog.Int("port", port), slog.String("host", host), slog.String("err", err.Error()))
+		slog.Error("failed to delete port from DB", slog.Int("local_port", localPort), slog.String("err", err.Error()))
 	}
 }
