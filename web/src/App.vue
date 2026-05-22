@@ -409,6 +409,47 @@ function handleOpenSession(e) {
   }
 }
 
+/** Handle clawbench-open-task event from Android push notification tap (task execution) */
+function handleOpenTask(e) {
+  const detail = e?.detail
+  console.log('[ClawBench] clawbench-open-task event received, detail=', detail)
+  if (!detail?.taskId) {
+    console.warn('[ClawBench] clawbench-open-task: no taskId in detail, ignoring')
+    return
+  }
+  const { taskId, executionId, projectPath } = detail
+  console.log('[ClawBench] clawbench-open-task: taskId=', taskId, 'executionId=', executionId, 'currentProject=', store.state.projectRoot)
+
+  const navigateToTask = () => {
+    switchTab('tasks')
+    navigateToTaskHistory(Number(taskId))
+    if (executionId) {
+      // openExecDetail without execData will auto-fetch from API via refreshExecDetail
+      openExecDetail(executionId)
+    }
+  }
+
+  if (projectPath && projectPath !== store.state.projectRoot) {
+    // Cross-project: switch project, store pending task navigation, then reload
+    console.log('[ClawBench] cross-project navigation, switching to', projectPath)
+    localStorage.setItem('clawbenchPendingNav', JSON.stringify({ taskId, executionId }))
+    fetch('/api/project', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: projectPath }),
+    }).then(() => {
+      window.location.reload()
+    }).catch(() => {
+      console.warn('[ClawBench] project switch failed, falling back to same-project switch')
+      navigateToTask()
+    })
+  } else {
+    // Same project: lightweight switch
+    console.log('[ClawBench] same-project navigation, switching to task', taskId)
+    navigateToTask()
+  }
+}
+
 const detailsOpen = ref(false)
 const tocOpen = ref(false)
 const searchOpen = ref(false)
@@ -457,7 +498,7 @@ watch(isTerminalDisabled, (disabled) => {
     switchTab('chat')
   }
 })
-const { navigateToTaskSettings, loadTasks } = useTaskTab()
+const { navigateToTaskSettings, navigateToTaskHistory, openExecDetail, loadTasks } = useTaskTab()
 registerSwitchTab(switchTab)
 
 // Wire up WS global events
@@ -818,6 +859,7 @@ onMounted(async () => {
     window.addEventListener('navigate-to-commit', handleNavigateToCommit)
     window.addEventListener('quote-sent', playQuoteEmitAnimation)
     window.addEventListener('clawbench-open-session', handleOpenSession)
+    window.addEventListener('clawbench-open-task', handleOpenTask)
     document.addEventListener('click', handleOverflowOutsideClick)
     // Sync reactive state from Settings page changes
     window.addEventListener('clawbench-theme-change', (e) => {
@@ -884,17 +926,34 @@ onMounted(async () => {
     }
     // Handle pending navigation from push notification deep link
     // (cross-project reload or cold start via AndroidNative bridge)
-    const processPendingNav = (navSessionId) => {
-      // Wait for sessions to load before switching
+    const processPendingSessionNav = (navSessionId) => {
+      // Wait for sessions to load before switching (max 3 seconds)
+      let attempts = 0
       const checkReady = () => {
         if (sessionIdentity.currentSessionId.value) {
           switchTab('chat')
           sessionIdentity.switchSession(navSessionId)
-        } else {
+        } else if (attempts < 30) {
+          attempts++
           setTimeout(checkReady, 100)
         }
       }
       checkReady()
+    }
+
+    const processPendingTaskNav = async (navTaskId, navExecutionId) => {
+      // Ensure tasks are loaded before navigating
+      try {
+        await loadTasks()
+      } catch (_) {
+        // Proceed anyway — the task list may already be populated
+      }
+      switchTab('tasks')
+      navigateToTaskHistory(Number(navTaskId))
+      if (navExecutionId) {
+        // openExecDetail without execData will auto-fetch from API via refreshExecDetail
+        openExecDetail(navExecutionId)
+      }
     }
 
     // Check localStorage for pending navigation (cross-project reload)
@@ -902,8 +961,12 @@ onMounted(async () => {
     if (pendingNav) {
       localStorage.removeItem('clawbenchPendingNav')
       try {
-        const { sessionId } = JSON.parse(pendingNav)
-        if (sessionId) processPendingNav(sessionId)
+        const nav = JSON.parse(pendingNav)
+        if (nav.taskId) {
+          processPendingTaskNav(nav.taskId, nav.executionId)
+        } else if (nav.sessionId) {
+          processPendingSessionNav(nav.sessionId)
+        }
       } catch (_) {}
     }
 
@@ -916,15 +979,30 @@ onMounted(async () => {
           const nav = window.AndroidNative.getPendingNavigation()
           console.log('[ClawBench] getPendingNavigation poll result:', nav)
           if (nav) {
-            const { sessionId, projectPath } = JSON.parse(nav)
-            if (sessionId) {
+            const parsed = JSON.parse(nav)
+            const { sessionId, taskId, executionId, projectPath } = parsed
+            if (taskId) {
+              // Task notification navigation
+              pollCleared = true
+              if (projectPath && projectPath !== store.state.projectRoot) {
+                localStorage.setItem('clawbenchPendingNav', JSON.stringify({ taskId, executionId }))
+                fetch('/api/project', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path: projectPath }),
+                }).then(() => window.location.reload())
+              } else {
+                processPendingTaskNav(taskId, executionId)
+              }
+            } else if (sessionId) {
+              // Session notification navigation
               // Navigation data found — stop polling
               pollCleared = true
               if (projectPath && projectPath !== store.state.projectRoot) {
                 // Need to switch project first — use hot switch instead of reload
                 hotSwitchProject(projectPath, sessionId)
               } else {
-                processPendingNav(sessionId)
+                processPendingSessionNav(sessionId)
               }
             }
           }
@@ -960,6 +1038,7 @@ onUnmounted(() => {
     window.removeEventListener('navigate-to-commit', handleNavigateToCommit)
     window.removeEventListener('quote-sent', playQuoteEmitAnimation)
     window.removeEventListener('clawbench-open-session', handleOpenSession)
+    window.removeEventListener('clawbench-open-task', handleOpenTask)
     document.removeEventListener('click', handleOverflowOutsideClick)
 })
 </script>

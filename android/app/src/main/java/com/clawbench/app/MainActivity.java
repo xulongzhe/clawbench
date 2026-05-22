@@ -690,9 +690,15 @@ public class MainActivity extends AppCompatActivity {
         if (pendingNavigation != null && webView != null) {
             AppLog.i(TAG, "MainActivity: onResume - re-dispatching pendingNavigation=" + pendingNavigation.toString());
             final String jsArg = pendingNavigation.toString();
+            // Choose event name based on navigation type: task vs session
+            String eventName = pendingNavigation.has("taskId") ? "clawbench-open-task" : "clawbench-open-session";
+            AppLog.i(TAG, "MainActivity: onResume - dispatching " + eventName);
             webView.evaluateJavascript(
-                "window.dispatchEvent(new CustomEvent('clawbench-open-session', { detail: " + jsArg + " }))",
-                result -> AppLog.i(TAG, "MainActivity: onResume re-dispatch evaluateJavascript result=" + result)
+                "window.dispatchEvent(new CustomEvent('" + eventName + "', { detail: " + jsArg + " }))",
+                result -> {
+                    AppLog.i(TAG, "MainActivity: onResume re-dispatch evaluateJavascript result=" + result);
+                    pendingNavigation = null;
+                }
             );
         }
     }
@@ -706,8 +712,8 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Handle intent extras from notification taps.
-     * Extracts session_id or task_id and dispatches a clawbench-open-session
-     * event to the WebView (same behavior as JPush notification taps).
+     * For session notifications: dispatches clawbench-open-session event (navigate to chat).
+     * For task notifications: dispatches clawbench-open-task event (navigate to task execution detail).
      */
     void handleNotificationIntent(Intent intent) {
         AppLog.i(TAG, "MainActivity: handleNotificationIntent called, intent=" + intent);
@@ -716,8 +722,13 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         String sessionId = intent.getStringExtra("session_id");
+        String taskId = intent.getStringExtra("task_id");
+        String executionId = intent.getStringExtra("execution_id");
+        String eventType = intent.getStringExtra("event_type");
         String projectPath = intent.getStringExtra("project_path");
-        AppLog.i(TAG, "MainActivity: handleNotificationIntent - sessionId=" + sessionId + ", projectPath=" + projectPath);
+        AppLog.i(TAG, "MainActivity: handleNotificationIntent - sessionId=" + sessionId
+                + ", taskId=" + taskId + ", executionId=" + executionId
+                + ", eventType=" + eventType + ", projectPath=" + projectPath);
 
         // Also dump all intent extras for debugging
         Bundle extras = intent.getExtras();
@@ -727,7 +738,45 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        if (sessionId != null) {
+        // Determine navigation type: task notification vs session notification
+        boolean isTaskNotification = taskId != null || "task_update".equals(eventType);
+
+        if (isTaskNotification && taskId != null) {
+            // Task notification: navigate to task execution detail
+            AppLog.i(TAG, "MainActivity: handleNotificationIntent - task notification, dispatching clawbench-open-task");
+            try {
+                org.json.JSONObject detail = new org.json.JSONObject();
+                detail.put("taskId", taskId);
+                if (executionId != null) detail.put("executionId", executionId);
+                if (sessionId != null) detail.put("sessionId", sessionId);
+                if (projectPath != null) detail.put("projectPath", projectPath);
+                // Store as pending navigation for cold-start fallback (getPendingNavigation bridge)
+                pendingNavigation = detail;
+                AppLog.i(TAG, "MainActivity: stored pendingNavigation=" + detail.toString());
+                if (webView != null) {
+                    AppLog.i(TAG, "MainActivity: webView available, dispatching clawbench-open-task event");
+                    webView.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('clawbench-open-task', { detail: " + detail.toString() + " }))",
+                        result -> {
+                            AppLog.i(TAG, "MainActivity: clawbench-open-task evaluateJavascript result=" + result);
+                            pendingNavigation = null;
+                        }
+                    );
+                } else {
+                    AppLog.w(TAG, "MainActivity: webView is null, cannot dispatch event (pendingNavigation stored for cold-start)");
+                }
+            } catch (Exception e) {
+                AppLog.w(TAG, "MainActivity: failed to dispatch clawbench-open-task event from notification", e);
+            }
+            // Clear extras so we don't re-dispatch on subsequent onResume
+            intent.removeExtra("task_id");
+            intent.removeExtra("execution_id");
+            intent.removeExtra("event_type");
+            intent.removeExtra("session_id");
+            intent.removeExtra("project_path");
+            AppLog.i(TAG, "MainActivity: cleared intent extras to prevent re-dispatch");
+        } else if (sessionId != null) {
+            // Session notification: navigate to chat session
             AppLog.i(TAG, "MainActivity: handleNotificationIntent - session_id found, dispatching navigation");
             try {
                 org.json.JSONObject detail = new org.json.JSONObject();
@@ -756,9 +805,10 @@ public class MainActivity extends AppCompatActivity {
             // Clear extras so we don't re-dispatch on subsequent onResume
             intent.removeExtra("session_id");
             intent.removeExtra("project_path");
+            intent.removeExtra("event_type");
             AppLog.i(TAG, "MainActivity: cleared intent extras to prevent re-dispatch");
         } else {
-            AppLog.i(TAG, "MainActivity: handleNotificationIntent - no session_id in intent extras");
+            AppLog.i(TAG, "MainActivity: handleNotificationIntent - no session_id or task_id in intent extras");
         }
     }
 
