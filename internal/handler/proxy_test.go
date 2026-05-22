@@ -286,3 +286,129 @@ func TestRegisterPort_DefaultProtocol(t *testing.T) {
 	assertOK(t, w)
 	assert.Equal(t, "http", getProxyPortProtocol(service.ProxyService, 8080))
 }
+
+// --- Register with host ---
+
+func TestRegisterPort_WithHost(t *testing.T) {
+	teardown := setupProxyTest(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodPost, "/api/proxy/ports", map[string]interface{}{
+		"port": 8080,
+		"host": "192.168.1.100",
+		"name": "remote-api",
+	})
+	w := callHandler(ServeProxyPortAction, req)
+
+	assertOK(t, w)
+	assertJSONField(t, w, "status", "ok")
+	assert.True(t, isProxyPortRegistered(service.ProxyService, 8080))
+}
+
+func TestRegisterPort_EmptyHost(t *testing.T) {
+	teardown := setupProxyTest(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodPost, "/api/proxy/ports", map[string]interface{}{
+		"port": 3000,
+		"host": "",
+		"name": "local",
+	})
+	w := callHandler(ServeProxyPortAction, req)
+
+	assertOK(t, w)
+	assertJSONField(t, w, "status", "ok")
+}
+
+// --- UpdatePort (PUT) ---
+
+func TestUpdatePort_Valid(t *testing.T) {
+	teardown := setupProxyTest(t)
+	defer teardown()
+
+	// Register a port first
+	_ = service.ProxyService.RegisterPort(8080, "", "api", "http")
+
+	req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
+		"localPort": 8080,
+		"port":      8080,
+		"host":      "",
+		"name":      "api-v2",
+		"protocol":  "https",
+	})
+	w := callHandler(ServeProxyPortAction, req)
+
+	assertOK(t, w)
+	assertJSONField(t, w, "status", "ok")
+	assert.Equal(t, "https", getProxyPortProtocol(service.ProxyService, 8080))
+}
+
+func TestUpdatePort_WithHost(t *testing.T) {
+	teardown := setupProxyTest(t)
+	defer teardown()
+
+	_ = service.ProxyService.RegisterPort(8080, "", "api", "http")
+
+	req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
+		"localPort": 8080,
+		"port":      9090,
+		"host":      "192.168.1.100",
+		"name":      "remote-api",
+		"protocol":  "http",
+	})
+	w := callHandler(ServeProxyPortAction, req)
+
+	assertOK(t, w)
+	assertJSONField(t, w, "status", "ok")
+}
+
+func TestUpdatePort_InvalidLocalPort(t *testing.T) {
+	teardown := setupProxyTest(t)
+	defer teardown()
+
+	tests := []struct {
+		name      string
+		localPort int
+	}{
+		{"zero", 0},
+		{"negative", -1},
+		{"too large", 70000},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
+				"localPort": tt.localPort,
+				"port":      8080,
+				"name":      "test",
+			})
+			w := callHandler(ServeProxyPortAction, req)
+			assertStatus(t, w, http.StatusBadRequest)
+		})
+	}
+}
+
+func TestUpdatePort_MissingBody(t *testing.T) {
+	teardown := setupProxyTest(t)
+	defer teardown()
+
+	req := httptest.NewRequest(http.MethodPut, "/api/proxy/ports", nil)
+	w := callHandler(ServeProxyPortAction, req)
+
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestUpdatePort_NotRegistered(t *testing.T) {
+	teardown := setupProxyTest(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
+		"localPort": 9999,
+		"port":      8080,
+		"name":      "test",
+	})
+	w := callHandler(ServeProxyPortAction, req)
+
+	// UpdatePort on non-existent localPort should return Forbidden (AccessDenied)
+	assertStatus(t, w, http.StatusForbidden)
+}
