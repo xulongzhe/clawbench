@@ -139,7 +139,7 @@ func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
 	// Format: SHA|parents|subject|date|author+refs
 	// --topo-order ensures branches display contiguously
 	// --decorate-refs-exclude hides remote-tracking refs
-	logArgs := []string{"log", "--format=%H|%P|%s|%ad|%an%d", "--date=iso", "--topo-order", "--decorate-refs-exclude=refs/remotes", "-30"}
+	logArgs := []string{"log", "--format=%H|%P|%s|%ad|%an%d", "--date=iso-strict", "--topo-order", "--decorate-refs-exclude=refs/remotes", "-30"}
 	if skip > 0 {
 		logArgs = append(logArgs, "--skip", fmt.Sprintf("%d", skip))
 	}
@@ -651,8 +651,8 @@ func ServeGitHistory(w http.ResponseWriter, r *http.Request) {
 	lsOut, lsErr := lsCmd.CombinedOutput()
 	untracked := lsErr != nil || len(lsOut) == 0
 
-	// git log --format="%H|%P|%s|%ad|%an%d" --date=iso --topo-order -- <path>
-	cmd := exec.Command("git", "log", "--format=%H|%P|%s|%ad|%an%d", "--date=iso", "--topo-order", "--decorate-refs-exclude=refs/remotes", "--", relPath)
+	// git log --format="%H|%P|%s|%ad|%an%d" --date=iso-strict --topo-order -- <path>
+	cmd := exec.Command("git", "log", "--format=%H|%P|%s|%ad|%an%d", "--date=iso-strict", "--topo-order", "--decorate-refs-exclude=refs/remotes", "--", relPath)
 	cmd.Dir = projectPath
 	output, _ := cmd.CombinedOutput()
 
@@ -812,7 +812,7 @@ func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 	logArgs := []string{
 		"log", "--no-walk=sorted", "--ignore-missing",
 		"--format=%H|%P|%s|%ad|%an%d",
-		"--date=iso",
+		"--date=iso-strict",
 	}
 	logArgs = append(logArgs, body.SHAs...)
 
