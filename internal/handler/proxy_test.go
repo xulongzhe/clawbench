@@ -412,3 +412,24 @@ func TestUpdatePort_NotRegistered(t *testing.T) {
 	// UpdatePort on non-existent localPort should return Forbidden (AccessDenied)
 	assertStatus(t, w, http.StatusForbidden)
 }
+
+func TestUpdatePort_DisallowedPortRange(t *testing.T) {
+	origProxy := service.ProxyService
+	service.ProxyService = service.NewProxyRegistry(0)
+	service.ProxyService.SetAllowedPorts("3000-4000")
+	defer func() {
+		service.ProxyService.Stop()
+		service.ProxyService = origProxy
+	}()
+
+	_ = service.ProxyService.RegisterPort(3500, "", "app", "")
+
+	req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
+		"localPort": 3500,
+		"port":      8080,
+		"name":      "updated",
+	})
+	w := callHandler(ServeProxyPortAction, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}

@@ -3,6 +3,8 @@ package service
 import (
 	"database/sql"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"clawbench/internal/model"
@@ -947,4 +949,155 @@ func TestSchema_ForwardedPortsMigration_Idempotent(t *testing.T) {
 	err = InitDB()
 	assert.NoError(t, err)
 	CloseDB()
+}
+
+func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
+	// Simulate upgrading from old schema without host column
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Step 1: Create DB with old schema (no host column, uses port as primary key)
+	dbDir := filepath.Join(tmpDir, ".clawbench")
+	assert.NoError(t, os.MkdirAll(dbDir, 0755))
+	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
+	assert.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+
+	// Create old-style table without host column and without local_port
+	// Other tables must have enough columns so InitDB's index creation succeeds
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS forwarded_ports (
+			port INTEGER PRIMARY KEY,
+			name TEXT NOT NULL DEFAULT '',
+			protocol TEXT NOT NULL DEFAULT 'http',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS chat_sessions (
+			id TEXT PRIMARY KEY,
+			project_path TEXT NOT NULL,
+			backend TEXT NOT NULL,
+			title TEXT NOT NULL,
+			session_type TEXT NOT NULL DEFAULT 'chat',
+			deleted INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(project_path, backend, id)
+		);
+		CREATE TABLE IF NOT EXISTS chat_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_path TEXT NOT NULL,
+			role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+			content TEXT NOT NULL,
+			session_id TEXT,
+			backend TEXT NOT NULL DEFAULT 'claude',
+			streaming INTEGER NOT NULL DEFAULT 0,
+			deleted INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS scheduled_tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_path TEXT NOT NULL,
+			name TEXT NOT NULL,
+			cron_expr TEXT NOT NULL,
+			agent_id TEXT NOT NULL,
+			prompt TEXT NOT NULL,
+			session_id TEXT DEFAULT '',
+			status TEXT DEFAULT 'active',
+			repeat_mode TEXT DEFAULT 'unlimited',
+			max_runs INTEGER DEFAULT 0,
+			last_run_at DATETIME,
+			next_run_at DATETIME,
+			run_count INTEGER DEFAULT 0,
+			last_read_at DATETIME,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS task_executions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id INTEGER NOT NULL,
+			session_id TEXT NOT NULL,
+			trigger_type TEXT NOT NULL DEFAULT 'auto',
+			status TEXT NOT NULL DEFAULT 'running',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS tts_summaries (
+			cache_key TEXT PRIMARY KEY,
+			summary TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS terminal_quick_commands (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			label TEXT NOT NULL,
+			command TEXT NOT NULL,
+			hidden INTEGER NOT NULL DEFAULT 0,
+			auto_execute INTEGER NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS chat_quick_send (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			label TEXT NOT NULL,
+			command TEXT NOT NULL,
+			sort_order INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS recent_projects (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			project_path TEXT UNIQUE NOT NULL,
+			accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS ai_raw_responses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			session_id TEXT NOT NULL,
+			message_id INTEGER NOT NULL,
+			backend TEXT NOT NULL DEFAULT '',
+			raw_output TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	assert.NoError(t, err)
+
+	// Insert data with old schema (port is primary key)
+	_, err = db.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (8080, 'app', 'http')")
+	assert.NoError(t, err)
+	_, err = db.Exec("INSERT INTO forwarded_ports (port, name, protocol) VALUES (3000, 'web', 'https')")
+	assert.NoError(t, err)
+
+	db.Close()
+
+	// Step 2: Call InitDB which should detect missing columns and run migrations
+	err = InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	// Step 3: Verify host column was added
+	columns := getTableColumns(t, DB, "forwarded_ports")
+	assert.Contains(t, columns, "host", "host column should exist after migration")
+	assert.Contains(t, columns, "local_port", "local_port column should exist after migration")
+
+	// Step 4: Verify existing data is preserved and local_port is backfilled
+	rows, err := DB.Query("SELECT port, local_port, host, name FROM forwarded_ports ORDER BY port")
+	assert.NoError(t, err)
+	defer rows.Close()
+
+	var count int
+	for rows.Next() {
+		var port, localPort int
+		var host, name string
+		assert.NoError(t, rows.Scan(&port, &localPort, &host, &name))
+		assert.Equal(t, port, localPort, "local_port should equal port after backfill")
+		assert.Equal(t, "", host, "host should default to empty string after migration")
+		count++
+	}
+	assert.Equal(t, 2, count, "should have 2 rows after migration")
 }
