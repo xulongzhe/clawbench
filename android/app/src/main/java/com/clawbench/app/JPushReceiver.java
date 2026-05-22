@@ -23,16 +23,23 @@ public class JPushReceiver extends JPushMessageReceiver {
                 + ", content=" + message.notificationContent);
         AppLog.i(TAG, "JPush: notificationExtras=" + message.notificationExtras);
 
-        // Extract session_id and project_path from notification extras
+        // Extract session_id, task_id, execution_id, event_type, and project_path from notification extras
         String sessionId = null;
+        String taskId = null;
+        String executionId = null;
+        String eventType = null;
         String projectPath = null;
         if (message.notificationExtras != null) {
             try {
                 org.json.JSONObject extras = new org.json.JSONObject(message.notificationExtras);
                 AppLog.i(TAG, "JPush: parsed extras JSON: " + extras.toString());
                 sessionId = extras.optString("session_id", null);
+                taskId = extras.optString("task_id", null);
+                executionId = extras.optString("execution_id", null);
+                eventType = extras.optString("event_type", null);
                 projectPath = extras.optString("project_path", null);
-                AppLog.i(TAG, "JPush: extracted sessionId=" + sessionId + ", projectPath=" + projectPath);
+                AppLog.i(TAG, "JPush: extracted sessionId=" + sessionId + ", taskId=" + taskId
+                        + ", executionId=" + executionId + ", eventType=" + eventType + ", projectPath=" + projectPath);
             } catch (Exception e) {
                 AppLog.w(TAG, "JPush: failed to parse notification extras", e);
             }
@@ -45,6 +52,9 @@ public class JPushReceiver extends JPushMessageReceiver {
         try {
             org.json.JSONObject detail = new org.json.JSONObject();
             if (sessionId != null) detail.put("sessionId", sessionId);
+            if (taskId != null) detail.put("taskId", taskId);
+            if (executionId != null) detail.put("executionId", executionId);
+            if (eventType != null) detail.put("eventType", eventType);
             if (projectPath != null) detail.put("projectPath", projectPath);
             jsArg = detail.toString();
             AppLog.i(TAG, "JPush: built navigation jsArg=" + jsArg);
@@ -70,6 +80,9 @@ public class JPushReceiver extends JPushMessageReceiver {
                 | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         // Pass navigation data as intent extras
         if (sessionId != null) launchIntent.putExtra("session_id", sessionId);
+        if (taskId != null) launchIntent.putExtra("task_id", taskId);
+        if (executionId != null) launchIntent.putExtra("execution_id", executionId);
+        if (eventType != null) launchIntent.putExtra("event_type", eventType);
         if (projectPath != null) launchIntent.putExtra("project_path", projectPath);
         context.startActivity(launchIntent);
         AppLog.i(TAG, "JPush: startActivity called with navigation extras");

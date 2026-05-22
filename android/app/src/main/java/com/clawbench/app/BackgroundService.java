@@ -1312,6 +1312,7 @@ public class BackgroundService extends Service {
             } else if ("task_update".equals(eventType)) {
                 taskId = data.optString("task_id", "");
                 sessionId = data.optString("session_id", null);
+                String executionId = data.optString("execution_id", null);
                 if ("completed".equals(status)) {
                     title = "计划任务完成";
                     text = "任务已完成";
@@ -1322,6 +1323,57 @@ public class BackgroundService extends Service {
                     title = "计划任务通知";
                     text = "任务失败";
                 }
+                // Build intent for notification tap — open the app and navigate to task execution detail
+                Intent intent = new Intent(this, MainActivity.class);
+                intent.setAction(android.content.Intent.ACTION_MAIN);
+                intent.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+                intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                intent.putExtra("event_type", "task_update");
+                if (taskId != null && !taskId.isEmpty()) {
+                    intent.putExtra("task_id", taskId);
+                }
+                if (executionId != null && !executionId.isEmpty()) {
+                    intent.putExtra("execution_id", executionId);
+                }
+                if (sessionId != null && !sessionId.isEmpty()) {
+                    intent.putExtra("session_id", sessionId);
+                }
+                projectPath = data.optString("project_path", "");
+                if (projectPath != null && !projectPath.isEmpty()) {
+                    intent.putExtra("project_path", projectPath);
+                }
+
+                AppLog.i(TAG, "NativeWS: notification intent extras: session_id=" + sessionId
+                        + ", task_id=" + taskId + ", execution_id=" + executionId + ", project_path=" + projectPath);
+
+                PendingIntent pendingIntent = PendingIntent.getActivity(
+                        this, 0, intent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                );
+
+                // Use hash of task_id as notification ID so each gets its own notification
+                int notifId = EVENTS_NOTIFICATION_ID;
+                if (taskId != null && !taskId.isEmpty()) {
+                    notifId = EVENTS_NOTIFICATION_ID + 1000 + Math.abs(taskId.hashCode() % 1000);
+                } else if (sessionId != null && !sessionId.isEmpty()) {
+                    notifId = EVENTS_NOTIFICATION_ID + Math.abs(sessionId.hashCode() % 1000);
+                }
+
+                Notification notification = new NotificationCompat.Builder(this, EVENTS_CHANNEL_ID)
+                        .setContentTitle(title)
+                        .setContentText(text)
+                        .setSmallIcon(R.drawable.ic_notification)
+                        .setContentIntent(pendingIntent)
+                        .setAutoCancel(true)
+                        .build();
+
+                NotificationManager nm = getSystemService(NotificationManager.class);
+                if (nm != null) {
+                    nm.notify(notifId, notification);
+                }
+
+                AppLog.i(TAG, "NativeWS: posted notification: " + title + " - " + text);
+                return;
             } else {
                 AppLog.i(TAG, "NativeWS: postEventNotification - unhandled eventType=" + eventType + ", skipping");
                 return;
@@ -1332,11 +1384,9 @@ public class BackgroundService extends Service {
             intent.setAction(android.content.Intent.ACTION_MAIN);
             intent.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
             intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            intent.putExtra("event_type", "session_update");
             if (sessionId != null && !sessionId.isEmpty()) {
                 intent.putExtra("session_id", sessionId);
-            }
-            if (taskId != null && !taskId.isEmpty()) {
-                intent.putExtra("task_id", taskId);
             }
             projectPath = data.optString("project_path", "");
             if (projectPath != null && !projectPath.isEmpty()) {
@@ -1344,19 +1394,17 @@ public class BackgroundService extends Service {
             }
 
             AppLog.i(TAG, "NativeWS: notification intent extras: session_id=" + sessionId
-                    + ", task_id=" + taskId + ", project_path=" + projectPath);
+                    + ", project_path=" + projectPath);
 
             PendingIntent pendingIntent = PendingIntent.getActivity(
                     this, 0, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
 
-            // Use hash of session_id/task_id as notification ID so each gets its own notification
+            // Use hash of session_id as notification ID so each gets its own notification
             int notifId = EVENTS_NOTIFICATION_ID;
             if (sessionId != null && !sessionId.isEmpty()) {
                 notifId = EVENTS_NOTIFICATION_ID + Math.abs(sessionId.hashCode() % 1000);
-            } else if (taskId != null && !taskId.isEmpty()) {
-                notifId = EVENTS_NOTIFICATION_ID + 1000 + Math.abs(taskId.hashCode() % 1000);
             }
 
             Notification notification = new NotificationCompat.Builder(this, EVENTS_CHANNEL_ID)

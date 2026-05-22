@@ -292,6 +292,10 @@ func (m *Manager) broadcastToSubscription(key string, msg ServerMessage, deliver
 			}
 		case *TaskUpdateData:
 			extras["task_id"] = d.TaskID
+			extras["event_type"] = "task_update"
+			if d.ExecutionID != "" {
+				extras["execution_id"] = d.ExecutionID
+			}
 			if d.SessionID != "" {
 				extras["session_id"] = d.SessionID
 			}
