@@ -363,8 +363,8 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
         const cp2Y = fromY + dy * 0.6
         lines.push({
           path: `M${fromX},${fromY} C${fromX},${cp1Y} ${toX},${cp2Y} ${toX},${toY}`,
-          color: laneColor(parentLane),
-          lane: parentLane,
+          color: laneColor(childLane),
+          lane: childLane,
         })
       } else {
         // Cross-lane merge-in: child's first parent is on a different lane.
