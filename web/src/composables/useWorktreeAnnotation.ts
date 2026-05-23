@@ -1,5 +1,6 @@
 import { escapeHtml } from '@/utils/html.ts'
 import { gt } from '@/composables/useLocale'
+import { fileOpenButtonHtml, resolveFilePath } from '@/composables/useFilePathAnnotation.ts'
 
 /**
  * SVG icon markup for the worktree-switch button (GitBranch icon from lucide).
@@ -134,13 +135,27 @@ export function annotateWorktreePaths(
     const detectedWorktreePaths: string[] = []
     const doc = new DOMParser().parseFromString(html, 'text/html')
 
+    /**
+     * Generate annotation buttons for a worktree path.
+     * Always generates the worktree switch button.
+     * Also generates a file-open button if the worktree path resolves within projectRoot.
+     */
+    function worktreeAnnotationButtons(absPath: string): string {
+        let html = worktreeSwitchButtonHtml(absPath)
+        const resolved = resolveFilePath(absPath, projectRoot)
+        if (resolved) {
+            html += fileOpenButtonHtml(resolved)
+        }
+        return html
+    }
+
     // ── Step 1: <a href> tags matching a worktree path ──
     for (const a of doc.querySelectorAll('a[href]')) {
         const href = a.getAttribute('href') || ''
         const match = findWorktreeMatch(href, searchEntries)
         if (!match) continue
         detectedWorktreePaths.push(match.absPath)
-        a.insertAdjacentHTML('afterend', worktreeSwitchButtonHtml(match.absPath))
+        a.insertAdjacentHTML('afterend', worktreeAnnotationButtons(match.absPath))
     }
 
     // ── Step 2: <code> and <span class="chat-file-path"> matching a worktree ──
@@ -156,7 +171,12 @@ export function annotateWorktreePaths(
         detectedWorktreePaths.push(match.absPath)
         el.classList.add('chat-worktree-path')
         el.setAttribute('data-worktree-path', match.absPath)
-        el.insertAdjacentHTML('afterend', worktreeSwitchButtonHtml(match.absPath))
+        // Also add data-file-path if the worktree path resolves within projectRoot
+        const resolved = resolveFilePath(match.absPath, projectRoot)
+        if (resolved) {
+            el.setAttribute('data-file-path', resolved)
+        }
+        el.insertAdjacentHTML('afterend', worktreeAnnotationButtons(match.absPath))
     }
 
     // ── Step 3: Text nodes (outside pre/a/code) → search worktree paths ──
@@ -220,11 +240,16 @@ export function annotateWorktreePaths(
             const span = doc.createElement('span')
             span.className = 'chat-worktree-path'
             span.setAttribute('data-worktree-path', m.entry.absPath)
+            // Also add data-file-path if the worktree path resolves within projectRoot
+            const resolved = resolveFilePath(m.entry.absPath, projectRoot)
+            if (resolved) {
+                span.setAttribute('data-file-path', resolved)
+            }
             span.textContent = m.entry.keyword
             frag.appendChild(span)
-            // Worktree-switch button
+            // Worktree switch + file open buttons
             const btnContainer = doc.createElement('span')
-            btnContainer.innerHTML = worktreeSwitchButtonHtml(m.entry.absPath)
+            btnContainer.innerHTML = worktreeAnnotationButtons(m.entry.absPath)
             while (btnContainer.firstChild) frag.appendChild(btnContainer.firstChild)
             lastIndex = m.index + m.length
         }

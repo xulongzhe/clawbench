@@ -145,10 +145,15 @@ export function useChatRender(options) {
     html = html.replace(/<table>/g, '<div class="table-wrap"><table>').replace(/<\/table>/g, '</table></div>')
 
     if (!skipEnhancements) {
-      // Image styling, audio links, file path annotation: deferred to post-streaming
+      // Image styling, audio links, annotations: deferred to post-streaming
       const projectRoot = store.state.projectRoot
       html = rewriteImageUrls(html, projectRoot)
       html = convertAudioLinks(html)
+      // Annotate worktree paths BEFORE file paths — prevents file-path regex from
+      // partially matching worktree directory paths (e.g. matching
+      // /home/x/project/.worktrees instead of the full /home/x/project/.worktrees/fix)
+      const { html: worktreeHtml } = annotateWorktreePaths(html, { projectRoot })
+      html = worktreeHtml
       const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, { projectRoot })
       html = annotatedHtml
       if (detectedPaths.length > 0) {
@@ -170,9 +175,6 @@ export function useChatRender(options) {
       }
       // Annotate localhost URLs (e.g. http://localhost:30080) with clickable tags
       html = annotateLocalhostUrls(html)
-      // Annotate worktree paths using cached worktree list
-      const { html: worktreeHtml } = annotateWorktreePaths(html, { projectRoot })
-      html = worktreeHtml
     }
 
     return html

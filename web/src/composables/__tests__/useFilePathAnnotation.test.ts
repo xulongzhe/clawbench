@@ -475,6 +475,50 @@ describe('annotateFilePaths', () => {
     const result = annotateFilePaths(input, { projectRoot, baseDir: 'src' })
     expect(result.detectedPaths).toContain('src/components/App.vue')
   })
+
+  it('does not partially match directory prefix followed by more path segments (worktree-like)', () => {
+    // Regression: /home/user/project/.worktrees/gitgraph-fix
+    // The FILE_PATH_RE would match /home/user/project/.worktrees (treating .worktrees as extension)
+    // but the full path is a directory, not a file. The trailing /gitgraph-fix indicates the
+    // match is incomplete — this should be skipped so worktree annotation can handle the full path.
+    const input = '<p>/home/user/project/.worktrees/gitgraph-fix</p>'
+    const result = annotateFilePaths(input, { projectRoot })
+    // Should NOT detect .worktrees as a file path (it's a directory prefix)
+    expect(result.detectedPaths).toHaveLength(0)
+    expect(result.html).not.toContain('chat-file-path')
+  })
+
+  it('does not partially match .worktrees directory prefix with non-hyphen continuation', () => {
+    // Same bug with a worktree name that has no hyphen (e.g. featurex)
+    const input = '<p>/home/user/project/.worktrees/featurex</p>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toHaveLength(0)
+    expect(result.html).not.toContain('chat-file-path')
+  })
+
+  it('still annotates legitimate paths ending in .worktrees when there is no continuation', () => {
+    // If the text is just /home/user/project/.worktrees (no trailing path), it's a
+    // legitimate path that should be annotated — even though it's a directory,
+    // the user may want to navigate to it.
+    const input = '<p>/home/user/project/.worktrees</p>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toContain('.worktrees')
+  })
+
+  it('skips text nodes inside chat-worktree-path elements', () => {
+    // After worktree annotation runs first, file path annotation should not
+    // re-annotate text inside worktree-annotated elements
+    const input = '<span class="chat-worktree-path" data-worktree-path="/home/user/project/.worktrees/fix">.worktrees/fix</span>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  it('skips <code> elements already annotated as worktree', () => {
+    // <code> with chat-worktree-path class should be skipped in step 2
+    const input = '<code class="chat-worktree-path" data-worktree-path="/home/user/project/.worktrees/fix">.worktrees/fix</code>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toHaveLength(0)
+  })
 })
 
 // --- clearVerifiedCache ---

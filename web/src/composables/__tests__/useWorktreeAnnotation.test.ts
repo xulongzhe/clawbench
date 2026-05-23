@@ -376,6 +376,87 @@ describe('annotateWorktreePaths', () => {
         const result = annotateWorktreePaths('<pre><code class="chat-file-path">.worktrees/feature-x</code></pre>', { projectRoot: PROJECT_ROOT })
         expect(result.detectedWorktreePaths).toEqual([])
     })
+
+    it('annotates full absolute worktree path in text node', async () => {
+        await seedCache(PROJECT_ROOT, MOCK_WORKTREES)
+        const absPath = '/home/user/project/.worktrees/feature-x'
+        const result = annotateWorktreePaths(`<p>${absPath}</p>`, { projectRoot: PROJECT_ROOT })
+        expect(result.detectedWorktreePaths).toContain(absPath)
+        expect(result.html).toContain('chat-worktree-path')
+        expect(result.html).toContain('chat-worktree-switch-btn')
+        // The full absolute path should be inside the span, not just a partial match
+        expect(result.html).toContain('data-worktree-path="/home/user/project/.worktrees/feature-x"')
+    })
+
+    it('annotates full absolute worktree path in <code> tag', async () => {
+        await seedCache(PROJECT_ROOT, MOCK_WORKTREES)
+        const absPath = '/home/user/project/.worktrees/feature-x'
+        const result = annotateWorktreePaths(`<code>${absPath}</code>`, { projectRoot: PROJECT_ROOT })
+        expect(result.detectedWorktreePaths).toContain(absPath)
+        expect(result.html).toContain('chat-worktree-path')
+        expect(result.html).toContain('chat-worktree-switch-btn')
+    })
+
+    it('adds file-open button alongside worktree switch button for absolute path', async () => {
+        await seedCache(PROJECT_ROOT, MOCK_WORKTREES)
+        const absPath = '/home/user/project/.worktrees/feature-x'
+        const result = annotateWorktreePaths(`<p>${absPath}</p>`, { projectRoot: PROJECT_ROOT })
+        // Both buttons should be present
+        expect(result.html).toContain('chat-worktree-switch-btn')
+        expect(result.html).toContain('chat-file-open-btn')
+        // The span should have both data attributes
+        expect(result.html).toContain('data-worktree-path="/home/user/project/.worktrees/feature-x"')
+        expect(result.html).toContain('data-file-path=".worktrees/feature-x"')
+    })
+
+    it('adds file-open button alongside worktree switch button for <code> element', async () => {
+        await seedCache(PROJECT_ROOT, MOCK_WORKTREES)
+        const absPath = '/home/user/project/.worktrees/feature-x'
+        const result = annotateWorktreePaths(`<code>${absPath}</code>`, { projectRoot: PROJECT_ROOT })
+        expect(result.html).toContain('chat-worktree-switch-btn')
+        expect(result.html).toContain('chat-file-open-btn')
+        expect(result.html).toContain('data-file-path=".worktrees/feature-x"')
+    })
+
+    it('adds file-open button alongside worktree switch button for <a> element', async () => {
+        await seedCache(PROJECT_ROOT, MOCK_WORKTREES)
+        const result = annotateWorktreePaths('<a href=".worktrees/feature-x">link</a>', { projectRoot: PROJECT_ROOT })
+        expect(result.html).toContain('chat-worktree-switch-btn')
+        expect(result.html).toContain('chat-file-open-btn')
+    })
+
+    it('does NOT add file-open button for worktree path outside projectRoot', async () => {
+        // If a worktree path is not under projectRoot, only worktree switch button is added
+        const externalWorktrees = [
+            {
+                path: '/home/user/project',
+                displayPath: '.',
+                branch: 'main',
+                isCurrent: true,
+                dirty: false,
+                changeCount: 0,
+                untrackedCount: 0,
+                locked: false,
+                missing: false,
+            },
+            {
+                path: '/other/location/worktree-x',
+                displayPath: './worktree-x',
+                branch: 'worktree-x',
+                isCurrent: false,
+                dirty: false,
+                changeCount: 0,
+                untrackedCount: 0,
+                locked: false,
+                missing: false,
+            },
+        ]
+        await seedCache(PROJECT_ROOT, externalWorktrees)
+        const result = annotateWorktreePaths('<p>/other/location/worktree-x</p>', { projectRoot: PROJECT_ROOT })
+        expect(result.html).toContain('chat-worktree-switch-btn')
+        // No file-open button because /other/location/worktree-x is outside projectRoot
+        expect(result.html).not.toContain('chat-file-open-btn')
+    })
 })
 
 // ── useWorktreeAnnotation composable ──

@@ -139,6 +139,8 @@ export function annotateFilePaths(
     for (const code of doc.querySelectorAll('code')) {
         // Skip <code> inside <pre> blocks (multi-line code blocks should not get buttons)
         if (code.closest('pre')) continue
+        // Skip <code> already annotated as worktree (worktree annotation runs first)
+        if (code.classList.contains('chat-worktree-path')) continue
         const stripped = (code.textContent || '').trim()
         if (!looksLikeFilePath(stripped)) continue
         const resolved = resolveFilePath(stripped, projectRoot)
@@ -149,7 +151,7 @@ export function annotateFilePaths(
         code.insertAdjacentHTML('afterend', fileOpenButtonHtml(resolved))
     }
 
-    // ── Step 3: Text nodes (outside pre/a/code) → regex match paths ──
+    // ── Step 3: Text nodes (outside pre/a/code/worktree) → regex match paths ──
     const textNodes: Text[] = []
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode(node: Text) {
@@ -161,6 +163,8 @@ export function annotateFilePaths(
             if (parent.tagName === 'A' || parent.closest('a')) return NodeFilter.FILTER_REJECT
             // Skip text inside <code> tags (handled in step 2)
             if (parent.tagName === 'CODE' || parent.closest('code')) return NodeFilter.FILTER_REJECT
+            // Skip text inside worktree-annotated elements (worktree annotation runs first)
+            if (parent.classList.contains('chat-worktree-path') || parent.closest('.chat-worktree-path')) return NodeFilter.FILTER_REJECT
             return NodeFilter.FILTER_ACCEPT
         }
     })
@@ -181,7 +185,23 @@ export function annotateFilePaths(
         let match: RegExpExecArray | null
         while ((match = FILE_PATH_RE.exec(text)) !== null) {
             const pathStr = match[0]
-            const resolved = resolveFilePath(pathStr, projectRoot)
+            let resolved = resolveFilePath(pathStr, projectRoot)
+            // If the text immediately after this match continues with a path segment
+            // (e.g. "/.worktrees" followed by "/gitgraph-fix"), the regex only matched
+            // a directory prefix — skip it so worktree annotation can handle the full path.
+            // Note: This may over-suppress in rare cases (e.g. "src/utils.ts/v2"),
+            // but directory-prefix false matches are far more common and harmful.
+            if (resolved) {
+                const afterIdx = match.index + pathStr.length
+                if (afterIdx < text.length && text[afterIdx] === '/') {
+                    const rest = text.slice(afterIdx + 1)
+                    // If there's a continuation that looks like a path segment, this
+                    // match is incomplete (a directory prefix, not a full file path).
+                    if (rest.length > 0 && /^[a-zA-Z0-9_.-]/.test(rest)) {
+                        resolved = null // incomplete match — likely a directory prefix
+                    }
+                }
+            }
             // Push the text before this match
             if (match.index > lastIndex) {
                 parts.push({ text: text.slice(lastIndex, match.index), resolved: null })
