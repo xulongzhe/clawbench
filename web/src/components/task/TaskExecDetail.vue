@@ -73,6 +73,7 @@ import { useChatRender } from '@/composables/useChatRender.ts'
 import { useAgents } from '@/composables/useAgents'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useLocalhostUrlClickHandler } from '@/composables/useLocalhostAnnotation.ts'
+import { store as appStore } from '@/stores/app.ts'
 import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
 import { useTaskTab } from '@/composables/useTaskTab.ts'
 import { formatToolOutput } from '@/utils/renderToolDetail.ts'
@@ -255,7 +256,19 @@ function handleContentClick(event) {
     return
   }
 
-  // 3. Handle file-open buttons
+  // 3. Handle worktree switch buttons
+  const wtBtn = event.target.closest('.chat-worktree-switch-btn')
+  if (wtBtn) {
+    event.preventDefault()
+    event.stopPropagation()
+    const wtPath = wtBtn.getAttribute('data-worktree-path')
+    if (wtPath) {
+      appStore.setProject(wtPath)
+    }
+    return
+  }
+
+  // 4. Handle file-open buttons
   const btn = event.target.closest('.chat-file-open-btn')
   if (!btn) return
   event.preventDefault()

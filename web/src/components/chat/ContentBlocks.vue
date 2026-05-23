@@ -199,7 +199,7 @@ function handleToolDetailClick(event) {
   const toolName = event.currentTarget.dataset?.toolName
   if (toolName && handleToolAction(toolName, event, emit)) return
   // Allow file-open buttons and commit-hash elements to bubble
-  if (event.target.closest('.chat-file-open-btn') || event.target.closest('.chat-commit-hash, .chat-commit-open-btn')) {
+  if (event.target.closest('.chat-file-open-btn') || event.target.closest('.chat-commit-hash, .chat-commit-open-btn') || event.target.closest('.chat-worktree-switch-btn')) {
     return
   }
   event.stopPropagation()
@@ -687,6 +687,28 @@ onUnmounted(() => {
 }
 
 .content-blocks .chat-commit-open-btn:hover {
+  color: var(--accent-color, #4a90d9);
+  background: var(--bg-tertiary, #f0f0f0);
+}
+
+.content-blocks .chat-worktree-switch-btn {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+  vertical-align: baseline;
+}
+
+.content-blocks .chat-worktree-switch-btn:hover {
   color: var(--accent-color, #4a90d9);
   background: var(--bg-tertiary, #f0f0f0);
 }

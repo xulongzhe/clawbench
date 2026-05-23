@@ -4,6 +4,7 @@ import { formatToolInput } from '@/utils/renderToolDetail.ts'
 import { renderKatexInString, renderMermaidInElement } from '@/composables/useMarkdownRenderer.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useCommitHashAnnotation } from '@/composables/useCommitHashAnnotation.ts'
+import { useWorktreeAnnotation } from '@/composables/useWorktreeAnnotation.ts'
 import { useLocalhostAnnotation } from '@/composables/useLocalhostAnnotation.ts'
 import { store } from '@/stores/app.ts'
 import { apiGet } from '@/utils/api'
@@ -37,6 +38,7 @@ export function useChatRender(options) {
   const { messages, theme, currentSessionId } = options
   const { annotateFilePaths, verifyFilePaths } = useFilePathAnnotation()
   const { annotateCommitHashes, verifyCommitHashes } = useCommitHashAnnotation()
+  const { annotateWorktreePaths } = useWorktreeAnnotation()
   const { annotateLocalhostUrls } = useLocalhostAnnotation()
 
   const blockTasks = reactive({})
@@ -139,7 +141,7 @@ export function useChatRender(options) {
       html = renderKatexInString(html)
     }
 
-    html = DOMPurify.sanitize(html, { ADD_TAGS: ['math', 'button'], ADD_ATTR: ['data-file-path', 'data-commit-sha', 'data-url', 'data-port', 'data-protocol', 'title'] })
+    html = DOMPurify.sanitize(html, { ADD_TAGS: ['math', 'button'], ADD_ATTR: ['data-file-path', 'data-commit-sha', 'data-worktree-path', 'data-url', 'data-port', 'data-protocol', 'title'] })
     html = html.replace(/<table>/g, '<div class="table-wrap"><table>').replace(/<\/table>/g, '</table></div>')
 
     if (!skipEnhancements) {
@@ -168,6 +170,9 @@ export function useChatRender(options) {
       }
       // Annotate localhost URLs (e.g. http://localhost:30080) with clickable tags
       html = annotateLocalhostUrls(html)
+      // Annotate worktree paths using cached worktree list
+      const { html: worktreeHtml } = annotateWorktreePaths(html, { projectRoot })
+      html = worktreeHtml
     }
 
     return html

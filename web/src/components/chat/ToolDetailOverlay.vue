@@ -32,6 +32,7 @@ import BottomSheet from '@/components/common/BottomSheet.vue'
 import { getToolIcon } from '@/utils/icons'
 import { handleToolAction } from '@/utils/renderToolDetail.ts'
 import { useLocalhostUrlClickHandler } from '@/composables/useLocalhostAnnotation.ts'
+import { store } from '@/stores/app.ts'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -72,6 +73,13 @@ function handleBodyClick(event) {
   if (fileBtn) {
     const filePath = fileBtn.getAttribute('data-file-path')
     if (filePath) emit('file-open', filePath)
+    return
+  }
+  // Handle worktree switch buttons
+  const wtBtn = event.target.closest('.chat-worktree-switch-btn')
+  if (wtBtn) {
+    const wtPath = wtBtn.getAttribute('data-worktree-path')
+    if (wtPath) store.setProject(wtPath)
     return
   }
   event.stopPropagation()
@@ -899,6 +907,29 @@ function handleBodyClick(event) {
 }
 
 .tool-detail-body .chat-url-open-btn:hover {
+  color: var(--accent-color, #4a90d9);
+  background: var(--bg-tertiary, #f0f0f0);
+}
+
+.tool-detail-body .chat-worktree-switch-btn {
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  font-size: 12px;
+  line-height: 1;
+  vertical-align: baseline;
+  transition: color 0.15s, background 0.15s;
+}
+
+.tool-detail-body .chat-worktree-switch-btn:hover {
   color: var(--accent-color, #4a90d9);
   background: var(--bg-tertiary, #f0f0f0);
 }

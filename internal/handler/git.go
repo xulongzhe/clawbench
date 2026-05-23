@@ -1160,6 +1160,70 @@ func ServeGitBranches(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ServeGitVerifyWorktrees checks which paths are valid git worktree directories.
+// Accepts POST with JSON body {"paths": ["/abs/path/1", "/abs/path/2"]}.
+// Returns {"results": {"/abs/path/1": {"branch":"feature-x","displayPath":"./.worktrees/feature-x","isCurrent":false,"path":"/abs/path/1"}, "/abs/path/2": null}}
+// where null means the path is not a valid worktree.
+func ServeGitVerifyWorktrees(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+	if !isGitRepo(projectPath) {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"results": map[string]interface{}{}})
+		return
+	}
+
+	var body struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Paths) == 0 {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"results": map[string]interface{}{}})
+		return
+	}
+
+	// Cap path count to prevent abuse.
+	const maxPaths = 100
+	if len(body.Paths) > maxPaths {
+		body.Paths = body.Paths[:maxPaths]
+	}
+
+	// Run git worktree list --porcelain once to get all worktrees
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = projectPath
+	output, _ := cmd.CombinedOutput()
+	trees := parseWorktreePorcelain(string(output), projectPath)
+
+	// Build lookup map: resolved worktree path → worktreeInfo
+	lookup := make(map[string]*worktreeInfo, len(trees))
+	for i := range trees {
+		lookup[trees[i].Path] = &trees[i]
+	}
+
+	results := make(map[string]interface{}, len(body.Paths))
+	for _, p := range body.Paths {
+		// Handle relative paths by joining with projectPath
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(projectPath, p)
+		}
+		// Resolve symlinks for consistent matching
+		resolved := p
+		if r, err := filepath.EvalSymlinks(p); err == nil {
+			resolved = r
+		}
+		if info, ok := lookup[resolved]; ok {
+			results[p] = info
+		} else {
+			results[p] = nil
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"results": results})
+}
+
 // ServeGitWorktrees returns all git worktrees for the project.
 // DELETE /api/git/worktrees deletes a git worktree.
 func ServeGitWorktrees(w http.ResponseWriter, r *http.Request) {

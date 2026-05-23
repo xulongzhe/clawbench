@@ -2561,3 +2561,253 @@ func TestServeGitTags_GET_StillWorks(t *testing.T) {
 	w := callHandler(ServeGitTags, req)
 	assertOK(t, w)
 }
+
+// --- ServeGitVerifyWorktrees ---
+
+func TestServeGitVerifyWorktrees_SingleWorktree(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
+		"paths": []string{env.ProjectDir},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results, ok := resp["results"].(map[string]interface{})
+	assert.True(t, ok)
+	info, ok := results[env.ProjectDir].(map[string]interface{})
+	assert.True(t, ok, "project dir should be a valid worktree")
+	assert.Equal(t, "main", info["branch"])
+	assert.Equal(t, true, info["isCurrent"])
+}
+
+func TestServeGitVerifyWorktrees_NonWorktreePath(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
+		"paths": []string{"/tmp/nonexistent-worktree-path"},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results, ok := resp["results"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Nil(t, results["/tmp/nonexistent-worktree-path"])
+}
+
+func TestServeGitVerifyWorktrees_RelativePath(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+	run("git", "branch", "feature-x")
+	run("git", "worktree", "add", ".worktrees/feature-x", "feature-x")
+	defer os.RemoveAll(filepath.Join(env.ProjectDir, ".worktrees"))
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
+		"paths": []string{".worktrees/feature-x"},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results, ok := resp["results"].(map[string]interface{})
+	assert.True(t, ok)
+
+	absKey := filepath.Join(env.ProjectDir, ".worktrees/feature-x")
+	info, ok := results[absKey].(map[string]interface{})
+	assert.True(t, ok, "resolved path %q should be found in results (keys: %v)", absKey, keysOfMap(results))
+	assert.Equal(t, "feature-x", info["branch"])
+}
+
+func keysOfMap(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func TestServeGitVerifyWorktrees_EmptyPaths(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
+		"paths": []string{},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results, ok := resp["results"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Empty(t, results)
+}
+
+func TestServeGitVerifyWorktrees_WrongMethod(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodGet, "/api/git/verify-worktrees", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertStatus(t, w, http.StatusMethodNotAllowed)
+}
+
+func TestServeGitVerifyWorktrees_InvalidJSON(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", strings.NewReader("not json"))
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	results, ok := result["results"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Empty(t, results, "invalid JSON body should return empty results")
+}
+
+func TestServeGitVerifyWorktrees_NoProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
+		"paths": []string{env.ProjectDir},
+	})
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+func TestServeGitVerifyWorktrees_NonGitDir(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
+		"paths": []string{env.ProjectDir},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results, ok := resp["results"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Empty(t, results, "non-git dir should return empty results")
+}
+
+func TestServeGitVerifyWorktrees_MaxPathsTruncation(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	paths := make([]string, 105)
+	for i := range paths {
+		paths[i] = fmt.Sprintf("/tmp/worktree-%d", i)
+	}
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
+		"paths": paths,
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results, ok := resp["results"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.LessOrEqual(t, len(results), 100, "results should be truncated to maxPaths=100")
+}
+
+func TestServeGitVerifyWorktrees_MultipleWorktrees(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	run := func(name string, args ...string) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = env.ProjectDir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+		}
+	}
+
+	run("git", "branch", "feature-a")
+	run("git", "worktree", "add", ".worktrees/feature-a", "feature-a")
+	run("git", "branch", "feature-b")
+	run("git", "worktree", "add", ".worktrees/feature-b", "feature-b")
+	defer os.RemoveAll(filepath.Join(env.ProjectDir, ".worktrees"))
+
+	featureAPath := filepath.Join(env.ProjectDir, ".worktrees/feature-a")
+	featureBPath := filepath.Join(env.ProjectDir, ".worktrees/feature-b")
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
+		"paths": []string{featureAPath, featureBPath, "/tmp/nonexistent"},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyWorktrees, req)
+	assertOK(t, w)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	results, ok := resp["results"].(map[string]interface{})
+	assert.True(t, ok)
+
+	infoA, ok := results[featureAPath].(map[string]interface{})
+	assert.True(t, ok, "feature-a should be a valid worktree")
+	assert.Equal(t, "feature-a", infoA["branch"])
+
+	infoB, ok := results[featureBPath].(map[string]interface{})
+	assert.True(t, ok, "feature-b should be a valid worktree")
+	assert.Equal(t, "feature-b", infoB["branch"])
+
+	assert.Nil(t, results["/tmp/nonexistent"])
+}

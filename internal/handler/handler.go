@@ -249,6 +249,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/git/status", middleware.Auth(ServeGitStatus))
 	register("/api/git/working-tree", middleware.Auth(ServeGitWorkingTreeFiles))
 	register("/api/git/verify-commits", middleware.Auth(ServeGitVerifyCommits))
+	register("/api/git/verify-worktrees", middleware.Auth(ServeGitVerifyWorktrees))
 	register("/api/git/worktrees", middleware.Auth(ServeGitWorktrees))
 	register("/api/git/checkout", middleware.Auth(ServeGitCheckout))
 	register("/api/git/tags", middleware.Auth(ServeGitTags))
