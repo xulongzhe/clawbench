@@ -233,11 +233,17 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Git Diff View**: View changes relative to HEAD, character-level highlighting
 - Commit detail view (author, time, commit message)
 - Working tree changes view (staged / unstaged files)
+- **3-Tab Management**: Worktree / Branches / Tags tabs for unified management, default tab persisted to localStorage
+- **Swipe to Delete**: Branches, worktrees, and tags support swipe-to-delete with safety guards (current branch, default branch, and current worktree cannot be deleted)
+- **Tag Management**: Browse project tags, click a tag to checkout, auto-prompt for dirty working tree
 - Git init (one-click `git init` from UI)
 
 ### 🔀 SSH Tunnel Port Forwarding
 - **Remote Development**: Access server local ports directly from Android App
 - **Protocol Transparent**: HTTP, HTTPS, WebSocket, SSE, gRPC — no URL rewriting needed
+- **Custom Target Host**: Forward to any reachable host (LAN/remote, not limited to 127.0.0.1)
+- **Auto Port Assignment**: Automatically allocates local ports when forwarding the same target port to different hosts
+- **Port Editing**: Modify existing port forwarding configurations
 - **Auto-Open Localhost URLs**: localhost URLs appearing in chat (e.g., web services started by AI) can be opened with one tap — port forwarding is auto-registered and the URL opens via WebView in App mode
 
 ### 💻 Web Terminal
@@ -263,6 +269,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 ### 🔔 Notifications
 - Notification sound + haptic feedback (alerts when AI completes)
 - Browser push notifications
+- **Task Completion Push**: Scheduled task completion notifications include response preview summary; tap to navigate to execution details
 
 ### 🎨 Themes
 - Light / Dark mode, follows system preference

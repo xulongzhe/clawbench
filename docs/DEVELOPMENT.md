@@ -124,13 +124,13 @@ cd clawbench
 | `proxy.allowed_ports` | `1024-65535` | 允许转发的端口范围 |
 | `ssh.enabled` | true | SSH 隧道默认启用 |
 | `tts.engine` | edge | Edge TTS 免费无限制 |
-| `tts.summarize_backend` | simple | 纯文本清洗，零延迟 |
 | `tts.speed` | 1.0 | 正常语速 |
 | `tts.max_cache_files` | 100 | TTS 语音缓存文件最大数量；超出时自动删除最旧的（-1=不限） |
 | `tts.inline_code_max_len` | 100 | 行内代码保留最大字符数（rune），超出则删除 |
 | `tts.max_summarize_runes` | 10000 | 总结输入最大字符数，超出截取尾部 |
-| `tasks.summarize_backend` | (空) | 任务执行摘要后端，空则禁用；可用值同 `tts.summarize_backend` |
-| `tasks.summarize_model` | (空) | 任务摘要模型，空则使用后端默认模型 |
+| `summarize.backend` | simple | 统一总结后端（TTS 语音 + 定时任务共用），零延迟 |
+| `summarize.model` | (空) | 总结模型，空则使用后端默认模型 |
+| `summarize.api` | (空) | API 子配置（backend 为 api 时使用），含 base_url/key/format |
 
 **自动密码机制**：未配置 `password` 时，系统自动生成随机 UUID 作为密码，保存到 `.clawbench/auto-password`（权限 0600）。重启时复用已保存的密码，不会重新生成。配置 `password` 后自动删除该文件。启动脚本会从文件读取并显示密码。
 

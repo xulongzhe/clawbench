@@ -221,11 +221,17 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - **Git Diff 视图**：查看文件相对 HEAD 的变更，字符级高亮
 - 提交详情查看（作者、时间、提交信息）
 - 工作树变更视图（已暂存 / 未暂存文件）
+- **三标签页管理**：工作树 / 分支 / 标签三标签页统一管理，默认标签持久化到 localStorage
+- **滑动删除**：分支、工作树、标签支持左滑删除，安全保护（当前分支/默认分支/当前工作树不可删除）
+- **标签管理**：浏览项目标签，点击标签可 Checkout，脏工作树自动弹窗处理
 - Git 初始化（从 UI 一键 `git init`）
 
 ### 🔀 SSH 隧道端口转发
 - **远程开发**：在 Android App 上直接访问服务器本地端口
 - **全协议透明**：HTTP、HTTPS、WebSocket、SSE、gRPC，无需 URL 重写
+- **指定目标地址**：支持转发到任意可达主机（局域网/远程主机，不仅限 127.0.0.1）
+- **自动端口分配**：同一目标端口转发到不同主机时自动分配本地端口
+- **端口编辑**：支持修改已注册的端口转发配置
 - **Localhost URL 自动打开**：聊天中出现的 localhost URL（如 AI 启动的 Web 服务），App 模式下一键自动注册端口转发并通过 WebView 打开
 
 ### 💻 Web 终端
@@ -251,6 +257,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 ### 🔔 通知
 - 通知音效 + 触觉反馈（AI 完成时提醒）
 - 浏览器推送通知
+- **任务完成推送**：定时任务执行完成后推送包含响应预览摘要，点击跳转至执行详情
 
 ### 🎨 主题
 - 亮色 / 暗色模式，跟随系统偏好

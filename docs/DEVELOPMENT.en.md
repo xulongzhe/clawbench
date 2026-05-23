@@ -124,13 +124,13 @@ cd clawbench
 | `proxy.allowed_ports` | `1024-65535` | Allowed port range for forwarding |
 | `ssh.enabled` | true | SSH tunnel enabled by default |
 | `tts.engine` | edge | Edge TTS, free and unlimited |
-| `tts.summarize_backend` | simple | Plain text cleanup, zero latency |
 | `tts.speed` | 1.0 | Normal speech rate |
 | `tts.max_cache_files` | 100 | Max cached TTS audio files; oldest auto-deleted when exceeded (-1=unlimited) |
 | `tts.inline_code_max_len` | 100 | Max characters (runes) to keep for inline code; exceeded content is removed |
 | `tts.max_summarize_runes` | 10000 | Max input characters for summarization; tail is truncated if exceeded |
-| `tasks.summarize_backend` | (empty) | Task execution summary backend, empty = disabled; same values as `tts.summarize_backend` |
-| `tasks.summarize_model` | (empty) | Model for task summarization, empty = backend default |
+| `summarize.backend` | simple | Unified summarization backend (shared by TTS + scheduled tasks), zero latency |
+| `summarize.model` | (empty) | Model for summarization, empty = backend default |
+| `summarize.api` | (empty) | API sub-config (used when backend is "api"), includes base_url/key/format |
 
 **Auto-password mechanism**: When `password` is not configured, the system auto-generates a random UUID as password, saved to `.clawbench/auto-password` (permissions 0600). On restart, the saved password is reused and not regenerated. Once `password` is configured, the file is auto-deleted. The startup script reads and displays the password from the file.
 

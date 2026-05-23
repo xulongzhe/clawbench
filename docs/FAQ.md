@@ -20,15 +20,15 @@ A: 不需要。ClawBench 通过调用本地 CLI（CodeBuddy、Claude Code、Open
 
 **Q: TTS 语音合成可以使用本地模型吗？**
 
-A: 可以。将 `summarize_backend` 设为 `"api"` 并配置 Ollama 的 OpenAI 兼容端点即可使用本地 Ollama 服务进行文本总结，无需任何云 API。只需安装 Ollama 并拉取模型（如 `ollama pull gemma3:270m`），然后在配置文件中设置：
+A: 可以。将 `summarize.backend` 设为 `"api"` 并配置 Ollama 的 OpenAI 兼容端点即可使用本地 Ollama 服务进行文本总结，无需任何云 API。只需安装 Ollama 并拉取模型（如 `ollama pull gemma3:270m`），然后在配置文件中设置：
 
 ```yaml
-tts:
-  summarize_backend: "api"
+summarize:
+  backend: "api"
+  model: "gemma3:270m"
   api:
     base_url: "http://localhost:11434/v1/chat/completions"
     format: "openai"
-    model: "gemma3:270m"
 ```
 
 TTS 引擎本身也支持本地离线方案（piper / kokoro / moss-nano），两者搭配可实现完全离线的语音朗读。其中 moss-nano 支持多语言和音色克隆，48kHz 高音质输出。

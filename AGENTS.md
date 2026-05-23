@@ -48,7 +48,7 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 **Entry point:** `cmd/server/main.go` — config → port → LoadAgents → SyncDiscoverAgents → SyncDiscoverModels → MergeDiscoveredData → AsyncRefreshModelCache → scheduler init.
 
 **Packages:**
-- `internal/handler/` — HTTP/SSE endpoints. All `/api/` routes use `middleware.Auth` (localhost bypass for CLI). Key: `chat_stream.go`, `file.go`/`file_ops.go`/`file_thumb.go`/`file_archive.go`, `file_watch.go`, `events.go`.
+- `internal/handler/` — HTTP/SSE endpoints. All `/api/` routes use `middleware.Auth` (localhost bypass for CLI). Key: `chat_stream.go`, `file.go`/`file_ops.go`/`file_thumb.go`/`file_archive.go`, `file_watch.go`, `events.go`, `git.go` (history/branch/worktree/tag CRUD + swipe-to-delete).
 - `internal/service/` — Business logic: chat persistence, scheduler (`robfig/cron/v3`), SQLite, ProxyRegistry, session runtime, EventBus (`eventbus.go`).
 - `internal/ai/` — AI backend abstraction. `AIBackend` interface → `CLIBackend` base (each backend provides CLI args + `LineParser`) → `AutoResumeBackend` wraps claude/codebuddy/qoder/deepseek/pi (ExitPlanMode → cancel → resume "继续"). Factory: `factory.go`.
 - `internal/model/` — Data models, config, structured errors (`NotFound`/`Forbidden`/`Internal`), `BackendRegistry` (backend specs + model discovery). Model cache (`.clawbench/model-cache/`); `ModelsAutoDetected` flag distinguishes auto-discovered vs. user-defined model lists.
@@ -80,8 +80,9 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 - **Chat:** `useChatSession` (CRUD), `useChatStream` (SSE + reconnect + polling), `useChatRender` (block parsing + coalescing), `useAutoSpeech` (TTS), `useQuickSend` (SQLite CRUD), `useSessionIdentity` (model/thinking persistence), `useLocalhostAnnotation` (localhost URL detection + port-forward/WebView buttons; App mode only).
 - **Connectivity:** `useReconnect` (generic exponential backoff), `useFileRefresh` (file change + flash highlight), `useSystemEvents` (SSE singleton, 6 event types, 5 reconnect → HTTP polling fallback, visibility-aware), `useGlobalEvents` (WS singleton, push-aware background strategy).
 - **Terminal:** `useTerminalSession` (WS lifecycle), `useTerminalKeys` (modifier state machine), `useTerminalGestures` (swipe/pinch), `useTerminalViewport` (xterm.js + keyboard avoidance).
+- **Git:** `useSwipeDelete` (direction-locked swipe-to-delete with offset clamping), `useCommitNavigation` (commit/branch navigation state).
 
-**Components:** `ChatPanel`, `FileManager`/`FileViewer`, `TaskTab` (4-level breadcrumb), `TerminalPanel` (xterm.js + virtual keys + gestures), `GitGraph`, `BottomSheet`, `Lightbox`, `PopupMenu` (auto-positioning).
+**Components:** `ChatPanel`, `FileManager`/`FileViewer`, `TaskTab` (4-level breadcrumb), `TerminalPanel` (xterm.js + virtual keys + gestures), `GitGraph`, `GitManageContent` (3-tab: Worktree/Branches/Tags), `SwipeToDeleteRow`, `BottomSheet`, `Lightbox`, `PopupMenu` (auto-positioning).
 
 **Vite:** `hljsThemeWrapper` plugin for light/dark coexistence. Root `web/`, output `public/`. Alias `@` → `web/src/`.
 
@@ -97,6 +98,8 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 - **Zero-config startup:** `config/config.yaml` optional. `model.ApplyDefaults()` fills defaults. Auto-password persisted to `.clawbench/auto-password`.
 - **Model auto-discovery:** `SyncDiscoverAgents` detects CLIs → generates minimal YAMLs. `SyncDiscoverModels` (sync first run) + `AsyncRefreshModelCache` (background). Gemini/Codex/VeCLI/Qoder: no CLI model listing, must be user-defined in YAML.
 - **Android integration:** HTML login (static `login.html` + `AndroidNative` JS bridge). `BackgroundService` manages SSH port forwarding + native WebSocket event channel for background notifications. JPush AppKey from `/api/push/config` (runtime, not in APK). Push-aware: `pushAvailable=true` → disconnect WS on background (JPush delivers); `false` → keep WS alive. Registration ID via `POST /api/push/register` (login-level lifecycle, survives WS reconnects).
+- **SPA hot project switch:** Switching projects uses in-place state reset + Vue `:key` rebuild (0.15s fade transition) instead of `window.location.reload()`. `hotSwitchProject()` resets store singletons (agents, identity, project state), rebuilds component tree, reloads data — no page flicker.
+- **Push notification preview:** Task completion push notifications include response preview text (last text after tool_use block) and `Done:` prefix. Session title used as notification title on completed/cancelled tasks.
 - **Coverage gate (CI 合入门槛):** Two-tier check. Tier 1 (Project): per-package/directory coverage `>= baseline% - 1.5%`, baseline from CI artifact. Tier 2 (Diff): changed lines coverage `>= 80%`. CI enforces on every PR/push to main.
 - **Bugfix workflow (GitHub Issues):** All AI agents should report newly discovered bugs as GitHub Issues (`gh issue create`). A scheduled task runs hourly to auto-fix open issues: fetches open issues without any `bugfix:*` label (sorted by creation time) → evaluates complexity → claims and fixes in bugfix worktree (`.worktrees/bugfix`) → writes test → builds → starts on port 20100 → auto-verifies → updates issue with result. Max 3 fixes per run. Merge to main requires manual trigger. Issue labels track state: none = pending, `bugfix:in-progress` = AI claimed, `bugfix:awaiting-review` = fixed awaiting human verification, `bugfix:needs-design` = too complex for auto-fix (skipped), `bugfix:failed` = auto-fix failed. Human closes issue after verification.
 
@@ -111,10 +114,10 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 | Chat UI | `chat.initial_messages`, `chat.page_size`, `chat.collapsed_height`, `chat.system_prompt_interval` (10) |
 | Session | `session.max_count` |
 | TLS | `tls.enabled`, `tls.cert_file`, `tls.key_file` |
-| TTS | `tts.engine`, `tts.summarize_backend`, `tts.summarize_model`, `tts.speed`, `tts.voice`, `tts.max_cache_files` (100, auto-eviction) |
+| TTS | `tts.engine`, `tts.speed`, `tts.voice`, `tts.max_cache_files` (100, auto-eviction) |
+| Summarize | `summarize.backend` ("simple"), `summarize.model`, `summarize.api` (unified for TTS + task summaries) |
 | Proxy | `proxy.enabled`, `proxy.allowed_ports` |
 | SSH | `ssh.enabled`, `ssh.port`, `ssh.host_key` |
 | RAG | `rag.enabled`, `rag.ollama_base_url`, `rag.ollama_model` (bge-m3), `rag.chunk_size` (512), `rag.retention_days` (90) |
 | Terminal | `terminal.enabled` (true), `terminal.idle_timeout` (10m), `terminal.max_sessions` (10) |
-| Tasks | `tasks.summarize_backend`, `tasks.summarize_model` |
 | Push | `push.jpush.enabled`, `push.jpush.app_key`, `push.jpush.master_secret` |

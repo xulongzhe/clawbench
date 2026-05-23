@@ -16,7 +16,7 @@ ClawBench supports TTS speech synthesis, automatically summarizing and reading a
 
 ## Summarization Backend
 
-Long texts are automatically summarized before reading aloud, controlled by `summarize_backend`:
+Long texts are automatically summarized before reading aloud, controlled by `summarize.backend` (shared by TTS voice and scheduled task summarization):
 
 | Backend | Description | Network Requirement |
 |---------|-------------|-------------------|
@@ -31,7 +31,8 @@ Long texts are automatically summarized before reading aloud, controlled by `sum
 | `vecli` | VeCLI (Volcengine Doubao) | Requires vecli CLI |
 | `deepseek` | DeepSeek TUI (requires v0.8.33+) | Requires deepseek CLI |
 | `pi` | Pi (minimalist coding agent) | Requires pi CLI |
-| `ollama` | Ollama HTTP API (local inference) | Only requires local Ollama service |
+| `api` | Remote AI API (OpenAI/Anthropic format) | Requires URL and API Key configuration |
+| `ollama` | ~~Deprecated, use `api` + `format: "openai"` instead~~ | — |
 
 ## Text Processing Parameters
 
@@ -49,13 +50,15 @@ Cloud speech synthesis with the best audio quality, supporting multiple voices a
 ```yaml
 tts:
   engine: "minimax"
-  summarize_backend: "mmx-cli"
-  summarize_model: "MiniMax-M2.7"
   voice: "female-chengshu"        # Voice: female-chengshu, male-qn-qingse, etc. (default: female-chengshu)
   tts_model: "speech-2.8-hd"     # Synthesis model (default: speech-2.8-hd)
   language: "zh"                  # Language boost: zh, en, ja, etc. (default: zh)
   speed: 1.5                      # Speech rate multiplier, recommended 1.0-2.0 (default: 1.5)
   format: "mp3"                   # Output format: mp3, wav, pcm, etc. (default: mp3)
+
+summarize:
+  backend: "mmx-cli"
+  model: "MiniMax-M2.7"
 ```
 
 **Prerequisite**: Install [mmx CLI](https://github.com/MiniMax-AI/MiniMax-M1) and configure the API Key.
@@ -207,24 +210,67 @@ pip install -e .
 
 ---
 
-## Ollama Summarization Backend (Local Inference, No Cloud Service Required)
+## API Summarization Backend (Remote AI API, OpenAI/Anthropic Format)
 
-Use Ollama to run a small model locally for text summarization. No cloud API needed, suitable for offline or privacy-sensitive scenarios. Can be paired with any TTS engine.
+Use HTTP API to call remote AI services for text summarization. Supports both OpenAI Chat Completions and Anthropic Messages formats. Compatible with OpenAI, DeepSeek, Groq, OpenRouter, Ollama (OpenAI-compatible endpoint), and any compatible API.
+
+### OpenAI Format (compatible with DeepSeek, Groq, Ollama, etc.)
 
 ```yaml
 tts:
   engine: "edge"                    # Any TTS engine
-  summarize_backend: "ollama"       # Use Ollama for summarization
-  summarize_model: "gemma3:270m"    # Model name (as used in ollama pull)
-  ollama:
-    base_url: "http://localhost:11434"  # Ollama API address
   voice: "zh-CN-XiaoxiaoNeural"
   speed: 1
+
+summarize:
+  backend: "api"
+  model: "gpt-4o-mini"
+  api:
+    base_url: "https://api.openai.com/v1/chat/completions"  # Full endpoint URL
+    key: "sk-xxx"                                             # API Key
+    format: "openai"                                          # API format (default: openai)
 ```
 
-> 💡 The `gemma3:270m` model is only 291MB, suitable for fast summarization. For better quality, switch to `qwen3:0.6b` or a larger model — just change `summarize_model`.
+### Anthropic Format
 
-### Installation Steps
+```yaml
+tts:
+  engine: "edge"
+  voice: "zh-CN-XiaoxiaoNeural"
+  speed: 1
+
+summarize:
+  backend: "api"
+  model: "claude-3-5-haiku-latest"
+  api:
+    base_url: "https://api.anthropic.com/v1/messages"
+    key: "sk-ant-xxx"
+    format: "anthropic"
+```
+
+### Ollama Local Inference (via API Backend)
+
+> 💡 The old `ollama` summarization backend is deprecated. Please migrate to `api` backend + `format: "openai"`.
+
+Ollama provides an OpenAI-compatible endpoint `/v1/chat/completions`, no cloud API needed, suitable for offline or privacy-sensitive scenarios.
+
+```yaml
+tts:
+  engine: "edge"
+  voice: "zh-CN-XiaoxiaoNeural"
+  speed: 1
+
+summarize:
+  backend: "api"
+  model: "gemma3:270m"
+  api:
+    base_url: "http://localhost:11434/v1/chat/completions"  # Ollama OpenAI-compatible endpoint
+    format: "openai"
+```
+
+> 💡 The `gemma3:270m` model is only 291MB, suitable for fast summarization. For better quality, switch to `qwen3:0.6b` or a larger model — just change the `model` field.
+
+#### Installation Steps
 
 ```bash
 # 1. Install Ollama: https://ollama.com/download

@@ -20,15 +20,15 @@ A: No. ClawBench implements AI functionality by calling local CLIs (CodeBuddy, C
 
 **Q: Can TTS speech synthesis use local models?**
 
-A: Yes. Set `summarize_backend` to `"api"` and configure the Ollama OpenAI-compatible endpoint to use a local Ollama service for text summarization without any cloud API. Just install Ollama and pull a model (e.g., `ollama pull gemma3:270m`), then configure:
+A: Yes. Set `summarize.backend` to `"api"` and configure the Ollama OpenAI-compatible endpoint to use a local Ollama service for text summarization without any cloud API. Just install Ollama and pull a model (e.g., `ollama pull gemma3:270m`), then configure:
 
 ```yaml
-tts:
-  summarize_backend: "api"
+summarize:
+  backend: "api"
+  model: "gemma3:270m"
   api:
     base_url: "http://localhost:11434/v1/chat/completions"
     format: "openai"
-    model: "gemma3:270m"
 ```
 
 The TTS engine itself also supports local offline solutions (piper / kokoro / moss-nano). Combining both enables fully offline speech playback. Among these, moss-nano supports multiple languages and voice cloning with 48kHz high-quality output.
