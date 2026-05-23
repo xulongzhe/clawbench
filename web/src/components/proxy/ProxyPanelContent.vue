@@ -308,8 +308,6 @@ async function handleSave() {
 async function handleQuickAdd(port, protocol, processName) {
   try {
     await registerPort(port, processName || t('proxy.autoDetect'), protocol || 'http')
-    // Auto-open after successful registration
-    openPort(port, protocol || 'http')
   } catch (e) {
     toast.error(e?.message || t('proxy.addPort') + ' failed')
   }
@@ -600,19 +598,27 @@ async function handleRetryTunnel() {
 }
 
 .proxy-detected {
-  padding: 4px 0;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-color, #e5e5e5);
+  padding: 6px 0 0;
+  margin-top: 4px;
 }
 
 .proxy-detected-label {
   font-size: 11px;
   color: var(--text-muted, #999);
   margin-bottom: 6px;
+  flex-shrink: 0;
 }
 
 .proxy-detected-chips {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
 }
 
 .detect-chip {

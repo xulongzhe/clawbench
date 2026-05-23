@@ -74,8 +74,10 @@ func NewReverseProxy(listenHost string, listenPort int, targetAddr string, proto
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
-		// Set Host to the target's host:port (the original backend address)
-		req.Host = host
+		// Set Host to the target address, omitting default ports per HTTP spec.
+		// e.g. "192.168.100.1:80" with scheme "http" → "192.168.100.1"
+		// but "192.168.100.1:8080" → "192.168.100.1:8080"
+		req.Host = stripDefaultPort(host, scheme)
 		// Ensure the scheme is correct
 		req.URL.Scheme = targetURL.Scheme
 		req.URL.Host = targetURL.Host
@@ -139,4 +141,20 @@ func (rp *ReverseProxy) SetInsecureSkipVerify(skip bool) {
 	if rp.transport != nil && rp.transport.TLSClientConfig != nil {
 		rp.transport.TLSClientConfig.InsecureSkipVerify = skip
 	}
+}
+
+// stripDefaultPort removes the port from a host:port string if it's the default
+// port for the given scheme (80 for http, 443 for https).
+// e.g. ("192.168.100.1:80", "http") → "192.168.100.1"
+//
+//	("192.168.100.1:8080", "http") → "192.168.100.1:8080"
+func stripDefaultPort(hostPort, scheme string) string {
+	h, port, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return hostPort // no port, return as-is
+	}
+	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
+		return h
+	}
+	return hostPort
 }

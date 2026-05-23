@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -198,4 +199,52 @@ func TestReverseProxy_ResponseBody(t *testing.T) {
 	body, err := io.ReadAll(resp.Body)
 	assert.NoError(t, err)
 	assert.True(t, strings.Contains(string(body), "hello from backend"), "Response body should contain backend response")
+}
+
+func TestStripDefaultPort(t *testing.T) {
+	tests := []struct {
+		hostPort string
+		scheme   string
+		want     string
+	}{
+		{"192.168.100.1:80", "http", "192.168.100.1"},
+		{"192.168.100.1:443", "https", "192.168.100.1"},
+		{"192.168.100.1:8080", "http", "192.168.100.1:8080"},
+		{"192.168.100.1:8443", "https", "192.168.100.1:8443"},
+		{"example.com:80", "http", "example.com"},
+		{"example.com:443", "https", "example.com"},
+		{"example.com:80", "https", "example.com:80"}, // port 80 with https is NOT default
+		{"example.com:443", "http", "example.com:443"}, // port 443 with http is NOT default
+		{"10.0.0.1", "http", "10.0.0.1"},             // no port at all
+	}
+	for _, tt := range tests {
+		got := stripDefaultPort(tt.hostPort, tt.scheme)
+		assert.Equal(t, tt.want, got, "stripDefaultPort(%q, %q)", tt.hostPort, tt.scheme)
+	}
+}
+
+func TestReverseProxy_StripsDefaultPortFromHost(t *testing.T) {
+	// Backend that records the Host header
+	var receivedHost string
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHost = r.Host
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	}))
+	defer backend.Close()
+
+	backendURL, _ := url.Parse(backend.URL)
+	targetAddr := backendURL.Host // e.g. "127.0.0.1:PORT" — non-default port
+
+	rp, err := NewReverseProxy("127.0.0.1", 0, targetAddr, "http")
+	assert.NoError(t, err)
+	go rp.Serve()
+	defer rp.Close()
+
+	resp, err := http.Get("http://" + rp.Addr() + "/test")
+	assert.NoError(t, err)
+	resp.Body.Close()
+
+	// Non-default port: Host should include port
+	assert.Equal(t, targetAddr, receivedHost, "Host for non-default port should include port")
 }
