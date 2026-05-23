@@ -482,8 +482,8 @@ describe('ref label helpers', () => {
   })
 })
 
-describe('octopus merge cascade fork rendering', () => {
-  it('non-adjacent fork with enough vertical space uses cascade (more lines)', () => {
+describe('smooth bezier for cross-lane connections', () => {
+  it('non-adjacent fork uses a single smooth bezier (no cascade segments)', () => {
     // Create a scenario where merge is on L0 and branch is on L3 with 3+ rows gap
     const commits = [
       { sha: 'top', parents: ['mrg'], msg: 'top' },
@@ -497,26 +497,67 @@ describe('octopus merge cascade fork rendering', () => {
     ]
     const { lines } = computeGraphData(commits, ROW_HEIGHT, undefined) as any
 
-    // The FORK from L0 to L3 (mrg -> fa) should use cascade, generating
-    // more line segments than a simple bezier (1 path)
-    // Adjacent fork L0->L1 = 1 line path
-    // Non-adjacent cascade L0->L3 = 1(start) + 2(diag+vert per intermediate) + 1(end) = 6 paths
-    // But L0->L2 also uses cascade = 1 + 1(diag+vert) + 1 = 4 paths
-    // Total fork paths: 1(adj) + 4(L0->L2) + 6(L0->L3) = 11
-    // Plus VERT and MERGE-IN lines
-    expect(lines.length).toBeGreaterThan(11) // at least the fork lines
+    // Count bezier curves (paths with 'C' command) — each FORK produces exactly 1
+    const forkBeziers = lines.filter((l: any) => l.path.includes('C') && !l.fade)
+    // 3 FORK curves (to fa, fb, fc) + 3 MERGE-IN curves (from fa, fb, fc to root)
+    expect(forkBeziers.length).toBeGreaterThanOrEqual(3)
   })
 
-  it('non-adjacent fork with short vertical distance uses simple bezier', () => {
-    // 03-multi-branch: merge: feature-a (L0) -> feature-a: work 2 (L2)
-    // Only 1 row gap - not enough space for cascade
-    const { lines }: any = computeGraphData(MULTI_BRANCH, ROW_HEIGHT, undefined)
+  it('fork bezier uses childLane color for visual consistency', () => {
+    // Single merge: merge commit on lane 0, feature on lane 1
+    const { lines } = computeGraphData(SINGLE_MERGE, ROW_HEIGHT, undefined) as any
 
-    // Count bezier curves (paths with 'C' command) that start from L0
-    const forkBeziers: any[] = lines.filter((l: any) => l.path.includes('C') && l.path.startsWith('M20,'))
-    // The FORK from R5[L0] to R6[L2] should be a simple bezier, not cascade
-    // A simple bezier is 1 line path, cascade would be multiple paths
+    // Find the FORK bezier (from lane 0 to lane 1)
+    const forkBeziers = lines.filter((l: any) => {
+      if (!l.path.includes('C')) return false
+      // Starts at lane 0 x position
+      return l.path.startsWith('M20,')
+    })
+
+    // The fork bezier should use childLane color (lane 0 = blue)
+    // not parentLane color (lane 1 = orange)
+    for (const fb of forkBeziers) {
+      expect(fb.lane).toBe(0) // childLane, not parentLane
+      expect(fb.color).toBe('#4a90d9') // laneColor(0) = blue
+    }
+  })
+
+  it('non-adjacent fork produces exactly one bezier path per connection', () => {
+    // Multi-branch: merge: feature-a forks from L0 to L2
+    const { lines } = computeGraphData(MULTI_BRANCH, ROW_HEIGHT, undefined) as any
+
+    // Count all bezier curves starting from L0 (fork origin)
+    const forkBeziers = lines.filter((l: any) => l.path.includes('C') && l.path.startsWith('M20,'))
+    // Each fork is a single smooth bezier regardless of lane gap
     expect(forkBeziers.length).toBeGreaterThanOrEqual(1)
+    // No cascade segments (straight diagonal lines) should exist
+    const diagonalLines = lines.filter((l: any) => {
+      if (l.fade || l.path.includes('C')) return false
+      const nums = l.path.match(/[\d.]+/g)
+      if (!nums || nums.length < 4) return false
+      const startX = parseFloat(nums[0])
+      const endX = parseFloat(nums[nums.length - 2])
+      return Math.abs(startX - endX) > 1 // non-vertical straight line
+    })
+    expect(diagonalLines).toHaveLength(0)
+  })
+
+  it('merge-in bezier uses childLane color', () => {
+    // Single merge: feature: commit 1 (lane 1) merges into main: commit 2 (lane 0)
+    const { lines } = computeGraphData(SINGLE_MERGE, ROW_HEIGHT, undefined) as any
+
+    // Find MERGE-IN bezier lines: starts at lane 1 x (40) and ends at lane 0 x (20)
+    const mergeInBeziers = lines.filter((l: any) => {
+      if (!l.path.includes('C') || l.fade) return false
+      // Starts at lane 1 x position (40) and contains lane 0 x position
+      return l.path.startsWith('M40,') && l.path.includes('20,')
+    })
+
+    // Merge-in bezier should use childLane (lane 1 = feature branch)
+    for (const mib of mergeInBeziers) {
+      expect(mib.lane).toBe(1) // childLane = feature branch lane
+      expect(mib.color).toBe('#e67e22') // laneColor(1) = orange
+    }
   })
 })
 
