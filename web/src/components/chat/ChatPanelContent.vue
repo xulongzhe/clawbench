@@ -408,7 +408,8 @@ async function handleShowAgentSelector() {
 function handleSwitchModel(model) {
   identity.currentModelId.value = model.id
   identity.currentModelName.value = model.name
-  identity.saveModelPref(identity.currentAgentId.value, model.id)
+  // Note: model switch is session-scoped only — does NOT update agent's default model.
+  // Agent default model is configured exclusively via the settings panel.
 }
 
 function handleSwitchThinkingEffort(level) {

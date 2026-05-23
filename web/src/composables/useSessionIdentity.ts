@@ -56,9 +56,9 @@ export function resetIdentity(): void {
 
 async function saveModelPref(agentId: string, modelId: string) {
   if (!agentId || !modelId) return
-  // Save to server (agent YAML) via PATCH /api/agents
-  const { patchAgentPref } = await import('@/composables/useSettingsConfig')
-  patchAgentPref(agentId, 'preferred_model', modelId).catch(() => {})
+  // No-op: model selection in chat is session-scoped and does NOT update the agent's
+  // default model. The agent's preferredModel is configured exclusively via the
+  // settings panel (which calls patchAgentPref directly).
 }
 
 function loadModelPref(agentId: string): string | null {

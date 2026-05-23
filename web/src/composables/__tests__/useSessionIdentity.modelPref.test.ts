@@ -5,6 +5,7 @@ const mockGetAgentModel = vi.fn()
 const mockSyncModelFromAgent = vi.fn()
 
 // Track agent preferences in-memory so getAgent returns them
+// preferredModel is set exclusively via the settings panel (PATCH /api/agents)
 const agentPrefs: Record<string, { preferredModel?: string; preferredThinkingEffort?: string }> = {}
 
 const mockGetAgent = vi.fn((agentId: string) => {
@@ -33,12 +34,14 @@ vi.mock('@/composables/useAgents', () => ({
   }),
 }))
 
-// Mock useSettingsConfig.patchAgentPref to update in-memory agentPrefs
+// Mock useSettingsConfig — saveModelPref is now a no-op, but patchAgentPref
+// is still used by the settings panel. Keep the mock for saveThinkingPref.
 vi.mock('@/composables/useSettingsConfig', () => ({
   patchAgentPref: (agentId: string, field: 'preferred_model' | 'preferred_thinking_effort', value: string) => {
     if (!agentPrefs[agentId]) agentPrefs[agentId] = {}
-    if (field === 'preferred_model') agentPrefs[agentId].preferredModel = value
     if (field === 'preferred_thinking_effort') agentPrefs[agentId].preferredThinkingEffort = value
+    // Note: preferred_model is no longer written by saveModelPref —
+    // only the settings panel updates it, which bypasses this mock.
     return Promise.resolve()
   },
 }))
@@ -50,7 +53,7 @@ vi.mock('@/composables/useLocale', () => ({
 // Import after mocks are set up — use the composable to access helper functions
 import { useSessionIdentity } from '@/composables/useSessionIdentity'
 
-describe('useSessionIdentity - model preference (cross-project)', () => {
+describe('useSessionIdentity - model preference', () => {
   let saveModelPref: (agentId: string, modelId: string) => void
   let loadModelPref: (agentId: string) => string | null
   let saveThinkingPref: (agentId: string, level: string) => void
@@ -74,47 +77,39 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
     localStorage.clear()
   })
 
-  describe('saveModelPref / loadModelPref', () => {
-    it('saves and loads model preference per agent', async () => {
+  describe('saveModelPref', () => {
+    it('is a no-op — does not persist model preference', async () => {
       await saveModelPref('codebuddy', 'glm-5.1')
-      expect(loadModelPref('codebuddy')).toBe('glm-5.1')
-    })
-
-    it('returns null when no preference saved', () => {
-      expect(loadModelPref('claude')).toBeNull()
-    })
-
-    it('keeps different preferences for different agents', async () => {
-      await saveModelPref('codebuddy', 'glm-5.1')
-      await saveModelPref('claude', 'claude-sonnet-4-6')
-      expect(loadModelPref('codebuddy')).toBe('glm-5.1')
-      expect(loadModelPref('claude')).toBe('claude-sonnet-4-6')
-    })
-
-    it('overwrites previous preference for same agent', async () => {
-      await saveModelPref('codebuddy', 'glm-5.1')
-      await saveModelPref('codebuddy', 'glm-4')
-      expect(loadModelPref('codebuddy')).toBe('glm-4')
-    })
-
-    it('persists across simulated project switches (localStorage survives)', async () => {
-      // User sets model in "project A"
-      await saveModelPref('codebuddy', 'claude-sonnet-4-6')
-
-      // Simulate project switch — localStorage is NOT cleared
-      // (unlike session DB which is per-project)
-      expect(loadModelPref('codebuddy')).toBe('claude-sonnet-4-6')
+      // saveModelPref no longer writes to agent preferredModel;
+      // loadModelPref reads from agent.preferredModel which is set
+      // exclusively via the settings panel.
+      expect(loadModelPref('codebuddy')).toBeNull()
     })
 
     it('handles empty agentId gracefully', async () => {
       await saveModelPref('', 'glm-5.1')
-      expect(loadModelPref('')).toBeNull()
+      // Should not throw
     })
 
     it('handles empty modelId gracefully', async () => {
       await saveModelPref('codebuddy', '')
-      // Empty modelId should not be saved
-      expect(loadModelPref('codebuddy')).toBeNull()
+      // Should not throw
+    })
+  })
+
+  describe('loadModelPref', () => {
+    it('reads preferredModel set via settings panel', () => {
+      // Simulate settings panel setting preferredModel
+      agentPrefs['codebuddy'] = { preferredModel: 'glm-5.1' }
+      expect(loadModelPref('codebuddy')).toBe('glm-5.1')
+    })
+
+    it('returns null when no preference set', () => {
+      expect(loadModelPref('claude')).toBeNull()
+    })
+
+    it('returns null for empty agentId', () => {
+      expect(loadModelPref('')).toBeNull()
     })
   })
 
@@ -130,19 +125,15 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
   })
 
   describe('model resolution priority (syncModelFromData behavior)', () => {
-    // These tests verify the model resolution logic that useChatSession
-    // implements using useSessionIdentity's helpers.
-    // Priority: server modelId > localStorage pref > agent default
+    // Priority: server modelId > preferredModel (settings panel) > agent default
 
-    it('when server modelId is empty, localStorage preference is used', async () => {
-      // Set global preference
-      await saveModelPref('codebuddy', 'claude-sonnet-4-6')
+    it('when server modelId is empty, preferredModel from settings panel is used', () => {
+      // Simulate settings panel setting preferredModel
+      agentPrefs['codebuddy'] = { preferredModel: 'claude-sonnet-4-6' }
 
-      // Simulate syncModelFromData with empty server modelId (new session)
       const serverModelId = ''
       const agentId = 'codebuddy'
 
-      // This is the logic from useChatSession.syncModelFromData:
       let resolvedModelId = ''
       if (serverModelId) {
         resolvedModelId = serverModelId
@@ -156,11 +147,10 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
       expect(resolvedModelId).toBe('claude-sonnet-4-6')
     })
 
-    it('when server modelId is set, it takes priority over localStorage', async () => {
-      // Set global preference
-      await saveModelPref('codebuddy', 'glm-5.1')
+    it('when server modelId is set, it takes priority over preferredModel', () => {
+      // Settings panel preference
+      agentPrefs['codebuddy'] = { preferredModel: 'glm-5.1' }
 
-      // Simulate existing session with a different model in DB
       const serverModelId = 'claude-sonnet-4-6'
       const agentId = 'codebuddy'
 
@@ -177,12 +167,20 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
       expect(resolvedModelId).toBe('claude-sonnet-4-6')
     })
 
-    it('new session in different project uses global localStorage preference', async () => {
-      // User sets model in "project A"
-      await saveModelPref('codebuddy', 'glm-5.1')
+    it('chat model switch does not affect preferredModel for new sessions', async () => {
+      // Settings panel sets preferredModel
+      agentPrefs['codebuddy'] = { preferredModel: 'glm-5.1' }
 
-      // Simulate creating a new session in "project B"
-      // Server returns empty modelId because we no longer pre-fill
+      // User switches model in a chat session — saveModelPref is now a no-op
+      await saveModelPref('codebuddy', 'claude-sonnet-4-6')
+
+      // preferredModel should remain unchanged (set by settings panel only)
+      expect(loadModelPref('codebuddy')).toBe('glm-5.1')
+    })
+
+    it('new session uses preferredModel from settings panel', () => {
+      agentPrefs['codebuddy'] = { preferredModel: 'glm-5.1' }
+
       const serverModelId = ''
       const agentId = 'codebuddy'
 
@@ -196,7 +194,6 @@ describe('useSessionIdentity - model preference (cross-project)', () => {
         }
       }
 
-      // Global preference should be used, not agent default
       expect(resolvedModelId).toBe('glm-5.1')
     })
   })
