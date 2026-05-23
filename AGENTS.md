@@ -57,6 +57,7 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 - `internal/speech/` — TTS: MiniMax/Edge TTS (cloud), Piper/Kokoro/MOSS-Nano (local).
 - `internal/summarize/` — Text summarization for TTS/task summaries (AI backends, OpenAI/Anthropic HTTP, text cleanup).
 - `internal/ssh/` — SSH tunnel server (direct-tcpip, password auth, auto host key). Publishes `tunnel_status` via EventBus.
+- `internal/proxy/` — HTTP reverse proxy (`reverse_proxy.go`) + port forwarding logic. Solves SSH tunnel's TCP-level Host header mismatch for virtual-host backends by rewriting Host to match the original target. Privileged ports (< 1024) auto-remapped to non-privileged range for Android/non-root compatibility.
 - `internal/rag/` — RAG: DuckDB vector store, Ollama BGE-M3 embeddings, chunking, indexing, search.
 - `internal/terminal/` — Web terminal: PTY sessions, ring buffer replay, concurrent session management.
 - `internal/push/` — Push notifications via JPush. AppKey from server config at runtime (not baked into APK). Exposed via `/api/push/config`.
@@ -77,7 +78,7 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 **Source root:** `web/src/` — No Vue Router, drawer-based single-page layout. Single `reactive()` store in `stores/app.ts`.
 
 **Composables by function:**
-- **Chat:** `useChatSession` (CRUD), `useChatStream` (SSE + reconnect + polling), `useChatRender` (block parsing + coalescing), `useAutoSpeech` (TTS), `useQuickSend` (SQLite CRUD), `useSessionIdentity` (model/thinking persistence), `useLocalhostAnnotation` (localhost URL detection + port-forward/WebView buttons; App mode only).
+- **Chat:** `useChatSession` (CRUD), `useChatStream` (SSE + reconnect + polling), `useChatRender` (block parsing + coalescing), `useAutoSpeech` (TTS), `useQuickSend` (SQLite CRUD), `useSessionIdentity` (model/thinking persistence), `useLocalhostAnnotation` (localhost URL detection + port-forward/WebView buttons; App mode only), `useWorktreeAnnotation` (worktree path detection + switch/browse buttons; list-based cache, coexists with file path annotation).
 - **Connectivity:** `useReconnect` (generic exponential backoff), `useFileRefresh` (file change + flash highlight), `useSystemEvents` (SSE singleton, 6 event types, 5 reconnect → HTTP polling fallback, visibility-aware), `useGlobalEvents` (WS singleton, push-aware background strategy).
 - **Terminal:** `useTerminalSession` (WS lifecycle), `useTerminalKeys` (modifier state machine), `useTerminalGestures` (swipe/pinch), `useTerminalViewport` (xterm.js + keyboard avoidance).
 - **Git:** `useSwipeDelete` (direction-locked swipe-to-delete with offset clamping), `useCommitNavigation` (commit/branch navigation state).
@@ -99,6 +100,7 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 - **Model auto-discovery:** `SyncDiscoverAgents` detects CLIs → generates minimal YAMLs. `SyncDiscoverModels` (sync first run) + `AsyncRefreshModelCache` (background). Gemini/Codex/VeCLI/Qoder: no CLI model listing, must be user-defined in YAML.
 - **Android integration:** HTML login (static `login.html` + `AndroidNative` JS bridge). `BackgroundService` manages SSH port forwarding + native WebSocket event channel for background notifications. JPush AppKey from `/api/push/config` (runtime, not in APK). Push-aware: `pushAvailable=true` → disconnect WS on background (JPush delivers); `false` → keep WS alive. Registration ID via `POST /api/push/register` (login-level lifecycle, survives WS reconnects).
 - **SPA hot project switch:** Switching projects uses in-place state reset + Vue `:key` rebuild (0.15s fade transition) instead of `window.location.reload()`. `hotSwitchProject()` resets store singletons (agents, identity, project state), rebuilds component tree, reloads data — no page flicker.
+- **Worktree annotation:** `useWorktreeAnnotation` fetches worktree list from backend (`ServeGitWorktrees`), builds search entries, and annotates matching paths in chat messages with switch/browse buttons. Runs before file path annotation to prevent partial matches on worktree directory prefixes (e.g., `/.worktrees`). File path annotation skips already-annotated worktree elements. Non-secure context fallback: `crypto.randomUUID()` replaced with `crypto.getRandomValues()` UUID v4 for HTTP access.
 - **Push notification preview:** Task completion push notifications include response preview text (last text after tool_use block) and `Done:` prefix. Session title used as notification title on completed/cancelled tasks.
 - **Coverage gate (CI 合入门槛):** Two-tier check. Tier 1 (Project): per-package/directory coverage `>= baseline% - 1.5%`, baseline from CI artifact. Tier 2 (Diff): changed lines coverage `>= 80%`. CI enforces on every PR/push to main.
 - **Bugfix workflow (GitHub Issues):** All AI agents should report newly discovered bugs as GitHub Issues (`gh issue create`). A scheduled task runs hourly to auto-fix open issues: fetches open issues without any `bugfix:*` label (sorted by creation time) → evaluates complexity → claims and fixes in bugfix worktree (`.worktrees/bugfix`) → writes test → builds → starts on port 20100 → auto-verifies → updates issue with result. Max 3 fixes per run. Merge to main requires manual trigger. Issue labels track state: none = pending, `bugfix:in-progress` = AI claimed, `bugfix:awaiting-review` = fixed awaiting human verification, `bugfix:needs-design` = too complex for auto-fix (skipped), `bugfix:failed` = auto-fix failed. Human closes issue after verification.
@@ -113,11 +115,11 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 | Upload | `upload.max_size_mb`, `upload.max_files` |
 | Chat UI | `chat.initial_messages`, `chat.page_size`, `chat.collapsed_height`, `chat.system_prompt_interval` (10) |
 | Session | `session.max_count` |
+| Recent Projects | `recent_projects.max_count` (10, configurable limit for header dropdown) |
 | TLS | `tls.enabled`, `tls.cert_file`, `tls.key_file` |
 | TTS | `tts.engine`, `tts.speed`, `tts.voice`, `tts.max_cache_files` (100, auto-eviction) |
 | Summarize | `summarize.backend` ("simple"), `summarize.model`, `summarize.api` (unified for TTS + task summaries) |
-| Proxy | `proxy.enabled`, `proxy.allowed_ports` |
-| SSH | `ssh.enabled`, `ssh.port`, `ssh.host_key` |
+| Port Forward | `port_forward.enabled` (true), `port_forward.port` (0=auto), `port_forward.host_key`, `port_forward.allowed_ports` (""=all) |
 | RAG | `rag.enabled`, `rag.ollama_base_url`, `rag.ollama_model` (bge-m3), `rag.chunk_size` (512), `rag.retention_days` (90) |
 | Terminal | `terminal.enabled` (true), `terminal.idle_timeout` (10m), `terminal.max_sessions` (10) |
 | Push | `push.jpush.enabled`, `push.jpush.app_key`, `push.jpush.master_secret` |
