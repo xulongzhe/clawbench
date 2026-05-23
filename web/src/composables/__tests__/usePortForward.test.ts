@@ -287,7 +287,7 @@ describe('usePortForward', () => {
 
     describe('registerPort', () => {
         it('posts port to API and refreshes', async () => {
-            mockApiPost.mockResolvedValue({})
+            mockApiPost.mockResolvedValue({ localPort: 3000 })
             mockApiGet.mockResolvedValue({ ports: [] })
 
             const { usePortForward } = await import('@/composables/usePortForward')
@@ -302,7 +302,7 @@ describe('usePortForward', () => {
 
         it('passes host parameter to API and native layer in app mode', async () => {
             mockIsAppMode.value = true
-            mockApiPost.mockResolvedValue({})
+            mockApiPost.mockResolvedValue({ localPort: 3000 })
             mockApiGet.mockResolvedValue({ ports: [] })
             const mockAddForwardedPort = vi.fn()
             ;(window as any).AndroidNative = { addForwardedPort: mockAddForwardedPort }
@@ -315,7 +315,7 @@ describe('usePortForward', () => {
             expect(mockApiPost).toHaveBeenCalledWith('/api/proxy/ports', {
                 port: 3000, host: '192.168.1.1', name: 'App', protocol: 'http',
             })
-            expect(mockAddForwardedPort).toHaveBeenCalledWith(3000, '192.168.1.1')
+            expect(mockAddForwardedPort).toHaveBeenCalledWith(3000, 3000, '192.168.1.1')
 
             delete (window as any).AndroidNative
             mockIsAppMode.value = false
@@ -365,7 +365,7 @@ describe('usePortForward', () => {
             await updatePort(3000, 4000, '10.0.0.1', 'NewApp', 'https')
 
             expect(mockRemove).toHaveBeenCalledWith(3000)
-            expect(mockAdd).toHaveBeenCalledWith(4000, '10.0.0.1')
+            expect(mockAdd).toHaveBeenCalledWith(3000, 4000, '10.0.0.1')
 
             delete (window as any).AndroidNative
             mockIsAppMode.value = false
@@ -456,8 +456,8 @@ describe('usePortForward', () => {
 
             await syncToNative()
 
-            expect(mockAdd).toHaveBeenCalledWith(3000, '')
-            expect(mockAdd).toHaveBeenCalledWith(8080, '192.168.1.1')
+            expect(mockAdd).toHaveBeenCalledWith(3000, 3000, '')
+            expect(mockAdd).toHaveBeenCalledWith(8080, 8080, '192.168.1.1')
 
             delete (window as any).AndroidNative
             mockIsAppMode.value = false

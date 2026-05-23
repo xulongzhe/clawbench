@@ -42,8 +42,8 @@ func TestServeSSHInfo_Enabled(t *testing.T) {
 		service.ProxyService.Stop()
 		service.ProxyService = origProxy
 	}()
-	_ = service.ProxyService.RegisterPort(5173, "", "Vite Dev", "http")
-	_ = service.ProxyService.RegisterPort(8080, "", "API", "http")
+	_, _ = service.ProxyService.RegisterPort(5173, "", "Vite Dev", "http")
+	_, _ = service.ProxyService.RegisterPort(8080, "", "API", "http")
 
 	// Create and set an SSH server reference
 	srv := ssh.NewServer(model.PortForwardConfig{Enabled: true, Port: 20001}, 20000, "test-password", service.ProxyService)

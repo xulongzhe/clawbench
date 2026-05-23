@@ -187,8 +187,8 @@ export function useLocalhostUrlClickHandler() {
         element.classList.add('loading')
 
         try {
-            await ensurePortRegistered(port, protocol)
-            openPort(port, protocol)
+            const localPort = await ensurePortRegistered(port, protocol)
+            openPort(localPort, protocol)
         } catch (err) {
             toast.show(gt('chat.localhost.openFailed'), { type: 'error' })
         } finally {

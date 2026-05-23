@@ -57,7 +57,7 @@ func TestServeProxyPorts_AfterRegister(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(8080, "", "test", "")
+	_, _ = service.ProxyService.RegisterPort(8080, "", "test", "")
 
 	req := newRequest(t, http.MethodGet, "/api/proxy/ports", nil)
 	w := callHandler(ServeProxyPortAction, req)
@@ -84,7 +84,28 @@ func TestRegisterPort_Valid(t *testing.T) {
 
 	assertOK(t, w)
 	assertJSONField(t, w, "status", "ok")
+	assertJSONField(t, w, "localPort", float64(5173)) // JSON numbers decode as float64
 	assert.True(t, isProxyPortRegistered(service.ProxyService, 5173))
+}
+
+func TestRegisterPort_ReturnsAutoAssignedLocalPort(t *testing.T) {
+	teardown := setupProxyTest(t)
+	defer teardown()
+
+	// Register port 8080 first
+	_, _ = service.ProxyService.RegisterPort(8080, "", "local-api", "http")
+
+	// Register same target port with different host — localPort should be auto-assigned
+	req := newRequest(t, http.MethodPost, "/api/proxy/ports", map[string]interface{}{
+		"port": 8080,
+		"host": "192.168.1.100",
+		"name": "remote-api",
+	})
+	w := callHandler(ServeProxyPortAction, req)
+
+	assertOK(t, w)
+	assertJSONField(t, w, "status", "ok")
+	assertJSONField(t, w, "localPort", float64(8081)) // auto-assigned next free port
 }
 
 func TestRegisterPort_InvalidPort(t *testing.T) {
@@ -116,7 +137,7 @@ func TestRegisterPort_Duplicate(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(3000, "", "first", "")
+	_, _ = service.ProxyService.RegisterPort(3000, "", "first", "")
 
 	req := newRequest(t, http.MethodPost, "/api/proxy/ports", map[string]interface{}{
 		"port": 3000,
@@ -149,7 +170,7 @@ func TestUnregisterPort_Valid(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(9090, "", "metrics", "")
+	_, _ = service.ProxyService.RegisterPort(9090, "", "metrics", "")
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9090", nil)
 	w := callHandler(ServeProxyPortAction, req)
@@ -242,9 +263,9 @@ func TestRegisterAndListMultiple(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(3000, "", "app", "")
-	_ = service.ProxyService.RegisterPort(5173, "", "vite", "")
-	_ = service.ProxyService.RegisterPort(8080, "", "api", "")
+	_, _ = service.ProxyService.RegisterPort(3000, "", "app", "")
+	_, _ = service.ProxyService.RegisterPort(5173, "", "vite", "")
+	_, _ = service.ProxyService.RegisterPort(8080, "", "api", "")
 
 	req := newRequest(t, http.MethodGet, "/api/proxy/ports", nil)
 	w := callHandler(ServeProxyPortAction, req)
@@ -327,7 +348,7 @@ func TestUpdatePort_Valid(t *testing.T) {
 	defer teardown()
 
 	// Register a port first
-	_ = service.ProxyService.RegisterPort(8080, "", "api", "http")
+	_, _ = service.ProxyService.RegisterPort(8080, "", "api", "http")
 
 	req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
 		"localPort": 8080,
@@ -347,7 +368,7 @@ func TestUpdatePort_WithHost(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	_ = service.ProxyService.RegisterPort(8080, "", "api", "http")
+	_, _ = service.ProxyService.RegisterPort(8080, "", "api", "http")
 
 	req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
 		"localPort": 8080,
@@ -422,7 +443,7 @@ func TestUpdatePort_DisallowedPortRange(t *testing.T) {
 		service.ProxyService = origProxy
 	}()
 
-	_ = service.ProxyService.RegisterPort(3500, "", "app", "")
+	_, _ = service.ProxyService.RegisterPort(3500, "", "app", "")
 
 	req := newRequest(t, http.MethodPut, "/api/proxy/ports", map[string]interface{}{
 		"localPort": 3500,

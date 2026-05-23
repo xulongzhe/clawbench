@@ -1120,10 +1120,10 @@ public class MainActivity extends AppCompatActivity {
          * Also requests battery optimization exemption on first port forward.
          */
         @JavascriptInterface
-        public void addForwardedPort(int port, String host) {
+        public void addForwardedPort(int localPort, int targetPort, String host) {
             activity.runOnUiThread(() -> {
-                activity.forwardedPorts.put(port, host != null ? host : "");
-                BackgroundService.addForwardedPort(activity, port, host != null ? host : "");
+                activity.forwardedPorts.put(localPort, host != null ? host : "");
+                BackgroundService.addForwardedPort(activity, localPort, targetPort, host != null ? host : "");
 
                 // Request battery optimization exemption if not already granted.
                 // Re-check every time in case the user previously dismissed the dialog.

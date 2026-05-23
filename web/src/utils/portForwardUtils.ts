@@ -35,9 +35,14 @@ export function tunnelStatusFromPorts(ports: ForwardedPort[]): 'ok' | 'degraded'
 
 /**
  * Build the URL for opening a forwarded port.
- * Always uses localhost since it's the local listening address.
+ * Uses localhost since it's the local listening address.
+ * Omits the port number when it's the default for the protocol (80 for http, 443 for https).
  */
 export function buildPortUrl(localPort: number, protocol?: string): string {
   const scheme = protocol === 'https' ? 'https' : 'http'
+  // Omit port if it's the default for the protocol
+  if ((scheme === 'http' && localPort === 80) || (scheme === 'https' && localPort === 443)) {
+    return `${scheme}://localhost`
+  }
   return `${scheme}://localhost:${localPort}`
 }

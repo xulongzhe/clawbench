@@ -83,12 +83,28 @@ describe('portForwardUtils', () => {
 
     it('handles different port numbers', () => {
       expect(buildPortUrl(8080)).toBe('http://localhost:8080')
-      expect(buildPortUrl(443, 'https')).toBe('https://localhost:443')
+      expect(buildPortUrl(443, 'https')).toBe('https://localhost')
     })
 
     it('handles different ports', () => {
       expect(buildPortUrl(8080)).toBe('http://localhost:8080')
-      expect(buildPortUrl(443, 'https')).toBe('https://localhost:443')
+      expect(buildPortUrl(443, 'https')).toBe('https://localhost')
+    })
+
+    it('omits port 80 for http (default port)', () => {
+      expect(buildPortUrl(80, 'http')).toBe('http://localhost')
+    })
+
+    it('omits port 443 for https (default port)', () => {
+      expect(buildPortUrl(443, 'https')).toBe('https://localhost')
+    })
+
+    it('keeps port 80 for https (non-default)', () => {
+      expect(buildPortUrl(80, 'https')).toBe('https://localhost:80')
+    })
+
+    it('keeps port 443 for http (non-default)', () => {
+      expect(buildPortUrl(443, 'http')).toBe('http://localhost:443')
     })
 
     it('defaults to localhost when host is empty', () => {

@@ -4,7 +4,7 @@ import { ref } from 'vue'
 // Mock composables before importing the module
 const mockIsAppMode = ref(false)
 const mockSshInfo = ref<any>(null)
-const mockEnsurePortRegistered = vi.fn().mockResolvedValue(undefined)
+const mockEnsurePortRegistered = vi.fn().mockResolvedValue(3000)
 const mockOpenPort = vi.fn()
 const mockToastShow = vi.fn()
 
@@ -201,7 +201,7 @@ describe('useLocalhostAnnotation', () => {
     beforeEach(() => {
       mockIsAppMode.value = true
       mockSshInfo.value = { enabled: true }
-      mockEnsurePortRegistered.mockReset().mockResolvedValue(undefined)
+      mockEnsurePortRegistered.mockReset().mockResolvedValue(3000)
       mockOpenPort.mockReset()
       mockToastShow.mockReset()
       const handler = useLocalhostUrlClickHandler()

@@ -34,6 +34,8 @@ rag:
     retention_days: 0
     search_limit: 0
     search_pool_size: 0
+recent_projects:
+    max_count: 25
 session:
     max_count: 20
 summarize:

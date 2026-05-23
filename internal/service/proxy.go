@@ -19,15 +19,17 @@ import (
 	"time"
 
 	"clawbench/internal/model"
+	"clawbench/internal/proxy"
 )
 
 // ProxyRegistry manages forwarded ports: registration, health checks, and auto-detection.
 type ProxyRegistry struct {
-	mu       sync.RWMutex
-	ports    map[int]*model.ForwardedPort // key = localPort (auto-assigned, unique)
-	cfg      model.ProxyConfig
-	selfPort int // ClawBench's own port, excluded from detection
-	cancel   context.CancelFunc
+	mu         sync.RWMutex
+	ports      map[int]*model.ForwardedPort     // key = localPort (auto-assigned, unique)
+	proxies    map[int]*proxy.ReverseProxy       // key = localPort, active HTTP reverse proxies for non-localhost targets
+	cfg        model.ProxyConfig
+	selfPort   int // ClawBench's own port, excluded from detection
+	cancel     context.CancelFunc
 }
 
 // allocateLocalPort finds an available local port for forwarding.
@@ -62,9 +64,10 @@ var ProxyService *ProxyRegistry
 // The caller (main.go) decides whether to create this based on port_forward.enabled.
 func NewProxyRegistry(selfPort int) *ProxyRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
-	allowedPorts := "1024-65535" // default allowed port range
+	allowedPorts := "" // default: allow all ports (1-65535)
 	r := &ProxyRegistry{
 		ports:    make(map[int]*model.ForwardedPort),
+		proxies:  make(map[int]*proxy.ReverseProxy),
 		cfg:      model.ProxyConfig{AllowedPorts: allowedPorts},
 		selfPort: selfPort,
 		cancel:   cancel,
@@ -85,29 +88,49 @@ func NewProxyRegistry(selfPort int) *ProxyRegistry {
 	return r
 }
 
-// SetAllowedPorts overrides the default allowed port range.
-// Must be called before any RegisterPort calls.
+// SetAllowedPorts overrides the allowed port range and removes any already-loaded
+// ports that fall outside the new range.
 func (r *ProxyRegistry) SetAllowedPorts(allowedPorts string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.cfg.AllowedPorts = allowedPorts
+
+	// Remove ports that are no longer allowed
+	for lp, p := range r.ports {
+		if !isPortInRange(p.Port, r.cfg.AllowedPorts) {
+			slog.Info("proxy port removed (outside allowed range)", slog.Int("local_port", lp), slog.Int("port", p.Port))
+			r.stopReverseProxy(lp)
+			delete(r.ports, lp)
+			r.deletePortFromDB(lp)
+		}
+	}
 }
 
 // Stop shuts down the proxy registry and all health check goroutines.
 func (r *ProxyRegistry) Stop() {
+	// Stop all reverse proxies
+	r.mu.Lock()
+	for lp, rp := range r.proxies {
+		rp.Close()
+		delete(r.proxies, lp)
+	}
+	r.mu.Unlock()
+
 	if r.cancel != nil {
 		r.cancel()
 	}
 	slog.Info("proxy service stopped")
 }
 
-// RegisterPort adds a port to the forwarding registry.
+// RegisterPort adds a port to the forwarding registry and returns the allocated local port.
 // port is the target port on the remote host. If the same port is already
 // registered (with a different host), a nearby free local port is auto-assigned.
-func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protocol string) error {
+func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protocol string) (int, error) {
 	if port <= 0 || port > 65535 {
-		return fmt.Errorf("invalid port number: %d", port)
+		return 0, fmt.Errorf("invalid port number: %d", port)
 	}
 	if !r.IsPortAllowed(port) {
-		return fmt.Errorf("port %d is not in the allowed range", port)
+		return 0, fmt.Errorf("port %d is not in the allowed range", port)
 	}
 	if protocol != "https" {
 		protocol = "http"
@@ -119,7 +142,7 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 	// Check if this exact (port, host) is already registered
 	for _, p := range r.ports {
 		if p.Port == port && p.Host == host {
-			return fmt.Errorf("port %d → %s is already registered (local %d)", port, hostDisplayName(host), p.LocalPort)
+			return 0, fmt.Errorf("port %d → %s is already registered (local %d)", port, hostDisplayName(host), p.LocalPort)
 		}
 	}
 
@@ -136,6 +159,21 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 		Active:     checkPortActive(port, host),
 	}
 
+	// For non-localhost targets, start an HTTP reverse proxy to rewrite the Host header.
+	// SSH tunnel is TCP-level and cannot modify HTTP headers; the reverse proxy
+	// ensures the backend receives the correct Host header (targetHost:targetPort).
+	if isNonLocalhostTarget(host) {
+		if err := r.startReverseProxy(localPort, port, host, protocol); err != nil {
+			// Log but don't fail — the port is still registered for SSH tunneling
+			slog.Warn("failed to start reverse proxy for non-localhost target",
+				slog.Int("local_port", localPort),
+				slog.Int("target_port", port),
+				slog.String("host", host),
+				slog.String("err", err.Error()),
+			)
+		}
+	}
+
 	// Persist to database
 	r.savePortToDB(localPort, port, host, name, protocol)
 
@@ -147,7 +185,7 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 		slog.String("protocol", protocol),
 	)
 
-	return nil
+	return localPort, nil
 }
 
 // UpdatePort modifies an existing forwarded port's host, name, and protocol.
@@ -231,6 +269,9 @@ func (r *ProxyRegistry) UnregisterPort(localPort int) error {
 
 	delete(r.ports, localPort)
 
+	// Stop any reverse proxy running for this port
+	r.stopReverseProxy(localPort)
+
 	// Remove from database
 	r.deletePortFromDB(localPort)
 
@@ -294,10 +335,10 @@ func (r *ProxyRegistry) DetectListeningPorts() []DetectedPort {
 		return nil
 	}
 
-	// Filter: exclude system ports (< 1024) and our own port
+	// Filter: exclude our own port (allow all other ports including privileged ones)
 	filtered := make([]detectedPortInfo, 0, len(portInfos))
 	for _, p := range portInfos {
-		if p.Port >= 1024 && p.Port != r.selfPort {
+		if p.Port > 0 && p.Port != r.selfPort {
 			filtered = append(filtered, p)
 		}
 	}
@@ -822,5 +863,42 @@ func (r *ProxyRegistry) deletePortFromDB(localPort int) {
 	_, err := DB.Exec("DELETE FROM forwarded_ports WHERE local_port = ?", localPort)
 	if err != nil {
 		slog.Error("failed to delete port from DB", slog.Int("local_port", localPort), slog.String("err", err.Error()))
+	}
+}
+
+// isNonLocalhostTarget returns true if the target host is not localhost/127.0.0.1.
+// Non-localhost targets need an HTTP reverse proxy to rewrite the Host header.
+func isNonLocalhostTarget(host string) bool {
+	return host != "" && host != "localhost" && host != "127.0.0.1" && host != "::1"
+}
+
+// startReverseProxy creates and starts an HTTP reverse proxy for a non-localhost target.
+// The proxy listens on 127.0.0.1:{localPort} and forwards to {host}:{port},
+// rewriting the Host header to match the target.
+func (r *ProxyRegistry) startReverseProxy(localPort int, targetPort int, host string, protocol string) error {
+	targetAddr := net.JoinHostPort(host, strconv.Itoa(targetPort))
+	rp, err := proxy.NewReverseProxy("127.0.0.1", localPort, targetAddr, protocol)
+	if err != nil {
+		return fmt.Errorf("failed to create reverse proxy: %w", err)
+	}
+
+	go rp.Serve()
+	r.proxies[localPort] = rp
+
+	slog.Info("reverse proxy started for non-localhost target",
+		slog.Int("local_port", localPort),
+		slog.String("target", targetAddr),
+		slog.String("protocol", protocol),
+	)
+
+	return nil
+}
+
+// stopReverseProxy stops and removes the reverse proxy for the given local port.
+func (r *ProxyRegistry) stopReverseProxy(localPort int) {
+	if rp, ok := r.proxies[localPort]; ok {
+		rp.Close()
+		delete(r.proxies, localPort)
+		slog.Info("reverse proxy stopped", slog.Int("local_port", localPort))
 	}
 }

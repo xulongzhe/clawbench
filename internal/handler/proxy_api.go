@@ -50,12 +50,13 @@ func registerPort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := service.ProxyService.RegisterPort(req.Port, req.Host, req.Name, req.Protocol); err != nil {
+	localPort, err := service.ProxyService.RegisterPort(req.Port, req.Host, req.Name, req.Protocol)
+	if err != nil {
 		writeLocalizedError(w, r, model.Forbidden(err, "AccessDenied"))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "localPort": localPort})
 }
 
 func updatePort(w http.ResponseWriter, r *http.Request) {
