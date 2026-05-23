@@ -16,6 +16,9 @@ import AppHeader from '@/components/common/AppHeader.vue'
 // tested without opening the menu (which causes re-renders that trigger
 // recursive updates from the store mock's reactive tracking).
 
+// Mock static assets that can't be resolved in test environment
+vi.mock('/logo.png', () => ({ default: '/logo.png' }))
+
 const {
   loadGitBranchFn,
   setPendingManageNavigationFn,
