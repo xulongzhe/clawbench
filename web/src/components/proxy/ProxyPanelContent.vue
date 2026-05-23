@@ -94,32 +94,59 @@
         </div>
       </div>
 
-      <!-- Loading -->
-      <div v-if="loading" class="proxy-loading">{{ t('common.loading') }}</div>
+      <!-- Two-zone layout: registered ports (top, 50–100%) + detected ports (bottom, 0–50%, sticky to bottom) -->
+      <div class="proxy-zones">
 
-      <!-- Port list -->
-      <div v-else-if="ports.length > 0" class="proxy-list">
-        <ProxyPortItem
-          v-for="p in ports"
-          :key="p.localPort"
-          :port="p.port"
-          :local-port="p.localPort"
-          :host="p.host || ''"
-          :name="p.name"
-          :protocol="p.protocol"
-          :active="p.active"
-          :tunnel-disconnected="tunnelStatus === 'disconnected'"
-          @open="openPort"
-          @open-external="openInExternalBrowser"
-          @edit="handleEdit"
-          @remove="handleRemove"
-        />
-      </div>
+        <!-- Zone 1: Registered ports (top half) -->
+        <div class="proxy-zone-registered">
+          <!-- Loading -->
+          <div v-if="loading" class="proxy-loading">{{ t('common.loading') }}</div>
 
-      <!-- Empty state -->
-      <div v-else class="proxy-empty">
-        <div class="proxy-empty-text">{{ t('proxy.noPorts') }}</div>
-        <div class="proxy-empty-hint">{{ t('proxy.emptyHint') }}</div>
+          <!-- Port list -->
+          <div v-else-if="ports.length > 0" class="proxy-list">
+            <ProxyPortItem
+              v-for="p in ports"
+              :key="p.localPort"
+              :port="p.port"
+              :local-port="p.localPort"
+              :host="p.host || ''"
+              :name="p.name"
+              :protocol="p.protocol"
+              :active="p.active"
+              :tunnel-disconnected="tunnelStatus === 'disconnected'"
+              @open="openPort"
+              @open-external="openInExternalBrowser"
+              @edit="handleEdit"
+              @remove="handleRemove"
+            />
+          </div>
+
+          <!-- Empty state -->
+          <div v-else class="proxy-empty">
+            <div class="proxy-empty-text">{{ t('proxy.noPorts') }}</div>
+            <div class="proxy-empty-hint">{{ t('proxy.emptyHint') }}</div>
+          </div>
+        </div>
+
+        <!-- Zone 2: Detected ports (bottom half, pinned to bottom) -->
+        <div v-if="detectedPorts.length > 0" class="proxy-zone-detected">
+          <div class="proxy-detected-label">{{ t('proxy.detectedPorts') }}</div>
+          <div class="proxy-detected-chips">
+            <button
+              v-for="(p, i) in detectedPortsNotRegistered"
+              :key="p.port"
+              class="detect-chip"
+              :class="p.protocol"
+              :style="{ animationDelay: `${i * 60}ms` }"
+              @click="handleQuickAdd(p.port, p.protocol, p.processName)"
+            >
+              <span class="chip-row"><span class="chip-port">{{ p.port }}</span><span class="chip-proto">{{ p.protocol }}</span></span>
+              <span v-if="p.processName" class="chip-cmdline"><span class="chip-process">{{ p.processName }}</span><span v-if="p.processArgs" class="chip-args"> {{ p.processArgs }}</span></span>
+            </button>
+            <span v-if="detectedPortsNotRegistered.length === 0" class="detect-all-registered">{{ t('proxy.allRegistered') }}</span>
+          </div>
+        </div>
+
       </div>
 
       <!-- Add/Edit Modal (shared) -->
@@ -173,25 +200,6 @@
           <button class="port-add-confirm" @click="handleSave" :disabled="!isValidPort || saving">{{ saving ? '...' : t('common.confirm') }}</button>
         </template>
       </ModalDialog>
-
-      <!-- Detected ports (suggestion chips) -->
-      <div v-if="detectedPorts.length > 0" class="proxy-detected">
-        <div class="proxy-detected-label">{{ t('proxy.detectedPorts') }}</div>
-        <div class="proxy-detected-chips">
-          <button
-            v-for="(p, i) in detectedPortsNotRegistered"
-            :key="p.port"
-            class="detect-chip"
-            :class="p.protocol"
-            :style="{ animationDelay: `${i * 60}ms` }"
-            @click="handleQuickAdd(p.port, p.protocol, p.processName)"
-          >
-            <span class="chip-row"><span class="chip-port">{{ p.port }}</span><span class="chip-proto">{{ p.protocol }}</span></span>
-            <span v-if="p.processName" class="chip-cmdline"><span class="chip-process">{{ p.processName }}</span><span v-if="p.processArgs" class="chip-args"> {{ p.processArgs }}</span></span>
-          </button>
-          <span v-if="detectedPortsNotRegistered.length === 0" class="detect-all-registered">{{ t('proxy.allRegistered') }}</span>
-        </div>
-      </div>
 
     </div>
   </div>
@@ -370,8 +378,8 @@ async function handleRetryTunnel() {
   gap: 8px;
   padding: 6px;
   flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Compact header — matches TaskListPage style */
@@ -597,21 +605,37 @@ async function handleRetryTunnel() {
   gap: 4px;
 }
 
-.proxy-detected {
-  flex-shrink: 0;
-  border-top: 1px solid var(--border-color, #e5e5e5);
-  padding: 6px 0 0;
-  margin-top: 4px;
+/* Two-zone layout: registered ports (top, 50–100%) + detected ports (bottom, 0–50%, pinned to bottom) */
+.proxy-zones {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  max-height: 50vh;
+  overflow: hidden;
+}
+
+/* Zone 1: registered ports — takes all space when no detected ports, at least 50% when detected ports exist */
+.proxy-zone-registered {
+  flex: 1 1 50%;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Zone 2: detected ports — takes 0–50%, pinned to bottom, hidden when empty */
+.proxy-zone-detected {
+  flex: 0 0 auto;
+  max-height: 50%;
+  border-top: 1px solid var(--border-color, #e5e5e5);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
 .proxy-detected-label {
   font-size: 11px;
   color: var(--text-muted, #999);
-  margin-bottom: 6px;
+  padding: 6px 0 4px;
   flex-shrink: 0;
 }
 
@@ -622,6 +646,7 @@ async function handleRetryTunnel() {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
+  padding-bottom: 4px;
 }
 
 .detect-chip {

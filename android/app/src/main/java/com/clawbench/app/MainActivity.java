@@ -1264,8 +1264,8 @@ public class MainActivity extends AppCompatActivity {
             AppLog.i(TAG, "openInBrowser: port=" + port + ", protocol=" + protocol + ", host=" + host);
             activity.runOnUiThread(() -> {
                 String scheme = "https".equalsIgnoreCase(protocol) ? "https" : "http";
-                String targetHost = (host != null && !host.isEmpty()) ? host : "localhost";
-                String url = scheme + "://" + targetHost + ":" + port;
+                // External browser accesses the SSH tunnel on localhost, not the original host
+                String url = scheme + "://localhost:" + port;
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 activity.startActivity(intent);

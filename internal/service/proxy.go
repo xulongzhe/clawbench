@@ -890,6 +890,17 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 			AutoDetect: false,
 			Active:     false, // will be updated by health check
 		}
+		// For non-localhost targets, start an HTTP reverse proxy to rewrite Host header.
+		if isNonLocalhostTarget(host) {
+			if err := r.startReverseProxy(localPort, port, host, protocol); err != nil {
+				slog.Warn("failed to start reverse proxy on DB load",
+					slog.Int("local_port", localPort),
+					slog.Int("target_port", port),
+					slog.String("host", host),
+					slog.String("err", err.Error()),
+				)
+			}
+		}
 	}
 
 	if len(r.ports) > 0 {
