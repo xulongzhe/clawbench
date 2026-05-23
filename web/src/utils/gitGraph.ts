@@ -20,73 +20,6 @@ function laneCx(lane) {
 }
 
 /**
- * Render a cascade path that steps through intermediate lanes one by one,
- * instead of drawing a single bezier that jumps across them.
- *
- * Used by both FORK (merge→branch tip) and MERGE-IN (branch→main lane)
- * connections when the lane gap is > 1.
- *
- * @param {number} fromLane  - Starting lane index
- * @param {number} toLane    - Target lane index
- * @param {number} fromY     - Y coordinate at the start of the cascade
- * @param {number} toY       - Y coordinate at the end of the cascade
- * @param {number} rowHeight - Row height in pixels
- * @param {string} color     - Stroke color for all generated lines
- * @param {number} lane      - Lane index for the lines (used for interaction)
- * @returns {Array} Array of line objects to push into the lines array
- */
-function renderCascade(fromLane, toLane, fromY, toY, rowHeight, color, lane) {
-  const result = []
-  const laneDir = toLane > fromLane ? 1 : -1
-
-  // Step 1: short bezier from starting lane to the next lane over
-  const nextX = laneCx(fromLane + laneDir)
-  const step1EndY = fromY + rowHeight * 0.4
-  result.push({
-    path: `M${laneCx(fromLane)},${fromY} C${laneCx(fromLane)},${fromY + rowHeight * 0.15} ${nextX},${fromY + rowHeight * 0.25} ${nextX},${step1EndY}`,
-    color,
-    lane,
-  })
-
-  // Step 2: diagonal + vertical segments through intermediate lanes
-  let curLane = fromLane + laneDir
-  let curY = step1EndY
-  while (curLane !== toLane) {
-    const curX = laneCx(curLane)
-    const nextStepX = laneCx(curLane + laneDir)
-    const stepHeight = rowHeight * 0.3
-    // Diagonal to next lane
-    result.push({
-      path: `M${curX},${curY} L${nextStepX},${curY + stepHeight}`,
-      color,
-      lane,
-    })
-    curLane += laneDir
-    curY += stepHeight
-    // Vertical segment on this lane
-    const vertEnd = curY + rowHeight * 0.2
-    result.push({
-      path: `M${nextStepX},${curY} L${nextStepX},${vertEnd}`,
-      color,
-      lane,
-    })
-    curY = vertEnd
-  }
-
-  // Step 3: final bezier from last intermediate lane to the endpoint
-  const lastX = laneCx(toLane)
-  const cp1Y = curY + (toY - curY) * 0.3
-  const cp2Y = curY + (toY - curY) * 0.7
-  result.push({
-    path: `M${lastX},${curY} C${lastX},${cp1Y} ${lastX},${cp2Y} ${lastX},${toY}`,
-    color,
-    lane,
-  })
-
-  return result
-}
-
-/**
  * Compute full graph data for a list of commits.
  *
  * Two-phase algorithm:
@@ -420,31 +353,19 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
         })
       } else if (pi > 0) {
         // Cross-lane fork: merge commit's non-first parent (the branch tip).
-        // For adjacent lanes, use a simple bezier. For non-adjacent lanes
-        // (octopus merge), render as a cascade stepping through intermediate
-        // lanes to avoid crossing over them visually.
+        // Single smooth bezier curve regardless of lane gap.
         const fromX = laneCx(childLane)
         const fromY = childCy + 5
         const toX = laneCx(parentLane)
         const toY = parentCy - 5
-
-        const laneGap = Math.abs(parentLane - childLane)
         const dy = toY - fromY
-        const useCascade = laneGap > 1 && dy > laneGap * rowHeight * 0.6
-
-        if (!useCascade) {
-          // Adjacent lane or short distance: simple bezier
-          const cp1Y = fromY + dy * 0.4
-          const cp2Y = fromY + dy * 0.6
-          lines.push({
-            path: `M${fromX},${fromY} C${fromX},${cp1Y} ${toX},${cp2Y} ${toX},${toY}`,
-            color: laneColor(parentLane),
-            lane: parentLane,
-          })
-        } else {
-          // Non-adjacent lane: cascade through intermediate lanes
-          lines.push(...renderCascade(childLane, parentLane, fromY, toY, rowHeight, laneColor(parentLane), parentLane))
-        }
+        const cp1Y = fromY + dy * 0.4
+        const cp2Y = fromY + dy * 0.6
+        lines.push({
+          path: `M${fromX},${fromY} C${fromX},${cp1Y} ${toX},${cp2Y} ${toX},${toY}`,
+          color: laneColor(parentLane),
+          lane: parentLane,
+        })
       } else {
         // Cross-lane merge-in: child's first parent is on a different lane.
         // Render as: vertical line(s) on branch lane from child down toward
@@ -467,18 +388,13 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
           }
         }
 
-        const laneGap = Math.abs(childLane - parentLane)
-
         // Y endpoint offset for multiple merge-ins at the same parent
         const yKey = parentRow + ':' + childLane
         const yOffset = mergeInOffsets.get(yKey) || 0
         const toY = parentCy + yOffset
 
-        // Determine where vertical line on branch lane ends.
-        // For cascade, reserve extra vertical space for diagonal steps.
-        const cascadeStartY = laneGap > 1
-          ? Math.min(parentRowTop - laneGap * rowHeight * 0.3, parentRowTop - rowHeight * 0.6)
-          : parentRowTop
+        // Vertical line on branch lane ends at parent row top where bezier begins
+        const bezierStartY = parentRowTop
 
         // Draw vertical line(s) on branch lane, breaking around same-lane nodes
         let vertStart = childBottom
@@ -494,29 +410,24 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
           }
           vertStart = gapBottom
         }
-        if (vertStart < cascadeStartY) {
+        if (vertStart < bezierStartY) {
           lines.push({
-            path: `M${branchX},${vertStart} L${branchX},${cascadeStartY}`,
+            path: `M${branchX},${vertStart} L${branchX},${bezierStartY}`,
             color: laneColor(childLane),
             lane: childLane,
           })
         }
 
-        if (laneGap <= 1) {
-          // Adjacent lanes: single short bezier from branch lane into parent node
-          const fromY = parentRowTop
-          const dy = toY - fromY
-          const cp1Y = fromY + dy * 0.25
-          const cp2Y = toY - dy * 0.25
-          lines.push({
-            path: `M${branchX},${fromY} C${branchX},${cp1Y} ${parentX},${cp2Y} ${parentX},${toY}`,
-            color: laneColor(childLane),
-            lane: childLane,
-          })
-        } else {
-          // Non-adjacent lanes: cascade through intermediate lanes
-          lines.push(...renderCascade(childLane, parentLane, cascadeStartY, toY, rowHeight, laneColor(childLane), childLane))
-        }
+        // Single smooth bezier from branch lane into parent node (any lane gap)
+        const fromY = bezierStartY
+        const dy = toY - fromY
+        const cp1Y = fromY + dy * 0.25
+        const cp2Y = toY - dy * 0.25
+        lines.push({
+          path: `M${branchX},${fromY} C${branchX},${cp1Y} ${parentX},${cp2Y} ${parentX},${toY}`,
+          color: laneColor(childLane),
+          lane: childLane,
+        })
       }
     }
   }

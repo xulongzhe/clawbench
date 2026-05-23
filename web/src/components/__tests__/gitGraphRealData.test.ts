@@ -815,3 +815,174 @@ describe('SVG height accommodates continuation lines', () => {
     }
   })
 })
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Cascade curve smoothness — no sharp angle discontinuities at segment junctions
+//
+// When branches span multiple lanes (>1 lane gap), renderCascade generates
+// a sequence of cubic bezier S-curves that step through intermediate lanes.
+// Each segment must maintain tangent continuity (C1) with its neighbors so
+// there are no visible "kinks" in the rendered graph line.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('cascade curve smoothness', () => {
+  // Helper: compute the tangent angle at the start of a path segment
+  function tangentAtStart(path: string): number {
+    if (path.includes('C')) {
+      // Bezier: tangent at start = CP1 - P0
+      const nums = path.match(/[\d.]+/g)
+      if (!nums || nums.length < 4) return 0
+      const x0 = parseFloat(nums[0])
+      const y0 = parseFloat(nums[1])
+      // For cubic bezier Mx0,y0 Cx1,y1 x2,y2 x3,y3
+      const x1 = parseFloat(nums[2])
+      const y1 = parseFloat(nums[3])
+      return Math.atan2(y1 - y0, x1 - x0)
+    }
+    // Straight line: tangent = end - start
+    const nums = path.match(/[\d.]+/g)
+    if (!nums || nums.length < 4) return 0
+    const x0 = parseFloat(nums[0])
+    const y0 = parseFloat(nums[1])
+    const xn = parseFloat(nums[nums.length - 2])
+    const yn = parseFloat(nums[nums.length - 1])
+    return Math.atan2(yn - y0, xn - x0)
+  }
+
+  // Helper: compute the tangent angle at the end of a path segment
+  function tangentAtEnd(path: string): number {
+    if (path.includes('C')) {
+      // Bezier: tangent at end = P3 - CP2
+      const nums = path.match(/[\d.]+/g)
+      if (!nums || nums.length < 8) return 0
+      const x2 = parseFloat(nums[4])
+      const y2 = parseFloat(nums[5])
+      const x3 = parseFloat(nums[6])
+      const y3 = parseFloat(nums[7])
+      return Math.atan2(y3 - y2, x3 - x2)
+    }
+    // Straight line: tangent = end - start
+    const nums = path.match(/[\d.]+/g)
+    if (!nums || nums.length < 4) return 0
+    const x0 = parseFloat(nums[0])
+    const y0 = parseFloat(nums[1])
+    const xn = parseFloat(nums[nums.length - 2])
+    const yn = parseFloat(nums[nums.length - 1])
+    return Math.atan2(yn - y0, xn - x0)
+  }
+
+  // Helper: get endpoint coordinates from a path
+  function pathEndpoint(path: string) {
+    const nums = path.match(/[\d.]+/g)
+    if (!nums || nums.length < 4) return { x: 0, y: 0 }
+    return { x: parseFloat(nums[nums.length - 2]), y: parseFloat(nums[nums.length - 1]) }
+  }
+
+  // Helper: get startpoint coordinates from a path
+  function pathStartpoint(path: string) {
+    const nums = path.match(/[\d.]+/g)
+    if (!nums || nums.length < 4) return { x: 0, y: 0 }
+    return { x: parseFloat(nums[0]), y: parseFloat(nums[1]) }
+  }
+
+  function angleDiffDeg(a: number, b: number): number {
+    let diff = Math.abs(a - b) * 180 / Math.PI
+    if (diff > 180) diff = 360 - diff
+    return diff
+  }
+
+  it('no sharp junctions (>30deg) between consecutive segments in any repo', () => {
+    const allRepos = [
+      { name: '01-linear', data: LINEAR },
+      { name: '02-single-merge', data: SINGLE_MERGE },
+      { name: '03-multi-branch', data: MULTI_BRANCH },
+      { name: '04-frequent-merge', data: FREQUENT_MERGE },
+      { name: '05-long-lived', data: LONG_LIVED },
+      { name: '06-octopus', data: OCTOPUS },
+      { name: '07-open-branches', data: OPEN_BRANCHES },
+    ]
+
+    for (const { name, data } of allRepos) {
+      const { lines } = getGraphInfo(data)
+      const nonFade = lines.filter(l => !l.fade)
+
+      // Find consecutive segment pairs (A ends where B starts)
+      for (let i = 0; i < nonFade.length; i++) {
+        const a = nonFade[i]
+        const aEnd = pathEndpoint(a.path)
+        const aEndTangent = tangentAtEnd(a.path)
+
+        for (let j = 0; j < nonFade.length; j++) {
+          if (i === j) continue
+          const b = nonFade[j]
+          const bStart = pathStartpoint(b.path)
+          const bStartTangent = tangentAtStart(b.path)
+
+          // Check if B starts where A ends (within 2px tolerance)
+          if (Math.abs(aEnd.x - bStart.x) < 2 && Math.abs(aEnd.y - bStart.y) < 2) {
+            const diff = angleDiffDeg(aEndTangent, bStartTangent)
+            expect(diff).toBeLessThan(30)
+          }
+        }
+      }
+    }
+  })
+
+  it('cascade segments are all cubic bezier curves (no straight L commands)', () => {
+    // The multi-branch and octopus repos have cascades (laneGap > 1)
+    for (const data of [MULTI_BRANCH, OCTOPUS]) {
+      const { lines } = getGraphInfo(data)
+      // In the new implementation, all non-fade, non-vertical lines should be
+      // cubic bezier curves. Lines without 'C' should only be vertical
+      // (same X at start and end) or continuation lines.
+      for (const line of lines) {
+        if (line.fade) continue
+        if (!line.path.includes('C')) {
+          // Must be a vertical line (same X at start and end)
+          const nums = line.path.match(/[\d.]+/g)
+          if (nums && nums.length >= 4) {
+            const startX = parseFloat(nums[0])
+            const endX = parseFloat(nums[nums.length - 2])
+            expect(Math.abs(startX - endX)).toBeLessThan(1)
+          }
+        }
+      }
+    }
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Line lane property matches actual X position
+//
+// The `lane` property on line objects determines the tooltip shown when
+// clicking on the line. It must match the lane the line physically occupies
+// so the user sees the correct branch name.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('line lane property matches actual X position', () => {
+  function laneFromX(x: number): number {
+    return Math.round((x - GRAPH_LEFT_PADDING - LANE_WIDTH / 2) / LANE_WIDTH)
+  }
+
+  it('non-vertical lines: lane matches at least one endpoint', () => {
+    const allRepos = [
+      SINGLE_MERGE, MULTI_BRANCH, FREQUENT_MERGE, LONG_LIVED, OCTOPUS, OPEN_BRANCHES,
+    ]
+    for (const data of allRepos) {
+      const { lines } = getGraphInfo(data)
+      for (const line of lines) {
+        if (line.fade) continue
+        const nums = line.path.match(/[\d.]+/g)
+        if (!nums || nums.length < 4) continue
+        const startX = parseFloat(nums[0])
+        const endX = parseFloat(nums[nums.length - 2])
+        const startLane = laneFromX(startX)
+        const endLane = laneFromX(endX)
+        // The line's lane property should match either its start or end X position
+        const matchesStart = line.lane === startLane
+        const matchesEnd = line.lane === endLane
+        expect(matchesStart || matchesEnd).toBe(true)
+      }
+    }
+  })
+})
