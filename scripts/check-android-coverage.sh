@@ -331,6 +331,7 @@ else:
     # in the same class are still checked normally.
     exempt_files = {
         "android/app/src/main/java/com/clawbench/app/BackgroundService.java",  # onStartCommand, ensureConnection need Android framework + JSch
+        "android/app/src/main/java/com/clawbench/app/BrowserActivity.java",    # shouldInterceptRequest needs WebView + HttpURLConnection; onReceivedError needs WebViewClient lifecycle
     }
 
     for file_path, lines in sorted(changed_lines.items()):
