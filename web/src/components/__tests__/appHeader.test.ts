@@ -200,4 +200,33 @@ describe('AppHeader', () => {
     mountAndTrack({ projectRoot: '' })
     expect(loadGitBranchFn).not.toHaveBeenCalled()
   })
+
+  // ── Recent projects dropdown with scroll area (2) ──
+  // These tests set internal refs directly and suppress the known
+  // "Maximum recursive updates" error from the mock store's shared reactive
+  // state (documented at the top of this file). The error is a test-only
+  // artifact; the dropdown renders correctly in production.
+
+  it('renders dropdown-scroll-area when dropdown is open with recent items', async () => {
+    const wrapper = mountAndTrack()
+    wrapper.vm.dropdownOpen = true
+    wrapper.vm.recentItems = [
+      { name: 'proj-a', path: '/home/user/proj-a', displayPath: 'proj-a' },
+      { name: 'proj-b', path: '/home/user/proj-b', displayPath: 'proj-b' },
+    ]
+    try { await wrapper.vm.$nextTick() } catch {}
+
+    expect(wrapper.find('.dropdown-scroll-area').exists()).toBe(true)
+    expect(wrapper.findAll('.dropdown-scroll-area .dropdown-item').length).toBe(2)
+  })
+
+  it('renders dropdown-empty when dropdown is open with no recent items', async () => {
+    const wrapper = mountAndTrack()
+    wrapper.vm.dropdownOpen = true
+    wrapper.vm.recentItems = []
+    try { await wrapper.vm.$nextTick() } catch {}
+
+    expect(wrapper.find('.dropdown-scroll-area').exists()).toBe(false)
+    expect(wrapper.find('.dropdown-empty').exists()).toBe(true)
+  })
 })

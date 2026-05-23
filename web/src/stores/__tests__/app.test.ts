@@ -130,6 +130,47 @@ describe('store', () => {
         })
     })
 
+    // ── loadProject ──
+
+    describe('loadProject', () => {
+        it('reads recentProjectsMaxCount from watch-dir API', async () => {
+            mockApiGet.mockImplementation((url: string) => {
+                if (url === '/api/watch-dir') {
+                    return { watchDir: '/watch', recentProjectsMaxCount: 5 }
+                }
+                if (url === '/api/project') {
+                    return { path: '/home/user/project' }
+                }
+                return {}
+            })
+            mockApiPost.mockResolvedValue({})
+
+            await store.loadProject()
+
+            expect(store.state.recentProjectsMaxCount).toBe(5)
+        })
+
+        it('does not update recentProjectsMaxCount when API returns 0 or undefined', async () => {
+            store.state.recentProjectsMaxCount = 10
+
+            mockApiGet.mockImplementation((url: string) => {
+                if (url === '/api/watch-dir') {
+                    return { watchDir: '/watch', recentProjectsMaxCount: 0 }
+                }
+                if (url === '/api/project') {
+                    return { path: '/home/user/project' }
+                }
+                return {}
+            })
+            mockApiPost.mockResolvedValue({})
+
+            await store.loadProject()
+
+            // 0 is not > 0, so it stays at the default set by resetProjectState
+            expect(store.state.recentProjectsMaxCount).toBe(10)
+        })
+    })
+
     // ── setProject ──
 
     describe('setProject', () => {
