@@ -248,3 +248,80 @@ func TestReverseProxy_StripsDefaultPortFromHost(t *testing.T) {
 	// Non-default port: Host should include port
 	assert.Equal(t, targetAddr, receivedHost, "Host for non-default port should include port")
 }
+
+func TestReverseProxy_AddAndPort(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	rp, err := NewReverseProxy("127.0.0.1", 0, backend.Listener.Addr().String(), "http")
+	assert.NoError(t, err)
+	defer rp.Close()
+
+	// Addr and Port should return valid values
+	assert.NotEmpty(t, rp.Addr())
+	assert.Greater(t, rp.Port(), 0)
+}
+
+func TestReverseProxy_AddrNilListener(t *testing.T) {
+	rp := &ReverseProxy{}
+	assert.Equal(t, "", rp.Addr(), "Addr should return empty string when listener is nil")
+	assert.Equal(t, 0, rp.Port(), "Port should return 0 when listener is nil")
+}
+
+func TestReverseProxy_NewReverseProxy_InvalidListenAddr(t *testing.T) {
+	// Using a non-routable address that can't be listened on should fail
+	_, err := NewReverseProxy("256.256.256.256", 80, "127.0.0.1:8080", "http")
+	assert.Error(t, err, "should fail with invalid listen address")
+}
+
+func TestReverseProxy_NewReverseProxy_EmptyProtocol(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	rp, err := NewReverseProxy("127.0.0.1", 0, backend.Listener.Addr().String(), "")
+	assert.NoError(t, err, "empty protocol should default to http")
+	defer rp.Close()
+}
+
+func TestReverseProxy_NewReverseProxy_TargetWithScheme(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	// Pass targetAddr with scheme prefix
+	addr := "http://" + backend.Listener.Addr().String()
+	rp, err := NewReverseProxy("127.0.0.1", 0, addr, "http")
+	assert.NoError(t, err)
+	defer rp.Close()
+}
+
+func TestReverseProxy_Serve_ServerClosed(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	rp, err := NewReverseProxy("127.0.0.1", 0, backend.Listener.Addr().String(), "http")
+	assert.NoError(t, err)
+
+	// Close before Serve — Serve should handle http.ErrServerClosed gracefully
+	rp.Close()
+	// Serve returns when server is closed — this tests the ErrServerClosed path
+	done := make(chan struct{})
+	go func() {
+		rp.Serve()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Serve returned as expected
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve should return after server is closed")
+	}
+}

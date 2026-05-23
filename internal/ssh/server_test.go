@@ -298,7 +298,7 @@ func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
 	defer r.Stop()
 
 	// RegisterPort should reject a port outside the allowed range
-	err := r.RegisterPort(8080, "", "outside-range", "http")
+	_, err := r.RegisterPort(8080, "", "outside-range", "http")
 	if err == nil {
 		t.Error("expected RegisterPort to reject port 8080 (outside allowed range 3000-4000)")
 	}
