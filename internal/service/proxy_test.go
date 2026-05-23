@@ -880,8 +880,9 @@ func TestProxyRegistry_RegisterPort_PrivilegedPort_ReturnsLocalPort(t *testing.T
 	r := newTestRegistry(t)
 	defer r.Stop()
 
-	// Port 80 should return localPort = 80
+	// Port 80 is a privileged port — it must be remapped to a non-privileged localPort
 	localPort, err := r.RegisterPort(80, "", "http-server", "http")
 	assert.NoError(t, err)
-	assert.Equal(t, 80, localPort)
+	assert.GreaterOrEqual(t, localPort, 1024, "privileged port should be remapped to >= 1024")
+	assert.NotEqual(t, 80, localPort, "localPort should not equal the privileged target port")
 }

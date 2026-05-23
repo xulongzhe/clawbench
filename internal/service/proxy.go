@@ -34,7 +34,19 @@ type ProxyRegistry struct {
 
 // allocateLocalPort finds an available local port for forwarding.
 // Prefers the requested port; if taken, scans upward until a free one is found.
+// Privileged ports (< 1024) are never returned directly — they are mapped to
+// high ports (1024+) since Android/non-root cannot bind privileged ports.
 func (r *ProxyRegistry) allocateLocalPort(preferred int) int {
+	// Privileged ports must be remapped to non-privileged range
+	if preferred < 1024 {
+		// Start scanning from 1024 for a free port
+		for p := 1024; p <= 65535; p++ {
+			if _, taken := r.ports[p]; !taken {
+				return p
+			}
+		}
+		return 1024 // fallback
+	}
 	if _, taken := r.ports[preferred]; !taken {
 		return preferred
 	}
@@ -305,7 +317,7 @@ func (r *ProxyRegistry) IsPortAllowed(port int) bool {
 // DetectedPort represents an auto-detected listening port with its protocol and process.
 type DetectedPort struct {
 	Port        int    `json:"port"`
-	Protocol    string `json:"protocol"`    // "http" or "https"
+	Protocol    string `json:"protocol"`    // "http", "https", or "other" (non-HTTP like SSH)
 	ProcessName string `json:"processName"` // Name of the process listening on this port
 	ProcessArgs string `json:"processArgs"` // Partial command-line arguments
 }
@@ -347,16 +359,60 @@ func (r *ProxyRegistry) DetectListeningPorts() []DetectedPort {
 		return filtered[i].Port < filtered[j].Port
 	})
 
-	// Probe each port for TLS
+	// Classify each port
 	result := make([]DetectedPort, len(filtered))
 	for i, p := range filtered {
-		protocol := "http"
-		if detectTLS(p.Port) {
-			protocol = "https"
-		}
+		protocol := classifyPort(p.Port, p.ProcessName)
 		result[i] = DetectedPort{Port: p.Port, Protocol: protocol, ProcessName: p.ProcessName, ProcessArgs: p.ProcessArgs}
 	}
 	return result
+}
+
+// classifyPort determines the protocol of a listening port.
+// Known non-HTTP ports (SSH, MySQL, Redis, etc.) are marked as "other"
+// since they cannot be forwarded through an HTTP proxy/browser.
+func classifyPort(port int, processName string) string {
+	// Well-known non-HTTP ports
+	switch port {
+	case 22, 2222: // SSH
+		return "other"
+	case 25, 465, 587: // SMTP
+		return "other"
+	case 3306: // MySQL
+		return "other"
+	case 5432: // PostgreSQL
+		return "other"
+	case 6379: // Redis
+		return "other"
+	case 27017: // MongoDB
+		return "other"
+	case 21: // FTP
+		return "other"
+	}
+
+	// Check process name for known non-HTTP services
+	name := strings.ToLower(processName)
+	if strings.Contains(name, "ssh") || strings.Contains(name, "sshd") {
+		return "other"
+	}
+	if strings.Contains(name, "mysql") || strings.Contains(name, "mysqld") {
+		return "other"
+	}
+	if strings.Contains(name, "postgres") {
+		return "other"
+	}
+	if strings.Contains(name, "redis") {
+		return "other"
+	}
+	if strings.Contains(name, "mongod") {
+		return "other"
+	}
+
+	// Probe for TLS
+	if detectTLS(port) {
+		return "https"
+	}
+	return "http"
 }
 
 // detectTLS attempts a TLS handshake to determine if a port speaks HTTPS.

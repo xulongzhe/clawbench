@@ -369,6 +369,20 @@ public class BrowserActivity extends AppCompatActivity {
 
                 AppLog.i(TAG, "BrowserActivity: response " + statusCode + " " + reason + " contentType=" + contentType);
 
+                // Log error response body preview for diagnostics
+                if (statusCode >= 400) {
+                    try {
+                        InputStream errStream = conn.getErrorStream();
+                        if (errStream != null) {
+                            byte[] preview = new byte[Math.min(256, errStream.available() > 0 ? errStream.available() : 256)];
+                            int read = errStream.read(preview);
+                            if (read > 0) {
+                                AppLog.w(TAG, "BrowserActivity: error response body: " + new String(preview, 0, read, "UTF-8"));
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+
                 // Collect response headers
                 Map<String, String> respHeaders = new HashMap<>();
                 for (Map.Entry<String, List<String>> entry : conn.getHeaderFields().entrySet()) {

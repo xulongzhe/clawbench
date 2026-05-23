@@ -602,6 +602,10 @@ async function handleRetryTunnel() {
   border-top: 1px solid var(--border-color, #e5e5e5);
   padding: 6px 0 0;
   margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh;
+  overflow: hidden;
 }
 
 .proxy-detected-label {
@@ -615,7 +619,6 @@ async function handleRetryTunnel() {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 180px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding-right: 4px;
