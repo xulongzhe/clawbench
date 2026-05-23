@@ -115,6 +115,7 @@ describe('store', () => {
             store.state.chatSessionPageSize = 999
             store.state.chatCollapsedHeight = 999
             store.state.sessionMaxCount = 999
+            store.state.recentProjectsMaxCount = 999
 
             store.resetProjectState()
 
@@ -125,6 +126,7 @@ describe('store', () => {
             expect(store.state.chatSessionPageSize).toBe(10)
             expect(store.state.chatCollapsedHeight).toBe(150)
             expect(store.state.sessionMaxCount).toBe(10)
+            expect(store.state.recentProjectsMaxCount).toBe(10)
         })
     })
 

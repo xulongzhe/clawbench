@@ -768,6 +768,7 @@ export default {
   settings: {
     categories: {
       appearance: '外观',
+      project: '项目',
       chat: '聊天',
       agents: 'Agent偏好',
       files: '文件',
@@ -805,6 +806,8 @@ export default {
       chatSystemPromptIntervalDesc: '每隔多少条消息插入一次系统提示',
       sessionMaxCount: '最大会话数',
       sessionMaxCountDesc: '允许同时存在的聊天会话上限',
+      recentProjectsMaxCount: '最近项目数量',
+      recentProjectsMaxCountDesc: '点击项目名称下拉显示的最近项目数量',
       showHidden: '显示隐藏文件',
       showHiddenDesc: '在文件管理器中显示以 . 开头的隐藏文件',
       wordWrap: '自动换行',

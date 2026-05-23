@@ -216,6 +216,7 @@ const serverDefaults: Record<string, any> = {
   'chat.collapsed_height': 150,
   'chat.system_prompt_interval': 10,
   'session.max_count': 10,
+  'recent_projects.max_count': 10,
   'upload.max_size_mb': 100,
   'upload.max_files': 20,
   'terminal.enabled': true,

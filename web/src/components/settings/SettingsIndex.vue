@@ -19,6 +19,7 @@
 import { computed } from 'vue'
 import {
   Palette,
+  MapPin,
   MessageSquare,
   Bot,
   FolderOpen,
@@ -43,6 +44,7 @@ const { isAppMode } = useAppMode()
 
 const categoryDefs = computed(() => [
   { id: 'appearance', icon: Palette },
+  { id: 'project', icon: MapPin },
   { id: 'chat', icon: MessageSquare },
   { id: 'agents', icon: Bot },
   { id: 'files', icon: FolderOpen },

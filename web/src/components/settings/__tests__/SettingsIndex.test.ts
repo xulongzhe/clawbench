@@ -12,6 +12,7 @@ const i18n = createI18n({
       settings: {
         categories: {
           appearance: '外观',
+          project: '项目',
           chat: '聊天',
           agents: 'Agent偏好',
           files: '文件',
@@ -31,6 +32,7 @@ const i18n = createI18n({
 const globalStubs = {
   'lucide-chevron-right': true,
   'lucide-palette': true,
+  'lucide-map-pin': true,
   'lucide-message-square': true,
   'lucide-bot': true,
   'lucide-folder-open': true,
@@ -55,12 +57,12 @@ function mountIndex() {
 }
 
 describe('SettingsIndex', () => {
-  it('renders 10 category rows in web mode (no Android)', () => {
+  it('renders 11 category rows in web mode (no Android)', () => {
     isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(10)
+    expect(rows.length).toBe(11)
   })
 
   it('renders category labels in web mode', () => {
@@ -69,6 +71,7 @@ describe('SettingsIndex', () => {
 
     const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
     expect(labels).toContain('外观')
+    expect(labels).toContain('项目')
     expect(labels).toContain('聊天')
     expect(labels).toContain('Agent偏好')
     expect(labels).toContain('文件')
@@ -92,7 +95,7 @@ describe('SettingsIndex', () => {
     const wrapper = mountIndex()
 
     const expectedIds = [
-      'appearance', 'chat', 'agents', 'files', 'terminal',
+      'appearance', 'project', 'chat', 'agents', 'files', 'terminal',
       'tts', 'summarization', 'rag', 'network', 'about',
     ]
 
@@ -103,12 +106,12 @@ describe('SettingsIndex', () => {
     }
   })
 
-  it('shows 11 categories including Android in app mode', () => {
+  it('shows 12 categories including Android in app mode', () => {
     isAppModeRef.value = true
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(11)
+    expect(rows.length).toBe(12)
 
     const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
     expect(labels).toContain('Android')

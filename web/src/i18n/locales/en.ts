@@ -768,6 +768,7 @@ export default {
   settings: {
     categories: {
       appearance: 'Appearance',
+      project: 'Project',
       chat: 'Chat',
       agents: 'Agent Prefs',
       files: 'Files',
@@ -805,6 +806,8 @@ export default {
       chatSystemPromptIntervalDesc: 'Insert a system prompt every N messages',
       sessionMaxCount: 'Max Sessions',
       sessionMaxCountDesc: 'Maximum number of concurrent chat sessions',
+      recentProjectsMaxCount: 'Recent Projects Count',
+      recentProjectsMaxCountDesc: 'Number of recent projects shown in the project dropdown',
       showHidden: 'Show Hidden Files',
       showHiddenDesc: 'Show dot-prefixed hidden files in the file manager',
       wordWrap: 'Word Wrap',

@@ -478,3 +478,28 @@ func TestApplyDefaults_PortForwardHostKey(t *testing.T) {
 		t.Error("PortForward.HostKey should have a default value")
 	}
 }
+
+func TestApplyDefaults_RecentProjectsMaxCount(t *testing.T) {
+	setupTestBinDir(t)
+
+	// Default: 10
+	cfg := Config{}
+	ApplyDefaults(&cfg, nil)
+
+	if cfg.RecentProjects.MaxCount != 10 {
+		t.Errorf("RecentProjects.MaxCount = %d, want 10", cfg.RecentProjects.MaxCount)
+	}
+}
+
+func TestApplyDefaults_RecentProjectsMaxCountExplicit(t *testing.T) {
+	setupTestBinDir(t)
+
+	// Explicitly set value should be preserved
+	cfg := Config{}
+	cfg.RecentProjects.MaxCount = 25
+	ApplyDefaults(&cfg, map[string]bool{"recent_projects": true, "recent_projects.max_count": true})
+
+	if cfg.RecentProjects.MaxCount != 25 {
+		t.Errorf("RecentProjects.MaxCount = %d, want 25 (explicitly set)", cfg.RecentProjects.MaxCount)
+	}
+}

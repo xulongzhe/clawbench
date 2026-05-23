@@ -201,12 +201,16 @@ func AddChatMessage(projectPath, backend, sessionID, role, content string, files
 	return messageID, nil
 }
 
-// GetRecentProjects returns the most recent 10 project paths.
+// GetRecentProjects returns the most recent project paths.
 // It filters out paths whose directories no longer exist on disk
 // and removes those stale entries from the database.
 func GetRecentProjects() ([]string, error) {
+	limit := model.RecentProjectsMaxCount
+	if limit <= 0 {
+		limit = 10
+	}
 	var paths []string
-	rows, err := DBRead.Query("SELECT project_path FROM recent_projects ORDER BY accessed_at DESC LIMIT 10")
+	rows, err := DBRead.Query("SELECT project_path FROM recent_projects ORDER BY accessed_at DESC LIMIT ?", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +250,7 @@ func GetRecentProjects() ([]string, error) {
 	return valid, nil
 }
 
-// AddRecentProject upserts a project path and prunes old entries beyond 10.
+// AddRecentProject upserts a project path and prunes old entries beyond configured limit.
 func AddRecentProject(projectPath string) error {
 	_, err := DB.Exec(
 		"INSERT INTO recent_projects (project_path, accessed_at) VALUES (?, CURRENT_TIMESTAMP) "+
@@ -256,8 +260,13 @@ func AddRecentProject(projectPath string) error {
 	if err != nil {
 		return err
 	}
+	limit := model.RecentProjectsMaxCount
+	if limit <= 0 {
+		limit = 10
+	}
 	_, err = DB.Exec(
-		"DELETE FROM recent_projects WHERE id NOT IN (SELECT id FROM recent_projects ORDER BY accessed_at DESC LIMIT 10)",
+		"DELETE FROM recent_projects WHERE id NOT IN (SELECT id FROM recent_projects ORDER BY accessed_at DESC LIMIT ?)",
+		limit,
 	)
 	return err
 }

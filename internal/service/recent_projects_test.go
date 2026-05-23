@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"clawbench/internal/model"
 	"clawbench/internal/service"
 
 	_ "modernc.org/sqlite"
@@ -373,4 +374,108 @@ func TestAddRecentProject_DBError(t *testing.T) {
 
 	err = service.AddRecentProject("/some/path")
 	assert.Error(t, err, "should return error when DB exec fails")
+}
+
+// --- Configurable limit tests ---
+
+func TestGetRecentProjects_ConfigurableLimit(t *testing.T) {
+	setupRecentProjectsDB(t)
+
+	// Set limit to 3
+	origLimit := model.RecentProjectsMaxCount
+	model.RecentProjectsMaxCount = 3
+	t.Cleanup(func() { model.RecentProjectsMaxCount = origLimit })
+
+	// Add 5 projects
+	for i := 0; i < 5; i++ {
+		dir := createTempProjectDir(t)
+		err := service.AddRecentProject(dir)
+		assert.NoError(t, err)
+	}
+
+	paths, err := service.GetRecentProjects()
+	assert.NoError(t, err)
+	assert.Len(t, paths, 3, "should return at most 3 projects when limit is 3")
+}
+
+func TestAddRecentProject_PruneToConfigurableLimit(t *testing.T) {
+	setupRecentProjectsDB(t)
+
+	// Set limit to 5
+	origLimit := model.RecentProjectsMaxCount
+	model.RecentProjectsMaxCount = 5
+	t.Cleanup(func() { model.RecentProjectsMaxCount = origLimit })
+
+	// Add 8 projects
+	for i := 0; i < 8; i++ {
+		dir := createTempProjectDir(t)
+		err := service.AddRecentProject(dir)
+		assert.NoError(t, err)
+	}
+
+	paths, err := service.GetRecentProjects()
+	assert.NoError(t, err)
+	assert.Len(t, paths, 5, "should be pruned to 5 when limit is 5")
+}
+
+func TestGetRecentProjects_FallbackToDefaultLimit(t *testing.T) {
+	setupRecentProjectsDB(t)
+
+	// Set limit to 0 (should fallback to 10)
+	origLimit := model.RecentProjectsMaxCount
+	model.RecentProjectsMaxCount = 0
+	t.Cleanup(func() { model.RecentProjectsMaxCount = origLimit })
+
+	// Add 12 projects
+	for i := 0; i < 12; i++ {
+		dir := createTempProjectDir(t)
+		err := service.AddRecentProject(dir)
+		assert.NoError(t, err)
+	}
+
+	paths, err := service.GetRecentProjects()
+	assert.NoError(t, err)
+	assert.Len(t, paths, 10, "should fallback to default 10 when limit is 0")
+}
+
+func TestAddRecentProject_PruneKeepsMostRecentWithCustomLimit(t *testing.T) {
+	db := setupRecentProjectsDB(t)
+
+	// Set limit to 3
+	origLimit := model.RecentProjectsMaxCount
+	model.RecentProjectsMaxCount = 3
+	t.Cleanup(func() { model.RecentProjectsMaxCount = origLimit })
+
+	// Insert 3 projects with explicit timestamps
+	var dirs []string
+	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 3; i++ {
+		dir := createTempProjectDir(t)
+		dirs = append(dirs, dir)
+		insertProjectWithTime(t, db, dir, baseTime.Add(time.Duration(i)*time.Second))
+	}
+
+	// Add a 4th via service — should prune the oldest (dirs[0])
+	newDir := createTempProjectDir(t)
+	err := service.AddRecentProject(newDir)
+	assert.NoError(t, err)
+
+	paths, err := service.GetRecentProjects()
+	assert.NoError(t, err)
+	assert.Len(t, paths, 3)
+
+	// dirs[0] should have been pruned (oldest timestamp)
+	for _, p := range paths {
+		assert.NotEqual(t, dirs[0], p)
+	}
+
+	// newDir should be present
+	found := false
+	for _, p := range paths {
+		if p == newDir {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "new project should be in the list")
 }

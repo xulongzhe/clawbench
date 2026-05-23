@@ -1414,3 +1414,111 @@ func TestServeConfig_Patch_SummarizeAPIFormatInvalid(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "summarize.api.format must be one of")
 }
+
+// --- recent_projects.max_count tests ---
+
+func TestServeConfig_Get_RecentProjects(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.RecentProjects.MaxCount = 15
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+
+	// recent_projects section should be present
+	assert.Contains(t, resp, "recent_projects")
+	rp, ok := resp["recent_projects"].(map[string]any)
+	assert.True(t, ok, "recent_projects should be a map")
+	assert.Equal(t, float64(15), rp["max_count"])
+}
+
+func TestServeConfig_Patch_RecentProjectsMaxCount(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.RecentProjects.MaxCount = 10
+	model.ConfigInstance = cfg
+
+	body := `{"recent_projects":{"max_count":20}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 20, model.ConfigInstance.RecentProjects.MaxCount)
+	assert.Equal(t, 20, model.RecentProjectsMaxCount, "global variable should be updated via hot-reload")
+}
+
+func TestServeConfig_Patch_RecentProjectsMaxCount_IsHotField(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.RecentProjects.MaxCount = 10
+	model.ConfigInstance = cfg
+
+	// recent_projects.max_count is a hot-reload field — no restart should be needed
+	body := `{"recent_projects":{"max_count":25}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.False(t, resp["needs_restart"].(bool), "recent_projects.max_count is hot-reloadable, should not need restart")
+	changed, ok := resp["changed_cold_fields"].([]any)
+	assert.True(t, ok)
+	assert.Empty(t, changed)
+}
+
+func TestServeConfig_Patch_RecentProjectsMaxCount_ZeroRejected(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.RecentProjects.MaxCount = 10
+	model.ConfigInstance = cfg
+
+	// 0 should be rejected (min is 1)
+	body := `{"recent_projects":{"max_count":0}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "recent_projects.max_count must be at least 1")
+}
+
+func TestServeConfig_Patch_RecentProjectsMaxCount_NegativeRejected(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"recent_projects":{"max_count":-5}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "recent_projects.max_count must be at least 1")
+}

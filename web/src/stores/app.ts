@@ -45,6 +45,9 @@ interface AppState {
     chatCollapsedHeight: number
     sessionMaxCount: number
 
+    // Recent projects config
+    recentProjectsMaxCount: number
+
     // Chat unread badge
     chatUnread: boolean
 
@@ -101,6 +104,7 @@ const state = reactive<AppState>({
     chatSessionPageSize: 10,
     chatCollapsedHeight: 150,
     sessionMaxCount: 10,
+    recentProjectsMaxCount: 10,
     chatUnread: false,
     chatRunning: false,
     taskUnread: false,
@@ -137,7 +141,7 @@ const state = reactive<AppState>({
 async function loadProject(): Promise<void> {
     try {
         try {
-            const wd = await apiGet<{ watchDir: string; uploadMaxSizeMB: number; uploadMaxFiles: number; chatInitialMessages?: number; chatPageSize?: number; chatSessionPageSize?: number; chatCollapsedHeight?: number; sessionMaxCount?: number }>('/api/watch-dir')
+            const wd = await apiGet<{ watchDir: string; uploadMaxSizeMB: number; uploadMaxFiles: number; chatInitialMessages?: number; chatPageSize?: number; chatSessionPageSize?: number; chatCollapsedHeight?: number; sessionMaxCount?: number; recentProjectsMaxCount?: number }>('/api/watch-dir')
             state.watchDir = wd.watchDir || ''
             if (wd.uploadMaxSizeMB > 0) state.uploadMaxSizeMB = wd.uploadMaxSizeMB
             if (wd.uploadMaxFiles > 0) state.uploadMaxFiles = wd.uploadMaxFiles
@@ -146,6 +150,7 @@ async function loadProject(): Promise<void> {
             if (wd.chatSessionPageSize > 0) state.chatSessionPageSize = wd.chatSessionPageSize
             if (wd.chatCollapsedHeight > 0) state.chatCollapsedHeight = wd.chatCollapsedHeight
             if (wd.sessionMaxCount > 0) state.sessionMaxCount = wd.sessionMaxCount
+            if (wd.recentProjectsMaxCount > 0) state.recentProjectsMaxCount = wd.recentProjectsMaxCount
         } catch (error) {
             console.error('[loadProject] watchDir failed:', error)
         }
@@ -198,6 +203,7 @@ function resetProjectState(): void {
     state.chatSessionPageSize = 10
     state.chatCollapsedHeight = 150
     state.sessionMaxCount = 10
+    state.recentProjectsMaxCount = 10
 }
 
 // =============================================

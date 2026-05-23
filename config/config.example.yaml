@@ -83,6 +83,10 @@
 # session:
 #   max_count: 10  # Maximum chat sessions per project (default: 10) / 会话数量上限（默认: 10）
 
+# Recent projects limit / 最近项目数量限制
+# recent_projects:
+#   max_count: 10  # Maximum recent projects shown in the header dropdown (default: 10) / 标题栏下拉显示的最近项目数量上限（默认: 10）
+
 # TTS (Text-to-Speech) configuration / 语音合成配置
 # Supported engines / 支持的引擎：
 #   edge      — Microsoft Edge TTS, free and unlimited (default) / 微软 Edge TTS，免费无限制（默认）

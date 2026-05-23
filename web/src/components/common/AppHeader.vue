@@ -16,16 +16,18 @@
           <div v-if="loadingRecent" class="dropdown-loading">{{ t('common.loading') }}</div>
           <template v-else>
             <div v-if="recentItems.length === 0" class="dropdown-empty">{{ t('appHeader.noRecentProjects') }}</div>
-            <div
-              v-for="item in recentItems"
-              :key="item.path"
-              class="dropdown-item"
-              :class="{ active: item.path === projectRoot }"
-              @click="selectRecent(item)"
-            >
-              <Projector :size="14" class="item-icon" />
-              <span class="item-label">{{ item.name }}</span>
-              <span class="item-path" @mousedown.prevent="onPathMouseDown" @click="onPathClick">{{ item.displayPath }}</span>
+            <div v-else class="dropdown-scroll-area">
+              <div
+                v-for="item in recentItems"
+                :key="item.path"
+                class="dropdown-item"
+                :class="{ active: item.path === projectRoot }"
+                @click="selectRecent(item)"
+              >
+                <Projector :size="14" class="item-icon" />
+                <span class="item-label">{{ item.name }}</span>
+                <span class="item-path" @mousedown.prevent="onPathMouseDown" @click="onPathClick">{{ item.displayPath }}</span>
+              </div>
             </div>
             <div class="dropdown-divider"></div>
             <div class="dropdown-item other-item" @click="openBrowse">
@@ -518,6 +520,28 @@ onUnmounted(() => {
     z-index: 9999;
     overflow: hidden;
     padding: 3px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.project-dropdown .dropdown-scroll-area {
+    overflow-y: auto;
+    overflow-x: hidden;
+    max-height: 300px;
+    scrollbar-width: thin;
+}
+
+.project-dropdown .dropdown-scroll-area::-webkit-scrollbar {
+    width: 4px;
+}
+
+.project-dropdown .dropdown-scroll-area::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 2px;
+}
+
+.project-dropdown .dropdown-scroll-area::-webkit-scrollbar-track {
+    background: transparent;
 }
 
 .project-dropdown .dropdown-loading,

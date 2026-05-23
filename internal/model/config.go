@@ -30,6 +30,9 @@ type Config struct {
 	Session struct {
 		MaxCount int `yaml:"max_count"` // Maximum number of chat sessions per project (default: 10)
 	} `yaml:"session"`
+	RecentProjects struct {
+		MaxCount int `yaml:"max_count"` // Maximum number of recent projects to keep (default: 10)
+	} `yaml:"recent_projects"`
 	TTS struct {
 		Engine            string         `yaml:"engine"`             // TTS engine: "edge" (default), "piper", "kokoro", "moss-nano"
 		TTSModel          string         `yaml:"tts_model"`          // TTS model for speech synthesis (default: "Speech-2.8-Turbo")
@@ -153,6 +156,9 @@ var (
 
 	// Session limits (set from config, with defaults)
 	SessionMaxCount int // Default: 10
+
+	// Recent projects limits (set from config, with defaults)
+	RecentProjectsMaxCount int // Default: 10
 
 	// TTS cache limits (set from config, with defaults)
 	TTSMaxCacheFiles int // Default: 100; 0 = unlimited

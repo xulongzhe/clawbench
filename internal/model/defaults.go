@@ -132,6 +132,11 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 		cfg.Session.MaxCount = 10
 	}
 
+	// --- Recent Projects ---
+	if cfg.RecentProjects.MaxCount <= 0 {
+		cfg.RecentProjects.MaxCount = 10
+	}
+
 	// --- Proxy (legacy) ---
 	// proxy.enabled and proxy.allowed_ports have been removed.
 	// ProxyConfig is kept for backward-compatible YAML reading only.

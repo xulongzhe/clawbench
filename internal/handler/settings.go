@@ -33,6 +33,7 @@ var hotReloadFields = map[string]bool{
 	"chat.page_size":             true,
 	"chat.system_prompt_interval": true,
 	"session.max_count":          true,
+	"recent_projects.max_count":  true,
 	"upload.max_size_mb":        true,
 	"upload.max_files":          true,
 	"tts.max_cache_files":       true,
@@ -56,17 +57,18 @@ func SetRestartFunc(f func()) {
 // It only contains fields safe for frontend display — no passwords, keys, or
 // internal paths.
 type configResponse struct {
-	Version       string         `json:"version"`
-	DefaultAgent  string         `json:"default_agent"`
-	Chat          configChat     `json:"chat"`
-	Session       configSession  `json:"session"`
-	Upload        configUpload   `json:"upload"`
-	Terminal      configTerminal `json:"terminal"`
-	TTS           configTTS      `json:"tts"`
-	RAG           configRAG      `json:"rag"`
-	PortForward    configPortForward `json:"port_forward"`
-	Push          configPush     `json:"push"`
-	Summarize      configSummarize `json:"summarize"`
+	Version        string               `json:"version"`
+	DefaultAgent   string               `json:"default_agent"`
+	Chat           configChat           `json:"chat"`
+	Session        configSession        `json:"session"`
+	RecentProjects configRecentProjects `json:"recent_projects"`
+	Upload         configUpload         `json:"upload"`
+	Terminal       configTerminal       `json:"terminal"`
+	TTS            configTTS            `json:"tts"`
+	RAG            configRAG            `json:"rag"`
+	PortForward    configPortForward    `json:"port_forward"`
+	Push           configPush          `json:"push"`
+	Summarize      configSummarize     `json:"summarize"`
 }
 
 type configChat struct {
@@ -77,6 +79,10 @@ type configChat struct {
 }
 
 type configSession struct {
+	MaxCount int `json:"max_count"`
+}
+
+type configRecentProjects struct {
 	MaxCount int `json:"max_count"`
 }
 
@@ -170,6 +176,7 @@ var PatchableConfigPaths = map[string]bool{
 	"chat.collapsed_height":        true,
 	"chat.system_prompt_interval":  true,
 	"session.max_count":            true,
+	"recent_projects.max_count":   true,
 	"upload.max_size_mb":           true,
 	"upload.max_files":             true,
 	"terminal.enabled":             true,
@@ -312,6 +319,9 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 		},
 		Session: configSession{
 			MaxCount: cfg.Session.MaxCount,
+		},
+		RecentProjects: configRecentProjects{
+			MaxCount: cfg.RecentProjects.MaxCount,
 		},
 		Upload: configUpload{
 			MaxSizeMB: cfg.Upload.MaxSizeMB,
@@ -687,6 +697,12 @@ func validatePatchValues(patch map[string]any) error {
 			return fmt.Errorf("session.max_count must be non-negative")
 		}
 	}
+	recentProjects, ok := patch["recent_projects"].(map[string]any)
+	if ok {
+		if v, ok := recentProjects["max_count"].(float64); ok && v < 1 {
+			return fmt.Errorf("recent_projects.max_count must be at least 1")
+		}
+	}
 	upload, ok := patch["upload"].(map[string]any)
 	if ok {
 		if v, ok := upload["max_size_mb"].(float64); ok && v < 0 {
@@ -727,6 +743,12 @@ func applyConfigPatch(patch map[string]any) error {
 	if session, ok := patch["session"].(map[string]any); ok {
 		if v, ok := session["max_count"].(float64); ok {
 			cfg.Session.MaxCount = int(v)
+		}
+	}
+
+	if rp, ok := patch["recent_projects"].(map[string]any); ok {
+		if v, ok := rp["max_count"].(float64); ok {
+			cfg.RecentProjects.MaxCount = int(v)
 		}
 	}
 
@@ -903,6 +925,7 @@ func applyHotReloadGlobals() {
 	model.ChatPageSize = cfg.Chat.PageSize
 	model.ChatSystemPromptInterval = cfg.Chat.SystemPromptInterval
 	model.SessionMaxCount = cfg.Session.MaxCount
+	model.RecentProjectsMaxCount = cfg.RecentProjects.MaxCount
 	model.UploadMaxSizeMB = cfg.Upload.MaxSizeMB
 	model.UploadMaxFiles = cfg.Upload.MaxFiles
 	model.TTSMaxCacheFiles = cfg.TTS.MaxCacheFiles

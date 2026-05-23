@@ -47,6 +47,20 @@ describe('settingsFieldMap', () => {
     expect(map['rag.search_pool_size']).toBeTruthy()
   })
 
+  it('includes recent_projects.max_count', () => {
+    const map = getServerFieldToLabelKey()
+    expect(map['recent_projects.max_count']).toBeTruthy()
+  })
+
+  it('recent_projects.max_count is in project category items', () => {
+    const projectItems = categoryItems['project']
+    const rpItem = projectItems.find(item => item.key === 'recent_projects.max_count')
+    expect(rpItem).toBeDefined()
+    expect(rpItem!.source).toBe('server')
+    expect(rpItem!.type).toBe('number')
+    expect(rpItem!.min).toBe(1)
+  })
+
   it('does not map orphaned ssh.* keys (renamed to port_forward)', () => {
     const map = getServerFieldToLabelKey()
     // SSH was renamed to port_forward — ssh.enabled/ssh.port are backend-internal only
@@ -55,7 +69,7 @@ describe('settingsFieldMap', () => {
   })
 
   it('categoryItems covers all expected categories', () => {
-    const expectedCategories = ['appearance', 'chat', 'agents', 'files', 'terminal', 'tts', 'summarization', 'rag', 'network', 'android', 'about']
+    const expectedCategories = ['appearance', 'project', 'chat', 'agents', 'files', 'terminal', 'tts', 'summarization', 'rag', 'network', 'android', 'about']
     for (const cat of expectedCategories) {
       expect(categoryItems[cat]).toBeDefined()
     }
