@@ -306,7 +306,13 @@ async function handleSave() {
 }
 
 async function handleQuickAdd(port, protocol, processName) {
-  await registerPort(port, processName || t('proxy.autoDetect'), protocol || 'http')
+  try {
+    await registerPort(port, processName || t('proxy.autoDetect'), protocol || 'http')
+    // Auto-open after successful registration
+    openPort(port, protocol || 'http')
+  } catch (e) {
+    toast.error(e?.message || t('proxy.addPort') + ' failed')
+  }
 }
 
 async function handleRemove(localPort) {

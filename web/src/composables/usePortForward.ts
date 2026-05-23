@@ -90,6 +90,7 @@ export function usePortForward() {
     const localPort = result?.localPort ?? port
     // Register with Android native layer: pass localPort, targetPort, host
     if (isAppMode.value) {
+      console.log('[PortForward] registerPort: localPort=' + localPort + ', targetPort=' + port + ', host=' + (host || ''))
       ;(window as any).AndroidNative?.addForwardedPort(localPort, port, host || '')
     }
     // Silent refresh: don't flicker the port list with loading state
@@ -339,14 +340,16 @@ export function usePortForward() {
   }
 
   /** Open a forwarded port — in app mode opens sandbox browser, otherwise window.open */
-  function openPort(localPort: number, protocol?: string) {
+  function openPort(localPort: number, protocol?: string, host?: string) {
+    console.log('[PortForward] openPort: localPort=' + localPort + ', protocol=' + protocol + ', host=' + (host || ''))
     if (isAppMode.value) {
       const native = (window as any).AndroidNative
+      const hostArg = host || ''
       // Prefer sandbox browser (isolated process), fall back to external browser
       if (native?.openInSandbox) {
-        native.openInSandbox(localPort, protocol === 'https' ? 'https' : 'http', '')
+        native.openInSandbox(localPort, protocol === 'https' ? 'https' : 'http', hostArg)
       } else if (native?.openInBrowser) {
-        native.openInBrowser(localPort, protocol === 'https' ? 'https' : 'http', '')
+        native.openInBrowser(localPort, protocol === 'https' ? 'https' : 'http', hostArg)
       }
     } else {
       window.open(buildPortUrl(localPort, protocol), '_blank')
@@ -354,11 +357,11 @@ export function usePortForward() {
   }
 
   /** Open a forwarded port in external/system browser */
-  function openInExternalBrowser(localPort: number, protocol?: string) {
+  function openInExternalBrowser(localPort: number, protocol?: string, host?: string) {
     if (isAppMode.value) {
       const native = (window as any).AndroidNative
       if (native?.openInBrowser) {
-        native.openInBrowser(localPort, protocol === 'https' ? 'https' : 'http', '')
+        native.openInBrowser(localPort, protocol === 'https' ? 'https' : 'http', host || '')
       }
     } else {
       window.open(buildPortUrl(localPort, protocol), '_blank')

@@ -6,7 +6,6 @@ import android.content.Intent;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.webkit.CookieManager;
@@ -48,6 +47,11 @@ public class BrowserActivity extends AppCompatActivity {
     private EditText urlBar;
     private ProgressBar progressBar;
 
+    private int tunnelRetryCount = 0;
+    private static final int MAX_TUNNEL_RETRIES = 5;
+    private static final long TUNNEL_RETRY_DELAY_MS = 1000;
+    private String pendingUrl = null;
+
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,10 +66,16 @@ public class BrowserActivity extends AppCompatActivity {
         setupToolbar();
 
         // Load initial URL from Intent
+        // Note: host is stored but NOT used in the URL — all traffic goes through
+        // the SSH tunnel which listens on localhost:localPort on the device.
+        // host only affects the server-side tunnel destination.
         int port = getIntent().getIntExtra("port", 0);
         String protocol = getIntent().getStringExtra("protocol");
+        String host = getIntent().getStringExtra("host");
         if (port > 0 && protocol != null) {
             String initialUrl = protocol + "://localhost:" + port + "/";
+            pendingUrl = initialUrl;
+            AppLog.i(TAG, "BrowserActivity: loading " + initialUrl + " (tunnel target: " + (host != null && !host.isEmpty() ? host : "localhost") + ":" + port + ")");
             webView.loadUrl(initialUrl);
             urlBar.setText(initialUrl);
         }
@@ -310,7 +320,13 @@ public class BrowserActivity extends AppCompatActivity {
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             super.onReceivedError(view, request, error);
             if (request.isForMainFrame()) {
-                Toast.makeText(BrowserActivity.this, R.string.error_connection_failed, Toast.LENGTH_SHORT).show();
+                if (tunnelRetryCount < MAX_TUNNEL_RETRIES && pendingUrl != null) {
+                    tunnelRetryCount++;
+                    AppLog.i(TAG, "BrowserActivity: page load failed (attempt " + tunnelRetryCount + "/" + MAX_TUNNEL_RETRIES + "), retrying in " + TUNNEL_RETRY_DELAY_MS + "ms");
+                    webView.postDelayed(() -> webView.loadUrl(pendingUrl), TUNNEL_RETRY_DELAY_MS);
+                } else {
+                    Toast.makeText(BrowserActivity.this, R.string.error_connection_failed, Toast.LENGTH_SHORT).show();
+                }
             }
         }
     }

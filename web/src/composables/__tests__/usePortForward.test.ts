@@ -238,6 +238,21 @@ describe('usePortForward', () => {
             delete (window as any).AndroidNative
         })
 
+        it('passes host parameter to native sandbox browser', async () => {
+            mockIsAppMode.value = true
+            const mockOpenInSandbox = vi.fn()
+            ;(window as any).AndroidNative = { openInSandbox: mockOpenInSandbox }
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { openPort } = usePortForward()
+
+            openPort(3000, 'http', '192.168.1.1')
+
+            expect(mockOpenInSandbox).toHaveBeenCalledWith(3000, 'http', '192.168.1.1')
+
+            delete (window as any).AndroidNative
+        })
+
         it('falls back to openInBrowser when sandbox not available', async () => {
             mockIsAppMode.value = true
             const mockOpenInBrowser = vi.fn()
@@ -266,6 +281,22 @@ describe('usePortForward', () => {
             openInExternalBrowser(3000, 'https')
 
             expect(mockOpenInBrowser).toHaveBeenCalledWith(3000, 'https', '')
+
+            delete (window as any).AndroidNative
+            mockIsAppMode.value = false
+        })
+
+        it('passes host parameter to native openInBrowser', async () => {
+            mockIsAppMode.value = true
+            const mockOpenInBrowser = vi.fn()
+            ;(window as any).AndroidNative = { openInBrowser: mockOpenInBrowser }
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { openInExternalBrowser } = usePortForward()
+
+            openInExternalBrowser(3000, 'https', '192.168.1.1')
+
+            expect(mockOpenInBrowser).toHaveBeenCalledWith(3000, 'https', '192.168.1.1')
 
             delete (window as any).AndroidNative
             mockIsAppMode.value = false

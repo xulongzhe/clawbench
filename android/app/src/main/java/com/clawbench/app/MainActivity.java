@@ -1120,6 +1120,7 @@ public class MainActivity extends AppCompatActivity {
          */
         @JavascriptInterface
         public void addForwardedPort(int localPort, int targetPort, String host) {
+            AppLog.i(TAG, "addForwardedPort: localPort=" + localPort + ", targetPort=" + targetPort + ", host=" + host);
             activity.runOnUiThread(() -> {
                 activity.forwardedPorts.put(localPort, host != null ? host : "");
                 BackgroundService.addForwardedPort(activity, localPort, targetPort, host != null ? host : "");
@@ -1260,6 +1261,7 @@ public class MainActivity extends AppCompatActivity {
          */
         @JavascriptInterface
         public void openInBrowser(int port, String protocol, String host) {
+            AppLog.i(TAG, "openInBrowser: port=" + port + ", protocol=" + protocol + ", host=" + host);
             activity.runOnUiThread(() -> {
                 String scheme = "https".equalsIgnoreCase(protocol) ? "https" : "http";
                 String targetHost = (host != null && !host.isEmpty()) ? host : "localhost";
@@ -1277,6 +1279,7 @@ public class MainActivity extends AppCompatActivity {
          */
         @JavascriptInterface
         public void openInSandbox(int port, String protocol, String host) {
+            AppLog.i(TAG, "openInSandbox: port=" + port + ", protocol=" + protocol + ", host=" + host);
             activity.runOnUiThread(() -> {
                 String scheme = "https".equalsIgnoreCase(protocol) ? "https" : "http";
                 Intent intent = new Intent(activity, BrowserActivity.class);
