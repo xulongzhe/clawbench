@@ -36,8 +36,7 @@ jobs:
               --jq '[.[].name]')
             if echo "$LABELS" | grep -q '"auto-merge"'; then
               BRANCH=$(gh pr view "$PR_NUM" --repo "$GITHUB_REPOSITORY" --json headRefName --jq '.headRefName')
-              ELIGIBLE="$ELIGIBLE
-$PR_NUM $BRANCH"
+              ELIGIBLE=$(printf '%s\n%s %s' "$ELIGIBLE" "$PR_NUM" "$BRANCH")
               echo "Found eligible PR #$PR_NUM ($BRANCH)"
             fi
           done

@@ -175,6 +175,13 @@ func UnregisterSessionCancel(sessionID string) {
 	sessionCancels.Delete(sessionID)
 }
 
+// SetCancelReason records the cancellation reason for a session without cancelling it.
+// Used by the SSE handler when a client disconnects — the AI session continues running
+// but the reason is stored for the session finalizer to read later.
+func SetCancelReason(sessionID string, reason string) {
+	sessionCancelReasons.Store(sessionID, reason)
+}
+
 // GetAndClearCancelReason returns the reason for the most recent cancellation of a session.
 // Returns "user" for user-initiated cancel, "disconnect" for SSE client disconnect.
 // Returns "" if no reason was recorded (e.g. timeout or no cancel).

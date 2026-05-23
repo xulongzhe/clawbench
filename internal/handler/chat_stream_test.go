@@ -627,9 +627,10 @@ func TestAIChatStream_ClientDisconnect(t *testing.T) {
 	AIChatStream(w, req)
 
 	// After SSE disconnect, the AI session should continue running
-	// (no ForceCancelSession called), so cancel reason should be empty
+	// (no ForceCancelSession called), but the disconnect reason is recorded
+	// so the session finalizer knows the SSE client went away.
 	reason := service.GetAndClearCancelReason(sessionID)
-	assert.Equal(t, "", reason)
+	assert.Equal(t, "disconnect", reason)
 	// Session should still be running
 	assert.True(t, service.IsSessionRunning(sessionID))
 	_ = ch
@@ -653,7 +654,7 @@ func TestAIChatStream_ClientDisconnectDuringStream(t *testing.T) {
 		// Give the SSE handler time to receive the content event
 		time.Sleep(100 * time.Millisecond)
 		// Cancel the client context (simulates disconnect)
-		// The executeStreamRun goroutine should detect ctx.Done() and finalize
+		// The SSE handler should detect ctx.Done() and record "disconnect" reason
 	}()
 
 	ctx2, cancel2 := context.WithCancel(context.Background())
