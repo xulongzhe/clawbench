@@ -38,5 +38,6 @@ export default defineConfig({
     coverage: {
       reporter: ['text', 'json', 'json-summary'],
     },
+    setupFiles: [resolve(__dirname, 'web/src/test-setup.ts')],
   },
 })
