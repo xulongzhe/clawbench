@@ -117,12 +117,14 @@ cd clawbench
 | `chat.page_size` | 20 | Messages per page for lazy loading |
 | `chat.collapsed_height` | 150 | Collapsed height for history messages in px |
 | `session.max_count` | 10 | Max sessions per project |
+| `recent_projects.max_count` | 10 | Max recent projects shown in header dropdown |
 | `terminal.enabled` | true | Web terminal enabled by default |
 | `terminal.idle_timeout` | 10m | Terminal idle timeout |
 | `terminal.max_sessions` | 10 | Max terminal sessions per project |
-| `proxy.enabled` | true | Port forwarding enabled by default |
-| `proxy.allowed_ports` | `1024-65535` | Allowed port range for forwarding |
-| `ssh.enabled` | true | SSH tunnel enabled by default |
+| `port_forward.enabled` | true | Port forwarding enabled by default |
+| `port_forward.port` | 0 (auto) | SSH port (0 = main port + 1) |
+| `port_forward.host_key` | (auto) | Host key file path |
+| `port_forward.allowed_ports` | (all) | Allowed port range for forwarding |
 | `tts.engine` | edge | Edge TTS, free and unlimited |
 | `tts.speed` | 1.0 | Normal speech rate |
 | `tts.max_cache_files` | 100 | Max cached TTS audio files; oldest auto-deleted when exceeded (-1=unlimited) |
@@ -211,16 +213,12 @@ tls:
   cert_file: "/path/to/fullchain.pem"   # Certificate file
   key_file: "/path/to/privkey.pem"      # Private key file
 
-# Port forwarding configuration (enabled by default, port range 1024-65535)
-proxy:
-  enabled: true
-  allowed_ports: "1024-65535"
-
-# SSH tunnel configuration (enabled by default)
-ssh:
-  enabled: true
-  port: 0                       # SSH port (0 = auto = main port + 1)
-  host_key: ""                  # Host key file path (empty = auto-generate)
+# Port forwarding + SSH tunnel configuration (enabled by default, merged into port_forward)
+port_forward:
+  enabled: true                    # Enable SSH tunnel server (default: true)
+  port: 0                          # SSH port (0 = auto = main port + 1)
+  host_key: ""                     # Host key file path (empty = auto-generate)
+  allowed_ports: ""                # Allowed port range for forwarding (empty = allow all)
 
 # Chat UI configuration (default initial_messages: 20, page_size: 20, collapsed_height: 150)
 chat:
@@ -382,6 +380,9 @@ clawbench/
 │   ├── ssh/                     # SSH tunnel server
 │   │   ├── server.go            # SSH server (direct-tcpip port forwarding)
 │   │   └── server_test.go       # Tests
+│   ├── proxy/                   # HTTP reverse proxy + port forwarding logic
+│   │   ├── reverse_proxy.go     # HTTP reverse proxy (solves SSH tunnel Host header mismatch)
+│   │   └── reverse_proxy_test.go # Tests
 │   ├── cli/                     # CLI subcommands (AI agent self-service)
 │   │   ├── task.go              # Scheduled task subcommands (create/update/delete/pause/resume/trigger/list/get/list-agents; --prompt supports @path syntax)
 │   │   ├── migrate.go           # One-time DB migration (task_executions content → chat_history)

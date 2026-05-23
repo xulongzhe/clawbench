@@ -117,12 +117,14 @@ cd clawbench
 | `chat.page_size` | 20 | 懒加载每页消息条数 |
 | `chat.collapsed_height` | 150 | 历史消息折叠高度 px |
 | `session.max_count` | 10 | 每项目会话上限 |
+| `recent_projects.max_count` | 10 | 标题栏下拉显示的最近项目数量上限 |
 | `terminal.enabled` | true | Web 终端默认启用 |
 | `terminal.idle_timeout` | 10m | 终端空闲超时 |
 | `terminal.max_sessions` | 10 | 每项目终端会话上限 |
-| `proxy.enabled` | true | 端口转发默认启用 |
-| `proxy.allowed_ports` | `1024-65535` | 允许转发的端口范围 |
-| `ssh.enabled` | true | SSH 隧道默认启用 |
+| `port_forward.enabled` | true | 端口转发默认启用 |
+| `port_forward.port` | 0 (auto) | SSH 端口（0 = 主端口+1） |
+| `port_forward.host_key` | (auto) | Host key 文件路径 |
+| `port_forward.allowed_ports` | (all) | 允许转发的端口范围 |
 | `tts.engine` | edge | Edge TTS 免费无限制 |
 | `tts.speed` | 1.0 | 正常语速 |
 | `tts.max_cache_files` | 100 | TTS 语音缓存文件最大数量；超出时自动删除最旧的（-1=不限） |
@@ -211,16 +213,12 @@ tls:
   cert_file: "/path/to/fullchain.pem"   # 证书文件
   key_file: "/path/to/privkey.pem"      # 私钥文件
 
-# 端口转发配置（默认启用，端口范围 1024-65535）
-proxy:
-  enabled: true
-  allowed_ports: "1024-65535"
-
-# SSH 隧道配置（默认启用）
-ssh:
-  enabled: true
-  port: 0                       # SSH 端口（0 = 自动 = 主端口+1）
-  host_key: ""                  # Host key 文件路径（空 = 自动生成）
+# 端口转发 + SSH 隧道配置（默认启用，已合并为 port_forward）
+port_forward:
+  enabled: true                    # 启用 SSH 隧道服务（默认: true）
+  port: 0                          # SSH 端口（0 = 自动 = 主端口+1）
+  host_key: ""                     # Host key 文件路径（空 = 自动生成）
+  allowed_ports: ""                # 允许转发的端口范围（空 = 允许所有）
 
 # Chat UI 配置（默认 initial_messages: 20, page_size: 20, collapsed_height: 150）
 chat:
@@ -382,6 +380,9 @@ clawbench/
 │   ├── ssh/                     # SSH 隧道服务器
 │   │   ├── server.go            # SSH 服务器（direct-tcpip 端口转发）
 │   │   └── server_test.go       # 测试
+│   ├── proxy/                   # HTTP 反向代理 + 端口转发逻辑
+│   │   ├── reverse_proxy.go     # HTTP 反向代理（解决 SSH 隧道 Host header 不匹配）
+│   │   └── reverse_proxy_test.go # 测试
 │   ├── cli/                     # CLI 子命令（AI 智能体自服务）
 │   │   ├── task.go              # 定时任务子命令（create/update/delete/pause/resume/trigger/list/get/list-agents；--prompt 支持 @path 语法）
 │   │   ├── migrate.go           # 一次性数据库迁移（task_executions 内容→chat_history）
