@@ -123,7 +123,7 @@ public class MainActivityPortHostTest {
     public void testAddForwardedPort_putsPortWithHost() throws Exception {
         // The real addForwardedPort will call runOnUiThread which we've stubbed
         // to actually execute the lambda. The lambda puts into forwardedPorts map.
-        bridge.addForwardedPort(20000, "10.0.0.1");
+        bridge.addForwardedPort(20000, 20000, "10.0.0.1");
 
         // After the lambda executes, the port should be in the map
         assertTrue("Should contain port 20000", activity.forwardedPorts.containsKey(20000));
@@ -132,10 +132,20 @@ public class MainActivityPortHostTest {
 
     @Test
     public void testAddForwardedPort_nullHost_putsEmptyString() throws Exception {
-        bridge.addForwardedPort(20000, null);
+        bridge.addForwardedPort(20000, 20000, null);
 
         assertTrue("Should contain port 20000", activity.forwardedPorts.containsKey(20000));
         assertEquals("", activity.forwardedPorts.get(20000));
+    }
+
+    @Test
+    public void testAddForwardedPort_differentTargetPort_forwardsToBackgroundService() throws Exception {
+        // When targetPort != localPort (e.g. privileged port remapping), the bridge
+        // should still pass the correct targetPort to BackgroundService.addForwardedPort
+        bridge.addForwardedPort(3080, 80, "192.168.1.5");
+
+        assertTrue("Should contain local port 3080", activity.forwardedPorts.containsKey(3080));
+        assertEquals("192.168.1.5", activity.forwardedPorts.get(3080));
     }
 
     // =====================================================

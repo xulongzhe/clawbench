@@ -7,7 +7,6 @@ import android.content.SharedPreferences;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -23,11 +22,11 @@ import static org.mockito.Mockito.*;
 /**
  * Unit tests for BackgroundService's port-host serialization changes.
  *
- * Tests the new Map<Integer, String> forwardedPorts (port -> host) behavior:
- * - saveForwardedPorts() saves as "port" or "port:host" format
- * - restoreForwardedPorts() parses both formats
+ * Tests the new Map<Integer, PortInfo> forwardedPorts (localPort -> PortInfo) behavior:
+ * - saveForwardedPorts() saves as "localPort:targetPort" or "localPort:targetPort:host" format
+ * - restoreForwardedPorts() parses both new and legacy formats
  * - removePortForward() checks the map (not a set)
- * - static addForwardedPort(Context, int, String) includes host in intent extras
+ * - static addForwardedPort(Context, int, int, String) includes host in intent extras
  *
  * Uses Unsafe.allocateInstance() + Mockito spy to create a BackgroundService
  * with mocked SharedPreferences support.
@@ -54,7 +53,7 @@ public class BackgroundServicePortHostTest {
         // Initialize forwardedPorts (Unsafe allocation skips field initializers)
         Field fpField = BackgroundService.class.getDeclaredField("forwardedPorts");
         fpField.setAccessible(true);
-        fpField.set(service, new ConcurrentHashMap<Integer, String>());
+        fpField.set(service, new ConcurrentHashMap<Integer, BackgroundService.PortInfo>());
 
         // Set static fields for consistent test state
         setStaticField("instance", service);
@@ -101,46 +100,45 @@ public class BackgroundServicePortHostTest {
     // =====================================================
 
     @Test
-    public void testSaveForwardedPorts_portOnly_savesAsPlainNumber() throws Exception {
+    public void testSaveForwardedPorts_noHost_savesAsLocalPortTargetPort() throws Exception {
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(20000, ""));
 
         // Call the real saveForwardedPorts method
         invokeMethod(service, "saveForwardedPorts");
 
         Set<String> saved = prefsData.get("forwarded_ports");
         assertNotNull("SharedPreferences should have forwarded_ports", saved);
-        assertTrue("Should contain plain port number '20000'", saved.contains("20000"));
-        assertFalse("Should NOT contain '20000:'", saved.toString().contains("20000:"));
+        assertTrue("Should contain '20000:20000'", saved.contains("20000:20000"));
     }
 
     @Test
-    public void testSaveForwardedPorts_portWithHost_savesAsPortHostFormat() throws Exception {
+    public void testSaveForwardedPorts_portWithHost_savesAsLocalPortTargetPortHost() throws Exception {
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "192.168.1.5");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(80, "192.168.1.5"));
 
         invokeMethod(service, "saveForwardedPorts");
 
         Set<String> saved = prefsData.get("forwarded_ports");
         assertNotNull(saved);
-        assertTrue("Should contain '20000:192.168.1.5'", saved.contains("20000:192.168.1.5"));
+        assertTrue("Should contain '20000:80:192.168.1.5'", saved.contains("20000:80:192.168.1.5"));
     }
 
     @Test
     public void testSaveForwardedPorts_mixedPorts_savesCorrectFormats() throws Exception {
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "");
-        ports.put(30000, "10.0.0.1");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(20000, ""));
+        ports.put(3080, new BackgroundService.PortInfo(80, "10.0.0.1"));
 
         invokeMethod(service, "saveForwardedPorts");
 
         Set<String> saved = prefsData.get("forwarded_ports");
         assertNotNull(saved);
-        assertTrue("Should contain plain port number '20000'", saved.contains("20000"));
-        assertTrue("Should contain '30000:10.0.0.1'", saved.contains("30000:10.0.0.1"));
+        assertTrue("Should contain '20000:20000'", saved.contains("20000:20000"));
+        assertTrue("Should contain '3080:80:10.0.0.1'", saved.contains("3080:80:10.0.0.1"));
     }
 
     // =====================================================
@@ -148,24 +146,26 @@ public class BackgroundServicePortHostTest {
     // =====================================================
 
     @Test
-    public void testRestoreForwardedPorts_plainNumber_restoresWithEmptyHost() throws Exception {
-        // Set up SharedPreferences with plain port number
+    public void testRestoreForwardedPorts_legacyPlainNumber_restoresWithSameTargetPort() throws Exception {
+        // Legacy format: plain port number "20000" — targetPort assumed == localPort
         Set<String> portStrings = new HashSet<>();
         portStrings.add("20000");
         prefsData.put("forwarded_ports", portStrings);
 
-        // Call the real restoreForwardedPorts method
         invokeMethod(service, "restoreForwardedPorts");
 
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
         assertEquals(1, ports.size());
         assertTrue("Should contain port 20000", ports.containsKey(20000));
-        assertEquals("Host should be empty string", "", ports.get(20000));
+        BackgroundService.PortInfo info = ports.get(20000);
+        assertEquals("Target port should equal local port", 20000, info.targetPort);
+        assertEquals("Host should be empty string", "", info.host);
     }
 
     @Test
-    public void testRestoreForwardedPorts_portHostFormat_restoresWithHost() throws Exception {
+    public void testRestoreForwardedPorts_legacyPortHostFormat_restoresWithHost() throws Exception {
+        // Legacy format: "20000:192.168.1.5" — targetPort assumed == localPort
         Set<String> portStrings = new HashSet<>();
         portStrings.add("20000:192.168.1.5");
         prefsData.put("forwarded_ports", portStrings);
@@ -173,26 +173,51 @@ public class BackgroundServicePortHostTest {
         invokeMethod(service, "restoreForwardedPorts");
 
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
         assertEquals(1, ports.size());
         assertTrue("Should contain port 20000", ports.containsKey(20000));
-        assertEquals("192.168.1.5", ports.get(20000));
+        BackgroundService.PortInfo info = ports.get(20000);
+        assertEquals("Target port should equal local port (legacy)", 20000, info.targetPort);
+        assertEquals("192.168.1.5", info.host);
     }
 
     @Test
-    public void testRestoreForwardedPorts_mixedFormats_restoresAll() throws Exception {
+    public void testRestoreForwardedPorts_newFormat_restoresWithTargetPort() throws Exception {
+        // New format: "3080:80:192.168.1.5"
         Set<String> portStrings = new HashSet<>();
-        portStrings.add("20000");
-        portStrings.add("30000:10.0.0.1");
+        portStrings.add("3080:80:192.168.1.5");
         prefsData.put("forwarded_ports", portStrings);
 
         invokeMethod(service, "restoreForwardedPorts");
 
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        assertEquals(2, ports.size());
-        assertEquals("", ports.get(20000));
-        assertEquals("10.0.0.1", ports.get(30000));
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        assertEquals(1, ports.size());
+        assertTrue("Should contain local port 3080", ports.containsKey(3080));
+        BackgroundService.PortInfo info = ports.get(3080);
+        assertEquals("Target port should be 80", 80, info.targetPort);
+        assertEquals("192.168.1.5", info.host);
+    }
+
+    @Test
+    public void testRestoreForwardedPorts_mixedFormats_restoresAll() throws Exception {
+        Set<String> portStrings = new HashSet<>();
+        portStrings.add("20000");               // Legacy: plain number
+        portStrings.add("30000:10.0.0.1");      // Legacy: port:host
+        portStrings.add("4080:80:192.168.1.5"); // New: localPort:targetPort:host
+        prefsData.put("forwarded_ports", portStrings);
+
+        invokeMethod(service, "restoreForwardedPorts");
+
+        @SuppressWarnings("unchecked")
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        assertEquals(3, ports.size());
+        assertEquals(20000, ports.get(20000).targetPort);
+        assertEquals("", ports.get(20000).host);
+        assertEquals(30000, ports.get(30000).targetPort);
+        assertEquals("10.0.0.1", ports.get(30000).host);
+        assertEquals(80, ports.get(4080).targetPort);
+        assertEquals("192.168.1.5", ports.get(4080).host);
     }
 
     @Test
@@ -202,7 +227,7 @@ public class BackgroundServicePortHostTest {
         invokeMethod(service, "restoreForwardedPorts");
 
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
         assertTrue("No ports should be restored from empty set", ports.isEmpty());
     }
 
@@ -214,7 +239,7 @@ public class BackgroundServicePortHostTest {
         invokeMethod(service, "restoreForwardedPorts");
 
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
         assertTrue("No ports should be restored when prefs has null set", ports.isEmpty());
     }
 
@@ -225,9 +250,9 @@ public class BackgroundServicePortHostTest {
     @Test
     public void testRemovePortForward_containsKey_checksMap() throws Exception {
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "192.168.1.5");
-        ports.put(30000, "10.0.0.1");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(20000, "192.168.1.5"));
+        ports.put(30000, new BackgroundService.PortInfo(30000, "10.0.0.1"));
 
         // Call the real removePortForward method
         invokeMethod(service, "removePortForward", 20000);
@@ -239,8 +264,8 @@ public class BackgroundServicePortHostTest {
     @Test
     public void testRemovePortForward_notInMap_returnsEarly() throws Exception {
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "192.168.1.5");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(20000, "192.168.1.5"));
 
         // Remove a port that doesn't exist — should return early without error
         invokeMethod(service, "removePortForward", 99999);
@@ -249,9 +274,6 @@ public class BackgroundServicePortHostTest {
         assertEquals(1, ports.size());
         assertTrue("Port 20000 should still exist", ports.containsKey(20000));
     }
-
-    // =====================================================
-    // addPortForward tests — calls the REAL method with mocked SSH
 
     // =====================================================
     // addPortForward tests — calls the REAL method with mocked SSH
@@ -270,10 +292,10 @@ public class BackgroundServicePortHostTest {
         sshField.setAccessible(true);
         sshField.set(service, mockSession);
 
-        // Call the real addPortForward(int, String) method
+        // Call the real addPortForward(int, int, String) method
         // ensureConnection() will be called but since sshSession is connected it won't try to reconnect
         try {
-            invokeMethod(service, "addPortForward", 20000, "10.0.0.1");
+            invokeMethod(service, "addPortForward", 3080, 80, "10.0.0.1");
         } catch (java.lang.reflect.InvocationTargetException e) {
             // updateNotification/saveForwardedPorts may throw due to Android framework stubs
             if (!(e.getCause() instanceof NullPointerException)) {
@@ -282,9 +304,10 @@ public class BackgroundServicePortHostTest {
         }
 
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        assertTrue("Port 20000 should be in map", ports.containsKey(20000));
-        assertEquals("10.0.0.1", ports.get(20000));
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        assertTrue("Port 3080 should be in map", ports.containsKey(3080));
+        assertEquals(80, ports.get(3080).targetPort);
+        assertEquals("10.0.0.1", ports.get(3080).host);
     }
 
     @Test
@@ -315,11 +338,11 @@ public class BackgroundServicePortHostTest {
 
         // Pre-add the port
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "10.0.0.1");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(20000, "10.0.0.1"));
 
         // Call addPortForward — should return early since already in set and session alive
-        invokeMethod(service, "addPortForward", 20000, "10.0.0.1");
+        invokeMethod(service, "addPortForward", 20000, 20000, "10.0.0.1");
 
         // Verify setPortForwardingL was NOT called (already forwarded)
         verify(mockSession, never()).setPortForwardingL(anyString(), anyInt(), anyString(), anyInt());
@@ -340,8 +363,8 @@ public class BackgroundServicePortHostTest {
         sshField.set(service, mockSession);
 
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "10.0.0.1");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(20000, "10.0.0.1"));
 
         invokeMethod(service, "removePortForward", 20000);
 
@@ -365,9 +388,9 @@ public class BackgroundServicePortHostTest {
         sshField.set(service, mockSession);
 
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "");
-        ports.put(30000, "10.0.0.1");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(20000, ""));
+        ports.put(30000, new BackgroundService.PortInfo(30000, "10.0.0.1"));
 
         invokeMethod(service, "disconnectInternal");
 
@@ -377,7 +400,7 @@ public class BackgroundServicePortHostTest {
     }
 
     // =====================================================
-    // Static addForwardedPort(Context, int, String) tests
+    // Static addForwardedPort(Context, int, int, String) tests
     // =====================================================
 
     @Test
@@ -387,7 +410,7 @@ public class BackgroundServicePortHostTest {
         Context mockContext = mock(Context.class);
         doReturn(null).when(mockContext).startService(any(Intent.class));
 
-        BackgroundService.addForwardedPort(mockContext, 20000, "10.0.0.1");
+        BackgroundService.addForwardedPort(mockContext, 3080, 80, "10.0.0.1");
 
         verify(mockContext).startService(any(Intent.class));
     }
@@ -397,7 +420,7 @@ public class BackgroundServicePortHostTest {
         Context mockContext = mock(Context.class);
         doReturn(null).when(mockContext).startService(any(Intent.class));
 
-        BackgroundService.addForwardedPort(mockContext, 20000, null);
+        BackgroundService.addForwardedPort(mockContext, 20000, 20000, null);
 
         verify(mockContext).startService(any(Intent.class));
     }
@@ -435,6 +458,17 @@ public class BackgroundServicePortHostTest {
         assertEquals("forwardedPorts should be Map type", Map.class, field.getType());
     }
 
+    @Test
+    public void testPortInfo_storesTargetPortAndHost() throws Exception {
+        BackgroundService.PortInfo info1 = new BackgroundService.PortInfo(80, "192.168.1.5");
+        assertEquals(80, info1.targetPort);
+        assertEquals("192.168.1.5", info1.host);
+
+        BackgroundService.PortInfo info2 = new BackgroundService.PortInfo(3306, null);
+        assertEquals(3306, info2.targetPort);
+        assertEquals("Null host should default to empty string", "", info2.host);
+    }
+
     // =====================================================
     // Round-trip test: save then restore
     // =====================================================
@@ -442,9 +476,9 @@ public class BackgroundServicePortHostTest {
     @Test
     public void testRoundTrip_saveAndRestore() throws Exception {
         @SuppressWarnings("unchecked")
-        Map<Integer, String> ports = (Map<Integer, String>) getField(service, "forwardedPorts");
-        ports.put(20000, "");
-        ports.put(30000, "192.168.1.5");
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(20000, new BackgroundService.PortInfo(20000, ""));
+        ports.put(3080, new BackgroundService.PortInfo(80, "192.168.1.5"));
 
         // Save
         invokeMethod(service, "saveForwardedPorts");
@@ -458,8 +492,10 @@ public class BackgroundServicePortHostTest {
 
         // Verify restored data matches original
         assertEquals(2, ports.size());
-        assertEquals("", ports.get(20000));
-        assertEquals("192.168.1.5", ports.get(30000));
+        assertEquals(20000, ports.get(20000).targetPort);
+        assertEquals("", ports.get(20000).host);
+        assertEquals(80, ports.get(3080).targetPort);
+        assertEquals("192.168.1.5", ports.get(3080).host);
     }
 
     // --- Helper methods ---
