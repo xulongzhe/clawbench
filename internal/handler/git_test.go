@@ -2811,3 +2811,221 @@ func TestServeGitVerifyWorktrees_MultipleWorktrees(t *testing.T) {
 
 	assert.Nil(t, results["/tmp/nonexistent"])
 }
+
+// --- isValidGitSHA / isValidGitRefName (ISS-132, ISS-151, ISS-152) ---
+
+func TestIsValidGitSHA(t *testing.T) {
+	tests := []struct {
+		sha  string
+		want bool
+	}{
+		{"abc1234", true},                     // 7-char abbreviated SHA
+		{"abc123def456", true},                 // 12-char abbreviated SHA
+		{"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0", true}, // 40-char full SHA
+		{"abcdef", true},                       // 6-char minimum
+		{"ABCDE", false},                       // uppercase, too short
+		{"abcde", false},                       // 5 chars, too short
+		{"", false},                            // empty
+		{"--upload-pack=evil", false},          // argument injection attempt
+		{"-c", false},                          // flag-like
+		{"abc123; rm -rf /", false},            // shell injection attempt
+		{"g123456", false},                     // non-hex char 'g'
+		{"12345abcde", true},                   // digits + hex
+		{"HEAD", true},                         // HEAD is a safe git ref for working tree diffs
+	}
+	for _, tt := range tests {
+		t.Run(tt.sha, func(t *testing.T) {
+			assert.Equal(t, tt.want, isValidGitSHA(tt.sha))
+		})
+	}
+}
+
+func TestIsValidGitRefName(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{"main", true},
+		{"feature-x", true},
+		{"feature/login", true},
+		{"release/v1.0", true},
+		{"fix_bug", true},
+		{"v1.0", true},
+		{"", false},                          // empty
+		{"-c", false},                        // starts with dash
+		{"--upload-pack=evil", false},        // starts with dash
+		{"-m", false},                        // starts with dash
+		{"branch with spaces", false},        // contains spaces
+		{"branch\twith\ttabs", false},        // contains tabs
+		{"branch\nnewline", false},           // contains newline
+		{"branch\x00null", false},            // contains NUL byte
+		{"feature-x.y", true},               // dots are fine
+		{"a", true},                          // single char
+		{"release/1.0.0", true},             // complex but valid
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isValidGitRefName(tt.name))
+		})
+	}
+}
+
+// --- SHA validation in API endpoints (ISS-132) ---
+
+func TestServeGitFileDiff_InvalidSHA(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Argument injection attempt via SHA parameter
+	req := newRequest(t, http.MethodGet, "/api/git/file-diff?sha=--upload-pack%3Devil&path=README.md", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitFileDiff, req)
+	assertStatus(t, w, http.StatusBadRequest)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "InvalidSHA", resp["msgKey"])
+}
+
+func TestServeGitCommitFiles_InvalidSHA(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodGet, "/api/git/commit-files?sha=-c", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitCommitFiles, req)
+	assertStatus(t, w, http.StatusBadRequest)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "InvalidSHA", resp["msgKey"])
+}
+
+func TestServeGitVerifyCommits_ArgInjectionSHA(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/verify-commits", map[string]interface{}{
+		"shas": []string{"--upload-pack=evil"},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitVerifyCommits, req)
+	assertStatus(t, w, http.StatusBadRequest)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "InvalidSHA", resp["msgKey"])
+}
+
+func TestServeGitDiff_InvalidCommit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// commit parameter with argument injection attempt
+	req := newRequest(t, http.MethodGet, "/api/git/diff?path=README.md&commit=--upload-pack%3Devil", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitDiff, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+// --- Branch/tag name validation in API endpoints (ISS-151, ISS-152) ---
+
+func TestServeGitCheckout_FlagAsBranchName(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Argument injection attempt via branch name
+	req := newRequest(t, http.MethodPost, "/api/git/checkout", map[string]interface{}{
+		"branch": "--upload-pack=evil",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitCheckout, req)
+	assertStatus(t, w, http.StatusBadRequest)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "InvalidBranchName", resp["msgKey"])
+}
+
+func TestServeGitCheckout_DashCAsBranchName(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodPost, "/api/git/checkout", map[string]interface{}{
+		"branch": "-c",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitCheckout, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+func TestServeGitDeleteBranch_FlagAsBranchName(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/branch", map[string]interface{}{
+		"name": "--upload-pack=evil",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitBranch, req)
+	assertStatus(t, w, http.StatusBadRequest)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "invalid_branch_name", resp["error"])
+}
+
+func TestServeGitDeleteTag_FlagAsTagName(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/tags", map[string]interface{}{
+		"name": "-m",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitTags, req)
+	assertStatus(t, w, http.StatusBadRequest)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "invalid_tag_name", resp["error"])
+}
+
+func TestServeGitDeleteTag_UploadPackInjection(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	req := newRequest(t, http.MethodDelete, "/api/git/tags", map[string]interface{}{
+		"name": "--upload-pack=evil",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitTags, req)
+	assertStatus(t, w, http.StatusBadRequest)
+}

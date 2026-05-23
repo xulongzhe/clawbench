@@ -69,3 +69,5 @@ JobNotFound: 任务未找到
 AgentNotFound: 智能体未找到
 InvalidModelForAgent: 无效的模型
 InvalidThinkingEffort: 无效的思考深度级别
+InvalidSHA: 无效的提交SHA格式
+InvalidBranchName: 无效的分支名

@@ -8,12 +8,38 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"clawbench/internal/model"
 )
+
+// validGitSHA matches a hex commit SHA (6-40 hex chars, abbreviated or full).
+// Prevents argument injection where a malicious SHA starting with "-" could be
+// interpreted as a git flag. (ISS-132)
+var validGitSHA = regexp.MustCompile(`^[0-9a-f]{6,40}$`)
+
+// isValidGitRefName checks that a git ref name (branch/tag) is safe to pass
+// as a CLI argument. Disallows names starting with "-" (which git would
+// interpret as a flag) and names containing whitespace or control characters.
+// (ISS-151, ISS-152)
+var validGitRefName = regexp.MustCompile(`^[^ \t\n\r\x00-\x1f-][^ \t\n\r\x00-\x1f]*$`)
+
+// isValidGitSHA returns true if s looks like a valid hex commit SHA.
+// Also accepts "HEAD" which is a safe git ref used for working tree diffs.
+func isValidGitSHA(s string) bool {
+	if s == "HEAD" {
+		return true
+	}
+	return validGitSHA.MatchString(s)
+}
+
+// isValidGitRefName returns true if s is safe to pass as a git ref name argument.
+func isValidGitRefName(s string) bool {
+	return validGitRefName.MatchString(s)
+}
 
 // commitInfo represents a git commit in API responses.
 type commitInfo struct {
@@ -308,6 +334,10 @@ func ServeGitFileDiff(w http.ResponseWriter, r *http.Request) {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "MissingShaOrPath")
 		return
 	}
+	if !isValidGitSHA(sha) {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidSHA")
+		return
+	}
 
 	if _, ok := validateAndResolvePath(w, r, projectPath, filePath); !ok {
 		return
@@ -334,6 +364,10 @@ func ServeGitCommitFiles(w http.ResponseWriter, r *http.Request) {
 	sha := r.URL.Query().Get("sha")
 	if sha == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "MissingSha")
+		return
+	}
+	if !isValidGitSHA(sha) {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidSHA")
 		return
 	}
 
@@ -691,6 +725,10 @@ func ServeGitDiff(w http.ResponseWriter, r *http.Request) {
 	}
 
 	commit := r.URL.Query().Get("commit")
+	if commit != "" && !isValidGitSHA(commit) {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidSHA")
+		return
+	}
 	output, err := gitDiff(projectPath, relPath, commit)
 	writeDiffResponse(w, output, err)
 }
@@ -808,6 +846,14 @@ func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 	const maxSHAs = 500
 	if len(body.SHAs) > maxSHAs {
 		body.SHAs = body.SHAs[:maxSHAs]
+	}
+
+	// Validate all SHAs to prevent argument injection (ISS-132)
+	for _, sha := range body.SHAs {
+		if !isValidGitSHA(sha) {
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidSHA")
+			return
+		}
 	}
 
 	results := make(map[string]interface{}, len(body.SHAs))
@@ -1341,6 +1387,11 @@ func ServeGitCheckout(w http.ResponseWriter, r *http.Request) {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 		return
 	}
+	// Validate branch name to prevent argument injection (ISS-151)
+	if !isValidGitRefName(body.Branch) {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidBranchName")
+		return
+	}
 
 	// Acquire checkout mutex (non-blocking)
 	if !checkoutMu.TryLock() {
@@ -1390,12 +1441,13 @@ func ServeGitCheckout(w http.ResponseWriter, r *http.Request) {
 		stashed = true
 	}
 
-	// Switch branch
+	// Switch branch — use "--" separator to prevent branch name from being
+	// interpreted as a git flag (ISS-151).
 	switchArgs := []string{"switch"}
 	if body.Force {
 		switchArgs = append(switchArgs, "-f")
 	}
-	switchArgs = append(switchArgs, body.Branch)
+	switchArgs = append(switchArgs, "--", body.Branch)
 	switchCmd := exec.Command("git", switchArgs...)
 	switchCmd.Dir = projectPath
 	switchOut, switchErr := switchCmd.CombinedOutput()
@@ -1559,6 +1611,14 @@ func serveGitDeleteBranch(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Validate branch name to prevent argument injection (ISS-151)
+	if !isValidGitRefName(body.Name) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "invalid_branch_name",
+		})
+		return
+	}
 
 	// Check if it's the current branch
 	cmd := exec.Command("git", "symbolic-ref", "--short", "HEAD")
@@ -1584,13 +1644,14 @@ func serveGitDeleteBranch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Try safe delete first (-d), fall back to force (-D)
-	cmd = exec.Command("git", "branch", "-d", body.Name)
+	// Use "--" separator to prevent branch name from being interpreted as a flag (ISS-151)
+	cmd = exec.Command("git", "branch", "-d", "--", body.Name)
 	cmd.Dir = projectPath
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		errMsg := strings.TrimSpace(string(out))
 		if strings.Contains(errMsg, "not fully merged") || strings.Contains(errMsg, "not merged") {
-			cmd = exec.Command("git", "branch", "-D", body.Name)
+			cmd = exec.Command("git", "branch", "-D", "--", body.Name)
 			cmd.Dir = projectPath
 			out, err = cmd.CombinedOutput()
 		}
@@ -1714,8 +1775,17 @@ func serveGitDeleteTag(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Validate tag name to prevent argument injection (ISS-152)
+	if !isValidGitRefName(body.Name) {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "invalid_tag_name",
+		})
+		return
+	}
 
-	cmd := exec.Command("git", "tag", "-d", body.Name)
+	// Use "--" separator to prevent tag name from being interpreted as a flag (ISS-152)
+	cmd := exec.Command("git", "tag", "-d", "--", body.Name)
 	cmd.Dir = projectPath
 	out, err := cmd.CombinedOutput()
 	if err != nil {
