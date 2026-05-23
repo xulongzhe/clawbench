@@ -107,6 +107,33 @@ func TestGetAndClearCancelReason_NonStringValue(t *testing.T) {
 	assert.Equal(t, "", reason)
 }
 
+// --- SetCancelReason ---
+
+func TestSetCancelReason_StoresReason(t *testing.T) {
+	cleanupCancelReasons()
+	defer cleanupCancelReasons()
+
+	SetCancelReason("session-set-1", "disconnect")
+
+	reason := GetAndClearCancelReason("session-set-1")
+	assert.Equal(t, "disconnect", reason)
+
+	// Should be cleared after first read
+	reason2 := GetAndClearCancelReason("session-set-1")
+	assert.Equal(t, "", reason2)
+}
+
+func TestSetCancelReason_OverwritesPrevious(t *testing.T) {
+	cleanupCancelReasons()
+	defer cleanupCancelReasons()
+
+	SetCancelReason("session-set-2", "disconnect")
+	SetCancelReason("session-set-2", "user")
+
+	reason := GetAndClearCancelReason("session-set-2")
+	assert.Equal(t, "user", reason)
+}
+
 // --- CancelSession ---
 
 func TestCancelSession_WithCancelFunc(t *testing.T) {
