@@ -627,10 +627,51 @@ func TestAIChatStream_ClientDisconnect(t *testing.T) {
 	AIChatStream(w, req)
 
 	// After SSE disconnect, the AI session should continue running
-	// (no ForceCancelSession called), so cancel reason should be empty
+	// (no ForceCancelSession called), but the disconnect reason is recorded
+	// so the session finalizer knows the SSE client went away.
 	reason := service.GetAndClearCancelReason(sessionID)
-	assert.Equal(t, "", reason)
+	assert.Equal(t, "disconnect", reason)
 	// Session should still be running
 	assert.True(t, service.IsSessionRunning(sessionID))
 	_ = ch
+}
+
+func TestAIChatStream_ClientDisconnectDuringStream(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "stream-disconnect-active"
+	ch := setupStreamSession(sessionID)
+	defer cleanupStreamSession(sessionID)
+
+	// Register a cancel function
+	_, cancel := context.WithCancel(context.Background())
+	service.RegisterSessionCancel(sessionID, cancel)
+
+	// Send a content event, then cancel the client context to simulate disconnect
+	go func() {
+		ch <- ai.StreamEvent{Type: "content", Content: "partial"}
+		// Give the SSE handler time to receive the content event
+		time.Sleep(100 * time.Millisecond)
+		// Cancel the client context (simulates disconnect)
+		// The SSE handler should detect ctx.Done() and record "disconnect" reason
+	}()
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	// Cancel after a short delay to allow content to be sent
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel2()
+	}()
+
+	req := newRequest(t, http.MethodGet, "/api/ai/chat/stream?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	req = req.WithContext(ctx2)
+
+	w := httptest.NewRecorder()
+	AIChatStream(w, req)
+
+	// After client disconnect, cancel reason should be "disconnect" (not "user")
+	reason := service.GetAndClearCancelReason(sessionID)
+	assert.Equal(t, "disconnect", reason)
 }

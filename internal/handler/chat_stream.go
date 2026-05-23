@@ -206,6 +206,9 @@ func AIChatStream(w http.ResponseWriter, r *http.Request) {
 			// network switch) and the frontend will reconnect or fall back to polling.
 			// Let the AI goroutine finish naturally; it cleans itself up via defers.
 			// If no SSE client reconnects, the goroutine still completes and unregisters.
+			// Record the disconnect reason so the session finalizer knows the SSE
+			// client went away (distinct from an explicit user cancel).
+			service.SetCancelReason(sessionID, "disconnect")
 			slog.Info("sse client disconnected, ai session continues",
 				slog.String("session_id", sessionID),
 			)
