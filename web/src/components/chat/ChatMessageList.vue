@@ -84,6 +84,7 @@ import PendingMessageItem from './PendingMessageItem.vue'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useLocalhostUrlClickHandler } from '@/composables/useLocalhostAnnotation.ts'
+import { store } from '@/stores/app.ts'
 import { computeRemainingCount, computeLastRoundIndices, isCollapsed as isCollapsedUtil } from '@/utils/messageListUtils.ts'
 
 const { t } = useI18n()
@@ -174,12 +175,29 @@ function handleCollapse(index) {
 
 // Inject bottomSheetRef from parent for closing
 const chatUI = inject('chatUI', {})
+const hotSwitchProject = inject('hotSwitchProject', null)
 
-function handleChatClick(event) {
+async function handleChatClick(event) {
   // 1. Handle localhost URL clicks (icon button or <a> tag) — App mode only
   if (handleLocalhostUrlClick(event)) return
 
-  // 2. Commit hash click (span or button) — check before file-path to prevent
+  // 2. Worktree switch button (before file-path to avoid .worktrees paths being treated as files)
+  const wtBtn = (event.target).closest('.chat-worktree-switch-btn')
+  if (wtBtn) {
+    event.preventDefault()
+    event.stopPropagation()
+    const wtPath = wtBtn.getAttribute('data-worktree-path')
+    if (wtPath) {
+      if (hotSwitchProject) {
+        await hotSwitchProject(wtPath)
+      } else {
+        await store.setProject(wtPath)
+      }
+    }
+    return
+  }
+
+  // 3. Commit hash click (span or button) — check before file-path to prevent
   //    7-char hex hashes from being misinterpreted as file paths.
   //    Note: do NOT call navigateToFileViewer() here — handleNavigateToCommit
   //    in App.vue switches to the history tab which hides the chat panel.
@@ -194,7 +212,7 @@ function handleChatClick(event) {
     return
   }
 
-  // 3. File-path button handler
+  // 4. File-path button handler
   const btn = (event.target).closest('.chat-file-open-btn')
   if (btn) {
     event.preventDefault()

@@ -3,6 +3,7 @@ import { splitPath } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
 import { gt } from '@/composables/useLocale'
 import { clearCommitHashCache } from '@/composables/useCommitHashAnnotation.ts'
+import { clearWorktreeCache } from '@/composables/useWorktreeAnnotation.ts'
 
 /**
  * Resolve a file path to a project-relative path usable by store.selectFile().
@@ -291,6 +292,7 @@ export function clearVerifiedCache(): void {
     verifiedCache.clear()
     inFlight.clear()
     clearCommitHashCache()
+    clearWorktreeCache()
 }
 
 /**
