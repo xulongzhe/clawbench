@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
 	"time"
 
 	"clawbench/internal/model"
@@ -200,6 +202,8 @@ func AddChatMessage(projectPath, backend, sessionID, role, content string, files
 }
 
 // GetRecentProjects returns the most recent 10 project paths.
+// It filters out paths whose directories no longer exist on disk
+// and removes those stale entries from the database.
 func GetRecentProjects() ([]string, error) {
 	var paths []string
 	rows, err := DBRead.Query("SELECT project_path FROM recent_projects ORDER BY accessed_at DESC LIMIT 10")
@@ -214,7 +218,32 @@ func GetRecentProjects() ([]string, error) {
 		}
 		paths = append(paths, p)
 	}
-	return paths, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Filter out projects whose directories no longer exist
+	var valid []string
+	var stale []string
+	for _, p := range paths {
+		info, statErr := os.Stat(p)
+		if statErr == nil && info.IsDir() {
+			valid = append(valid, p)
+		} else {
+			stale = append(stale, p)
+		}
+	}
+
+	// Clean up stale entries from database
+	for _, p := range stale {
+		if delErr := RemoveRecentProject(p); delErr != nil {
+			slog.Warn("failed to remove stale recent project", slog.String("path", p), slog.String("err", delErr.Error()))
+		} else {
+			slog.Info("removed stale recent project", slog.String("path", p))
+		}
+	}
+
+	return valid, nil
 }
 
 // AddRecentProject upserts a project path and prunes old entries beyond 10.

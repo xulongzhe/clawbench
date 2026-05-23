@@ -66,7 +66,11 @@ export async function apiPost<T = unknown>(url: string, body: unknown, opts: Api
             signal,
         })
         const data = await resp.json().catch(() => ({})) as Record<string, unknown>
-        if (!resp.ok) throw new Error(data.error ? String(data.error) : resp.statusText)
+        if (!resp.ok) {
+            const err = new Error(data.error ? String(data.error) : resp.statusText)
+            if (data.msgKey) (err as Error & { msgKey?: string }).msgKey = String(data.msgKey)
+            throw err
+        }
         return data as T
     } finally {
         cleanup()

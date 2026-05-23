@@ -1561,12 +1561,12 @@ func TestServeQuickCommandByID_DelegateToServeQuickCommands(t *testing.T) {
 // ============================================================================
 
 func TestServeRecentProjects_AddAndList(t *testing.T) {
-	_, teardown := setupTestEnv(t)
+	env, teardown := setupTestEnv(t)
 	defer teardown()
 
-	// Add a project via POST
+	// Add a project via POST (use a real directory so GetRecentProjects doesn't filter it out)
 	addReq := newRequest(t, http.MethodPost, "/api/recent-projects", map[string]string{
-		"path": "/home/user/myproject",
+		"path": env.ProjectDir,
 	})
 	w := callHandler(ServeRecentProjects, addReq)
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -1579,7 +1579,7 @@ func TestServeRecentProjects_AddAndList(t *testing.T) {
 	// GetRecentProjects returns []string
 	var projects []string
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &projects))
-	assert.Contains(t, projects, "/home/user/myproject")
+	assert.Contains(t, projects, env.ProjectDir)
 }
 
 func TestServeRecentProjects_Delete(t *testing.T) {

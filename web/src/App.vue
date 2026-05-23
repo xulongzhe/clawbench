@@ -308,7 +308,25 @@ async function hotSwitchProject(newProjectPath, pendingSessionId) {
   await new Promise(r => setTimeout(r, 150))
 
   // ── Phase 2: POST to backend to set new project cookie ──
-  await store.setProject(newProjectPath)
+  try {
+    await store.setProject(newProjectPath)
+  } catch (err) {
+    // Project doesn't exist — revert fade-out and show error
+    switchingProject.value = false
+    const msgKey = err?.msgKey
+    if (msgKey === 'NotADirectory') {
+      toast.show(t('appHeader.projectPathNotFound'), { icon: '⚠️', type: 'error', duration: 3000 })
+      // Remove stale project from recent list
+      fetch('/api/recent-projects', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: newProjectPath })
+      }).catch(() => {})
+    } else {
+      toast.show(t('appHeader.switchProjectFailed', { error: err.message }), { icon: '⚠️', type: 'error', duration: 3000 })
+    }
+    return
+  }
 
   // ── Phase 3: Reset module-level singletons ──
   // (store state already reset by setProject, but identity/agents need explicit reset)
