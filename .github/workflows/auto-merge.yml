@@ -20,7 +20,7 @@ jobs:
       - name: Find eligible PRs
         id: find-prs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
           # Use GitHub API directly instead of gh pr list to avoid search index delay
           # when triggered by pull_request: labeled events
@@ -58,7 +58,7 @@ jobs:
       - name: Wait for CI and merge
         if: steps.find-prs.outputs.has_prs == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.ADMIN_TOKEN }}
         run: |
           MAX_ATTEMPTS=40
           INTERVAL=15
