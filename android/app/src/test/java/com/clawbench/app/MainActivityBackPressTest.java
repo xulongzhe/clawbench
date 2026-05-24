@@ -23,19 +23,24 @@ import static org.mockito.Mockito.when;
 /**
  * Unit tests for MainActivity's onBackPressed JS delegation logic.
  *
- * The new onBackPressed flow:
+ * The onBackPressed flow:
  * 1. If fullscreen video is showing → exit fullscreen
  * 2. If on login page → super.onBackPressed() (exit app)
- * 3. Otherwise → evaluateJavascript to dispatch 'clawbench-back-press' event
+ * 3. If WebView is not connected (stuck state) → showLoginPage (recovery)
+ * 4. Otherwise → evaluateJavascript to dispatch 'clawbench-back-press' event
  *    - If JS sets __clawbenchBackHandled = true → JS handled it, don't call super
  *    - If JS doesn't handle → call super.onBackPressed() (default back behavior)
  *
- * Tests cover the JS evaluation, callback result handling, and fullscreen logic.
+ * Tests cover the JS evaluation, callback result handling, fullscreen logic,
+ * and the !webViewConnected recovery path.
+ *
  * Note: super.onBackPressed() cannot be called on an Unsafe-allocated activity
  * (throws NPE from ComponentActivity.getLifecycle()), so callback tests that
- * trigger the "not handled" path use a spy to intercept the super call.
+ * trigger the "not handled" path verify the NPE comes from the expected source.
  */
 public class MainActivityBackPressTest {
+
+    private static final String LOGIN_HTML_URL = "file:///android_asset/login.html";
 
     private MainActivity activity;
     private WebView mockWebView;
@@ -54,6 +59,10 @@ public class MainActivityBackPressTest {
 
         // Ensure customView is null (no fullscreen video)
         setField(activity, "customView", null);
+
+        // By default, set webViewConnected = true so that the JS delegation
+        // path is tested (the !webViewConnected recovery goes to showLoginPage instead)
+        setField(activity, "webViewConnected", true);
     }
 
     @After
@@ -71,7 +80,7 @@ public class MainActivityBackPressTest {
 
     @Test
     public void onBackPressed_nonLoginPage_dispatchesClawbenchBackPress() throws Exception {
-        // Set WebView URL to non-login page
+        // WebView is connected, URL is non-login page → JS delegation
         when(mockWebView.getUrl()).thenReturn("https://example.com/app");
 
         activity.onBackPressed();
@@ -83,7 +92,7 @@ public class MainActivityBackPressTest {
     @Test
     public void onBackPressed_loginPage_doesNotDispatchBackPressEvent() throws Exception {
         // Set WebView URL to login page
-        when(mockWebView.getUrl()).thenReturn("file:///android_asset/login.html");
+        when(mockWebView.getUrl()).thenReturn(LOGIN_HTML_URL);
 
         // On login page, onBackPressed calls super.onBackPressed() directly.
         // Since super.onBackPressed() crashes on Unsafe-allocated activity,
@@ -100,14 +109,33 @@ public class MainActivityBackPressTest {
     }
 
     @Test
-    public void onBackPressed_nullUrl_dispatchesClawbenchBackPress() throws Exception {
-        // WebView URL is null (page not loaded yet)
+    public void onBackPressed_nullUrl_webViewNotConnected_navigatesToLoginPage() throws Exception {
+        // WebView URL is null AND webView is not connected (stuck state)
+        setField(activity, "webViewConnected", false);
         when(mockWebView.getUrl()).thenReturn(null);
 
         activity.onBackPressed();
 
-        // With null URL, should proceed to JS delegation
-        verify(mockWebView).evaluateJavascript(contains("clawbench-back-press"), any(ValueCallback.class));
+        // Should navigate to login page for recovery, NOT dispatch JS event
+        verify(mockWebView).loadUrl(LOGIN_HTML_URL);
+        verify(mockWebView, never()).evaluateJavascript(contains("clawbench-back-press"), any(ValueCallback.class));
+    }
+
+    // =====================================================
+    // !webViewConnected recovery: showLoginPage
+    // =====================================================
+
+    @Test
+    public void onBackPressed_webViewNotConnected_remoteUrl_navigatesToLoginPage() throws Exception {
+        // WebView is NOT connected (stuck state) and URL is a remote page
+        setField(activity, "webViewConnected", false);
+        when(mockWebView.getUrl()).thenReturn("https://192.168.1.100:20000");
+
+        activity.onBackPressed();
+
+        // Should navigate to login page instead of dispatching JS event
+        verify(mockWebView).loadUrl(LOGIN_HTML_URL);
+        verify(mockWebView, never()).evaluateJavascript(contains("clawbench-back-press"), any(ValueCallback.class));
     }
 
     // =====================================================

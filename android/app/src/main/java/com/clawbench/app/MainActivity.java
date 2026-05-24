@@ -29,6 +29,7 @@ import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -101,6 +102,16 @@ public class MainActivity extends AppCompatActivity {
     // Android WebView calls onPageFinished() even for failed loads, so
     // without this guard the browser error page would flash briefly.
     private boolean loadErrorPending = false;
+
+    // Connection timeout runnable: if the remote page hasn't loaded within
+    // TIMEOUT_MS, navigate back to the login page. Prevents the user from
+    // being stuck on a black screen when the server is unreachable or slow.
+    private Runnable connectionTimeoutRunnable;
+    private static final int CONNECTION_TIMEOUT_MS = 15_000;
+
+    // Pending error message to deliver to the login page once it finishes loading.
+    // Replaces the old fixed 300ms delay — see showLoginPage() and onPageFinished().
+    private String pendingLoginErrorMessage = null;
 
     // File chooser state for WebView <input type="file"> support
     private ValueCallback<Uri[]> filePathCallback;
@@ -219,6 +230,7 @@ public class MainActivity extends AppCompatActivity {
         if (savedUrl != null) {
             webView.setVisibility(View.INVISIBLE);
             webView.loadUrl(savedUrl);
+            startConnectionTimeout();
         } else {
             webView.loadUrl(LOGIN_HTML_URL);
         }
@@ -500,18 +512,37 @@ public class MainActivity extends AppCompatActivity {
     private void showLoginPage(String errorMessage) {
         webViewConnected = false;
         loadErrorPending = false;
+        cancelConnectionTimeout();
+        // Store error message for delivery after login page finishes loading.
+        // See onPageFinished() where pendingLoginErrorMessage is consumed.
+        pendingLoginErrorMessage = errorMessage;
         // Note: don't set View.INVISIBLE here — onPageStarted will set VISIBLE
         // for the login page URL, which is the correct time to show it.
         webView.loadUrl(LOGIN_HTML_URL);
-        if (errorMessage != null) {
-            // The page needs a moment to load before we can call JS on it.
-            // We'll defer the error display via a delayed runnable.
-            webView.postDelayed(() -> {
-                if (!isFinishing() && !isDestroyed()) {
-                    String escaped = errorMessage.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
-                    webView.evaluateJavascript("if(typeof onConnectError==='function'){onConnectError('" + escaped + "')}", null);
-                }
-            }, 300);
+    }
+
+    /**
+     * Start a connection timeout timer. If the remote page hasn't loaded
+     * within CONNECTION_TIMEOUT_MS, navigate back to the login page.
+     */
+    private void startConnectionTimeout() {
+        cancelConnectionTimeout();
+        connectionTimeoutRunnable = () -> {
+            if (!isFinishing() && !isDestroyed() && !webViewConnected) {
+                AppLog.w(TAG, "Connection timeout — returning to login page");
+                showLoginPage("连接超时，请检查服务器地址和网络连接。");
+            }
+        };
+        webView.postDelayed(connectionTimeoutRunnable, CONNECTION_TIMEOUT_MS);
+    }
+
+    /**
+     * Cancel any pending connection timeout timer.
+     */
+    private void cancelConnectionTimeout() {
+        if (connectionTimeoutRunnable != null) {
+            webView.removeCallbacks(connectionTimeoutRunnable);
+            connectionTimeoutRunnable = null;
         }
     }
 
@@ -539,6 +570,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (isNetworkAvailable()) {
             webView.loadUrl(url);
+            startConnectionTimeout();
         } else {
             // No network — go back to login page with error
             showLoginPage("网络不可用，请检查网络连接。");
@@ -614,6 +646,12 @@ public class MainActivity extends AppCompatActivity {
             super.onBackPressed();
             return;
         }
+        // If the WebView is not connected (stuck on black screen or error),
+        // go back to the login page instead of exiting the app.
+        if (!webViewConnected) {
+            showLoginPage(null);
+            return;
+        }
         // Delegate to JS: dispatch a clawbench-back-press event.
         // The JS layer checks if any drill-down page can navigate back.
         // If it can, the JS handler calls goBack() and sets __clawbenchBackHandled = true.
@@ -643,6 +681,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         // Do NOT stop BackgroundService here — it should survive Activity lifecycle
         // so the SSH tunnel continues running when the app is in background.
+        cancelConnectionTimeout();
         instance = null; // Clear static reference to prevent memory leak / stale access
         super.onDestroy();
     }
@@ -991,7 +1030,16 @@ public class MainActivity extends AppCompatActivity {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
             if (LOGIN_HTML_URL.equals(url)) {
-                // Login page — already visible from onPageStarted.
+                // Login page finished loading — deliver any pending error message.
+                // This is more reliable than a fixed delay (the old 300ms approach)
+                // because it waits for the page to actually be ready.
+                cancelConnectionTimeout();
+                if (pendingLoginErrorMessage != null) {
+                    String msg = pendingLoginErrorMessage;
+                    pendingLoginErrorMessage = null;
+                    String escaped = msg.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n");
+                    view.evaluateJavascript("if(typeof onConnectError==='function'){onConnectError('" + escaped + "')}", null);
+                }
             } else if (loadErrorPending) {
                 // Error was received during this page load — don't show the WebView.
                 // The delayed showLoginPage() will handle the transition.
@@ -999,6 +1047,7 @@ public class MainActivity extends AppCompatActivity {
             } else {
                 // Remote page finished loading successfully — show the WebView.
                 webViewConnected = true;
+                cancelConnectionTimeout();
                 view.setVisibility(View.VISIBLE);
             }
         }
@@ -1032,11 +1081,28 @@ public class MainActivity extends AppCompatActivity {
             }
             String serverUrl = prefs.getString(KEY_SERVER_URL, "");
             if (serverUrl.startsWith("https://")) {
-                new AlertDialog.Builder(MainActivity.this)
+                // Track whether the handler has been responded to, to prevent leaks
+                // if the Activity is destroyed while the dialog is showing.
+                final boolean[] handlerUsed = {false};
+                AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
                         .setTitle("SSL 证书验证失败")
                         .setMessage("服务器使用了自签名证书，连接可能不安全。\n\n仅当您信任该服务器时才继续。")
-                        .setPositiveButton("信任并继续", (dialog, which) -> handler.proceed())
-                        .setNegativeButton("取消连接", (dialog, which) -> handler.cancel())
+                        .setPositiveButton("信任并继续", (dialog1, which) -> {
+                            handlerUsed[0] = true;
+                            handler.proceed();
+                        })
+                        .setNegativeButton("取消连接", (dialog1, which) -> {
+                            handlerUsed[0] = true;
+                            handler.cancel();
+                        })
+                        .setOnDismissListener(dialog1 -> {
+                            // If the dialog was dismissed without a button press
+                            // (e.g., Activity destroyed), cancel the SSL connection
+                            // to prevent the handler from leaking.
+                            if (!handlerUsed[0]) {
+                                handler.cancel();
+                            }
+                        })
                         .setCancelable(false)
                         .show();
             } else {
@@ -1066,6 +1132,66 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }, 600);
             }
+        }
+
+        @Override
+        public void onReceivedHttpError(WebView view, WebResourceRequest request, WebResourceResponse errorResponse) {
+            super.onReceivedHttpError(view, request, errorResponse);
+            // Only handle main frame HTTP errors (4xx/5xx) during initial connection.
+            // Once the app is loaded (webViewConnected), HTTP errors are handled by the
+            // Vue frontend (e.g., 401 redirects to login within the SPA).
+            if (request.isForMainFrame() && !webViewConnected) {
+                int statusCode = errorResponse.getStatusCode();
+                AppLog.w(TAG, "Main frame HTTP error during connection: " + statusCode);
+                loadErrorPending = true;
+                view.setVisibility(View.INVISIBLE);
+                String msg;
+                if (statusCode == 401 || statusCode == 403) {
+                    msg = "认证失败，请检查密码是否正确。";
+                } else if (statusCode >= 500) {
+                    msg = "服务器错误 (" + statusCode + ")，请稍后重试。";
+                } else if (statusCode >= 400) {
+                    msg = "请求错误 (" + statusCode + ")，请检查服务器地址。";
+                } else {
+                    msg = "连接失败，请检查服务器地址和网络连接。";
+                }
+                view.postDelayed(() -> {
+                    if (!isFinishing() && !isDestroyed() && !webViewConnected && loadErrorPending) {
+                        showLoginPage(msg);
+                    }
+                }, 600);
+            }
+        }
+
+        @Override
+        public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+            // WebView renderer crashed (OOM, GPU failure, etc.)
+            // Reset state and recover by showing the login page.
+            AppLog.e(TAG, "WebView renderer crashed! didCrash=" + detail.didCrash());
+            webViewConnected = false;
+            loadErrorPending = false;
+            cancelConnectionTimeout();
+            // The WebView is in an unusable state — destroy and recreate it.
+            // Simply showing the login page won't work because the renderer is dead.
+            runOnUiThread(() -> {
+                try {
+                    // Destroy the old WebView and recreate
+                    android.view.ViewGroup parent = (android.view.ViewGroup) view.getParent();
+                    int index = parent.indexOfChild(view);
+                    parent.removeView(view);
+                    view.destroy();
+                    WebView newView = new WebView(MainActivity.this);
+                    parent.addView(newView, index);
+                    webView = newView;
+                    setupWebView();
+                    showLoginPage("页面渲染异常，请重新连接。");
+                } catch (Exception e) {
+                    AppLog.e(TAG, "Failed to recreate WebView after crash", e);
+                    // Last resort: finish the activity so the user can relaunch
+                    finish();
+                }
+            });
+            return true; // We handled the crash — don't let the default behavior show a blank screen
         }
     }
 
