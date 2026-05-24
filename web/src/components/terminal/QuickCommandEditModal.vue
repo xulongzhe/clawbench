@@ -15,7 +15,7 @@
       </div>
       <div class="form-group">
         <label class="form-label">{{ t('terminal.commandText') }} <span class="required">*</span></label>
-        <input type="text" class="form-input" v-model="form.command" :placeholder="t('terminal.commandText')" />
+        <textarea class="form-input form-textarea" v-model="form.command" :placeholder="t('terminal.commandText')" rows="4" />
       </div>
       <div v-if="formError" class="form-error">{{ formError }}</div>
 
@@ -155,6 +155,13 @@ async function saveCommand() {
 
 .form-input:focus {
   border-color: var(--accent-color, #0066cc);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+  font-family: inherit;
 }
 
 .form-error {
