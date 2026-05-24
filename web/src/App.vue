@@ -606,9 +606,12 @@ function handleSessionDelete(sessionId, backend) {
 }
 
 async function handleLoginSuccess() {
+    // Load project BEFORE setting isAuthenticated so the backend sets the
+    // clawbench_project cookie first. Without this, ChatPanelContent mounts
+    // and calls loadHistory() which fails with NoProjectSelected (no cookie).
+    try { await store.loadProject() } catch (_) { /* loadProject has its own error handling */ }
     isAuthenticated.value = true
     initMermaid()
-    await store.loadProject()
     await store.loadFiles('')
 }
 
@@ -941,6 +944,12 @@ onMounted(async () => {
         return
     }
     initMermaid()
+    // Load project first so the backend sets the clawbench_project cookie.
+    // Without this, subsequent chat/session API calls fail with NoProjectSelected
+    // on first login (no cookie yet) and show "加载聊天记录失败".
+    try { await store.loadProject() } catch (_) {
+        toast.show(t('toast.projectLoadFailed'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() }); return
+    }
     await sessionIdentity.initSessionFromAPI()
     // Use loadSessionsOnce() which correctly sets chatUnread to true OR false.
     // The old code only set chatUnread=true and never corrected a stale true.
@@ -948,9 +957,6 @@ onMounted(async () => {
     if (isAppMode.value) syncToNative().catch(() => {})
     loadSSHInfo().catch(() => {})
     loadTerminalStatus().catch(() => {})
-    try { await store.loadProject() } catch (_) {
-        toast.show(t('toast.projectLoadFailed'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() }); return
-    }
     try { await store.loadFiles('') } catch (_) {
         toast.show(t('toast.fileListLoadFailed'), { icon: '⚠️', type: 'error', duration: 6000 })
     }

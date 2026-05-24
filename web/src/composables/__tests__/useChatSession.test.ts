@@ -1464,6 +1464,25 @@ describe('loadHistory', () => {
     )
     expect(session.switching.value).toBe(false)
   })
+
+  it('shows toast on NoProjectSelected (403) when project cookie is not set', async () => {
+    // Simulate the 403 response that occurs on first login before
+    // loadProject() has set the clawbench_project cookie.
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: () => Promise.resolve({ error: 'no project selected', code: 403, msgKey: 'NoProjectSelected' }),
+    })
+
+    const session = createSession()
+    await session.loadHistory(true, true, false)
+
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+    expect(session.switching.value).toBe(false)
+  })
 })
 
 // ───────────────────────────────────────────────────────────

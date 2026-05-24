@@ -159,6 +159,101 @@ describe('store', () => {
             // 0 is not > 0, so it stays at the default set by resetProjectState
             expect(store.state.recentProjectsMaxCount).toBe(10)
         })
+
+        it('sets projectRoot and projectName from /api/project', async () => {
+            mockApiGet.mockImplementation((url: string) => {
+                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/project') return { path: '/home/user/myproject' }
+                return {}
+            })
+            mockApiPost.mockResolvedValue({})
+
+            await store.loadProject()
+
+            expect(store.state.projectRoot).toBe('/home/user/myproject')
+            expect(store.state.projectName).toBe('myproject')
+        })
+
+        it('saves project path to localStorage', async () => {
+            mockApiGet.mockImplementation((url: string) => {
+                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/project') return { path: '/home/user/myproject' }
+                return {}
+            })
+            mockApiPost.mockResolvedValue({})
+
+            await store.loadProject()
+
+            expect(localStorage.getItem('currentProjectPath')).toBe('/home/user/myproject')
+        })
+
+        it('posts project path to recent-projects API', async () => {
+            mockApiGet.mockImplementation((url: string) => {
+                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/project') return { path: '/home/user/myproject' }
+                return {}
+            })
+            mockApiPost.mockResolvedValue({})
+
+            await store.loadProject()
+
+            expect(mockApiPost).toHaveBeenCalledWith('/api/recent-projects', { path: '/home/user/myproject' })
+        })
+
+        it('does not set projectRoot when /api/project returns empty path', async () => {
+            store.state.projectRoot = '/previous'
+
+            mockApiGet.mockImplementation((url: string) => {
+                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/project') return { path: '' }
+                return {}
+            })
+
+            await store.loadProject()
+
+            expect(store.state.projectRoot).toBe('/previous')
+        })
+
+        it('tolerates /api/watch-dir failure and still loads project', async () => {
+            mockApiGet.mockImplementation((url: string) => {
+                if (url === '/api/watch-dir') throw new Error('network error')
+                if (url === '/api/project') return { path: '/home/user/myproject' }
+                return {}
+            })
+            mockApiPost.mockResolvedValue({})
+
+            await store.loadProject()
+
+            expect(store.state.projectRoot).toBe('/home/user/myproject')
+            expect(store.state.projectName).toBe('myproject')
+        })
+
+        it('tolerates /api/project failure without throwing', async () => {
+            store.state.projectRoot = '/previous'
+
+            mockApiGet.mockImplementation((url: string) => {
+                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/project') throw new Error('network error')
+                return {}
+            })
+
+            // Should not throw — the error is caught internally
+            await store.loadProject()
+
+            // projectRoot stays as-is since /api/project failed
+            expect(store.state.projectRoot).toBe('/previous')
+        })
+
+        it('tolerates both /api/watch-dir and /api/project failing', async () => {
+            store.state.projectRoot = '/previous'
+
+            mockApiGet.mockImplementation(() => { throw new Error('network error') })
+
+            // Should not throw — both errors are caught internally
+            await store.loadProject()
+
+            expect(store.state.projectRoot).toBe('/previous')
+        })
     })
 
     // ── setProject ──
