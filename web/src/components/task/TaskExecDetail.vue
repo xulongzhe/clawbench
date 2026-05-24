@@ -256,8 +256,8 @@ function handleContentClick(event) {
     return
   }
 
-  // 3. Handle worktree switch buttons
-  const wtBtn = event.target.closest('.chat-worktree-switch-btn')
+  // 3. Handle worktree action buttons
+  const wtBtn = event.target.closest('.chat-worktree-btn')
   if (wtBtn) {
     event.preventDefault()
     event.stopPropagation()

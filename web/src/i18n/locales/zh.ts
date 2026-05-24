@@ -124,7 +124,9 @@ export default {
       uploading: '上传中...',
       openFile: '打开文件',
       openCommit: '打开 Commit 详情',
-      openWorktree: '切换到 Worktree',
+      openWorktree: 'Worktree 操作',
+      switchWorktree: '切换工作树',
+      openDirectory: '打开目录',
     },
     quickSend: {
       title: '快捷发送',
@@ -599,7 +601,9 @@ export default {
       workingTree: '工作区',
       openFile: '打开文件',
       openCommit: '打开 Commit 详情',
-      openWorktree: '切换到 Worktree',
+      openWorktree: 'Worktree 操作',
+      switchWorktree: '切换工作树',
+      openDirectory: '打开目录',
     },
     graph: {
       workingTree: '工作区',

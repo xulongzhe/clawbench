@@ -199,7 +199,7 @@ function handleToolDetailClick(event) {
   const toolName = event.currentTarget.dataset?.toolName
   if (toolName && handleToolAction(toolName, event, emit)) return
   // Allow file-open buttons and commit-hash elements to bubble
-  if (event.target.closest('.chat-file-open-btn') || event.target.closest('.chat-commit-hash, .chat-commit-open-btn') || event.target.closest('.chat-worktree-switch-btn')) {
+  if (event.target.closest('.chat-file-open-btn') || event.target.closest('.chat-commit-hash, .chat-commit-open-btn') || event.target.closest('.chat-worktree-btn')) {
     return
   }
   event.stopPropagation()
@@ -691,7 +691,7 @@ onUnmounted(() => {
   background: var(--bg-tertiary, #f0f0f0);
 }
 
-.content-blocks .chat-worktree-switch-btn {
+.content-blocks .chat-worktree-btn {
   background: none;
   border: none;
   padding: 2px;

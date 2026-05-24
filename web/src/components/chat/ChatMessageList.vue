@@ -84,6 +84,7 @@ import PendingMessageItem from './PendingMessageItem.vue'
 import { useDoubleClickCopy } from '@/composables/useDoubleClickCopy.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useLocalhostUrlClickHandler } from '@/composables/useLocalhostAnnotation.ts'
+import { useDialog } from '@/composables/useDialog'
 import { store } from '@/stores/app.ts'
 import { computeRemainingCount, computeLastRoundIndices, isCollapsed as isCollapsedUtil } from '@/utils/messageListUtils.ts'
 
@@ -110,6 +111,7 @@ const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-deta
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()
 const { openFilePath } = useFilePathAnnotation()
+const dialog = useDialog()
 const { handleLocalhostUrlClick } = useLocalhostUrlClickHandler()
 
 // How many older messages are not yet loaded
@@ -181,17 +183,37 @@ async function handleChatClick(event) {
   // 1. Handle localhost URL clicks (icon button or <a> tag) — App mode only
   if (handleLocalhostUrlClick(event)) return
 
-  // 2. Worktree switch button (before file-path to avoid .worktrees paths being treated as files)
-  const wtBtn = (event.target).closest('.chat-worktree-switch-btn')
+  // 2. Worktree action button — show modal with "Switch" or "Open directory"
+  const wtBtn = (event.target).closest('.chat-worktree-btn')
   if (wtBtn) {
     event.preventDefault()
     event.stopPropagation()
     const wtPath = wtBtn.getAttribute('data-worktree-path')
+    const filePath = wtBtn.getAttribute('data-file-path')
     if (wtPath) {
-      if (hotSwitchProject) {
-        await hotSwitchProject(wtPath)
-      } else {
-        await store.setProject(wtPath)
+      const switchLabel = t('chat.attach.switchWorktree')
+      const openLabel = t('chat.attach.openDirectory')
+      // Use prompt dialog as a two-option chooser:
+      // confirm → switch to worktree, cancel → open directory (if available)
+      const result = await dialog.confirm(
+        filePath ? `${switchLabel}\n${openLabel}` : switchLabel,
+        {
+          title: t('chat.attach.openWorktree'),
+          confirmText: switchLabel,
+          cancelText: filePath ? openLabel : t('common.cancel'),
+        }
+      )
+      if (result) {
+        // Switch to worktree
+        if (hotSwitchProject) {
+          await hotSwitchProject(wtPath)
+        } else {
+          await store.setProject(wtPath)
+        }
+      } else if (filePath) {
+        // Open directory
+        openFilePath(filePath)
+        chatUI.navigateToFileViewer?.()
       }
     }
     return

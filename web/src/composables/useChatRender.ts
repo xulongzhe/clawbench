@@ -38,7 +38,7 @@ export function useChatRender(options) {
   const { messages, theme, currentSessionId } = options
   const { annotateFilePaths, verifyFilePaths } = useFilePathAnnotation()
   const { annotateCommitHashes, verifyCommitHashes } = useCommitHashAnnotation()
-  const { annotateWorktreePaths } = useWorktreeAnnotation()
+  const { annotateWorktreePaths, verifyWorktreePaths } = useWorktreeAnnotation()
   const { annotateLocalhostUrls } = useLocalhostAnnotation()
 
   const blockTasks = reactive({})
@@ -152,8 +152,15 @@ export function useChatRender(options) {
       // Annotate worktree paths BEFORE file paths — prevents file-path regex from
       // partially matching worktree directory paths (e.g. matching
       // /home/x/project/.worktrees instead of the full /home/x/project/.worktrees/fix)
-      const { html: worktreeHtml } = annotateWorktreePaths(html, { projectRoot })
+      const { html: worktreeHtml, detectedWorktreePaths } = annotateWorktreePaths(html, { projectRoot })
       html = worktreeHtml
+      if (detectedWorktreePaths.length > 0) {
+        const uniqueWtPaths = [...new Set(detectedWorktreePaths)]
+        nextTick(() => {
+          const el = document.getElementById('aiChatMessages')
+          if (el) verifyWorktreePaths(uniqueWtPaths, el, projectRoot)
+        })
+      }
       const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, { projectRoot })
       html = annotatedHtml
       if (detectedPaths.length > 0) {

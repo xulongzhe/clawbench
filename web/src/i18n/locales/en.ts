@@ -124,7 +124,9 @@ export default {
       uploading: 'Uploading...',
       openFile: 'Open file',
       openCommit: 'Open commit details',
-      openWorktree: 'Switch to Worktree',
+      openWorktree: 'Worktree Actions',
+      switchWorktree: 'Switch worktree',
+      openDirectory: 'Open directory',
     },
     quickSend: {
       title: 'Quick send',
@@ -599,7 +601,9 @@ export default {
       workingTree: 'Working tree',
       openFile: 'Open file',
       openCommit: 'Open commit details',
-      openWorktree: 'Switch to Worktree',
+      openWorktree: 'Worktree Actions',
+      switchWorktree: 'Switch worktree',
+      openDirectory: 'Open directory',
     },
     graph: {
       workingTree: 'Working tree',

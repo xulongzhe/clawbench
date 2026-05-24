@@ -75,8 +75,8 @@ function handleBodyClick(event) {
     if (filePath) emit('file-open', filePath)
     return
   }
-  // Handle worktree switch buttons
-  const wtBtn = event.target.closest('.chat-worktree-switch-btn')
+  // Handle worktree action buttons
+  const wtBtn = event.target.closest('.chat-worktree-btn')
   if (wtBtn) {
     const wtPath = wtBtn.getAttribute('data-worktree-path')
     if (wtPath) store.setProject(wtPath)
@@ -911,7 +911,7 @@ function handleBodyClick(event) {
   background: var(--bg-tertiary, #f0f0f0);
 }
 
-.tool-detail-body .chat-worktree-switch-btn {
+.tool-detail-body .chat-worktree-btn {
   background: none;
   border: none;
   padding: 2px;
