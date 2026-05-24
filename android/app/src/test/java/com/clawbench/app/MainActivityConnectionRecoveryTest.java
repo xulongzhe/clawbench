@@ -205,6 +205,30 @@ public class MainActivityConnectionRecoveryTest {
     }
 
     @Test
+    public void startConnectionTimeout_runnableCallsShowLoginPage() throws Exception {
+        // Capture the timeout runnable and execute it to verify it calls showLoginPage
+        setField(activity, "webViewConnected", false);
+
+        final Runnable[] capturedRunnable = new Runnable[1];
+        doAnswer(invocation -> {
+            capturedRunnable[0] = invocation.getArgument(0);
+            return true;
+        }).when(mockWebView).postDelayed(any(Runnable.class), any(long.class));
+
+        invokeMethod(activity, "startConnectionTimeout");
+        assertNotNull(capturedRunnable[0]);
+
+        // Execute the timeout runnable
+        capturedRunnable[0].run();
+
+        // Should have called showLoginPage
+        verify(mockWebView).loadUrl(LOGIN_HTML_URL);
+        // Error message should be stored
+        String pending = (String) getField(activity, "pendingLoginErrorMessage");
+        assertEquals("连接超时，请检查服务器地址和网络连接。", pending);
+    }
+
+    @Test
     public void startConnectionTimeout_cancelsExistingTimeout() throws Exception {
         // Set up an existing timeout
         Runnable oldRunnable = mock(Runnable.class);
@@ -435,19 +459,26 @@ public class MainActivityConnectionRecoveryTest {
         WebResourceRequest mockRequest = mock(WebResourceRequest.class);
         when(mockRequest.isForMainFrame()).thenReturn(true);
 
+        // Capture the postDelayed Runnable to verify showLoginPage is called
+        final Runnable[] capturedRunnable = new Runnable[1];
+        doAnswer(invocation -> {
+            capturedRunnable[0] = invocation.getArgument(0);
+            return true;
+        }).when(mockWebView).postDelayed(any(Runnable.class), any(long.class));
+
         Object client = createWebViewClient();
         Method onReceivedError = findMethod(client.getClass(), "onReceivedError",
                 android.webkit.WebView.class, WebResourceRequest.class, android.webkit.WebResourceError.class);
         onReceivedError.setAccessible(true);
-        // WebResourceError is final on some API levels — pass null, the method only checks request.isForMainFrame()
         onReceivedError.invoke(client, mockWebView, mockRequest, null);
 
-        // Should set loadErrorPending
         assertTrue(getBooleanField(activity, "loadErrorPending"));
-        // Should make WebView invisible
         verify(mockWebView).setVisibility(android.view.View.INVISIBLE);
-        // Should schedule a delayed showLoginPage (postDelayed on WebView)
-        verify(mockWebView).postDelayed(any(Runnable.class), eq(600L));
+
+        // Execute the captured runnable to verify showLoginPage is called
+        assertNotNull("postDelayed runnable should be captured", capturedRunnable[0]);
+        capturedRunnable[0].run();
+        verify(mockWebView).loadUrl(LOGIN_HTML_URL);
     }
 
     @Test
@@ -481,6 +512,13 @@ public class MainActivityConnectionRecoveryTest {
         WebResourceResponse mockResponse = mock(WebResourceResponse.class);
         when(mockResponse.getStatusCode()).thenReturn(401);
 
+        // Capture the postDelayed Runnable to verify showLoginPage is called
+        final Runnable[] capturedRunnable = new Runnable[1];
+        doAnswer(invocation -> {
+            capturedRunnable[0] = invocation.getArgument(0);
+            return true;
+        }).when(mockWebView).postDelayed(any(Runnable.class), any(long.class));
+
         Object client = createWebViewClient();
         Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
                 android.webkit.WebView.class, WebResourceRequest.class, WebResourceResponse.class);
@@ -489,7 +527,11 @@ public class MainActivityConnectionRecoveryTest {
 
         assertTrue(getBooleanField(activity, "loadErrorPending"));
         verify(mockWebView).setVisibility(android.view.View.INVISIBLE);
-        verify(mockWebView).postDelayed(any(Runnable.class), eq(600L));
+
+        // Execute the captured runnable to verify showLoginPage is called
+        assertNotNull("postDelayed runnable should be captured", capturedRunnable[0]);
+        capturedRunnable[0].run();
+        verify(mockWebView).loadUrl(LOGIN_HTML_URL);
     }
 
     @Test
@@ -499,7 +541,13 @@ public class MainActivityConnectionRecoveryTest {
         WebResourceRequest mockRequest = mock(WebResourceRequest.class);
         when(mockRequest.isForMainFrame()).thenReturn(true);
         WebResourceResponse mockResponse = mock(WebResourceResponse.class);
-        when(mockResponse.getStatusCode()).thenReturn(502);
+        when(mockResponse.getStatusCode()).thenReturn(500);
+
+        final Runnable[] capturedRunnable = new Runnable[1];
+        doAnswer(invocation -> {
+            capturedRunnable[0] = invocation.getArgument(0);
+            return true;
+        }).when(mockWebView).postDelayed(any(Runnable.class), any(long.class));
 
         Object client = createWebViewClient();
         Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
@@ -508,6 +556,11 @@ public class MainActivityConnectionRecoveryTest {
         onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
 
         assertTrue(getBooleanField(activity, "loadErrorPending"));
+
+        // Execute the captured runnable
+        assertNotNull(capturedRunnable[0]);
+        capturedRunnable[0].run();
+        verify(mockWebView).loadUrl(LOGIN_HTML_URL);
     }
 
     @Test
@@ -519,13 +572,22 @@ public class MainActivityConnectionRecoveryTest {
         WebResourceResponse mockResponse = mock(WebResourceResponse.class);
         when(mockResponse.getStatusCode()).thenReturn(404);
 
+        final Runnable[] capturedRunnable = new Runnable[1];
+        doAnswer(invocation -> {
+            capturedRunnable[0] = invocation.getArgument(0);
+            return true;
+        }).when(mockWebView).postDelayed(any(Runnable.class), any(long.class));
+
         Object client = createWebViewClient();
         Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
                 android.webkit.WebView.class, WebResourceRequest.class, WebResourceResponse.class);
         onReceivedHttpError.setAccessible(true);
         onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
 
-        assertTrue(getBooleanField(activity, "loadErrorPending"));
+        // Execute the captured runnable
+        assertNotNull(capturedRunnable[0]);
+        capturedRunnable[0].run();
+        verify(mockWebView).loadUrl(LOGIN_HTML_URL);
     }
 
     @Test
@@ -565,6 +627,36 @@ public class MainActivityConnectionRecoveryTest {
         onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
 
         assertFalse(getBooleanField(activity, "loadErrorPending"));
+    }
+
+    @Test
+    public void onReceivedHttpError_otherStatusCode_fallbackMessage() throws Exception {
+        // Test the else branch for non-standard status codes (e.g., 301 redirect response
+        // incorrectly classified as HTTP error)
+        setField(activity, "webViewConnected", false);
+
+        WebResourceRequest mockRequest = mock(WebResourceRequest.class);
+        when(mockRequest.isForMainFrame()).thenReturn(true);
+        WebResourceResponse mockResponse = mock(WebResourceResponse.class);
+        when(mockResponse.getStatusCode()).thenReturn(302);
+
+        final Runnable[] capturedRunnable = new Runnable[1];
+        doAnswer(invocation -> {
+            capturedRunnable[0] = invocation.getArgument(0);
+            return true;
+        }).when(mockWebView).postDelayed(any(Runnable.class), any(long.class));
+
+        Object client = createWebViewClient();
+        Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
+                android.webkit.WebView.class, WebResourceRequest.class, WebResourceResponse.class);
+        onReceivedHttpError.setAccessible(true);
+        onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
+
+        assertNotNull(capturedRunnable[0]);
+        capturedRunnable[0].run();
+        // Should have called showLoginPage with the fallback message
+        String pending = (String) getField(activity, "pendingLoginErrorMessage");
+        assertEquals("连接失败，请检查服务器地址和网络连接。", pending);
     }
 
     // =====================================================
