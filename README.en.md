@@ -166,6 +166,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Multi-Select Operations**: Toggle multi-select mode from toolbar, batch copy/cut/delete; mobile long-press triggers context menu
 - File upload (image support, configurable size and count)
 - Toggle hidden file visibility
+- **Drill-down Browsing + Edge Swipe Back**: Tap folders to drill down, swipe from right edge to go back — intuitive mobile navigation
 
 ### 🎨 Code Preview
 - Syntax highlighting, sticky line numbers, word wrap toggle
@@ -189,6 +190,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Model Selection Persistence**: Model choice and thinking effort per agent auto-saved to localStorage, restored on reload/session switch
 - **Scheduled Tasks**: AI creates Cron schedules via CLI subcommands, executes automatically; independent tab with 4-level breadcrumb navigation; task cards embedded in chat messages; frequency presets (hourly/daily/weekly/monthly) + custom cron expressions; per-execution read tracking + TTS playback; execution auto-summary + completion notification (sound/haptic/toast)
 - **Multi-Session Management**: Create, switch, delete independent sessions, swipe to switch
+- **Swipe Session Toggle**: Toggle left/right swipe session switching in Settings → Chat; defaults to off to prevent accidental switches when scrolling wide content
 - **Image Upload**: Upload images for AI conversation (multimodal)
 - **Disconnect Protection**: Messages persist immediately, no data loss on disconnect, 15s heartbeat keep-alive + 30s timeout auto-reconnect (live content updates during polling fallback)
 - **Auto Resume**: Automatically sends "continue" after Claude/CodeBuddy/Qoder/DeepSeek/Pi exits Plan Mode
@@ -280,6 +282,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 ### 🔒 Security
 - Optional password protection (SHA-256 salted)
 - Path traversal protection, all operations restricted to project directory
+- Git parameter injection protection (SHA/branch name/tag name validation, `--` separator)
 - Configurable file upload size and count (default 10MB / 20 files)
 - XSS protection (DOMPurify sanitization)
 - TLS support (manual certificate configuration required)
