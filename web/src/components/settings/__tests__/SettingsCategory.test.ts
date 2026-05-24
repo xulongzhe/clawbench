@@ -136,6 +136,7 @@ const i18n = createI18n({
           ragOllamaUrl: '嵌入接口地址',
           portForwardEnabled: '启用端口转发',
           portForwardPort: '端口转发端口',
+          portForwardPortAuto: '自动',
           pushEnabled: '启用极光推送',
           pushStatus: '推送服务状态',
           pushStatusRegistered: '正常',
@@ -548,6 +549,24 @@ describe('SettingsCategory', () => {
       await wrapper.vm.$nextTick()
 
       expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.port', 2222)
+    })
+
+    it('shows "Auto" when port_forward.port is 0', async () => {
+      // Default serverConfig has port_forward.port = 0
+      const wrapper = mountCategory('portForward')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '端口转发端口')
+      expect(item).toBeTruthy()
+      expect(item!.props().modelValue).toBe('自动')
+    })
+
+    it('shows numeric value when port_forward.port is non-zero', async () => {
+      serverConfig.value.port_forward = { enabled: true, port: 2222 }
+      const wrapper = mountCategory('portForward')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '端口转发端口')
+      expect(item).toBeTruthy()
+      expect(item!.props().modelValue).toBe(2222)
     })
   })
 
