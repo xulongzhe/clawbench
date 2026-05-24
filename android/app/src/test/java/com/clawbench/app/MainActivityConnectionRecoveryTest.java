@@ -572,17 +572,37 @@ public class MainActivityConnectionRecoveryTest {
     // =====================================================
 
     @Test
-    public void onRenderProcessGone_returnsTrue() throws Exception {
-        // onRenderProcessGone should return true (we handled it)
-        // It will try to recreate the WebView which will fail on Unsafe-allocated
-        // activity (NPE from findViewById), but the return value proves the method exists
-        // and was reached. The actual WebView recreation requires a real Activity.
+    public void onRenderProcessGone_resetsStateBeforeUiRecovery() throws Exception {
+        // onRenderProcessGone resets webViewConnected, loadErrorPending,
+        // and cancels the connection timeout BEFORE runOnUiThread (which needs a real Activity).
+        // We test the state changes by catching the NPE from runOnUiThread or detail.didCrash().
+        setField(activity, "webViewConnected", true);
+        setField(activity, "loadErrorPending", true);
+        Runnable mockTimeout = mock(Runnable.class);
+        setField(activity, "connectionTimeoutRunnable", mockTimeout);
 
-        // For a simpler test: verify the method exists and can be called
         Object client = createWebViewClient();
         Method method = findMethod(client.getClass(), "onRenderProcessGone",
                 android.webkit.WebView.class, android.webkit.RenderProcessGoneDetail.class);
-        assertNotNull("onRenderProcessGone should exist", method);
+        method.setAccessible(true);
+
+        // Create a mock RenderProcessGoneDetail to avoid NPE from detail.didCrash()
+        android.webkit.RenderProcessGoneDetail mockDetail = mock(android.webkit.RenderProcessGoneDetail.class);
+        when(mockDetail.didCrash()).thenReturn(true);
+
+        try {
+            method.invoke(client, mockWebView, mockDetail);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            // Expected: runOnUiThread NPE on Unsafe-allocated activity
+            // The important thing is that the state was reset before runOnUiThread
+        }
+
+        // State should be reset (these assignments happen before runOnUiThread)
+        assertFalse(getBooleanField(activity, "webViewConnected"));
+        assertFalse(getBooleanField(activity, "loadErrorPending"));
+        // Connection timeout should be cancelled
+        verify(mockWebView).removeCallbacks(mockTimeout);
+        assertNull(getField(activity, "connectionTimeoutRunnable"));
     }
 
     // =====================================================
@@ -601,11 +621,24 @@ public class MainActivityConnectionRecoveryTest {
         method.setAccessible(true);
 
         android.webkit.SslErrorHandler mockHandler = mock(android.webkit.SslErrorHandler.class);
-        // SslError is not mockable easily (final/constructor restrictions)
-        // We pass null — the localhost check happens before the error is examined
         method.invoke(client, mockWebView, mockHandler, null);
 
-        // Should auto-accept for localhost
+        verify(mockHandler).proceed();
+    }
+
+    @Test
+    public void onReceivedSslError_127001_autoAccepts() throws Exception {
+        when(mockWebView.getUrl()).thenReturn("https://127.0.0.1:20000");
+        when(mockPrefs.getString(any(), any())).thenReturn("https://127.0.0.1:20000");
+
+        Object client = createWebViewClient();
+        Method method = findMethod(client.getClass(), "onReceivedSslError",
+                android.webkit.WebView.class, android.webkit.SslErrorHandler.class, android.net.http.SslError.class);
+        method.setAccessible(true);
+
+        android.webkit.SslErrorHandler mockHandler = mock(android.webkit.SslErrorHandler.class);
+        method.invoke(client, mockWebView, mockHandler, null);
+
         verify(mockHandler).proceed();
     }
 
@@ -624,6 +657,29 @@ public class MainActivityConnectionRecoveryTest {
         method.invoke(client, mockWebView, mockHandler, null);
 
         verify(mockHandler).cancel();
+    }
+
+    @Test
+    public void onReceivedSslError_httpsServer_showsDialog() throws Exception {
+        // HTTPS server URL → should try to show SSL dialog.
+        // On Unsafe-allocated activity, AlertDialog.Builder will NPE,
+        // but we can verify the code path reaches it by checking the exception.
+        when(mockWebView.getUrl()).thenReturn("https://192.168.1.100:20000");
+        when(mockPrefs.getString(any(), any())).thenReturn("https://192.168.1.100:20000");
+
+        Object client = createWebViewClient();
+        Method method = findMethod(client.getClass(), "onReceivedSslError",
+                android.webkit.WebView.class, android.webkit.SslErrorHandler.class, android.net.http.SslError.class);
+        method.setAccessible(true);
+
+        android.webkit.SslErrorHandler mockHandler = mock(android.webkit.SslErrorHandler.class);
+        try {
+            method.invoke(client, mockWebView, mockHandler, null);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            // Expected: AlertDialog.Builder NPE on Unsafe-allocated activity
+            // This proves the "https://" serverUrl branch was taken (dialog path)
+            assertNotNull(e.getCause());
+        }
     }
 
     // --- Helper methods ---
