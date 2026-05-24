@@ -6,6 +6,7 @@ import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
 import { useAgents } from '@/composables/useAgents'
 import { store } from '@/stores/app.ts'
 import { buildMessageSnapshot, parseMessages } from '@/utils/chatSessionUtils.ts'
+import { warmWorktreeCache } from '@/composables/useWorktreeAnnotation.ts'
 
 // Module-level one-time session list load (replaces continuous polling)
 // Accessible from App.vue without instantiating useChatSession
@@ -159,6 +160,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     try {
       // Load agents first so we can resolve agent names
       if (agents.value.length === 0) await loadAgents()
+      // Warm worktree cache so annotateWorktreePaths has data when rendering messages
+      warmWorktreeCache(store.state.projectRoot)
       // Use max of initialMessages and current loaded count to avoid truncating lazy-loaded messages
       const limit = Math.max(store.state.chatInitialMessages, messages.value.length)
       const url = currentSessionId.value

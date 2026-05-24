@@ -19,7 +19,7 @@ export function worktreeButtonHtml(absPath: string, resolvedPath?: string): stri
     return `<button ${attrs} title="${escapeHtml(gt('chat.attach.openWorktree'))}">${WORKTREE_ICON_SVG}</button>`
 }
 
-// ── Worktree list cache (for async verification) ──
+// ── Worktree list cache ──
 
 interface WorktreeInfo {
     path: string
@@ -57,42 +57,81 @@ async function fetchWorktreeList(projectRoot: string): Promise<WorktreeInfo[]> {
 }
 
 /**
- * Regex that matches worktree paths in plain text.
- * Matches:
- *   1. Absolute paths containing /.worktrees/ (e.g. /home/user/project/.worktrees/feature-x)
- *   2. Relative paths starting with .worktrees/ (e.g. .worktrees/feature-x)
- *   3. Relative paths starting with ./.worktrees/ (e.g. ./.worktrees/feature-x)
- *
- * This regex runs on text node content only (never on HTML attributes or tags),
- * same design as FILE_PATH_RE. It enables synchronous annotation without
- * waiting for the async worktree list API.
+ * Pre-warm the worktree list cache for a project.
+ * Call this before rendering messages (e.g. in loadHistory) so that
+ * annotateWorktreePaths has cached data available synchronously.
+ * If the cache is already populated, this is a no-op.
  */
-const WORKTREE_PATH_RE = /(?:\/[^\s<>"')\]]+\/\.worktrees\/[^\s<>"')\]]+|\.\/\.worktrees\/[^\s<>"')\]]+|\.worktrees\/[^\s<>"')\]]+)/g
+export async function warmWorktreeCache(projectRoot: string): Promise<void> {
+    if (!projectRoot) return
+    await fetchWorktreeList(projectRoot)
+}
+
+// ── Search entry building ──
+
+interface SearchEntry {
+    /** The search keyword (exact string to find in text) */
+    keyword: string
+    /** Absolute path of the worktree (for data-worktree-path) */
+    absPath: string
+}
 
 /**
- * Check if a string looks like a worktree path that should be annotated.
- * Used for <code> tag content detection (simpler than full regex).
+ * Build search entries from a worktree list.
+ * Each worktree generates up to 3 keywords: path, displayPath, displayPath without ./
+ * Entries are sorted by keyword length descending (longest first) to avoid
+ * shorter entries matching substrings of longer ones.
+ * Excludes worktrees where isCurrent is true.
  */
-function looksLikeWorktreePath(text: string): boolean {
-    return text.includes('.worktrees/')
+export function buildSearchEntries(worktrees: WorktreeInfo[]): SearchEntry[] {
+    const entries: SearchEntry[] = []
+    for (const wt of worktrees) {
+        if (wt.isCurrent) continue
+        // Absolute path
+        if (wt.path) {
+            entries.push({ keyword: wt.path, absPath: wt.path })
+        }
+        // displayPath (e.g. "./.worktrees/feature-x")
+        if (wt.displayPath && wt.displayPath !== '.') {
+            entries.push({ keyword: wt.displayPath, absPath: wt.path })
+            // displayPath without leading "./" (e.g. ".worktrees/feature-x")
+            const noDotSlash = wt.displayPath.replace(/^\.\//, '')
+            if (noDotSlash !== wt.displayPath) {
+                entries.push({ keyword: noDotSlash, absPath: wt.path })
+            }
+        }
+    }
+    // Sort by keyword length descending (longest first for greedy matching)
+    entries.sort((a, b) => b.keyword.length - a.keyword.length)
+    return entries
+}
+
+/**
+ * Find a matching worktree search entry for a given text string.
+ * Returns the first (longest) matching entry, or null.
+ */
+function findWorktreeMatch(text: string, searchEntries: SearchEntry[]): SearchEntry | null {
+    const trimmed = text.trim()
+    for (const entry of searchEntries) {
+        if (trimmed === entry.keyword) return entry
+    }
+    return null
 }
 
 /**
  * Detect worktree paths in rendered HTML and insert action buttons after them.
+ * Uses the cached worktree list (from GET /api/git/worktrees) for matching.
  *
- * Design: regex-first, verify-later — aligned with localhost/commit/file-path annotations.
- *   1. Synchronously annotate all text matching .worktrees/ patterns (no API call needed)
- *   2. Asynchronously verify via GET /api/git/worktrees, removing false positives
- *
- * This ensures annotations appear immediately on first render AND survive app restart
- * (no async cache dependency in the annotation step itself).
+ * Requires warmWorktreeCache() to be called before rendering messages
+ * (done automatically in loadHistory). On cache miss, triggers background
+ * fetch but returns un-annotated HTML (annotations will appear on next render).
  *
  * Processing order:
  *   1. <a href> tags matching a worktree path → append action button
  *   2. <code> and <span class="chat-file-path"> tags matching → add class + button
- *   3. Text nodes (outside pre/a/code) → regex match → insert span + button
+ *   3. Text nodes (outside pre/a/code) → search worktree paths → insert span + button
  *
- * Returns the annotated HTML and a list of detected worktree path strings.
+ * Returns the annotated HTML and a list of detected absolute worktree paths.
  */
 export function annotateWorktreePaths(
     html: string,
@@ -100,17 +139,27 @@ export function annotateWorktreePaths(
 ): { html: string; detectedWorktreePaths: string[] } {
     if (!html) return { html: '', detectedWorktreePaths: [] }
 
+    const worktrees = worktreeListCache.get(projectRoot)
+    if (!worktrees || worktrees.length === 0) {
+        // Cache miss — trigger background fetch, return empty for now
+        fetchWorktreeList(projectRoot)
+        return { html, detectedWorktreePaths: [] }
+    }
+
+    const searchEntries = buildSearchEntries(worktrees)
+    if (searchEntries.length === 0) return { html, detectedWorktreePaths: [] }
+
     const detectedWorktreePaths: string[] = []
     const doc = new DOMParser().parseFromString(html, 'text/html')
 
     // ── Step 1: <a href> tags matching a worktree path ──
     for (const a of doc.querySelectorAll('a[href]')) {
         const href = a.getAttribute('href') || ''
-        if (!looksLikeWorktreePath(href)) continue
-        const match = extractWorktreePath(href, projectRoot)
+        const match = findWorktreeMatch(href, searchEntries)
         if (!match) continue
-        detectedWorktreePaths.push(match)
-        a.insertAdjacentHTML('afterend', worktreeButtonHtml(match, resolveFilePath(match, projectRoot) || undefined))
+        detectedWorktreePaths.push(match.absPath)
+        const resolved = resolveFilePath(match.absPath, projectRoot)
+        a.insertAdjacentHTML('afterend', worktreeButtonHtml(match.absPath, resolved || undefined))
     }
 
     // ── Step 2: <code> and <span class="chat-file-path"> matching a worktree ──
@@ -119,20 +168,19 @@ export function annotateWorktreePaths(
         if (el.classList.contains('chat-commit-hash')) continue
         if (el.classList.contains('chat-worktree-path')) continue
         const stripped = (el.textContent || '').trim()
-        if (!looksLikeWorktreePath(stripped)) continue
-        const match = extractWorktreePath(stripped, projectRoot)
+        const match = findWorktreeMatch(stripped, searchEntries)
         if (!match) continue
-        detectedWorktreePaths.push(match)
+        detectedWorktreePaths.push(match.absPath)
         el.classList.add('chat-worktree-path')
-        el.setAttribute('data-worktree-path', match)
-        const resolved = resolveFilePath(match, projectRoot)
+        el.setAttribute('data-worktree-path', match.absPath)
+        const resolved = resolveFilePath(match.absPath, projectRoot)
         if (resolved) {
             el.setAttribute('data-file-path', resolved)
         }
-        el.insertAdjacentHTML('afterend', worktreeButtonHtml(match, resolved || undefined))
+        el.insertAdjacentHTML('afterend', worktreeButtonHtml(match.absPath, resolved || undefined))
     }
 
-    // ── Step 3: Text nodes (outside pre/a/code) → regex match → insert span + button ──
+    // ── Step 3: Text nodes (outside pre/a/code) → search worktree paths ──
     const textNodes: Text[] = []
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode(node: Text) {
@@ -153,53 +201,61 @@ export function annotateWorktreePaths(
         const textNode = textNodes[i]
         const text = textNode.textContent || ''
 
-        WORKTREE_PATH_RE.lastIndex = 0
-        if (!WORKTREE_PATH_RE.test(text)) continue
+        // Collect all matches from search entries
+        const matches: Array<{ index: number; length: number; entry: SearchEntry }> = []
 
-        // Re-run regex to collect matches
-        WORKTREE_PATH_RE.lastIndex = 0
-        const parts: Array<{ text: string; absPath: string | null }> = []
-        let lastIndex = 0
-        let match: RegExpExecArray | null
-        while ((match = WORKTREE_PATH_RE.exec(text)) !== null) {
-            const pathStr = match[0]
-            const absPath = extractWorktreePath(pathStr, projectRoot)
-            // Push text before this match
-            if (match.index > lastIndex) {
-                parts.push({ text: text.slice(lastIndex, match.index), absPath: null })
+        for (const entry of searchEntries) {
+            let pos = 0
+            while ((pos = text.indexOf(entry.keyword, pos)) !== -1) {
+                matches.push({ index: pos, length: entry.keyword.length, entry })
+                pos += entry.keyword.length
             }
-            parts.push({ text: pathStr, absPath })
-            lastIndex = match.index + pathStr.length
         }
-        // Push remaining text after last match
-        if (lastIndex < text.length) {
-            parts.push({ text: text.slice(lastIndex), absPath: null })
+
+        if (matches.length === 0) continue
+
+        // Sort by index, then deduplicate overlapping matches (longer entry wins)
+        matches.sort((a, b) => a.index - b.index || b.length - a.length)
+        const filtered: typeof matches = []
+        let lastEnd = 0
+        for (const m of matches) {
+            if (m.index >= lastEnd) {
+                filtered.push(m)
+                lastEnd = m.index + m.length
+            }
         }
 
         // Build replacement nodes
         const parent = textNode.parentNode!
         const frag = doc.createDocumentFragment()
         let hasAnnotation = false
-        for (const part of parts) {
-            if (part.absPath) {
-                hasAnnotation = true
-                detectedWorktreePaths.push(part.absPath)
-                const span = doc.createElement('span')
-                span.className = 'chat-worktree-path'
-                span.setAttribute('data-worktree-path', part.absPath)
-                const resolved = resolveFilePath(part.absPath, projectRoot)
-                if (resolved) {
-                    span.setAttribute('data-file-path', resolved)
-                }
-                span.textContent = part.text
-                frag.appendChild(span)
-                // Single action button
-                const btnContainer = doc.createElement('span')
-                btnContainer.innerHTML = worktreeButtonHtml(part.absPath, resolved || undefined)
-                while (btnContainer.firstChild) frag.appendChild(btnContainer.firstChild)
-            } else {
-                frag.appendChild(doc.createTextNode(part.text))
+        let lastIndex = 0
+
+        for (const m of filtered) {
+            // Push text before this match
+            if (m.index > lastIndex) {
+                frag.appendChild(doc.createTextNode(text.slice(lastIndex, m.index)))
             }
+            hasAnnotation = true
+            detectedWorktreePaths.push(m.entry.absPath)
+            const span = doc.createElement('span')
+            span.className = 'chat-worktree-path'
+            span.setAttribute('data-worktree-path', m.entry.absPath)
+            const resolved = resolveFilePath(m.entry.absPath, projectRoot)
+            if (resolved) {
+                span.setAttribute('data-file-path', resolved)
+            }
+            span.textContent = m.entry.keyword
+            frag.appendChild(span)
+            // Single action button
+            const btnContainer = doc.createElement('span')
+            btnContainer.innerHTML = worktreeButtonHtml(m.entry.absPath, resolved || undefined)
+            while (btnContainer.firstChild) frag.appendChild(btnContainer.firstChild)
+            lastIndex = m.index + m.length
+        }
+        // Push remaining text after last match
+        if (lastIndex < text.length) {
+            frag.appendChild(doc.createTextNode(text.slice(lastIndex)))
         }
 
         if (hasAnnotation) {
@@ -208,56 +264,6 @@ export function annotateWorktreePaths(
     }
 
     return { html: doc.body.innerHTML, detectedWorktreePaths }
-}
-
-/**
- * Extract an absolute worktree path from a matched string.
- * - If the match starts with `/`, it's already absolute — return as-is if under projectRoot.
- * - If the match starts with `.worktrees/` or `./.worktrees/`, prepend projectRoot.
- * Returns null if the path cannot be resolved.
- */
-function extractWorktreePath(matched: string, projectRoot: string): string | null {
-    if (matched.startsWith('/')) {
-        // Absolute path — must be under projectRoot
-        if (!projectRoot || !matched.startsWith(projectRoot + '/')) return null
-        return matched
-    }
-    // Relative path like .worktrees/feature-x or ./.worktrees/feature-x
-    if (!projectRoot) return null
-    const clean = matched.replace(/^\.\//, '')
-    return projectRoot + '/' + clean
-}
-
-/**
- * Verify which worktree paths actually exist on the server,
- * and remove annotations for paths that are not real worktrees.
- * Called asynchronously after the synchronous annotation pass.
- */
-export async function verifyWorktreePaths(paths: string[], containerEl: HTMLElement, projectRoot: string): Promise<void> {
-    if (paths.length === 0) return
-
-    const worktrees = await fetchWorktreeList(projectRoot)
-    if (worktrees.length === 0) return
-
-    // Build set of valid absolute worktree paths (excluding current)
-    const validPaths = new Set<string>()
-    for (const wt of worktrees) {
-        if (!wt.isCurrent && wt.path) {
-            validPaths.add(wt.path)
-        }
-    }
-
-    // Remove annotations for paths not in the valid set
-    for (const path of paths) {
-        if (!validPaths.has(path)) {
-            containerEl.querySelectorAll(`.chat-worktree-btn[data-worktree-path="${CSS.escape(path)}"]`).forEach(btn => {
-                btn.remove()
-            })
-            containerEl.querySelectorAll(`.chat-worktree-path[data-worktree-path="${CSS.escape(path)}"]`).forEach(span => {
-                span.replaceWith(...span.childNodes)
-            })
-        }
-    }
 }
 
 /**
@@ -273,7 +279,7 @@ export function clearWorktreeCache(): void {
 export function useWorktreeAnnotation() {
     return {
         annotateWorktreePaths,
-        verifyWorktreePaths,
+        warmWorktreeCache,
         clearWorktreeCache,
     }
 }
