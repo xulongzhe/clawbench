@@ -46,7 +46,13 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 				setSessionID(w, sessionID)
 			}
 		}
-		backend := service.GetSessionBackend(sessionID)
+	// ISS-077: Verify the session belongs to the requesting project
+	sessionProject := service.GetSessionProjectPath(sessionID)
+	if sessionProject != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+		return
+	}
+	backend := service.GetSessionBackend(sessionID)
 		if backend == "" {
 		writeLocalizedErrorf(w, r, http.StatusNotFound, "SessionNotFound")
 			return
@@ -76,6 +82,11 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 		sessionID := req.SessionID
 		if sessionID == "" {
 			sessionID = getSessionID(r)
+		}
+		// ISS-077: Verify the session belongs to the requesting project
+		if sp := service.GetSessionProjectPath(sessionID); sp != projectPath {
+			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+			return
 		}
 		backend := service.GetSessionBackend(sessionID)
 		if backend == "" {
