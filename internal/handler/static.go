@@ -21,8 +21,11 @@ func ServeProjectDialog(w http.ResponseWriter, r *http.Request) {
 func ServeIndex(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 
+	// ISS-055: Clean the path to prevent path traversal (e.g. /../etc/passwd)
+	path = filepath.Clean(path)
+
 	// Serve index for root — auth is handled by the Vue app itself
-	if path == "/" {
+	if path == "/" || path == "." {
 		if _, err := os.Stat("public/index.html"); err == nil {
 			http.ServeFile(w, r, "public/index.html")
 			return
@@ -32,8 +35,17 @@ func ServeIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For other paths (e.g. /index-*.css, /index-*.js), serve from public/
-	if _, err := os.Stat("public" + path); err == nil {
-		http.ServeFile(w, r, "public"+path)
+	// ISS-055: Ensure the cleaned path stays within public/
+	cleanRelPath := strings.TrimPrefix(path, "/")
+	absPublic, _ := filepath.Abs("public")
+	absTarget := filepath.Join("public", cleanRelPath)
+	absTarget, _ = filepath.Abs(absTarget)
+	if !strings.HasPrefix(absTarget, absPublic+string(filepath.Separator)) && absTarget != absPublic {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := os.Stat(absTarget); err == nil {
+		http.ServeFile(w, r, absTarget)
 		return
 	}
 

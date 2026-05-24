@@ -116,7 +116,7 @@
           ref="htmlPreviewRef"
           class="html-preview-iframe"
           :srcdoc="file.content"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts"
         />
         <CodePreview
           v-else
