@@ -146,38 +146,25 @@ export function annotateFilePaths(
         a.insertAdjacentHTML('afterend', fileOpenButtonHtml(resolved))
     }
 
-    // ── Step 2: <code> tags whose content looks like a file path ──
+    // ── Step 2: <code> tags whose content is purely a file path ──
+    // Only handles the case where the entire <code> content is a single path.
+    // Mixed content (e.g. `import "src/main.go"`) is handled by Step 3's
+    // text-node walker, which now also enters <code> elements.
     for (const code of doc.querySelectorAll('code')) {
         // Skip <code> already annotated as worktree (worktree annotation runs first)
         if (code.classList.contains('chat-worktree-path')) continue
         const stripped = (code.textContent || '').trim()
-        if (looksLikeFilePath(stripped)) {
-            // Entire <code> content is likely a file path — try to resolve it
-            const resolved = resolveFilePath(stripped, projectRoot)
-            if (resolved && !resolved.includes(' ') && !resolved.includes('"')) {
-                // Valid file path — annotate the whole <code> element
-                detectedPaths.push(resolved)
-                code.classList.add('chat-file-path')
-                code.setAttribute('data-file-path', resolved)
-                code.insertAdjacentHTML('afterend', fileOpenButtonHtml(resolved))
-                continue
-            }
-        }
-        // Check if <code> content contains a file path (e.g. `import "src/main.go"`)
-        // Use regex to find the path portion and append a button after the <code>
-        FILE_PATH_RE.lastIndex = 0
-        const match = FILE_PATH_RE.exec(stripped)
-        if (match) {
-            const pathStr = match[0]
-            const resolved = resolveFilePath(pathStr, projectRoot)
-            if (resolved) {
-                detectedPaths.push(resolved)
-                code.insertAdjacentHTML('afterend', fileOpenButtonHtml(resolved))
-            }
-        }
+        if (!looksLikeFilePath(stripped)) continue
+        const resolved = resolveFilePath(stripped, projectRoot)
+        if (!resolved || resolved.includes(' ') || resolved.includes('"')) continue
+        // Entire <code> content is a valid file path — annotate the whole element
+        detectedPaths.push(resolved)
+        code.classList.add('chat-file-path')
+        code.setAttribute('data-file-path', resolved)
+        code.insertAdjacentHTML('afterend', fileOpenButtonHtml(resolved))
     }
 
-    // ── Step 3: Text nodes (outside a/code/worktree) → regex match paths ──
+    // ── Step 3: Text nodes (outside a/worktree-annotated, but including inside <code>) → regex match paths ──
     const textNodes: Text[] = []
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode(node: Text) {
@@ -185,8 +172,8 @@ export function annotateFilePaths(
             if (!parent) return NodeFilter.FILTER_REJECT
             // Skip text inside <a> tags (handled in step 1)
             if (parent.tagName === 'A' || parent.closest('a')) return NodeFilter.FILTER_REJECT
-            // Skip text inside <code> tags (handled in step 2)
-            if (parent.tagName === 'CODE' || parent.closest('code')) return NodeFilter.FILTER_REJECT
+            // Skip text inside <code> elements already annotated by step 2
+            if (parent.classList.contains('chat-file-path')) return NodeFilter.FILTER_REJECT
             // Skip text inside worktree-annotated elements (worktree annotation runs first)
             if (parent.classList.contains('chat-worktree-path') || parent.closest('.chat-worktree-path')) return NodeFilter.FILTER_REJECT
             return NodeFilter.FILTER_ACCEPT

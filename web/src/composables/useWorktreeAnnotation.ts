@@ -162,7 +162,10 @@ export function annotateWorktreePaths(
         a.insertAdjacentHTML('afterend', worktreeButtonHtml(match.absPath, resolved || undefined))
     }
 
-    // ── Step 2: <code> and <span class="chat-file-path"> matching a worktree ──
+    // ── Step 2: <code> and <span class="chat-file-path"> whose content is purely a worktree path ──
+    // Only handles the case where the entire element content matches a worktree.
+    // Mixed content is handled by Step 3's text-node walker, which now
+    // also enters <code> elements.
     for (const el of doc.querySelectorAll('code, span.chat-file-path')) {
         if (el.classList.contains('chat-commit-hash')) continue
         if (el.classList.contains('chat-worktree-path')) continue
@@ -179,15 +182,16 @@ export function annotateWorktreePaths(
         el.insertAdjacentHTML('afterend', worktreeButtonHtml(match.absPath, resolved || undefined))
     }
 
-    // ── Step 3: Text nodes (outside a/code) → search worktree paths ──
+    // ── Step 3: Text nodes (outside a, but including inside <code>) → search worktree paths ──
     const textNodes: Text[] = []
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode(node: Text) {
             const parent = node.parentElement
             if (!parent) return NodeFilter.FILTER_REJECT
             if (parent.tagName === 'A' || parent.closest('a')) return NodeFilter.FILTER_REJECT
-            if (parent.tagName === 'CODE' || parent.closest('code')) return NodeFilter.FILTER_REJECT
-            if (parent.classList.contains('chat-file-path') || parent.classList.contains('chat-commit-hash') || parent.classList.contains('chat-worktree-path')) return NodeFilter.FILTER_REJECT
+            // Skip elements already annotated by step 2
+            if (parent.classList.contains('chat-worktree-path')) return NodeFilter.FILTER_REJECT
+            if (parent.classList.contains('chat-file-path') || parent.classList.contains('chat-commit-hash')) return NodeFilter.FILTER_REJECT
             return NodeFilter.FILTER_ACCEPT
         }
     })

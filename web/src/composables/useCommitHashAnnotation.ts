@@ -53,7 +53,10 @@ export function annotateCommitHashes(
 
     const doc = new DOMParser().parseFromString(html, 'text/html')
 
-    // ── Step 1: <code> tags whose content looks like a commit hash ──
+    // ── Step 1: <code> tags whose content is purely a commit hash ──
+    // Only handles the case where the entire <code> content is a single hash.
+    // Mixed content is handled by Step 2's text-node walker, which now
+    // also enters <code> elements.
     for (const code of doc.querySelectorAll('code')) {
         // Skip <code> already annotated as file path
         if (code.classList.contains('chat-file-path')) continue
@@ -65,7 +68,7 @@ export function annotateCommitHashes(
         code.insertAdjacentHTML('afterend', commitOpenButtonHtml(stripped))
     }
 
-    // ── Step 2: Text nodes (outside a/code) → regex match hashes ──
+    // ── Step 2: Text nodes (outside a, but including inside <code>) → regex match hashes ──
     const textNodes: Text[] = []
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode(node: Text) {
@@ -73,10 +76,10 @@ export function annotateCommitHashes(
             if (!parent) return NodeFilter.FILTER_REJECT
             // Skip text inside <a> tags
             if (parent.tagName === 'A' || parent.closest('a')) return NodeFilter.FILTER_REJECT
-            // Skip text inside <code> tags (handled in step 1)
-            if (parent.tagName === 'CODE' || parent.closest('code')) return NodeFilter.FILTER_REJECT
+            // Skip <code> elements already annotated by step 1
+            if (parent.classList.contains('chat-commit-hash')) return NodeFilter.FILTER_REJECT
             // Skip already-annotated spans
-            if (parent.classList.contains('chat-file-path') || parent.classList.contains('chat-commit-hash')) return NodeFilter.FILTER_REJECT
+            if (parent.classList.contains('chat-file-path')) return NodeFilter.FILTER_REJECT
             return NodeFilter.FILTER_ACCEPT
         }
     })
