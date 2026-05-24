@@ -212,6 +212,11 @@ function getItemValue(item: any): any {
     } catch { /* not in app mode */ }
     return '-'
   }
+  // Port forward port: 0 means auto-assign
+  if (item.key === 'port_forward.port') {
+    const val = getServerValueWithDefault(item.key)
+    return val === 0 ? t('settings.items.portForwardPortAuto') : val
+  }
   if (item.source === 'local') {
     return localConfig[item.key]
   }
