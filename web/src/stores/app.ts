@@ -74,10 +74,6 @@ interface AppState {
     // Current file
     currentFile: CurrentFile | null
 
-    // File history (browser-like navigation)
-    fileHistory: string[]
-    fileHistoryIndex: number
-
     // Theme
     theme: string
 
@@ -119,10 +115,6 @@ const state = reactive<AppState>({
 
     // Current file
     currentFile: null,
-
-    // File history (browser-like navigation)
-    fileHistory: [],
-    fileHistoryIndex: -1,
 
     // Theme
     theme: 'light',
@@ -182,8 +174,6 @@ function resetProjectState(): void {
     state.dirEntries = []
     state.dirLoading = false
     state.currentFile = null
-    state.fileHistory = []
-    state.fileHistoryIndex = -1
     // Git
     state.gitBranch = ''
     state.gitHead = ''
@@ -261,19 +251,6 @@ async function loadFiles(dir = ''): Promise<void> {
 async function selectFile(path: string, isImageFile = false, isAudioFile = false, addToHistory = true, forceText = false): Promise<void> {
     const key = 'clawbenchLastFile_' + state.projectRoot
     if (key !== 'clawbenchLastFile_') localStorage.setItem(key, path)
-
-    // Add to file history (like browser history)
-    if (addToHistory) {
-        // If we're not at the end of history, truncate forward history
-        if (state.fileHistoryIndex < state.fileHistory.length - 1) {
-            state.fileHistory = state.fileHistory.slice(0, state.fileHistoryIndex + 1)
-        }
-        // Add new path to history (avoid consecutive duplicates)
-        if (state.fileHistory[state.fileHistory.length - 1] !== path) {
-            state.fileHistory.push(path)
-            state.fileHistoryIndex = state.fileHistory.length - 1
-        }
-    }
 
     // Detect media files by extension (avoids dynamic import)
     const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.tiff', '.tif', '.avif']
@@ -432,38 +409,6 @@ async function navigateToDir(dirPath: string): Promise<void> {
     await loadFiles(dirPath)
 }
 
-// =============================================
-// File Navigation (Browser-like history)
-// =============================================
-
-// Navigate to previous file in history
-async function navigateToPrevFile(): Promise<void> {
-    if (state.fileHistoryIndex > 0) {
-        state.fileHistoryIndex--
-        const path = state.fileHistory[state.fileHistoryIndex]
-        await selectFile(path, false, false, false)
-    }
-}
-
-// Navigate to next file in history
-async function navigateToNextFile(): Promise<void> {
-    if (state.fileHistoryIndex < state.fileHistory.length - 1) {
-        state.fileHistoryIndex++
-        const path = state.fileHistory[state.fileHistoryIndex]
-        await selectFile(path, false, false, false)
-    }
-}
-
-// Check if can navigate back
-function canNavigateBack(): boolean {
-    return state.fileHistoryIndex > 0
-}
-
-// Check if can navigate forward
-function canNavigateForward(): boolean {
-    return state.fileHistoryIndex < state.fileHistory.length - 1
-}
-
 export const store = {
     state,
     loadProject,
@@ -476,8 +421,4 @@ export const store = {
     deleteFiles,
     renameFile,
     navigateToDir,
-    navigateToNextFile,
-    navigateToPrevFile,
-    canNavigateBack,
-    canNavigateForward,
 }

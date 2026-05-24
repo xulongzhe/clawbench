@@ -45,6 +45,7 @@ import SettingsIndex from './SettingsIndex.vue'
 import SettingsCategory from './SettingsCategory.vue'
 import SettingsRestartDialog from './SettingsRestartDialog.vue'
 import { useSettingsNavigation } from '@/composables/useSettingsNavigation'
+import { useFeatureBackHandler } from '@/composables/useEdgeSwipeBack'
 
 const props = defineProps<{
   active?: boolean
@@ -57,6 +58,13 @@ const {
   restarting, restartingOverlay,
   handleRestartNeeded, handleRestart,
 } = useSettingsNavigation()
+
+// Register back handler for settings drill-down navigation
+useFeatureBackHandler(
+  'settings',
+  () => !!props.active && navStack.value.length > 0,
+  () => popNav(),
+)
 
 const currentCategoryTitle = computed(() => {
   return currentCategory.value ? t(`settings.categories.${currentCategory.value}`) : ''

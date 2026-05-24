@@ -67,16 +67,6 @@ describe('store', () => {
             expect(store.state.currentFile).toBeNull()
         })
 
-        it('clears file history', () => {
-            store.state.fileHistory = ['/a', '/b']
-            store.state.fileHistoryIndex = 1
-
-            store.resetProjectState()
-
-            expect(store.state.fileHistory).toEqual([])
-            expect(store.state.fileHistoryIndex).toBe(-1)
-        })
-
         it('clears git state', () => {
             store.state.gitBranch = 'main'
             store.state.gitHead = 'abc123'

@@ -156,6 +156,7 @@ import GitManageContent from './GitManageContent.vue'
 import { renderDiff } from '@/utils/diff.ts'
 import { store } from '@/stores/app.ts'
 import { useCommitNavigation, consumePendingCommitNavigation, pendingSha as pendingCommitSha, consumePendingManageNavigation, pendingManageView } from '@/composables/useCommitNavigation.ts'
+import { useFeatureBackHandler } from '@/composables/useEdgeSwipeBack'
 const { t } = useI18n()
 
 const switchTab = inject('switchTab', () => {})
@@ -437,6 +438,14 @@ const { navigateToCommit, handleDrillBackToCommits } = useCommitNavigation({
     loadCommitFiles,
     loadProjectHistory,
 })
+
+// Register back handler for git drill-down navigation
+// canGoBack: active tab AND not on the commit list (root view)
+useFeatureBackHandler(
+    'git-history',
+    () => props.active && currentView.value !== 'commits',
+    () => drillBack('commits'),
+)
 
 // Ensure IntersectionObserver is set up whenever user returns to the commits view.
 // This covers the case where observeList() was skipped due to early returns

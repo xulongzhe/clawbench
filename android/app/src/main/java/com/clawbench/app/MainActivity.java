@@ -608,21 +608,35 @@ public class MainActivity extends AppCompatActivity {
             }
             return;
         }
-        // If currently on the login page, don't navigate back in WebView history.
-        // The login page is the "root" state — pressing back should exit the app.
+        // If currently on the login page, allow the system back gesture (exit app)
         String currentUrl = webView.getUrl();
         if (currentUrl != null && currentUrl.equals(LOGIN_HTML_URL)) {
             super.onBackPressed();
             return;
         }
-        if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            // No more WebView history — just exit the app.
-            // Server reconfiguration is available via the gear menu in the web UI
-            // when the page fails to load, rather than through a back-gesture dialog.
-            super.onBackPressed();
-        }
+        // Delegate to JS: dispatch a clawbench-back-press event.
+        // The JS layer checks if any drill-down page can navigate back.
+        // If it can, the JS handler calls goBack() and sets __clawbenchBackHandled = true.
+        // If not, we fall back to the default behavior (super.onBackPressed)
+        // so that non-drill-down pages (chat, terminal, etc.) retain the normal
+        // Android back/edge-swipe-to-exit behavior.
+        webView.evaluateJavascript(
+            "(function() {" +
+            "  if (typeof window.__clawbenchBackHandled === 'undefined') window.__clawbenchBackHandled = false;" +
+            "  window.__clawbenchBackHandled = false;" +
+            "  window.dispatchEvent(new CustomEvent('clawbench-back-press'));" +
+            "  return window.__clawbenchBackHandled;" +
+            "})()",
+            result -> {
+                boolean handled = "true".equals(result);
+                if (!handled) {
+                    // No JS handler consumed the back press — fall back to default behavior.
+                    // This allows the system edge-swipe-to-exit to work on pages
+                    // without drill-down navigation (chat, terminal, etc.).
+                    super.onBackPressed();
+                }
+            }
+        );
     }
 
     @Override

@@ -4,16 +4,6 @@
       <span class="file-path-hint" style="cursor:pointer" @click="$emit('showDetails')" :title="file.name">{{ file.name }}</span>
     </div>
     <div class="header-actions">
-      <!-- File navigation: back/forward capsule group -->
-      <div class="nav-capsule">
-        <button class="nav-capsule-btn" :class="{ disabled: !canGoBack }" @click.stop="handleGoBack" :title="t('nav.prevFile')">
-          <ChevronLeft :size="14" />
-        </button>
-        <button class="nav-capsule-btn" :class="{ disabled: !canGoForward }" @click.stop="handleGoForward" :title="t('nav.nextFile')">
-          <ChevronRight :size="14" />
-        </button>
-      </div>
-
       <!-- TOC button (only for file types that support TOC) -->
       <button v-if="hasToc" class="file-header-btn" :class="{ active: tocOpen }" @click.stop="$emit('toggleToc')" :title="t('file.header.toc')">
         <List :size="14" />
@@ -81,10 +71,9 @@
 <script setup>
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { List, Search, MoreVertical, Code2, Download, Trash2, GitBranch, TextWrap, Hash, RotateCw, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { List, Search, MoreVertical, Code2, Download, Trash2, GitBranch, TextWrap, Hash, RotateCw } from 'lucide-vue-next'
 import { getFileType } from '@/utils/fileType.ts'
 import { useAppMode } from '@/composables/useAppMode.ts'
-import { store } from '@/stores/app.ts'
 
 const props = defineProps({
     file: Object,
@@ -137,17 +126,6 @@ const hasToc = computed(() => {
     if (ft.isImage || ft.isAudio || ft.isVideo) return false
     return true
 })
-
-const canGoBack = computed(() => store.canNavigateBack())
-const canGoForward = computed(() => store.canNavigateForward())
-
-function handleGoBack() {
-    if (canGoBack.value) store.navigateToPrevFile()
-}
-
-function handleGoForward() {
-    if (canGoForward.value) store.navigateToNextFile()
-}
 
 const badgeLabel = computed(() => {
     if (!props.file) return ''
@@ -281,66 +259,6 @@ onBeforeUnmount(() => {
     gap: 6px;
     margin-left: auto;
     flex-shrink: 0;
-}
-
-/* Navigation capsule group */
-.nav-capsule {
-    display: flex;
-    align-items: center;
-    background: var(--bg-tertiary);
-    border-radius: 12px;
-    padding: 1.5px;
-    flex-shrink: 0;
-}
-
-.nav-capsule-btn {
-    padding: 0;
-    width: 22px;
-    height: 22px;
-    border: none;
-    border-radius: 10px;
-    background: transparent;
-    cursor: pointer;
-    color: var(--text-secondary);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, color 0.15s;
-}
-
-.nav-capsule-btn svg {
-    width: 12px;
-    height: 12px;
-}
-
-.nav-capsule-btn + .nav-capsule-btn {
-    border-left: none;
-}
-
-.nav-capsule-btn:first-child::after {
-    content: '';
-    position: absolute;
-    right: -1px;
-    top: 25%;
-    bottom: 25%;
-    width: 1px;
-    background: var(--border-color);
-    pointer-events: none;
-}
-
-.nav-capsule-btn {
-    position: relative;
-}
-
-.nav-capsule-btn:hover:not(.disabled) {
-    background: var(--bg-secondary);
-    color: var(--accent-color);
-}
-
-.nav-capsule-btn.disabled {
-    opacity: 0.25;
-    cursor: default;
-    pointer-events: none;
 }
 
 .file-header-btn {

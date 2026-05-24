@@ -290,6 +290,7 @@ import { localConfig, setLocalConfig, useSettingsConfig } from '@/composables/us
 import { useAppMode } from '@/composables/useAppMode.ts'
 import { useDialog } from '@/composables/useDialog.ts'
 import { useTerminalStatus } from '@/composables/useTerminalStatus.ts'
+import { useFeatureBackHandler } from '@/composables/useEdgeSwipeBack'
 import SearchInput from '@/components/common/SearchInput.vue'
 import DirBreadcrumb from './DirBreadcrumb.vue'
 
@@ -299,6 +300,15 @@ const { t, locale } = useI18n()
 const dialog = useDialog()
 const { terminalRuntimeEnabled } = useTerminalStatus()
 const isTerminalDisabled = computed(() => terminalRuntimeEnabled.value !== true)
+
+const activeTab = inject('activeTab', ref(''))
+
+// Register back handler for file browser directory navigation
+useFeatureBackHandler(
+  'browse',
+  () => activeTab.value === 'browse' && !!props.currentDir,
+  () => emit('navigateDir', dirName(props.currentDir)),
+)
 
 const props = defineProps({
     entries: Array,

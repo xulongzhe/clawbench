@@ -286,6 +286,8 @@ import { useTerminalStatus } from './composables/useTerminalStatus.ts'
 import { useFileWatch } from './composables/useFileWatch.ts'
 import { refreshCurrentFile } from './composables/useFileRefresh.ts'
 import { useGlobalEvents } from './composables/useGlobalEvents'
+import { useEdgeSwipeBack } from './composables/useEdgeSwipeBack'
+import { handleBackNavigation } from './composables/useBackHandler'
 import { store } from './stores/app.ts'
 import { setPendingCommitNavigation } from './composables/useCommitNavigation.ts'
 import { initMermaid, reRenderMermaid } from './utils/mermaid.ts'
@@ -530,8 +532,18 @@ const removeTaskHandler = onEvent((event, data) => {
 const handleForeground = () => {
     // Full state pull — 3rd defense layer
     loadSessionsOnce()
-    loadTasks()
 }
+
+// Edge swipe back gesture detection (right-edge-left-swipe → go back)
+useEdgeSwipeBack()
+
+// Android hardware back button / predictive back gesture → delegate to JS
+window.addEventListener('clawbench-back-press', () => {
+    // If any feature can handle back, do it and prevent the default Android behavior
+    const handled = handleBackNavigation()
+    // Set flag for the Android native code to check
+    window.__clawbenchBackHandled = !!handled
+})
 window.addEventListener('clawbench-foreground', handleForeground)
 const terminalRequestedCwd = ref(null)
 

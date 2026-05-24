@@ -16,6 +16,7 @@ import TaskHistoryTab from '@/components/task/TaskHistoryTab.vue'
 import TaskExecDetail from '@/components/task/TaskExecDetail.vue'
 import TaskFormPage from '@/components/task/TaskFormPage.vue'
 import { useTaskTab } from '@/composables/useTaskTab'
+import { useFeatureBackHandler } from '@/composables/useEdgeSwipeBack'
 import { store } from '@/stores/app'
 
 const props = defineProps<{
@@ -26,7 +27,15 @@ const emit = defineEmits<{
   'open-file': [filePath: string]
 }>()
 
-const { currentView, selectedTaskId, selectedExecData, execDetailOpen, formViewOpen, formMode, navigateToTaskSettings, navigateToTaskHistory, navigateToList, closeExecDetail, openCreateForm, openEditForm, closeForm, loadTasks } = useTaskTab()
+const { currentView, selectedTaskId, selectedExecData, execDetailOpen, formViewOpen, formMode, goBack, navigateToTaskSettings, navigateToTaskHistory, navigateToList, closeExecDetail, openCreateForm, openEditForm, closeForm, loadTasks } = useTaskTab()
+
+// Register back handler for task drill-down navigation
+// canGoBack checks: only when this tab is active AND has a drill-down view
+useFeatureBackHandler(
+  'tasks',
+  () => props.active && (currentView.value !== 'list' || execDetailOpen.value || formViewOpen.value),
+  () => goBack(),
+)
 
 // Read from store directly — NOT from listPageRef (Vue refs don't expose internal computed)
 const selectedTaskData = computed(() =>
