@@ -1081,30 +1081,7 @@ public class MainActivity extends AppCompatActivity {
             }
             String serverUrl = prefs.getString(KEY_SERVER_URL, "");
             if (serverUrl.startsWith("https://")) {
-                // Track whether the handler has been responded to, to prevent leaks
-                // if the Activity is destroyed while the dialog is showing.
-                final boolean[] handlerUsed = {false};
-                AlertDialog dialog = new AlertDialog.Builder(MainActivity.this)
-                        .setTitle("SSL 证书验证失败")
-                        .setMessage("服务器使用了自签名证书，连接可能不安全。\n\n仅当您信任该服务器时才继续。")
-                        .setPositiveButton("信任并继续", (dialog1, which) -> {
-                            handlerUsed[0] = true;
-                            handler.proceed();
-                        })
-                        .setNegativeButton("取消连接", (dialog1, which) -> {
-                            handlerUsed[0] = true;
-                            handler.cancel();
-                        })
-                        .setOnDismissListener(dialog1 -> {
-                            // If the dialog was dismissed without a button press
-                            // (e.g., Activity destroyed), cancel the SSL connection
-                            // to prevent the handler from leaking.
-                            if (!handlerUsed[0]) {
-                                handler.cancel();
-                            }
-                        })
-                        .setCancelable(false)
-                        .show();
+                showSslConfirmationDialog(handler);
             } else {
                 handler.cancel();
             }
@@ -1173,25 +1150,57 @@ public class MainActivity extends AppCompatActivity {
             cancelConnectionTimeout();
             // The WebView is in an unusable state — destroy and recreate it.
             // Simply showing the login page won't work because the renderer is dead.
-            runOnUiThread(() -> {
-                try {
-                    // Destroy the old WebView and recreate
-                    android.view.ViewGroup parent = (android.view.ViewGroup) view.getParent();
-                    int index = parent.indexOfChild(view);
-                    parent.removeView(view);
-                    view.destroy();
-                    WebView newView = new WebView(MainActivity.this);
-                    parent.addView(newView, index);
-                    webView = newView;
-                    setupWebView();
-                    showLoginPage("页面渲染异常，请重新连接。");
-                } catch (Exception e) {
-                    AppLog.e(TAG, "Failed to recreate WebView after crash", e);
-                    // Last resort: finish the activity so the user can relaunch
-                    finish();
-                }
-            });
+            runOnUiThread(() -> recreateWebViewAfterCrash(view));
             return true; // We handled the crash — don't let the default behavior show a blank screen
+        }
+    }
+
+    /**
+     * Show SSL confirmation dialog for non-localhost HTTPS servers.
+     * Separated from WebViewClient for testability — the logic branches are tested
+     * in WebViewClient; this method only handles the UI dialog creation.
+     */
+    void showSslConfirmationDialog(SslErrorHandler handler) {
+        final boolean[] handlerUsed = {false};
+        new AlertDialog.Builder(this)
+                .setTitle("SSL 证书验证失败")
+                .setMessage("服务器使用了自签名证书，连接可能不安全。\n\n仅当您信任该服务器时才继续。")
+                .setPositiveButton("信任并继续", (dialog, which) -> {
+                    handlerUsed[0] = true;
+                    handler.proceed();
+                })
+                .setNegativeButton("取消连接", (dialog, which) -> {
+                    handlerUsed[0] = true;
+                    handler.cancel();
+                })
+                .setOnDismissListener(dialog -> {
+                    if (!handlerUsed[0]) {
+                        handler.cancel();
+                    }
+                })
+                .setCancelable(false)
+                .show();
+    }
+
+    /**
+     * Recreate the WebView after a renderer crash.
+     * Separated for testability — the core state reset happens in onRenderProcessGone
+     * before this is called. This method only handles the UI recovery.
+     */
+    void recreateWebViewAfterCrash(WebView crashedView) {
+        try {
+            android.view.ViewGroup parent = (android.view.ViewGroup) crashedView.getParent();
+            int index = parent.indexOfChild(crashedView);
+            parent.removeView(crashedView);
+            crashedView.destroy();
+            WebView newView = new WebView(this);
+            parent.addView(newView, index);
+            webView = newView;
+            setupWebView();
+            showLoginPage("页面渲染异常，请重新连接。");
+        } catch (Exception e) {
+            AppLog.e(TAG, "Failed to recreate WebView after crash", e);
+            finish();
         }
     }
 

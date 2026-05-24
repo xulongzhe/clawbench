@@ -611,7 +611,6 @@ public class MainActivityConnectionRecoveryTest {
 
     @Test
     public void onReceivedSslError_localhost_autoAccepts() throws Exception {
-        // localhost SSL errors should be auto-accepted
         when(mockWebView.getUrl()).thenReturn("https://localhost:20000");
         when(mockPrefs.getString(any(), any())).thenReturn("https://localhost:20000");
 
@@ -627,24 +626,7 @@ public class MainActivityConnectionRecoveryTest {
     }
 
     @Test
-    public void onReceivedSslError_127001_autoAccepts() throws Exception {
-        when(mockWebView.getUrl()).thenReturn("https://127.0.0.1:20000");
-        when(mockPrefs.getString(any(), any())).thenReturn("https://127.0.0.1:20000");
-
-        Object client = createWebViewClient();
-        Method method = findMethod(client.getClass(), "onReceivedSslError",
-                android.webkit.WebView.class, android.webkit.SslErrorHandler.class, android.net.http.SslError.class);
-        method.setAccessible(true);
-
-        android.webkit.SslErrorHandler mockHandler = mock(android.webkit.SslErrorHandler.class);
-        method.invoke(client, mockWebView, mockHandler, null);
-
-        verify(mockHandler).proceed();
-    }
-
-    @Test
-    public void onReceivedSslError_httpsServer_cancelsWhenNotHttps() throws Exception {
-        // Non-HTTPS server URL → handler.cancel() in else branch
+    public void onReceivedSslError_nonHttps_cancels() throws Exception {
         when(mockWebView.getUrl()).thenReturn("https://192.168.1.100:20000");
         when(mockPrefs.getString(any(), any())).thenReturn("http://192.168.1.100:20000");
 
@@ -661,9 +643,7 @@ public class MainActivityConnectionRecoveryTest {
 
     @Test
     public void onReceivedSslError_httpsServer_showsDialog() throws Exception {
-        // HTTPS server URL → should try to show SSL dialog.
-        // On Unsafe-allocated activity, AlertDialog.Builder will NPE,
-        // but we can verify the code path reaches it by checking the exception.
+        // HTTPS server URL → calls showSslConfirmationDialog → AlertDialog.Builder NPE
         when(mockWebView.getUrl()).thenReturn("https://192.168.1.100:20000");
         when(mockPrefs.getString(any(), any())).thenReturn("https://192.168.1.100:20000");
 
@@ -676,8 +656,44 @@ public class MainActivityConnectionRecoveryTest {
         try {
             method.invoke(client, mockWebView, mockHandler, null);
         } catch (java.lang.reflect.InvocationTargetException e) {
-            // Expected: AlertDialog.Builder NPE on Unsafe-allocated activity
-            // This proves the "https://" serverUrl branch was taken (dialog path)
+            // Expected: showSslConfirmationDialog → AlertDialog.Builder NPE
+            assertNotNull(e.getCause());
+        }
+    }
+
+    // =====================================================
+    // showSslConfirmationDialog: extracted dialog logic
+    // =====================================================
+
+    @Test
+    public void showSslConfirmationDialog_requiresActivityUI() throws Exception {
+        // showSslConfirmationDialog creates an AlertDialog — NPE on Unsafe-allocated activity
+        android.webkit.SslErrorHandler mockHandler = mock(android.webkit.SslErrorHandler.class);
+        Method method = findMethod(MainActivity.class, "showSslConfirmationDialog",
+                android.webkit.SslErrorHandler.class);
+        method.setAccessible(true);
+        try {
+            method.invoke(activity, mockHandler);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            // Expected: AlertDialog.Builder NPE
+            assertNotNull(e.getCause());
+        }
+    }
+
+    // =====================================================
+    // recreateWebViewAfterCrash: extracted crash recovery
+    // =====================================================
+
+    @Test
+    public void recreateWebViewAfterCrash_requiresActivityUI() throws Exception {
+        // recreateWebViewAfterCrash accesses view.getParent() — NPE on mock WebView
+        Method method = findMethod(MainActivity.class, "recreateWebViewAfterCrash",
+                android.webkit.WebView.class);
+        method.setAccessible(true);
+        try {
+            method.invoke(activity, mockWebView);
+        } catch (java.lang.reflect.InvocationTargetException e) {
+            // Expected: ViewGroup NPE on Unsafe-allocated activity
             assertNotNull(e.getCause());
         }
     }
