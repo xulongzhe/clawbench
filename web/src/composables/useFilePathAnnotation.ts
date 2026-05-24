@@ -9,13 +9,30 @@ import { clearWorktreeCache } from '@/composables/useWorktreeAnnotation.ts'
  * Resolve a file path to a project-relative path usable by store.selectFile().
  * Returns null if the path is not within the current project.
  * When projectRoot is empty, relative paths are returned as-is (best-effort).
+ *
+ * Supports tilde expansion: if homeDir is provided, ~/foo is expanded to
+ * homeDir + /foo before checking against projectRoot. Without homeDir,
+ * tilde-prefixed paths are rejected (we can't determine if they're in-project).
  */
-export function resolveFilePath(path: string, projectRoot: string): string | null {
+export function resolveFilePath(path: string, projectRoot: string, homeDir?: string): string | null {
     // Reject paths containing glob wildcards, angle brackets, or double-star.
     // These are glob patterns or template variables, not real filesystem paths.
     if (/[*?\\[\]<>]/.test(path) || path.includes('**')) return null
     // Reject URLs (handled by localhost annotation, not file path annotation)
     if (/^https?:\/\//i.test(path)) return null
+    // Reject environment variable paths (e.g. $HOME/.bashrc, ${HOME}/config)
+    if (/\$/.test(path)) return null
+
+    // Expand tilde (~/...) to absolute path using homeDir.
+    // Only handle ~/ (current user's home) — ~username/ is not expanded.
+    if (path.startsWith('~/') || path === '~') {
+        if (!homeDir) return null // can't expand ~ without knowing home directory
+        const expanded = homeDir + path.slice(1) // ~/foo → /home/user/foo
+        // Now treat as absolute path
+        if (!projectRoot) return null
+        if (!expanded.startsWith(projectRoot + '/')) return null
+        return expanded.slice(projectRoot.length + 1)
+    }
 
     if (path.startsWith('/')) {
         // Absolute path: must be under projectRoot
@@ -73,12 +90,14 @@ export interface AnnotateFilePathsOptions {
     projectRoot: string
     /** Base directory for resolving relative <a href="..."> links (e.g. the md file's dir) */
     baseDir?: string
+    /** User's home directory (from backend), used to expand ~/ paths */
+    homeDir?: string
 }
 
 /**
  * Regex that matches file paths in plain text.
  * Three forms combined into one regex:
- *   1. Absolute paths: /home/user/project/src/main.go
+ *   1. Absolute/tilde paths: /home/user/project/src/main.go, ~/.config/nvim/init.lua
  *   2. Relative paths with ./ or ../:  ./lib/utils.ts, ../config/settings.json
  *   3. Bare relative paths: src/main.go (at least two segments + extension)
  *
@@ -88,7 +107,7 @@ export interface AnnotateFilePathsOptions {
  * Because this regex only runs on text node content (never on HTML attributes or tags),
  * there is no risk of matching inside data-file-path or other generated attributes.
  */
-const FILE_PATH_RE = /(?:\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)+\.[a-zA-Z][a-zA-Z0-9]*|\.\.?\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)*\.[a-zA-Z][a-zA-Z0-9]*|[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z][a-zA-Z0-9]*)/g
+const FILE_PATH_RE = /(?:~?\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)+\.[a-zA-Z][a-zA-Z0-9]*|\.\.?\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)*\.[a-zA-Z][a-zA-Z0-9]*|[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+\.[a-zA-Z][a-zA-Z0-9]*)/g
 
 /**
  * Check if a string looks like a file path that should be annotated.
@@ -102,6 +121,8 @@ function looksLikeFilePath(text: string): boolean {
     if (/[*?\\[\]<>]/.test(text) || text.includes('**')) return false
     // Exclude URLs (handled by localhost annotation)
     if (/^https?:\/\//i.test(text)) return false
+    // Exclude environment variable paths (e.g. $HOME/.bashrc, ${HOME}/config)
+    if (/\$/.test(text)) return false
     return /\/|\.[a-zA-Z][a-zA-Z0-9]{0,3}$/.test(text)
 }
 
@@ -128,7 +149,7 @@ export function annotateFilePaths(
 ): { html: string; detectedPaths: string[] } {
     if (!html) return { html: '', detectedPaths: [] }
 
-    const { projectRoot, baseDir } = options
+    const { projectRoot, baseDir, homeDir } = options
     const detectedPaths: string[] = []
 
     const doc = new DOMParser().parseFromString(html, 'text/html')
@@ -140,7 +161,7 @@ export function annotateFilePaths(
         if (/^(https?:|\/\/|mailto:|tel:|#)/i.test(href)) continue
         const resolved = baseDir
             ? resolveRelativePath(href, baseDir)
-            : resolveFilePath(href, projectRoot)
+            : resolveFilePath(href, projectRoot, homeDir)
         if (!resolved) continue
         detectedPaths.push(resolved)
         a.insertAdjacentHTML('afterend', fileOpenButtonHtml(resolved))
@@ -155,7 +176,7 @@ export function annotateFilePaths(
         if (code.classList.contains('chat-worktree-path')) continue
         const stripped = (code.textContent || '').trim()
         if (!looksLikeFilePath(stripped)) continue
-        const resolved = resolveFilePath(stripped, projectRoot)
+        const resolved = resolveFilePath(stripped, projectRoot, homeDir)
         if (!resolved || resolved.includes(' ') || resolved.includes('"')) continue
         // Entire <code> content is a valid file path — annotate the whole element
         detectedPaths.push(resolved)
@@ -196,7 +217,7 @@ export function annotateFilePaths(
         let match: RegExpExecArray | null
         while ((match = FILE_PATH_RE.exec(text)) !== null) {
             const pathStr = match[0]
-            let resolved = resolveFilePath(pathStr, projectRoot)
+            let resolved = resolveFilePath(pathStr, projectRoot, homeDir)
             // If the text immediately after this match continues with a path segment
             // (e.g. "/.worktrees" followed by "/gitgraph-fix"), the regex only matched
             // a directory prefix — skip it so worktree annotation can handle the full path.

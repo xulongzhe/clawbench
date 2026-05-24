@@ -129,6 +129,44 @@ describe('resolveFilePath', () => {
     it('returns null for https:// URLs', () => {
       expect(resolveFilePath('https://example.com/page.html', projectRoot)).toBeNull()
     })
+
+    it('returns null for $HOME environment variable paths', () => {
+      expect(resolveFilePath('$HOME/.bashrc', projectRoot)).toBeNull()
+      expect(resolveFilePath('${HOME}/config', projectRoot)).toBeNull()
+    })
+  })
+
+  describe('tilde (~/) paths', () => {
+    const homeDir = '/home/user'
+    const projectRoot = '/home/user/my-app'
+
+    it('resolves ~/project/... paths when homeDir is provided and path is in project', () => {
+      expect(resolveFilePath('~/my-app/src/main.go', projectRoot, homeDir)).toBe('src/main.go')
+    })
+
+    it('resolves ~/project/sub/deep paths', () => {
+      expect(resolveFilePath('~/my-app/internal/handler/chat.go', projectRoot, homeDir)).toBe('internal/handler/chat.go')
+    })
+
+    it('returns null for ~/ paths outside project when homeDir is provided', () => {
+      expect(resolveFilePath('~/.bashrc', projectRoot, homeDir)).toBeNull()
+      expect(resolveFilePath('~/other-project/file.ts', projectRoot, homeDir)).toBeNull()
+      expect(resolveFilePath('~/.config/nvim/init.lua', projectRoot, homeDir)).toBeNull()
+    })
+
+    it('returns null for ~/ paths without homeDir (cannot expand)', () => {
+      expect(resolveFilePath('~/my-app/src/main.go', projectRoot)).toBeNull()
+      expect(resolveFilePath('~/.bashrc', projectRoot)).toBeNull()
+    })
+
+    it('returns null for ~/ paths when expanded path equals projectRoot (no file part)', () => {
+      expect(resolveFilePath('~/my-app', projectRoot, homeDir)).toBeNull()
+    })
+
+    it('handles /root home directory correctly', () => {
+      expect(resolveFilePath('~/project/src/main.go', '/root/project', '/root')).toBe('src/main.go')
+      expect(resolveFilePath('~/other/file.ts', '/root/project', '/root')).toBeNull()
+    })
   })
 })
 
@@ -591,6 +629,186 @@ describe('annotateFilePaths', () => {
     const input = '<p>**/R.class and **/R$*.class and **/Manifest*.*</p>'
     const result = annotateFilePaths(input, { projectRoot })
     expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  // ── Tilde (~/) path tests ──
+
+  it('does not annotate ~/ paths outside project when homeDir is provided', () => {
+    const input = '<code>~/.bashrc</code>'
+    const result = annotateFilePaths(input, { projectRoot: '/home/user/my-app', homeDir: '/home/user' })
+    expect(result.detectedPaths).toHaveLength(0)
+    expect(result.html).not.toContain('chat-file-path')
+  })
+
+  it('annotates ~/project/... paths when homeDir is provided', () => {
+    const input = '<code>~/my-app/src/main.go</code>'
+    const result = annotateFilePaths(input, { projectRoot: '/home/user/my-app', homeDir: '/home/user' })
+    expect(result.detectedPaths).toContain('src/main.go')
+    expect(result.html).toContain('chat-file-path')
+  })
+
+  it('does not annotate ~/ paths without homeDir', () => {
+    const input = '<code>~/my-app/src/main.go</code>'
+    const result = annotateFilePaths(input, { projectRoot: '/home/user/my-app' })
+    expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  it('annotates ~/project/... in text nodes when homeDir is provided', () => {
+    const input = '<p>Edit ~/my-app/src/main.go for details</p>'
+    const result = annotateFilePaths(input, { projectRoot: '/home/user/my-app', homeDir: '/home/user' })
+    expect(result.detectedPaths).toContain('src/main.go')
+  })
+
+  it('does not annotate ~/ paths outside project in text nodes', () => {
+    const input = '<p>Check ~/.config/nvim/init.lua for settings</p>'
+    const result = annotateFilePaths(input, { projectRoot: '/home/user/my-app', homeDir: '/home/user' })
+    expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  it('does not annotate $HOME paths in <code> tags', () => {
+    const input = '<code>$HOME/.bashrc</code>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  // ── Comprehensive real-project path tests (projectRoot=/home/xulongzhe/projects/clawbench, homeDir=/home/xulongzhe) ──
+
+  describe('real-project path scenarios', () => {
+    const projectRoot = '/home/xulongzhe/projects/clawbench'
+    const homeDir = '/home/xulongzhe'
+
+    describe('正例 — 项目内路径，应该标注', () => {
+      it('annotates relative path (web/src/composables/useFilePathAnnotation.ts)', () => {
+        const input = '<p>Edit web/src/composables/useFilePathAnnotation.ts for details</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toContain('web/src/composables/useFilePathAnnotation.ts')
+      })
+
+      it('annotates absolute path under project (/home/xulongzhe/projects/clawbench/internal/handler/file.go)', () => {
+        const input = '<p>See /home/xulongzhe/projects/clawbench/internal/handler/file.go for details</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toContain('internal/handler/file.go')
+      })
+
+      it('annotates ~-expanded path in project (~/projects/clawbench/cmd/server/main.go)', () => {
+        const input = '<p>Check ~/projects/clawbench/cmd/server/main.go for details</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toContain('cmd/server/main.go')
+      })
+
+      it('annotates ./ relative path (./web/src/App.vue)', () => {
+        const input = '<p>Open ./web/src/App.vue for details</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toContain('web/src/App.vue')
+      })
+
+      it('annotates absolute path followed by CJK text (/home/xulongzhe/projects/clawbench/go.mod 这个文件)', () => {
+        const input = '<p>/home/xulongzhe/projects/clawbench/go.mod这个文件</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toContain('go.mod')
+      })
+
+      it('annotates deep ~-expanded path (~/projects/clawbench/web/src/composables/useChatRender.ts)', () => {
+        const input = '<p>Edit ~/projects/clawbench/web/src/composables/useChatRender.ts for details</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toContain('web/src/composables/useChatRender.ts')
+      })
+
+      it('annotates ~-expanded path in <code> tag', () => {
+        const input = '<code>~/projects/clawbench/web/src/App.vue</code>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toContain('web/src/App.vue')
+        expect(result.html).toContain('chat-file-path')
+      })
+    })
+
+    describe('反例 — 项目外路径，不应标注', () => {
+      it('does not annotate ~/.bashrc', () => {
+        const input = '<p>Edit ~/.bashrc to configure your shell</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate ~/projects/other-app/src/main.go (other project)', () => {
+        const input = '<p>Check ~/projects/other-app/src/main.go</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate ~/.config/nvim/init.lua', () => {
+        const input = '<p>Modify ~/.config/nvim/init.lua for settings</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate ~/.ssh/config', () => {
+        const input = '<p>Look at ~/.ssh/config</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate ~/go/src/main.go', () => {
+        const input = '<p>Check ~/go/src/main.go</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate ~/.cargo/config.toml', () => {
+        const input = '<p>Look at ~/.cargo/config.toml for Rust settings</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate /etc/hosts', () => {
+        const input = '<p>See /etc/hosts for DNS</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate /usr/local/bin/python3', () => {
+        const input = '<p>Run /usr/local/bin/python3 to start</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate /home/xulongzhe/.local/share/applications/mimeapps.list', () => {
+        const input = '<p>The path is /home/xulongzhe/.local/share/applications/mimeapps.list</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate $HOME/.bashrc', () => {
+        const input = '<p>Check $HOME/.bashrc</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate ${HOME}/config', () => {
+        const input = '<p>Check ${HOME}/config</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate **/*.class glob pattern', () => {
+        const input = '<p>Clean up **/*.class files</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+
+      it('does not annotate https://example.com/page.html', () => {
+        const input = '<p>Visit https://example.com/page.html for more</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+    })
+
+    describe('边界 case', () => {
+      it('does not annotate ~/projects/clawbench (equals projectRoot, no file part)', () => {
+        const input = '<p>Navigate to ~/projects/clawbench</p>'
+        const result = annotateFilePaths(input, { projectRoot, homeDir })
+        expect(result.detectedPaths).toHaveLength(0)
+      })
+    })
   })
 })
 

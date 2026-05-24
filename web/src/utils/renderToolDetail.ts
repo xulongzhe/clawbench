@@ -30,7 +30,8 @@ function renderEditDiff(input: Record<string, any>): string {
 
   // Resolve file path for click-to-open
   const projectRoot = store.state.projectRoot || ''
-  const resolvedPath = resolveFilePath(filePath, projectRoot)
+  const homeDir = store.state.homeDir || ''
+  const resolvedPath = resolveFilePath(filePath, projectRoot, homeDir)
   const displayPath = resolvedPath || filePath.replace(/^\.\//, '')
 
   // Detect language for syntax highlighting
@@ -108,7 +109,8 @@ function renderBashTerminal(input: Record<string, any>): string {
 function filePathHeader(input: Record<string, any>, extraBadge = ''): string {
   const filePath = input.file_path || ''
   const projectRoot = store.state.projectRoot || ''
-  const resolvedPath = resolveFilePath(filePath, projectRoot)
+  const homeDir = store.state.homeDir || ''
+  const resolvedPath = resolveFilePath(filePath, projectRoot, homeDir)
   const displayPath = resolvedPath || filePath.replace(/^\.\//, '')
 
   let html = '<div class="tool-file-header">'
@@ -265,7 +267,8 @@ function renderGrepSearch(input: Record<string, any>): string {
   // Path line
   if (path) {
     const projectRoot = store.state.projectRoot || ''
-    const resolvedPath = resolveFilePath(path, projectRoot)
+    const homeDir = store.state.homeDir || ''
+    const resolvedPath = resolveFilePath(path, projectRoot, homeDir)
     const displayPath = resolvedPath || path.replace(/^\.\//, '')
     html += '<div class="grep-path-row">'
     html += `<span class="grep-label">${escapeHtml(gt('tool.grep.path'))}</span>`
@@ -304,7 +307,8 @@ function renderGlobPattern(input: Record<string, any>): string {
   // Path line
   if (path) {
     const projectRoot = store.state.projectRoot || ''
-    const resolvedPath = resolveFilePath(path, projectRoot)
+    const homeDir = store.state.homeDir || ''
+    const resolvedPath = resolveFilePath(path, projectRoot, homeDir)
     const displayPath = resolvedPath || path.replace(/^\.\//, '')
     html += '<div class="glob-path-row">'
     html += `<span class="glob-label">${escapeHtml(gt('tool.glob.path'))}</span>`

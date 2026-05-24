@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"clawbench/internal/model"
+	"clawbench/internal/platform"
 	"clawbench/internal/service"
 )
 
@@ -92,7 +93,7 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"path": projectPath})
+		json.NewEncoder(w).Encode(map[string]string{"path": projectPath, "homeDir": platform.UserHomeDir()})
 
 	case http.MethodPost:
 		var req struct {

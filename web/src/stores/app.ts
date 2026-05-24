@@ -33,6 +33,7 @@ interface AppState {
     projectRoot: string
     projectName: string
     watchDir: string
+    homeDir: string
 
     // Upload config
     uploadMaxSizeMB: number
@@ -89,6 +90,7 @@ const state = reactive<AppState>({
     projectRoot: '',
     projectName: '',
     watchDir: '',
+    homeDir: '',
 
     // Upload config
     uploadMaxSizeMB: 100,
@@ -146,10 +148,11 @@ async function loadProject(): Promise<void> {
         } catch (error) {
             console.error('[loadProject] watchDir failed:', error)
         }
-        const data = await apiGet<{ path: string }>('/api/project')
+        const data = await apiGet<{ path: string; homeDir?: string }>('/api/project')
         if (!data.path) return
         state.projectRoot = data.path
         state.projectName = baseName(data.path)
+        state.homeDir = data.homeDir || ''
         localStorage.setItem('currentProjectPath', data.path)
         // Add to recent projects
         apiPost('/api/recent-projects', { path: data.path }).catch(() => {})
@@ -169,6 +172,7 @@ function resetProjectState(): void {
     state.projectRoot = ''
     state.projectName = ''
     state.watchDir = ''
+    state.homeDir = ''
     // File browser
     state.currentDir = ''
     state.dirEntries = []

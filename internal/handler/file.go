@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"clawbench/internal/model"
+	"clawbench/internal/platform"
 )
 
 // mimeTypes maps file extensions to MIME types for ServeLocalFile.
@@ -418,6 +419,8 @@ func ServeFileBatchExists(w http.ResponseWriter, r *http.Request) {
 			results[p] = "none"
 			continue
 		}
+		// Expand ~ to home directory so paths like ~/.bashrc resolve correctly
+		p = platform.ExpandTilde(p)
 		absPath, ok := model.ValidatePath(baseAbs, p)
 		if !ok {
 			results[p] = "none"

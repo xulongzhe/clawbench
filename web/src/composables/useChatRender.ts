@@ -147,6 +147,7 @@ export function useChatRender(options) {
     if (!skipEnhancements) {
       // Image styling, audio links, annotations: deferred to post-streaming
       const projectRoot = store.state.projectRoot
+      const homeDir = store.state.homeDir
       html = rewriteImageUrls(html, projectRoot)
       html = convertAudioLinks(html)
       // Annotate worktree paths BEFORE file paths — prevents file-path regex from
@@ -154,7 +155,7 @@ export function useChatRender(options) {
       // /home/x/project/.worktrees instead of the full /home/x/project/.worktrees/fix)
       const { html: worktreeHtml } = annotateWorktreePaths(html, { projectRoot })
       html = worktreeHtml
-      const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, { projectRoot })
+      const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, { projectRoot, homeDir })
       html = annotatedHtml
       if (detectedPaths.length > 0) {
         const uniquePaths = [...new Set(detectedPaths)]

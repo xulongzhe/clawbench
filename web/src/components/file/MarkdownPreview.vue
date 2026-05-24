@@ -121,7 +121,8 @@ async function doRender(f) {
     const currentDir = f?.path ? dirName(f.path) : ''
     const { html: annotatedHtml, detectedPaths } = annotateFilePaths(html, {
         projectRoot: store.state.projectRoot,
-        baseDir: currentDir
+        baseDir: currentDir,
+        homeDir: store.state.homeDir
     })
     renderedHtml.value = annotatedHtml
 

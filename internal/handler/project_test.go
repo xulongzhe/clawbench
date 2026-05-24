@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -28,6 +29,10 @@ func TestServeProjectSet(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, w.Code)
 		assertJSONField(t, w, "path", projectPath)
+		// homeDir should be present (non-empty on any system with a home directory)
+		var resp map[string]interface{}
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		assert.NotEmpty(t, resp["homeDir"], "homeDir should be present in response")
 	})
 
 	t.Run("GET_WithoutCookie_FallsBackToWatchDir", func(t *testing.T) {
