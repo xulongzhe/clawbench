@@ -96,6 +96,30 @@ describe('resolveFilePath', () => {
       expect(resolveFilePath('../src/main.go', '')).toBeNull()
     })
   })
+
+  describe('illegal characters (glob patterns, template vars)', () => {
+    it('returns null for paths with * wildcard', () => {
+      expect(resolveFilePath('*.class', projectRoot)).toBeNull()
+      expect(resolveFilePath('src/*.go', projectRoot)).toBeNull()
+    })
+
+    it('returns null for paths with ** double-star', () => {
+      expect(resolveFilePath('**/*.class', projectRoot)).toBeNull()
+      expect(resolveFilePath('src/**/*.ts', projectRoot)).toBeNull()
+    })
+
+    it('returns null for paths with ? wildcard', () => {
+      expect(resolveFilePath('src/test?.go', projectRoot)).toBeNull()
+    })
+
+    it('returns null for paths with [ ] brackets', () => {
+      expect(resolveFilePath('src/[test]/file.go', projectRoot)).toBeNull()
+    })
+
+    it('returns null for paths with < > angle brackets', () => {
+      expect(resolveFilePath('<sourcefile>/<line>', projectRoot)).toBeNull()
+    })
+  })
 })
 
 // --- resolveRelativePath ---
@@ -516,6 +540,34 @@ describe('annotateFilePaths', () => {
   it('skips <code> elements already annotated as worktree', () => {
     // <code> with chat-worktree-path class should be skipped in step 2
     const input = '<code class="chat-worktree-path" data-worktree-path="/home/user/project/.worktrees/fix">.worktrees/fix</code>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  // ── Glob / illegal character rejection tests ──
+
+  it('does not annotate glob patterns in <code> tags', () => {
+    const input = '<code>**/*.class</code>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toHaveLength(0)
+    expect(result.html).not.toContain('chat-file-path')
+  })
+
+  it('does not annotate paths with * wildcard in <code> tags', () => {
+    const input = '<code>*Test.java</code>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  it('does not annotate paths with angle brackets (template vars)', () => {
+    const input = '<code><sourcefile>/<line></code>'
+    const result = annotateFilePaths(input, { projectRoot })
+    expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  it('does not annotate ProGuard-style glob patterns in text', () => {
+    // These are common in Android/Java projects — not real file paths
+    const input = '<p>**/R.class and **/R$*.class and **/Manifest*.*</p>'
     const result = annotateFilePaths(input, { projectRoot })
     expect(result.detectedPaths).toHaveLength(0)
   })

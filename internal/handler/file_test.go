@@ -366,3 +366,187 @@ func TestServeProjects(t *testing.T) {
 		assert.Equal(t, "dir", entry["type"])
 	})
 }
+
+func TestServeFileBatchExists(t *testing.T) {
+	t.Run("ExistingFile_ReturnsFile", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		createTestFile(t, env.ProjectDir, "src/main.go", "package main")
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{"src/main.go"},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		results, ok := result["results"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "file", results["src/main.go"])
+	})
+
+	t.Run("ExistingDirectory_ReturnsDir", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		os.MkdirAll(filepath.Join(env.ProjectDir, "src"), 0755)
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{"src"},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		results, ok := result["results"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "dir", results["src"])
+	})
+
+	t.Run("NonExistentPath_ReturnsNone", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{"nonexistent.go"},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		results, ok := result["results"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "none", results["nonexistent.go"])
+	})
+
+	t.Run("GlobChars_ReturnsNone", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{"**/*.class", "*.java", "src/[test]/file.go", "<sourcefile>"},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		results, ok := result["results"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "none", results["**/*.class"])
+		assert.Equal(t, "none", results["*.java"])
+		assert.Equal(t, "none", results["src/[test]/file.go"])
+		assert.Equal(t, "none", results["<sourcefile>"])
+	})
+
+	t.Run("PathTraversal_ReturnsNone", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{"../../../etc/passwd"},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		results, ok := result["results"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "none", results["../../../etc/passwd"])
+	})
+
+	t.Run("MixedPaths_CorrectResults", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		createTestFile(t, env.ProjectDir, "exists.txt", "hello")
+		os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0755)
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{"exists.txt", "subdir", "missing.go", "**/*.class"},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		results, ok := result["results"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "file", results["exists.txt"])
+		assert.Equal(t, "dir", results["subdir"])
+		assert.Equal(t, "none", results["missing.go"])
+		assert.Equal(t, "none", results["**/*.class"])
+	})
+
+	t.Run("EmptyPaths_Returns400", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertStatus(t, w, http.StatusBadRequest)
+	})
+
+	t.Run("NoProjectCookie_Returns403", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{"test.txt"},
+		})
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertStatus(t, w, http.StatusForbidden)
+	})
+
+	t.Run("TooManyPaths_Returns400", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		paths := make([]string, 101)
+		for i := range paths {
+			paths[i] = "file.txt"
+		}
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": paths,
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertStatus(t, w, http.StatusBadRequest)
+	})
+}

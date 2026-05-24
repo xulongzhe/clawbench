@@ -368,6 +368,74 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// containsGlobChars returns true if the path contains characters that are
+// invalid in filesystem paths (glob wildcards, angle brackets, double-star).
+// These characters indicate the string is a glob pattern or template variable,
+// not a real file path.
+func containsGlobChars(path string) bool {
+	return strings.ContainsAny(path, "*?[]<>") || strings.Contains(path, "**")
+}
+
+// ServeFileBatchExists handles POST /api/file/batch-exists
+// Body:   { "paths": ["src/main.go", "lib/", "**/*.class"] }
+// Response: { "results": { "src/main.go": "file", "lib": "dir", "**/*.class": "none" } }
+// Each path is checked against the project directory. Paths containing glob
+// characters are short-circuited to "none" without touching the filesystem.
+func ServeFileBatchExists(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	var req struct {
+		Paths []string `json:"paths"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if len(req.Paths) == 0 {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "MissingPath")
+		return
+	}
+	if len(req.Paths) > 100 {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "TooManyPaths")
+		return
+	}
+
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+	baseAbs, err := filepath.Abs(projectPath)
+	if err != nil {
+		model.WriteError(w, model.Internal(err))
+		return
+	}
+
+	results := make(map[string]string, len(req.Paths))
+	for _, p := range req.Paths {
+		// Short-circuit glob patterns and template variables
+		if containsGlobChars(p) {
+			results[p] = "none"
+			continue
+		}
+		absPath, ok := model.ValidatePath(baseAbs, p)
+		if !ok {
+			results[p] = "none"
+			continue
+		}
+		info, err := os.Stat(absPath)
+		if err != nil {
+			results[p] = "none"
+		} else if info.IsDir() {
+			results[p] = "dir"
+		} else {
+			results[p] = "file"
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"results": results})
+}
+
 // ── File-related DTOs ──────────────────────────────────────────────────────────
 
 // DirEntry represents a directory entry in API responses

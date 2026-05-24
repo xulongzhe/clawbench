@@ -1,0 +1,17 @@
+# Ubuntu 22.04 builder — produces GLIBC 2.35 compatible binary
+# (Ubuntu apt mirrors are fast in China; Rocky Linux dnf is very slow)
+# Usage:
+#   docker build -t clawbench-builder -f Dockerfile.build .
+#   docker run --rm -v $(pwd):/src -w /src clawbench-builder ./build.sh --linux
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install build tools (cached layer)
+RUN apt-get update && apt-get install -y gcc g++ make git curl && rm -rf /var/lib/apt/lists/*
+
+# Install Go (cached layer)
+RUN curl -sL https://go.dev/dl/go1.26.1.linux-amd64.tar.gz | tar -C /usr/local -xz
+ENV PATH=$PATH:/usr/local/go/bin
+
+WORKDIR /src
