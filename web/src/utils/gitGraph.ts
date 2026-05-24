@@ -526,7 +526,7 @@ export function computeGraphData(commits, rowHeight, previousShaToLane) {
 
 // ─── Ref label helpers ─────────────────────────────────────────────────────
 
-function refLabelWidth(ref) {
+export function refLabelWidth(ref) {
   const text = ref.startsWith('tag: ') ? ref.slice(5) : ref
   return text.length * 6 + 8
 }
@@ -536,7 +536,7 @@ export function refLabelText(ref) {
   return ref
 }
 
-function refLabelBg(ref) {
+export function refLabelBg(ref) {
   if (ref === 'HEAD') return '#1a1a2e'
   if (ref.startsWith('tag: ')) return '#555'
   return '#4a90d9'
