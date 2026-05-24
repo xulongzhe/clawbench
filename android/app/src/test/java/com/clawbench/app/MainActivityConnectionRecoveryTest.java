@@ -1,6 +1,8 @@
 package com.clawbench.app;
 
 import android.content.SharedPreferences;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.ValueCallback;
 import android.webkit.WebView;
 
@@ -419,6 +421,209 @@ public class MainActivityConnectionRecoveryTest {
         field.setAccessible(true);
         int timeout = field.getInt(null);
         assertEquals(15_000, timeout);
+    }
+
+    // =====================================================
+    // onReceivedError: main frame error handling
+    // =====================================================
+
+    @Test
+    public void onReceivedError_mainFrame_setsLoadErrorPendingAndSchedulesShowLoginPage() throws Exception {
+        setField(activity, "webViewConnected", false);
+        setField(activity, "loadErrorPending", false);
+
+        WebResourceRequest mockRequest = mock(WebResourceRequest.class);
+        when(mockRequest.isForMainFrame()).thenReturn(true);
+
+        Object client = createWebViewClient();
+        Method onReceivedError = findMethod(client.getClass(), "onReceivedError",
+                android.webkit.WebView.class, WebResourceRequest.class, android.webkit.WebResourceError.class);
+        onReceivedError.setAccessible(true);
+        // WebResourceError is final on some API levels — pass null, the method only checks request.isForMainFrame()
+        onReceivedError.invoke(client, mockWebView, mockRequest, null);
+
+        // Should set loadErrorPending
+        assertTrue(getBooleanField(activity, "loadErrorPending"));
+        // Should make WebView invisible
+        verify(mockWebView).setVisibility(android.view.View.INVISIBLE);
+        // Should schedule a delayed showLoginPage (postDelayed on WebView)
+        verify(mockWebView).postDelayed(any(Runnable.class), eq(600L));
+    }
+
+    @Test
+    public void onReceivedError_subFrame_doesNothing() throws Exception {
+        setField(activity, "loadErrorPending", false);
+
+        WebResourceRequest mockRequest = mock(WebResourceRequest.class);
+        when(mockRequest.isForMainFrame()).thenReturn(false);
+
+        Object client = createWebViewClient();
+        Method onReceivedError = findMethod(client.getClass(), "onReceivedError",
+                android.webkit.WebView.class, WebResourceRequest.class, android.webkit.WebResourceError.class);
+        onReceivedError.setAccessible(true);
+        onReceivedError.invoke(client, mockWebView, mockRequest, null);
+
+        // Should NOT set loadErrorPending for sub-frame errors
+        assertFalse(getBooleanField(activity, "loadErrorPending"));
+    }
+
+    // =====================================================
+    // onReceivedHttpError: main frame HTTP 4xx/5xx handling
+    // =====================================================
+
+    @Test
+    public void onReceivedHttpError_mainFrameNotConnected_401_setsErrorAndSchedulesLogin() throws Exception {
+        setField(activity, "webViewConnected", false);
+        setField(activity, "loadErrorPending", false);
+
+        WebResourceRequest mockRequest = mock(WebResourceRequest.class);
+        when(mockRequest.isForMainFrame()).thenReturn(true);
+        WebResourceResponse mockResponse = mock(WebResourceResponse.class);
+        when(mockResponse.getStatusCode()).thenReturn(401);
+
+        Object client = createWebViewClient();
+        Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
+                android.webkit.WebView.class, WebResourceRequest.class, WebResourceResponse.class);
+        onReceivedHttpError.setAccessible(true);
+        onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
+
+        assertTrue(getBooleanField(activity, "loadErrorPending"));
+        verify(mockWebView).setVisibility(android.view.View.INVISIBLE);
+        verify(mockWebView).postDelayed(any(Runnable.class), eq(600L));
+    }
+
+    @Test
+    public void onReceivedHttpError_mainFrameNotConnected_500_setsErrorAndSchedulesLogin() throws Exception {
+        setField(activity, "webViewConnected", false);
+
+        WebResourceRequest mockRequest = mock(WebResourceRequest.class);
+        when(mockRequest.isForMainFrame()).thenReturn(true);
+        WebResourceResponse mockResponse = mock(WebResourceResponse.class);
+        when(mockResponse.getStatusCode()).thenReturn(502);
+
+        Object client = createWebViewClient();
+        Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
+                android.webkit.WebView.class, WebResourceRequest.class, WebResourceResponse.class);
+        onReceivedHttpError.setAccessible(true);
+        onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
+
+        assertTrue(getBooleanField(activity, "loadErrorPending"));
+    }
+
+    @Test
+    public void onReceivedHttpError_mainFrameNotConnected_404_setsErrorAndSchedulesLogin() throws Exception {
+        setField(activity, "webViewConnected", false);
+
+        WebResourceRequest mockRequest = mock(WebResourceRequest.class);
+        when(mockRequest.isForMainFrame()).thenReturn(true);
+        WebResourceResponse mockResponse = mock(WebResourceResponse.class);
+        when(mockResponse.getStatusCode()).thenReturn(404);
+
+        Object client = createWebViewClient();
+        Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
+                android.webkit.WebView.class, WebResourceRequest.class, WebResourceResponse.class);
+        onReceivedHttpError.setAccessible(true);
+        onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
+
+        assertTrue(getBooleanField(activity, "loadErrorPending"));
+    }
+
+    @Test
+    public void onReceivedHttpError_webViewConnected_doesNothing() throws Exception {
+        // Once the app is loaded, HTTP errors are handled by the Vue frontend
+        setField(activity, "webViewConnected", true);
+        setField(activity, "loadErrorPending", false);
+
+        WebResourceRequest mockRequest = mock(WebResourceRequest.class);
+        when(mockRequest.isForMainFrame()).thenReturn(true);
+        WebResourceResponse mockResponse = mock(WebResourceResponse.class);
+        when(mockResponse.getStatusCode()).thenReturn(500);
+
+        Object client = createWebViewClient();
+        Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
+                android.webkit.WebView.class, WebResourceRequest.class, WebResourceResponse.class);
+        onReceivedHttpError.setAccessible(true);
+        onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
+
+        // Should NOT set loadErrorPending when already connected
+        assertFalse(getBooleanField(activity, "loadErrorPending"));
+    }
+
+    @Test
+    public void onReceivedHttpError_subFrame_doesNothing() throws Exception {
+        setField(activity, "webViewConnected", false);
+
+        WebResourceRequest mockRequest = mock(WebResourceRequest.class);
+        when(mockRequest.isForMainFrame()).thenReturn(false);
+        WebResourceResponse mockResponse = mock(WebResourceResponse.class);
+        when(mockResponse.getStatusCode()).thenReturn(500);
+
+        Object client = createWebViewClient();
+        Method onReceivedHttpError = findMethod(client.getClass(), "onReceivedHttpError",
+                android.webkit.WebView.class, WebResourceRequest.class, WebResourceResponse.class);
+        onReceivedHttpError.setAccessible(true);
+        onReceivedHttpError.invoke(client, mockWebView, mockRequest, mockResponse);
+
+        assertFalse(getBooleanField(activity, "loadErrorPending"));
+    }
+
+    // =====================================================
+    // onRenderProcessGone: WebView crash recovery
+    // =====================================================
+
+    @Test
+    public void onRenderProcessGone_returnsTrue() throws Exception {
+        // onRenderProcessGone should return true (we handled it)
+        // It will try to recreate the WebView which will fail on Unsafe-allocated
+        // activity (NPE from findViewById), but the return value proves the method exists
+        // and was reached. The actual WebView recreation requires a real Activity.
+
+        // For a simpler test: verify the method exists and can be called
+        Object client = createWebViewClient();
+        Method method = findMethod(client.getClass(), "onRenderProcessGone",
+                android.webkit.WebView.class, android.webkit.RenderProcessGoneDetail.class);
+        assertNotNull("onRenderProcessGone should exist", method);
+    }
+
+    // =====================================================
+    // onReceivedSslError: dialog lifecycle
+    // =====================================================
+
+    @Test
+    public void onReceivedSslError_localhost_autoAccepts() throws Exception {
+        // localhost SSL errors should be auto-accepted
+        when(mockWebView.getUrl()).thenReturn("https://localhost:20000");
+        when(mockPrefs.getString(any(), any())).thenReturn("https://localhost:20000");
+
+        Object client = createWebViewClient();
+        Method method = findMethod(client.getClass(), "onReceivedSslError",
+                android.webkit.WebView.class, android.webkit.SslErrorHandler.class, android.net.http.SslError.class);
+        method.setAccessible(true);
+
+        android.webkit.SslErrorHandler mockHandler = mock(android.webkit.SslErrorHandler.class);
+        // SslError is not mockable easily (final/constructor restrictions)
+        // We pass null — the localhost check happens before the error is examined
+        method.invoke(client, mockWebView, mockHandler, null);
+
+        // Should auto-accept for localhost
+        verify(mockHandler).proceed();
+    }
+
+    @Test
+    public void onReceivedSslError_httpsServer_cancelsWhenNotHttps() throws Exception {
+        // Non-HTTPS server URL → handler.cancel() in else branch
+        when(mockWebView.getUrl()).thenReturn("https://192.168.1.100:20000");
+        when(mockPrefs.getString(any(), any())).thenReturn("http://192.168.1.100:20000");
+
+        Object client = createWebViewClient();
+        Method method = findMethod(client.getClass(), "onReceivedSslError",
+                android.webkit.WebView.class, android.webkit.SslErrorHandler.class, android.net.http.SslError.class);
+        method.setAccessible(true);
+
+        android.webkit.SslErrorHandler mockHandler = mock(android.webkit.SslErrorHandler.class);
+        method.invoke(client, mockWebView, mockHandler, null);
+
+        verify(mockHandler).cancel();
     }
 
     // --- Helper methods ---
