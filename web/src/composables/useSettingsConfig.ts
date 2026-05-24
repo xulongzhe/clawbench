@@ -124,6 +124,9 @@ const legacyKeys: Record<string, {
   androidLogCapture: {
     // No legacy key — this is a new setting
   },
+  swipeSession: {
+    // No legacy key — this is a new setting
+  },
 }
 
 /** Read initial value from prefixed key (falls back to legacy key, then default) */
@@ -167,6 +170,7 @@ const localDefaults: Record<string, any> = {
   fileView: 'list',
   terminalFontSize: 12,
   androidLogCapture: false,
+  swipeSession: false,
 }
 
 // Build reactive local config from legacy localStorage + defaults

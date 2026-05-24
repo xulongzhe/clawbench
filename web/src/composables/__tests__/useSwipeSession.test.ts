@@ -1,4 +1,102 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { reactive, ref } from 'vue'
+
+// ── swipeSession disabled guard ──
+// Tests that the composable's touch handlers respect the swipeSession local setting.
+
+// We must import localConfig and the composable after setting up the mock,
+// so we use dynamic import inside the describe block.
+
+describe('useSwipeSession disabled guard', () => {
+  let localConfig: Record<string, any>
+  let useSwipeSession: typeof import('@/composables/useSwipeSession')['useSwipeSession']
+
+  beforeEach(async () => {
+    // Reset module cache so we get fresh localConfig state
+    vi.resetModules()
+    // Clear localStorage to ensure predictable defaults
+    localStorage.clear()
+    const mod = await import('@/composables/useSwipeSession')
+    useSwipeSession = mod.useSwipeSession
+    const configMod = await import('@/composables/useSettingsConfig')
+    localConfig = configMod.localConfig
+  })
+
+  afterEach(() => {
+    localStorage.clear()
+  })
+
+  function createTouchEvent(type: 'touchstart' | 'touchend', clientX: number, clientY: number): TouchEvent {
+    const touch = { clientX, clientY } as Touch
+    const event = {
+      touches: type === 'touchstart' ? [touch] : [],
+      changedTouches: type === 'touchend' ? [touch] : [],
+      target: document.createElement('div'),
+      currentTarget: document.createElement('div'),
+    } as unknown as TouchEvent
+    return event
+  }
+
+  it('does not trigger session switch when swipeSession is false (default)', async () => {
+    // Default is false
+    expect(localConfig.swipeSession).toBe(false)
+
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    const currentSessionId = ref('session-1')
+
+    const { onTouchStart, onTouchEnd, indicatorText } = useSwipeSession({
+      currentSessionId,
+      switchSession,
+    })
+
+    // Simulate a left swipe that would normally switch sessions
+    const startEvent = createTouchEvent('touchstart', 200, 100)
+    onTouchStart(startEvent)
+
+    const endEvent = createTouchEvent('touchend', 50, 100)
+    onTouchEnd(endEvent)
+
+    // switchSession should NOT have been called because swipeSession is disabled
+    expect(switchSession).not.toHaveBeenCalled()
+    // indicator should remain empty
+    expect(indicatorText.value).toBe('')
+  })
+
+  it('triggers session switch when swipeSession is true', async () => {
+    localConfig.swipeSession = true
+
+    // Mock the sessions API
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ sessions: [{ id: 'session-1', title: 'S1' }, { id: 'session-2', title: 'S2' }] }),
+    } as Response)
+
+    const switchSession = vi.fn().mockResolvedValue(undefined)
+    const currentSessionId = ref('session-2')
+
+    const { onTouchStart, onTouchEnd, indicatorText } = useSwipeSession({
+      currentSessionId,
+      switchSession,
+    })
+
+    // Simulate a left swipe (next session)
+    const startEvent = createTouchEvent('touchstart', 200, 100)
+    onTouchStart(startEvent)
+
+    const endEvent = createTouchEvent('touchend', 50, 100)
+    onTouchEnd(endEvent)
+
+    // Wait for async operations
+    await vi.waitFor(() => {
+      expect(switchSession).toHaveBeenCalled()
+    })
+
+    // Indicator should show the target session title
+    expect(indicatorText.value).toBeTruthy()
+
+    fetchSpy.mockRestore()
+  })
+})
 
 /**
  * Pure swipe classification logic — extracted for testability.

@@ -792,6 +792,8 @@ export default {
       localeEn: 'English',
       autoSpeech: 'Auto Speech',
       autoSpeechDesc: 'Automatically read aloud AI responses',
+      swipeSession: 'Swipe to Switch Session',
+      swipeSessionDesc: 'Swipe left/right in the chat area to switch to the previous/next session',
       defaultAgent: 'Default Agent',
       defaultAgentDesc: 'AI agent used by default when starting a new chat',
       agentModel: 'Preferred Model',

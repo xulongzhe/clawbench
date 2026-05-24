@@ -24,6 +24,7 @@ const localConfig = reactive<Record<string, any>>({
   fileView: 'list',
   terminalFontSize: 12,
   androidLogCapture: false,
+  swipeSession: false,
 })
 
 const serverConfig = ref<Record<string, any>>({
@@ -101,6 +102,7 @@ const i18n = createI18n({
         items: {
           defaultAgent: '默认智能体',
           autoSpeech: '自动语音',
+          swipeSession: '滑动切换会话',
           chatInitialMessages: '初始消息数',
           chatPageSize: '每页消息数',
           chatCollapsedHeight: '折叠高度',
@@ -234,6 +236,26 @@ describe('SettingsCategory', () => {
       await wrapper.vm.$nextTick()
 
       expect(mockSetLocalConfig).toHaveBeenCalledWith('autoSpeech', true)
+    })
+
+    it('renders swipeSession as switch item', () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const swipeSessionItem = allItems.find(i => i.props().label === '滑动切换会话')
+      expect(swipeSessionItem).toBeTruthy()
+      expect(swipeSessionItem!.props().type).toBe('switch')
+    })
+
+    it('saves swipeSession locally when toggled', async () => {
+      const wrapper = mountCategory('chat')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const swipeSessionItem = allItems.find(i => i.props().label === '滑动切换会话')
+      expect(swipeSessionItem).toBeTruthy()
+
+      await swipeSessionItem!.vm.$emit('update:modelValue', true)
+      await wrapper.vm.$nextTick()
+
+      expect(mockSetLocalConfig).toHaveBeenCalledWith('swipeSession', true)
     })
 
     it('PATCHes chat.initial_messages when number changed', async () => {

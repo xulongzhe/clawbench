@@ -792,6 +792,8 @@ export default {
       localeEn: 'English',
       autoSpeech: '自动语音',
       autoSpeechDesc: 'AI 回复完成后自动朗读',
+      swipeSession: '滑动切换会话',
+      swipeSessionDesc: '在聊天区域左右滑动切换到上/下一个会话',
       defaultAgent: '默认智能体',
       defaultAgentDesc: '新建聊天时默认使用的 AI 智能体',
       agentModel: '首选模型',

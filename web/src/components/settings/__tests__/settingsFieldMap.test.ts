@@ -31,6 +31,7 @@ describe('settingsFieldMap', () => {
     expect(map['theme']).toBeUndefined()
     expect(map['locale']).toBeUndefined()
     expect(map['autoSpeech']).toBeUndefined()
+    expect(map['swipeSession']).toBeUndefined()
   })
 
   it('includes TTS sub-config keys', () => {

@@ -1,5 +1,6 @@
 import { ref, type Ref } from 'vue'
 import { gt } from '@/composables/useLocale'
+import { localConfig } from '@/composables/useSettingsConfig'
 
 export interface UseSwipeSessionOptions {
   currentSessionId: Ref<string>
@@ -112,6 +113,7 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
   }
 
   function onTouchStart(e: TouchEvent) {
+    if (!localConfig.swipeSession) return
     const touch = e.touches[0]
     touchStartX = touch.clientX
     touchStartY = touch.clientY
@@ -120,6 +122,7 @@ export function useSwipeSession(options: UseSwipeSessionOptions) {
   }
 
   function onTouchEnd(e: TouchEvent) {
+    if (!localConfig.swipeSession) return
     if (touchInsideScrollable) return
 
     const touch = e.changedTouches[0]

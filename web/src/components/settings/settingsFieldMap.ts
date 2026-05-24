@@ -49,6 +49,7 @@ export const categoryItems: Record<string, ItemSpec[]> = {
   chat: [
     { labelKey: 'settings.items.defaultAgent', descriptionKey: 'settings.items.defaultAgentDesc', key: 'default_agent', type: 'select', source: 'server', needsRestart: true },
     { labelKey: 'settings.items.autoSpeech', descriptionKey: 'settings.items.autoSpeechDesc', key: 'autoSpeech', type: 'switch', source: 'local' },
+    { labelKey: 'settings.items.swipeSession', descriptionKey: 'settings.items.swipeSessionDesc', key: 'swipeSession', type: 'switch', source: 'local' },
     { labelKey: 'settings.items.chatInitialMessages', descriptionKey: 'settings.items.chatInitialMessagesDesc', key: 'chat.initial_messages', type: 'number', source: 'server' },
     { labelKey: 'settings.items.chatPageSize', descriptionKey: 'settings.items.chatPageSizeDesc', key: 'chat.page_size', type: 'number', source: 'server' },
     { labelKey: 'settings.items.chatCollapsedHeight', descriptionKey: 'settings.items.chatCollapsedHeightDesc', key: 'chat.collapsed_height', type: 'number', source: 'server' },
