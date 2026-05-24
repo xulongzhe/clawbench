@@ -79,7 +79,7 @@ export function annotateLocalhostUrls(html: string): string {
     const { sshInfo } = usePortForward()
     if (sshInfo.value?.enabled === false) return html
 
-    // Protect <pre> blocks from annotation (code blocks should not get buttons)
+    // Protect <pre> blocks during bare-URL regex pass (restored with annotation below)
     const preBlocks: string[] = []
     html = html.replace(/<pre[^>]*>[\s\S]*?<\/pre>/gi, (match) => {
         preBlocks.push(match)
@@ -141,8 +141,28 @@ export function annotateLocalhostUrls(html: string): string {
         return `${match}${localhostOpenButtonHtml(parsed.port, parsed.protocol, href)}`
     })
 
-    // Restore <pre> blocks
-    html = html.replace(/<!--PREBLOCK_LOCALHOST(\d+)-->/g, (_, idx) => preBlocks[parseInt(idx)])
+    // Restore <pre> blocks — annotate localhost URLs inside them
+    html = html.replace(/<!--PREBLOCK_LOCALHOST(\d+)-->/g, (_, idx) => {
+        let preHtml = preBlocks[parseInt(idx)]
+        // Find <code> elements inside <pre> that contain a localhost URL
+        // and wrap them with <a> + button (same pattern as inline <code> handling)
+        preHtml = preHtml.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (codeMatch, codeContent) => {
+            const parsed = parseLocalhostUrl(codeContent.trim())
+            if (parsed) {
+                return `<a href="${escapeHtml(parsed.fullUrl)}" target="_blank" rel="noopener">${codeMatch}</a>${localhostOpenButtonHtml(parsed.port, parsed.protocol, parsed.fullUrl)}`
+            }
+            return codeMatch
+        })
+        // Also annotate bare localhost URLs in <pre> text (not inside <code>)
+        preHtml = preHtml.replace(LOCALHOST_URL_RE, (url, portStr) => {
+            const port = parseInt(portStr)
+            if (port <= 0 || port > 65535) return url
+            const protocol = url.startsWith('https') ? 'https' : 'http'
+            const linkHtml = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`
+            return `${linkHtml}${localhostOpenButtonHtml(port, protocol, url)}`
+        })
+        return preHtml
+    })
 
     return html
 }

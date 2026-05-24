@@ -40,7 +40,7 @@ export function commitOpenButtonHtml(sha: string): string {
  *
  * Processing order:
  *   1. <code> tags whose text content looks like a commit hash → add class + button
- *   2. Text nodes (outside pre/a/code) → regex match hashes → insert span + button
+ *   2. Text nodes (outside a/code) → regex match hashes → insert span + button
  *
  * Returns the annotated HTML and a list of detected SHAs for the caller to verify asynchronously.
  */
@@ -55,8 +55,6 @@ export function annotateCommitHashes(
 
     // ── Step 1: <code> tags whose content looks like a commit hash ──
     for (const code of doc.querySelectorAll('code')) {
-        // Skip <code> inside <pre> blocks
-        if (code.closest('pre')) continue
         // Skip <code> already annotated as file path
         if (code.classList.contains('chat-file-path')) continue
         const stripped = (code.textContent || '').trim()
@@ -67,14 +65,12 @@ export function annotateCommitHashes(
         code.insertAdjacentHTML('afterend', commitOpenButtonHtml(stripped))
     }
 
-    // ── Step 2: Text nodes (outside pre/a/code) → regex match hashes ──
+    // ── Step 2: Text nodes (outside a/code) → regex match hashes ──
     const textNodes: Text[] = []
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode(node: Text) {
             const parent = node.parentElement
             if (!parent) return NodeFilter.FILTER_REJECT
-            // Skip <pre> blocks
-            if (parent.closest('pre')) return NodeFilter.FILTER_REJECT
             // Skip text inside <a> tags
             if (parent.tagName === 'A' || parent.closest('a')) return NodeFilter.FILTER_REJECT
             // Skip text inside <code> tags (handled in step 1)

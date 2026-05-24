@@ -226,10 +226,10 @@ describe('annotateFilePaths', () => {
     expect(result.detectedPaths).toHaveLength(0)
   })
 
-  it('preserves pre blocks without annotation', () => {
+  it('annotates file paths inside <pre> blocks', () => {
     const input = '<pre>some /home/user/project/src/main.go code</pre>'
     const result = annotateFilePaths(input, { projectRoot })
-    expect(result.detectedPaths).toHaveLength(0)
+    expect(result.detectedPaths).toContain('src/main.go')
   })
 
   it('annotates file paths inside inline code elements', () => {
@@ -352,12 +352,13 @@ describe('annotateFilePaths', () => {
     expect(btnCount).toBe(1)
   })
 
-  it('does not annotate code inside <pre> blocks', () => {
-    // <pre><code> is a multi-line code block — paths inside should NOT be annotated
+  it('annotates code inside <pre> blocks', () => {
+    // <pre><code> is a multi-line code block — paths inside are now also annotated
     const input = '<pre><code>import "/home/user/project/src/main.go"</code></pre>'
     const result = annotateFilePaths(input, { projectRoot })
-    expect(result.detectedPaths).toHaveLength(0)
-    expect(result.html).not.toContain('chat-file-path')
+    expect(result.detectedPaths).toContain('src/main.go')
+    // Path is inside <code> content but not the entire content, so only a button is appended
+    expect(result.html).toContain('chat-file-open-btn')
   })
 
   it('annotates absolute path immediately followed by CJK characters', () => {

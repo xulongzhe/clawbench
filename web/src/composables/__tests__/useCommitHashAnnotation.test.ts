@@ -114,11 +114,11 @@ describe('annotateCommitHashes', () => {
         expect(result.html).toContain('data-commit-sha="abc1234"')
     })
 
-    it('does NOT annotate commit hash inside <pre> block', () => {
+    it('annotates commit hash inside <pre> block', () => {
         const html = '<pre><code>abc1234</code></pre>'
         const result = annotateCommitHashes(html)
-        expect(result.detectedSHAs).toEqual([])
-        expect(result.html).not.toContain('chat-commit-hash')
+        expect(result.detectedSHAs).toContain('abc1234')
+        expect(result.html).toContain('chat-commit-hash')
     })
 
     it('does NOT annotate <code> with chat-file-path class', () => {
@@ -144,10 +144,10 @@ describe('annotateCommitHashes', () => {
         expect(result.detectedSHAs).toEqual([])
     })
 
-    it('does NOT annotate commit hash inside <pre> without code', () => {
+    it('annotates commit hash inside <pre> without code', () => {
         const html = '<pre>abc1234</pre>'
         const result = annotateCommitHashes(html)
-        expect(result.detectedSHAs).toEqual([])
+        expect(result.detectedSHAs).toEqual(['abc1234'])
     })
 
     it('detects multiple commit hashes in same text', () => {

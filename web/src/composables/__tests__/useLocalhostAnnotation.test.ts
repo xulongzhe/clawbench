@@ -165,12 +165,12 @@ describe('useLocalhostAnnotation', () => {
       expect(result).toContain('data-port="8080"')
     })
 
-    it('does not annotate inside <pre> blocks', () => {
+    it('annotates inside <pre> blocks', () => {
       mockIsAppMode.value = true
       mockSshInfo.value = { enabled: true }
       const html = '<pre>http://localhost:3000</pre>'
       const result = annotateLocalhostUrls(html)
-      expect(result).not.toContain('chat-url-open-btn')
+      expect(result).toContain('chat-url-open-btn')
     })
 
     it('annotates 127.0.0.1 URLs', () => {

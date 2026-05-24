@@ -235,11 +235,11 @@ describe('annotateWorktreePaths', () => {
         expect(result.html).toContain('chat-worktree-btn')
     })
 
-    it('does NOT annotate paths inside <pre> blocks', async () => {
+    it('annotates paths inside <pre> blocks', async () => {
         await seedCache(PROJECT_ROOT, MOCK_WORKTREES)
         const result = annotateWorktreePaths('<pre><code>.worktrees/feature-x</code></pre>', { projectRoot: PROJECT_ROOT })
-        expect(result.detectedWorktreePaths).toEqual([])
-        expect(result.html).not.toContain('chat-worktree-path')
+        expect(result.detectedWorktreePaths).toContain('/home/user/project/.worktrees/feature-x')
+        expect(result.html).toContain('chat-worktree-path')
     })
 
     it('does NOT double-annotate paths inside <a> tags in text node step', async () => {

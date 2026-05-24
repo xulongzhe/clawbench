@@ -129,7 +129,7 @@ function findWorktreeMatch(text: string, searchEntries: SearchEntry[]): SearchEn
  * Processing order:
  *   1. <a href> tags matching a worktree path → append action button
  *   2. <code> and <span class="chat-file-path"> tags matching → add class + button
- *   3. Text nodes (outside pre/a/code) → search worktree paths → insert span + button
+ *   3. Text nodes (outside a/code) → search worktree paths → insert span + button
  *
  * Returns the annotated HTML and a list of detected absolute worktree paths.
  */
@@ -164,7 +164,6 @@ export function annotateWorktreePaths(
 
     // ── Step 2: <code> and <span class="chat-file-path"> matching a worktree ──
     for (const el of doc.querySelectorAll('code, span.chat-file-path')) {
-        if (el.closest('pre')) continue
         if (el.classList.contains('chat-commit-hash')) continue
         if (el.classList.contains('chat-worktree-path')) continue
         const stripped = (el.textContent || '').trim()
@@ -180,13 +179,12 @@ export function annotateWorktreePaths(
         el.insertAdjacentHTML('afterend', worktreeButtonHtml(match.absPath, resolved || undefined))
     }
 
-    // ── Step 3: Text nodes (outside pre/a/code) → search worktree paths ──
+    // ── Step 3: Text nodes (outside a/code) → search worktree paths ──
     const textNodes: Text[] = []
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
         acceptNode(node: Text) {
             const parent = node.parentElement
             if (!parent) return NodeFilter.FILTER_REJECT
-            if (parent.closest('pre')) return NodeFilter.FILTER_REJECT
             if (parent.tagName === 'A' || parent.closest('a')) return NodeFilter.FILTER_REJECT
             if (parent.tagName === 'CODE' || parent.closest('code')) return NodeFilter.FILTER_REJECT
             if (parent.classList.contains('chat-file-path') || parent.classList.contains('chat-commit-hash') || parent.classList.contains('chat-worktree-path')) return NodeFilter.FILTER_REJECT
