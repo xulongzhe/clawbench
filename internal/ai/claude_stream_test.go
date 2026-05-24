@@ -1602,3 +1602,123 @@ func TestStreamParser_FullFlowWithEmptyInputJsonDeltaAndUserToolResult(t *testin
 		t.Errorf("expected output containing 'drwxr-xr-x', got %q", toolResultEvents[0].Tool.Output)
 	}
 }
+
+// --- Issue #60: Resume dedup tests ---
+
+func TestStreamParser_ResumeDedup_VerboseMessageAfterDeltaIsSkipped(t *testing.T) {
+	// In normal streaming with --include-partial-messages, content arrives as
+	// text_delta (incremental) followed by an assistant verbose message (complete).
+	// The parser correctly skips the verbose message because receivedPartial=true.
+	lines := []string{
+		`{"type":"stream_event","event":{"type":"message_start","message":{"model":"claude-3.5-sonnet"}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"I need to plan..."}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Here is my plan."}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"toolu_epm","name":"ExitPlanMode"}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_stop","index":2}}`,
+		// Assistant verbose message — thinking and text should be SKIPPED
+		`{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"I need to plan..."},{"type":"text","text":"Here is my plan."},{"type":"tool_use","id":"toolu_epm","name":"ExitPlanMode","input":{}}]}}`,
+		`{"type":"result","session_id":"sess-1","duration_ms":5000}`,
+	}
+
+	events := parseLines(lines)
+
+	var thinkingCount, contentCount int
+	for _, ev := range events {
+		switch ev.Type {
+		case "thinking":
+			thinkingCount++
+		case "content":
+			contentCount++
+		}
+	}
+
+	if thinkingCount != 1 {
+		t.Errorf("expected 1 thinking event (from delta only), got %d", thinkingCount)
+	}
+	if contentCount != 1 {
+		t.Errorf("expected 1 content event (from delta only), got %d", contentCount)
+	}
+}
+
+func TestStreamParser_ResumeDedup_MessageStartResetsFlags(t *testing.T) {
+	// When a new message_start arrives, partial flags are reset so that
+	// content from the new turn is not suppressed.
+	// This is the normal behavior (ISS-028).
+	lines := []string{
+		// Turn 1: text_delta sets receivedPartial=true
+		`{"type":"stream_event","event":{"type":"message_start","message":{"model":"claude-3.5-sonnet"}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Turn 1 content."}}}`,
+		// Turn 2: message_start resets receivedPartial=false
+		`{"type":"stream_event","event":{"type":"message_start","message":{"model":"claude-3.5-sonnet"}}}`,
+		// New text_delta should be emitted (not suppressed)
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Turn 2 content."}}}`,
+	}
+
+	events := parseLines(lines)
+
+	var contentCount int
+	var contentText string
+	for _, ev := range events {
+		if ev.Type == "content" {
+			contentCount++
+			contentText += ev.Content
+		}
+	}
+
+	if contentCount != 2 {
+		t.Errorf("expected 2 content events (one per turn), got %d", contentCount)
+	}
+	if contentText != "Turn 1 content.Turn 2 content." {
+		t.Errorf("expected combined content from both turns, got %q", contentText)
+	}
+}
+
+func TestStreamParser_ResumeDedup_AssistantVerboseWithoutDelta(t *testing.T) {
+	// When there is NO --include-partial-messages (verbose-only mode),
+	// content comes from assistant messages as full text blocks.
+	// Each assistant message represents a complete turn — no dedup needed.
+	// This tests the scenario where message_start resets flags correctly
+	// even without prior deltas.
+	msg1 := ClaudeStreamMessage{
+		Type: "assistant",
+		Message: &ClaudeStreamMessageBody{
+			Content: []ClaudeContentBlock{
+				{Type: "thinking", Thinking: "First thought"},
+				{Type: "text", Text: "First response."},
+			},
+		},
+	}
+	msg2 := ClaudeStreamMessage{
+		Type: "assistant",
+		Message: &ClaudeStreamMessageBody{
+			Content: []ClaudeContentBlock{
+				{Type: "text", Text: "Second response after tool."},
+			},
+		},
+	}
+
+	var lines []string
+	for _, msg := range []ClaudeStreamMessage{msg1, msg2} {
+		data, _ := json.Marshal(msg)
+		lines = append(lines, string(data))
+	}
+
+	events := parseLines(lines)
+
+	var thinkingCount, contentCount int
+	for _, ev := range events {
+		switch ev.Type {
+		case "thinking":
+			thinkingCount++
+		case "content":
+			contentCount++
+		}
+	}
+
+	if thinkingCount != 1 {
+		t.Errorf("expected 1 thinking event, got %d", thinkingCount)
+	}
+	if contentCount != 2 {
+		t.Errorf("expected 2 content events, got %d", contentCount)
+	}
+}

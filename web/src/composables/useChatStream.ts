@@ -260,6 +260,17 @@ export function useChatStream(options: UseChatStreamOptions) {
     // Start stream timeout
     resetStreamTimeout()
 
+    eventSource.addEventListener('resume_split', () => {
+      if (!guard()) return
+      resetStreamTimeout()
+      // AutoResumeBackend detected ExitPlanMode and will auto-resume.
+      // Clear the streaming message's blocks so that resume content
+      // starts fresh — prevents duplicate rendering of pre-resume
+      // content (Issue #60).
+      streamingMsg.blocks = []
+      debouncedRender()
+    })
+
     eventSource.addEventListener('content', (e) => {
       if (!guard()) return
       resetStreamTimeout()

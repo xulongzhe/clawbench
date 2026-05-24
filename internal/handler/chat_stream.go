@@ -176,6 +176,11 @@ func AIChatStream(w http.ResponseWriter, r *http.Request) {
 				}
 			case "queue_done":
 				fmt.Fprintf(w, "event: queue_done\ndata: {}\n\n")
+			case "resume_split":
+				// Internal event from AutoResumeBackend: the AI detected ExitPlanMode
+				// and will auto-resume. Forward to frontend so it can reset streaming
+				// state (clear blocks, prepare for new content after resume).
+				fmt.Fprintf(w, "event: resume_split\ndata: {}\n\n")
 			}
 
 			if canFlush {
