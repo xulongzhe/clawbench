@@ -67,6 +67,12 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+
 /**
  * Main Activity: hosts a fullscreen WebView that connects to the ClawBench server.
  *
@@ -569,11 +575,129 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (isNetworkAvailable()) {
-            webView.loadUrl(url);
-            startConnectionTimeout();
+            // Pre-authenticate with server before navigating WebView.
+            // This sets the clawbench_session cookie so the Vue app
+            // won't show a second web login page.
+            if (password != null && !password.isEmpty()) {
+                authenticateAndNavigate(url, password);
+            } else {
+                // No password — navigate directly (server may have no auth)
+                webView.loadUrl(url);
+                startConnectionTimeout();
+            }
         } else {
             // No network — go back to login page with error
             showLoginPage("网络不可用，请检查网络连接。");
+        }
+    }
+
+    /**
+     * Pre-authenticate with the server before navigating the WebView.
+     * POSTs /login with the password, extracts the Set-Cookie header,
+     * injects it into WebView's CookieManager, then loads the URL.
+     * On failure (wrong password, SSL error, network error), falls back
+     * to direct navigation so WebView can handle it (e.g. SSL confirmation).
+     */
+    private void authenticateAndNavigate(String url, String password) {
+        new Thread(() -> {
+            try {
+                AuthResult result = performLoginRequest(url, password);
+                handleAuthResponse(result.statusCode, url, result.cookies);
+            } catch (Exception e) {
+                // SSL error (self-signed cert), network error, etc.
+                // Fall back to direct WebView navigation — it may handle
+                // SSL via onReceivedSslError user confirmation.
+                AppLog.w(TAG, "Pre-auth failed, falling back to direct navigation", e);
+                runOnUiThread(() -> {
+                    webView.loadUrl(url);
+                    startConnectionTimeout();
+                });
+            }
+        }).start();
+    }
+
+    /**
+     * Perform the HTTP POST /login request.
+     * Extracted for testability — can be overridden in tests to mock network calls.
+     *
+     * @param url      the server base URL
+     * @param password the password to authenticate with
+     * @return AuthResult with status code and Set-Cookie headers
+     */
+    AuthResult performLoginRequest(String url, String password) throws Exception {
+        OkHttpClient client = new OkHttpClient.Builder()
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .build();
+
+        String escapedPwd = password.replace("\\", "\\\\").replace("\"", "\\\"");
+        String jsonBody = "{\"password\":\"" + escapedPwd + "\"}";
+        RequestBody body = RequestBody.create(jsonBody,
+                MediaType.parse("application/json; charset=utf-8"));
+
+        Request request = new Request.Builder()
+                .url(url + "/login")
+                .post(body)
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            java.util.List<String> cookies = response.headers("Set-Cookie");
+            return new AuthResult(response.code(), cookies);
+        }
+    }
+
+    /**
+     * Result of the pre-authentication POST /login request.
+     */
+    static class AuthResult {
+        final int statusCode;
+        final java.util.List<String> cookies;
+
+        AuthResult(int statusCode, java.util.List<String> cookies) {
+            this.statusCode = statusCode;
+            this.cookies = cookies;
+        }
+    }
+
+    /**
+     * Handle the server's response to the pre-authentication POST /login.
+     * Extracted from authenticateAndNavigate for testability.
+     *
+     * @param statusCode HTTP status code from the login response
+     * @param url        the server URL to navigate to on success/fallback
+     * @param cookies    Set-Cookie headers from the response (may be empty)
+     */
+    void handleAuthResponse(int statusCode, String url, java.util.List<String> cookies) {
+        if (statusCode == 200) {
+            // Extract Set-Cookie and inject into WebView CookieManager
+            if (cookies != null && !cookies.isEmpty()) {
+                try {
+                    CookieManager cm = CookieManager.getInstance();
+                    for (String cookie : cookies) {
+                        cm.setCookie(url, cookie);
+                    }
+                    cm.flush();
+                } catch (Exception e) {
+                    // CookieManager may be unavailable in test environments
+                    AppLog.w(TAG, "Failed to inject auth cookie", e);
+                }
+            }
+            // Auth success — navigate WebView (cookie already set)
+            runOnUiThread(() -> {
+                webView.loadUrl(url);
+                startConnectionTimeout();
+            });
+        } else if (statusCode == 401) {
+            // Wrong password — go back to login page with error
+            runOnUiThread(() -> showLoginPage("密码错误，请检查登录密码。"));
+        } else if (statusCode == 429) {
+            runOnUiThread(() -> showLoginPage("尝试次数过多，请稍后再试。"));
+        } else {
+            // Unexpected status — still try navigating
+            runOnUiThread(() -> {
+                webView.loadUrl(url);
+                startConnectionTimeout();
+            });
         }
     }
 
@@ -586,7 +710,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @SuppressWarnings("deprecation")
-    private boolean isNetworkAvailable() {
+    boolean isNetworkAvailable() {
         ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         if (cm == null) return false;
         NetworkInfo ni = cm.getActiveNetworkInfo();
@@ -912,7 +1036,7 @@ public class MainActivity extends AppCompatActivity {
     // Guards against double JPush init (onCreate + connectToServer race).
     private volatile boolean jpushInitStarted = false;
 
-    private void fetchPushConfig() {
+    void fetchPushConfig() {
         String serverUrl = prefs.getString(KEY_SERVER_URL, "");
         if (serverUrl.isEmpty()) {
             AppLog.w(TAG, "No server URL configured, skipping push config fetch");
