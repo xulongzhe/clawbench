@@ -47,18 +47,10 @@
     <button ref="statusBtnRef" class="status-toggle" @click="toggleStatusMenu" :title="t('appHeader.connectionStatus')">
       <span class="status-dot" :class="statusDotClass"></span>
     </button>
-    <PopupMenu v-model:show="statusMenuOpen" :target-element="statusBtnRef" :max-width="200" :max-height="160" :menu-items-count="3">
-      <div class="status-menu-title">{{ t('appHeader.connectionStatus') }}</div>
+    <PopupMenu v-model:show="statusMenuOpen" :target-element="statusBtnRef" :max-width="200" :max-height="120" :menu-items-count="2">
       <div class="status-menu-item">
-        <span class="status-indicator" :class="wsDotClass"></span>
-        <span class="status-label">{{ t('appHeader.websocket') }}</span>
-        <span class="status-value">{{ wsStatusLabel }}</span>
-      </div>
-      <div class="status-menu-divider"></div>
-      <div class="status-menu-item">
-        <span class="status-indicator" :class="pushDotClass"></span>
-        <span class="status-label">{{ t('appHeader.jpush') }}</span>
-        <span class="status-value">{{ pushStatusLabel }}</span>
+        <span class="status-indicator" :class="statusDotClass"></span>
+        <span class="status-value">{{ serverStatusLabel }}</span>
       </div>
     </PopupMenu>
   </header>
@@ -76,7 +68,7 @@ import { setPendingManageNavigation } from '@/composables/useCommitNavigation.ts
 import PopupMenu from '@/components/common/PopupMenu.vue'
 
 const { t } = useI18n()
-const { wsStatus, pushRegistered } = useGlobalEvents()
+const { wsStatus } = useGlobalEvents()
 const switchTab = inject('switchTab')
 
 const props = defineProps({
@@ -96,33 +88,18 @@ function toggleStatusMenu() {
     statusMenuOpen.value = !statusMenuOpen.value
 }
 
-// Status dot class for the button indicator (worst status wins)
+// Status dot class for the button indicator and popup
 const statusDotClass = computed(() => {
     if (wsStatus.value === 'disconnected') return 'status-dot-disconnected'
     if (wsStatus.value === 'reconnecting') return 'status-dot-reconnecting'
     return 'status-dot-connected'
 })
 
-// WS status dot and label
-const wsDotClass = computed(() => {
-    if (wsStatus.value === 'connected') return 'status-indicator-connected'
-    if (wsStatus.value === 'reconnecting') return 'status-indicator-reconnecting'
-    return 'status-indicator-disconnected'
-})
-
-const wsStatusLabel = computed(() => {
-    if (wsStatus.value === 'connected') return t('appHeader.wsConnected')
-    if (wsStatus.value === 'reconnecting') return t('appHeader.wsReconnecting')
-    return t('appHeader.wsDisconnected')
-})
-
-// Push status dot and label
-const pushDotClass = computed(() => {
-    return pushRegistered.value ? 'status-indicator-connected' : 'status-indicator-disabled'
-})
-
-const pushStatusLabel = computed(() => {
-    return pushRegistered.value ? t('appHeader.pushRegistered') : t('appHeader.pushNotEnabled')
+// Simplified server status label
+const serverStatusLabel = computed(() => {
+    if (wsStatus.value === 'connected') return t('appHeader.serverConnected')
+    if (wsStatus.value === 'reconnecting') return t('appHeader.serverReconnecting')
+    return t('appHeader.serverDisconnected')
 })
 
 const projectName = computed(() => {
@@ -454,21 +431,29 @@ onUnmounted(() => {
 <!-- Unscoped styles for teleported status menu content (PopupMenu uses Teleport to body, scoped styles won't reach it) -->
 <style>
 /* Connection status menu (teleported to body, needs unscoped styles) */
-.status-menu-title {
-    padding: 4px 10px 1px;
-    font-size: 10px;
-    color: var(--text-muted, #999);
-    font-weight: 500;
-    letter-spacing: 0.3px;
-}
-
 .status-menu-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 10px;
+    padding: 6px 10px;
     font-size: 12px;
     white-space: nowrap;
+}
+
+.status-dot-connected,
+.status-indicator.status-dot-connected {
+    background: var(--color-green, #22c55e);
+}
+
+.status-dot-reconnecting,
+.status-indicator.status-dot-reconnecting {
+    background: var(--color-yellow, #eab308);
+    animation: status-pulse 1.2s ease-in-out infinite;
+}
+
+.status-dot-disconnected,
+.status-indicator.status-dot-disconnected {
+    background: var(--color-red, #ef4444);
 }
 
 .status-indicator {
@@ -478,37 +463,8 @@ onUnmounted(() => {
     flex-shrink: 0;
 }
 
-.status-indicator-connected {
-    background: var(--color-green, #22c55e);
-}
-
-.status-indicator-reconnecting {
-    background: var(--color-yellow, #eab308);
-    animation: status-pulse 1.2s ease-in-out infinite;
-}
-
-.status-indicator-disconnected {
-    background: var(--color-red, #ef4444);
-}
-
-.status-indicator-disabled {
-    background: var(--text-muted, #999);
-}
-
-.status-label {
-    color: var(--text-secondary, #666);
-    font-weight: 500;
-}
-
 .status-value {
     color: var(--text-primary, #333);
-    margin-left: auto;
-}
-
-.status-menu-divider {
-    height: 1px;
-    background: var(--border-color, #e5e5e5);
-    margin: 3px 6px;
 }
 
 /* Project dropdown (teleported to body, positioned via JS) */

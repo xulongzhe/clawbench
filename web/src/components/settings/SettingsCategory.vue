@@ -29,6 +29,7 @@ import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAgents } from '@/composables/useAgents'
 import { useToast } from '@/composables/useToast'
 import { useAppMode } from '@/composables/useAppMode'
+import { useGlobalEvents } from '@/composables/useGlobalEvents'
 import { categoryItems, type ItemSpec } from './settingsFieldMap'
 
 const props = defineProps<{
@@ -45,6 +46,7 @@ const toast = useToast()
 const { localConfig, serverConfig, setLocalConfig, getServerValueWithDefault, setServerValue, patchAgentPref, getAgentModelPref, getAgentThinkingPref } = useSettingsConfig()
 const { agents, loadAgents, getAgentModels, getAgentThinkingEffortLevels, hasThinkingEffortLevels, getDefaultModelId } = useAgents()
 const { isAppMode } = useAppMode()
+const { pushRegistered } = useGlobalEvents()
 
 const openEditorKey = ref<string | null>(null)
 
@@ -131,6 +133,17 @@ const items = computed(() => {
     if (!isDependsOnMet(item.dependsOn)) continue
     // Hide appVersion row when not in Android App mode (no AndroidNative bridge)
     if (item.key === 'appVersion' && !isAppMode.value) continue
+    // Inject push registration status as a standalone info row at the top of push category
+    if (item.key === 'push.jpush.enabled') {
+      expanded.push({
+        key: 'push-registration-status',
+        label: t('settings.items.pushStatus'),
+        labelKey: 'settings.items.pushStatus',
+        type: 'info' as const,
+        source: 'local' as const,
+        modelValue: pushRegistered.value ? t('settings.items.pushStatusRegistered') : t('settings.items.pushStatusNotRegistered'),
+      })
+    }
     if (item.sectionHeader) {
       expanded.push({
         key: `header-${item.key}`,
@@ -174,6 +187,10 @@ function resolveOptionLabel(_itemKey: string, opt: { labelKey: string; value: an
 function getItemValue(item: any): any {
   // Header pseudo-items have no value
   if (item.type === 'header') return undefined
+  // Dynamically injected items with explicit modelValue
+  if (item.modelValue !== undefined && item.source === 'local' && item.type === 'info') {
+    return item.modelValue
+  }
   // Agent model/thinking prefs are handled specially
   if (item.key?.startsWith('agent-model-')) {
     return item.modelValue

@@ -70,7 +70,7 @@ describe('settingsFieldMap', () => {
   })
 
   it('categoryItems covers all expected categories', () => {
-    const expectedCategories = ['appearance', 'project', 'chat', 'agents', 'files', 'terminal', 'tts', 'summarization', 'rag', 'network', 'android', 'about']
+    const expectedCategories = ['appearance', 'project', 'chat', 'agents', 'files', 'terminal', 'tts', 'summarization', 'rag', 'portForward', 'push', 'android', 'about']
     for (const cat of expectedCategories) {
       expect(categoryItems[cat]).toBeDefined()
     }

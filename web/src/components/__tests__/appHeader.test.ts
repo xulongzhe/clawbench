@@ -21,13 +21,11 @@ const {
   setPendingManageNavigationFn,
   mockState,
   wsConfig,
-  pushConfig,
 } = vi.hoisted(() => ({
   loadGitBranchFn: vi.fn(),
   setPendingManageNavigationFn: vi.fn(),
   mockState: { gitBranch: '' },
   wsConfig: { value: 'connected' as string },
-  pushConfig: { value: false as boolean },
 }))
 
 vi.mock('@/stores/app.ts', () => ({
@@ -38,7 +36,6 @@ vi.mock('@/composables/useGlobalEvents', () => {
   return {
     useGlobalEvents: () => ({
       wsStatus: vue.ref(wsConfig.value),
-      pushRegistered: vue.ref(pushConfig.value),
     }),
   }
 })
@@ -51,10 +48,8 @@ const i18n = createI18n({
   messages: { en: { common: { loading: 'Loading...' }, appHeader: {
     switchProject: 'Switch project', selectProject: 'Select project',
     noRecentProjects: 'No recent projects', browse: 'Browse...',
-    connectionStatus: 'Connection Status', wsConnected: 'Connected',
-    wsReconnecting: 'Reconnecting...', wsDisconnected: 'Disconnected',
-    pushRegistered: 'Registered', pushNotEnabled: 'Not Enabled',
-    websocket: 'WebSocket', jpush: 'Push Notifications',
+    connectionStatus: 'Connection Status', serverConnected: 'Server connected',
+    serverReconnecting: 'Reconnecting...', serverDisconnected: 'Server disconnected',
     projectPathNotFound: 'Project path does not exist or has been deleted',
     switchProjectFailed: 'Switch project failed: {error}',
     switchProjectNetworkError: 'Switch project failed: network error',
@@ -106,7 +101,6 @@ describe('AppHeader', () => {
 
   beforeEach(() => {
     wsConfig.value = 'connected'
-    pushConfig.value = false
     mockState.gitBranch = ''
     loadGitBranchFn.mockReset()
     setPendingManageNavigationFn.mockReset()

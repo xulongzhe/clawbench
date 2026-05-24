@@ -166,10 +166,12 @@ export const categoryItems: Record<string, ItemSpec[]> = {
     { labelKey: 'settings.items.ragSearchPoolSize', descriptionKey: 'settings.items.ragSearchPoolSizeDesc', key: 'rag.search_pool_size', type: 'number', source: 'server' },
     { labelKey: 'settings.items.ragRetentionDays', descriptionKey: 'settings.items.ragRetentionDaysDesc', key: 'rag.retention_days', type: 'number', source: 'server' },
   ],
-  network: [
-    { labelKey: 'settings.items.portForwardEnabled', descriptionKey: 'settings.items.portForwardEnabledDesc', key: 'port_forward.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.portForwardHeader' },
+  portForward: [
+    { labelKey: 'settings.items.portForwardEnabled', descriptionKey: 'settings.items.portForwardEnabledDesc', key: 'port_forward.enabled', type: 'switch', source: 'server', needsRestart: true },
     { labelKey: 'settings.items.portForwardPort', descriptionKey: 'settings.items.portForwardPortDesc', key: 'port_forward.port', type: 'number', source: 'server', needsRestart: true },
-    { labelKey: 'settings.items.pushEnabled', descriptionKey: 'settings.items.pushEnabledDesc', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true, sectionHeader: 'settings.items.pushHeader' },
+  ],
+  push: [
+    { labelKey: 'settings.items.pushEnabled', descriptionKey: 'settings.items.pushEnabledDesc', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true },
     { labelKey: 'settings.items.pushAppKey', descriptionKey: 'settings.items.pushAppKeyDesc', key: 'push.jpush.app_key', type: 'text', source: 'server' },
     { labelKey: 'settings.items.pushMasterSecret', descriptionKey: 'settings.items.pushMasterSecretDesc', key: 'push.jpush.master_secret', type: 'password', source: 'server' },
   ],

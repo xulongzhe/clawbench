@@ -90,6 +90,10 @@ vi.mock('@/composables/useAppMode', () => ({
   useAppMode: () => ({ isAppMode: ref(false) }),
 }))
 
+vi.mock('@/composables/useGlobalEvents', () => ({
+  useGlobalEvents: () => ({ pushRegistered: ref(false) }),
+}))
+
 const i18n = createI18n({
   legacy: false,
   locale: 'zh',
@@ -98,7 +102,7 @@ const i18n = createI18n({
       common: { ok: '确定' },
       settings: {
         needsRestart: '需重启',
-        categories: { chat: '聊天', agents: '智能体', appearance: '外观', tts: '语音', summarization: '摘要', network: '网络', terminal: '终端', rag: 'RAG', files: '文件', about: '关于', android: 'Android' },
+        categories: { chat: '聊天', agents: '智能体', appearance: '外观', tts: '语音', summarization: '摘要', portForward: '端口转发', push: '推送', terminal: '终端', rag: 'RAG', files: '文件', about: '关于', android: 'Android' },
         items: {
           defaultAgent: '默认智能体',
           autoSpeech: '自动语音',
@@ -130,11 +134,14 @@ const i18n = createI18n({
           ttsMaxCacheFiles: '缓存上限',
           ragSearchPoolSize: '搜索池大小',
           ragOllamaUrl: '嵌入接口地址',
-          portForwardEnabled: '启用 SSH 隧道',
-          portForwardPort: 'SSH 隧道端口',
-          pushEnabled: '启用推送',
+          portForwardEnabled: '启用端口转发',
+          portForwardPort: '端口转发端口',
+          pushEnabled: '启用极光推送',
+          pushStatus: '推送服务状态',
+          pushStatusRegistered: '正常',
+          pushStatusNotRegistered: '未注册',
           pushAppKey: 'AppKey',
-          portForwardHeader: 'SSH 隧道',
+          portForwardHeader: '端口转发',
           pushHeader: '推送',
           ttsCacheHeader: '缓存',
           terminalEnabled: '启用终端',
@@ -517,12 +524,12 @@ describe('SettingsCategory', () => {
     })
   })
 
-  // ─── Network category ──────────────────────────────
-  describe('network category', () => {
+  // ─── Port Forward category ──────────────────────────────
+  describe('portForward category', () => {
     it('PATCHes port_forward.enabled when toggled', async () => {
-      const wrapper = mountCategory('network')
+      const wrapper = mountCategory('portForward')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用 SSH 隧道')
+      const item = allItems.find(i => i.props().label === '启用端口转发')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', false)
@@ -532,9 +539,9 @@ describe('SettingsCategory', () => {
     })
 
     it('PATCHes port_forward.port when changed', async () => {
-      const wrapper = mountCategory('network')
+      const wrapper = mountCategory('portForward')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === 'SSH 隧道端口')
+      const item = allItems.find(i => i.props().label === '端口转发端口')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', 2222)
@@ -542,11 +549,22 @@ describe('SettingsCategory', () => {
 
       expect(mockSetServerValue).toHaveBeenCalledWith('port_forward.port', 2222)
     })
+  })
+
+  // ─── Push category ──────────────────────────────
+  describe('push category', () => {
+    it('renders push service status as info row', () => {
+      const wrapper = mountCategory('push')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const statusItem = allItems.find(i => i.props().label === '推送服务状态')
+      expect(statusItem).toBeTruthy()
+      expect(statusItem!.props().type).toBe('info')
+    })
 
     it('PATCHes push.jpush.enabled when toggled', async () => {
-      const wrapper = mountCategory('network')
+      const wrapper = mountCategory('push')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const item = allItems.find(i => i.props().label === '启用推送')
+      const item = allItems.find(i => i.props().label === '启用极光推送')
       expect(item).toBeTruthy()
 
       await item!.vm.$emit('update:modelValue', true)
@@ -556,7 +574,7 @@ describe('SettingsCategory', () => {
     })
 
     it('PATCHes push.jpush.app_key when changed', async () => {
-      const wrapper = mountCategory('network')
+      const wrapper = mountCategory('push')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
       const item = allItems.find(i => i.props().label === 'AppKey')
       expect(item).toBeTruthy()

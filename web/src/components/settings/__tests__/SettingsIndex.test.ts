@@ -19,7 +19,8 @@ const i18n = createI18n({
           terminal: '终端',
           tts: 'TTS语音',
           rag: 'RAG记忆',
-          network: '网络',
+          portForward: '端口转发',
+          push: '推送',
           android: 'Android',
           about: '关于',
         },
@@ -39,7 +40,8 @@ const globalStubs = {
   'lucide-terminal': true,
   'lucide-volume2': true,
   'lucide-brain': true,
-  'lucide-network': true,
+  'lucide-arrow-left-right': true,
+  'lucide-bell': true,
   'lucide-smartphone': true,
   'lucide-info': true,
 }
@@ -57,12 +59,12 @@ function mountIndex() {
 }
 
 describe('SettingsIndex', () => {
-  it('renders 11 category rows in web mode (no Android)', () => {
+  it('renders 12 category rows in web mode (no Android)', () => {
     isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(11)
+    expect(rows.length).toBe(12)
   })
 
   it('renders category labels in web mode', () => {
@@ -75,7 +77,8 @@ describe('SettingsIndex', () => {
     expect(labels).toContain('聊天')
     expect(labels).toContain('Agent偏好')
     expect(labels).toContain('文件')
-    expect(labels).toContain('网络')
+    expect(labels).toContain('端口转发')
+    expect(labels).toContain('推送')
     expect(labels).toContain('关于')
   })
 
@@ -96,7 +99,7 @@ describe('SettingsIndex', () => {
 
     const expectedIds = [
       'appearance', 'project', 'chat', 'agents', 'files', 'terminal',
-      'tts', 'summarization', 'rag', 'network', 'about',
+      'tts', 'summarization', 'rag', 'portForward', 'push', 'about',
     ]
 
     const rows = wrapper.findAll('.settings-index__row')
@@ -106,12 +109,12 @@ describe('SettingsIndex', () => {
     }
   })
 
-  it('shows 12 categories including Android in app mode', () => {
+  it('shows 13 categories including Android in app mode', () => {
     isAppModeRef.value = true
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(12)
+    expect(rows.length).toBe(13)
 
     const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
     expect(labels).toContain('Android')
