@@ -1,10 +1,11 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import {
   resolveFilePath,
   resolveRelativePath,
   fileOpenButtonHtml,
   FILE_OPEN_ICON_SVG,
   annotateFilePaths,
+  verifyFilePaths,
   clearVerifiedCache,
 } from '@/composables/useFilePathAnnotation'
 
@@ -578,5 +579,177 @@ describe('annotateFilePaths', () => {
 describe('clearVerifiedCache', () => {
   it('does not throw when called', () => {
     expect(() => clearVerifiedCache()).not.toThrow()
+  })
+})
+
+// --- verifyFilePaths ---
+
+describe('verifyFilePaths', () => {
+  beforeEach(() => {
+    clearVerifiedCache()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // Ensure CSS.escape is available in jsdom
+  if (typeof (globalThis as any).CSS === 'undefined') {
+    ;(globalThis as any).CSS = {}
+  }
+  if (typeof (globalThis as any).CSS.escape === 'undefined') {
+    ;(globalThis as any).CSS.escape = (s: string) => s.replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, '\\$&')
+  }
+
+  it('removes buttons for non-existent paths (batch API returns none)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ results: { 'missing.go': 'none' } }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const container = document.createElement('div')
+    container.innerHTML = '<button class="chat-file-open-btn" data-file-path="missing.go">open</button><span class="chat-file-path" data-file-path="missing.go">missing.go</span>'
+
+    await verifyFilePaths(['missing.go'], container)
+
+    // Button should be removed
+    expect(container.querySelector('.chat-file-open-btn')).toBeNull()
+    // Span should be unwrapped (plain text remains)
+    expect(container.textContent).toContain('missing.go')
+    expect(container.querySelector('.chat-file-path')).toBeNull()
+
+    // Verify batch API was called
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    const callArgs = mockFetch.mock.calls[0]
+    expect(callArgs[0]).toBe('/api/file/batch-exists')
+    expect(callArgs[1].method).toBe('POST')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps annotations for existing paths (batch API returns file)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ results: { 'src/main.go': 'file' } }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const container = document.createElement('div')
+    container.innerHTML = '<button class="chat-file-open-btn" data-file-path="src/main.go">open</button><span class="chat-file-path" data-file-path="src/main.go">src/main.go</span>'
+
+    await verifyFilePaths(['src/main.go'], container)
+
+    // Button and span should remain
+    expect(container.querySelector('.chat-file-open-btn')).not.toBeNull()
+    expect(container.querySelector('.chat-file-path')).not.toBeNull()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('keeps annotations for existing directories (batch API returns dir)', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ results: { 'src': 'dir' } }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const container = document.createElement('div')
+    container.innerHTML = '<button class="chat-file-open-btn" data-file-path="src">open</button>'
+
+    await verifyFilePaths(['src'], container)
+
+    expect(container.querySelector('.chat-file-open-btn')).not.toBeNull()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('handles mixed existing and non-existing paths', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ results: { 'exists.go': 'file', 'missing.go': 'none' } }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const container = document.createElement('div')
+    container.innerHTML = '<button class="chat-file-open-btn" data-file-path="exists.go">open</button><button class="chat-file-open-btn" data-file-path="missing.go">open</button>'
+
+    await verifyFilePaths(['exists.go', 'missing.go'], container)
+
+    expect(container.querySelector('[data-file-path="exists.go"]')).not.toBeNull()
+    expect(container.querySelector('[data-file-path="missing.go"]')).toBeNull()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('handles network error gracefully (assumes exists)', async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new Error('Network error'))
+    vi.stubGlobal('fetch', mockFetch)
+
+    const container = document.createElement('div')
+    container.innerHTML = '<button class="chat-file-open-btn" data-file-path="test.go">open</button>'
+
+    await verifyFilePaths(['test.go'], container)
+
+    // On network error, assumes exists — button stays
+    expect(container.querySelector('.chat-file-open-btn')).not.toBeNull()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('skips API call when all paths are cached', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ results: { 'cached.go': 'file' } }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    // First call populates cache
+    const container1 = document.createElement('div')
+    await verifyFilePaths(['cached.go'], container1)
+
+    // Second call should use cache — no fetch
+    const mockFetch2 = vi.fn()
+    vi.stubGlobal('fetch', mockFetch2)
+
+    const container2 = document.createElement('div')
+    container2.innerHTML = '<button class="chat-file-open-btn" data-file-path="cached.go">open</button>'
+    await verifyFilePaths(['cached.go'], container2)
+
+    expect(mockFetch2).not.toHaveBeenCalled()
+    expect(container2.querySelector('.chat-file-open-btn')).not.toBeNull()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('does nothing for empty paths array', async () => {
+    const mockFetch = vi.fn()
+    vi.stubGlobal('fetch', mockFetch)
+
+    const container = document.createElement('div')
+    await verifyFilePaths([], container)
+
+    expect(mockFetch).not.toHaveBeenCalled()
+
+    vi.unstubAllGlobals()
+  })
+
+  it('deduplicates paths before making API call', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ results: { 'dup.go': 'file' } }),
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const container = document.createElement('div')
+    await verifyFilePaths(['dup.go', 'dup.go', 'dup.go'], container)
+
+    // Should only call API once
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    // The body should contain deduplicated paths
+    const body = JSON.parse(mockFetch.mock.calls[0][1].body)
+    expect(body.paths).toEqual(['dup.go'])
+
+    vi.unstubAllGlobals()
   })
 })

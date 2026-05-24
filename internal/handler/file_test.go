@@ -549,4 +549,51 @@ func TestServeFileBatchExists(t *testing.T) {
 		w := callHandler(ServeFileBatchExists, req)
 		assertStatus(t, w, http.StatusBadRequest)
 	})
+
+	t.Run("WrongMethod_GET_Returns405", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodGet, "/api/file/batch-exists", nil)
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertStatus(t, w, http.StatusMethodNotAllowed)
+	})
+
+	t.Run("InvalidJSON_Returns400", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", "not-json")
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertStatus(t, w, http.StatusBadRequest)
+	})
+
+	t.Run("ContainsGlobChars_ShortCircuit", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a file that would match if glob chars weren't filtered
+		createTestFile(t, env.ProjectDir, "test.class", "class data")
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
+			"paths": []string{"*.class", "test.class"},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchExists, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		results, ok := result["results"].(map[string]interface{})
+		assert.True(t, ok)
+		assert.Equal(t, "none", results["*.class"])   // glob → none (no os.Stat)
+		assert.Equal(t, "file", results["test.class"]) // real path → file
+	})
 }
