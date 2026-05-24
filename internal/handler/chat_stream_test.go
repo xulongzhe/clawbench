@@ -497,6 +497,48 @@ func TestAIChatStream_ErrorEventWithReason(t *testing.T) {
 	assert.Equal(t, "timeout", data["reason"])
 }
 
+func TestAIChatStream_ResumeSplitEvent(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "stream-resume-split"
+	ch := setupStreamSession(sessionID)
+	defer cleanupStreamSession(sessionID)
+
+	go func() {
+		ch <- ai.StreamEvent{Type: "content", Content: "phase 1 content"}
+		ch <- ai.StreamEvent{Type: "resume_split"}
+		ch <- ai.StreamEvent{Type: "content", Content: "phase 2 content"}
+		ch <- ai.StreamEvent{Type: "done"}
+	}()
+
+	req := newRequest(t, http.MethodGet, "/api/ai/chat/stream?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(AIChatStream, req)
+
+	events := parseSSEEvents(w.Body.String())
+	assert.Equal(t, 4, len(events), "expected content, resume_split, content, done events")
+
+	// First event: content from phase 1
+	assert.Equal(t, "content", events[0]["event"])
+	var data1 map[string]string
+	require.NoError(t, json.Unmarshal([]byte(events[0]["data"]), &data1))
+	assert.Equal(t, "phase 1 content", data1["content"])
+
+	// Second event: resume_split
+	assert.Equal(t, "resume_split", events[1]["event"])
+	assert.Equal(t, "{}", events[1]["data"])
+
+	// Third event: content from phase 2
+	assert.Equal(t, "content", events[2]["event"])
+	var data2 map[string]string
+	require.NoError(t, json.Unmarshal([]byte(events[2]["data"]), &data2))
+	assert.Equal(t, "phase 2 content", data2["content"])
+
+	// Final event: done
+	assert.Equal(t, "done", events[3]["event"])
+}
+
 func TestAIChatStream_WarningEvent(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
