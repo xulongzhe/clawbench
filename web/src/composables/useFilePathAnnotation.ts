@@ -14,6 +14,8 @@ export function resolveFilePath(path: string, projectRoot: string): string | nul
     // Reject paths containing glob wildcards, angle brackets, or double-star.
     // These are glob patterns or template variables, not real filesystem paths.
     if (/[*?\\[\]<>]/.test(path) || path.includes('**')) return null
+    // Reject URLs (handled by localhost annotation, not file path annotation)
+    if (/^https?:\/\//i.test(path)) return null
 
     if (path.startsWith('/')) {
         // Absolute path: must be under projectRoot
@@ -98,6 +100,8 @@ const FILE_PATH_RE = /(?:\/[^\s<>"')\]]+(?:\/[^\s<>"')\]]+)+\.[a-zA-Z][a-zA-Z0-9
  */
 function looksLikeFilePath(text: string): boolean {
     if (/[*?\\[\]<>]/.test(text) || text.includes('**')) return false
+    // Exclude URLs (handled by localhost annotation)
+    if (/^https?:\/\//i.test(text)) return false
     return /\/|\.[a-zA-Z][a-zA-Z0-9]{0,3}$/.test(text)
 }
 

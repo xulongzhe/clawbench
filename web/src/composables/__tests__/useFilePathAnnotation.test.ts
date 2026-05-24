@@ -120,6 +120,15 @@ describe('resolveFilePath', () => {
     it('returns null for paths with < > angle brackets', () => {
       expect(resolveFilePath('<sourcefile>/<line>', projectRoot)).toBeNull()
     })
+
+    it('returns null for http:// URLs', () => {
+      expect(resolveFilePath('http://localhost:20003', projectRoot)).toBeNull()
+      expect(resolveFilePath('http://example.com/page.html', projectRoot)).toBeNull()
+    })
+
+    it('returns null for https:// URLs', () => {
+      expect(resolveFilePath('https://example.com/page.html', projectRoot)).toBeNull()
+    })
   })
 })
 
@@ -494,6 +503,16 @@ describe('annotateFilePaths', () => {
     // https:// URLs should not be treated as file paths
     // (the regex does not match strings starting with http/https)
     expect(result.detectedPaths).toHaveLength(0)
+  })
+
+  it('does not annotate localhost URLs in <code> elements', () => {
+    const input = '<code>http://localhost:20003</code>'
+    const result = annotateFilePaths(input, { projectRoot })
+    // localhost URLs should not get file-path annotations
+    // (they are handled by localhost annotation instead)
+    expect(result.detectedPaths).toHaveLength(0)
+    expect(result.html).not.toContain('chat-file-path')
+    expect(result.html).not.toContain('chat-file-open-btn')
   })
 
   it('annotates <a> with relative href and baseDir', () => {
