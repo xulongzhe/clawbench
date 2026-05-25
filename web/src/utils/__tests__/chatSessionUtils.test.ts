@@ -227,6 +227,40 @@ describe('parseMessages', () => {
     // 42 is truthy, so blocks = [{ type: 'text', text: 42 }]
     expect(result[0].blocks).toEqual([{ type: 'text', text: 42 }])
   })
+
+  // ── showingSummary auto-set for assistant messages with summary ──
+
+  it('sets showingSummary=true for assistant messages with non-empty summary', () => {
+    const msgs = [
+      { role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'Hello' }] }), summary: 'A brief summary' },
+    ]
+    const result = parseMessages(msgs, mockParser)
+    expect(result[0].showingSummary).toBe(true)
+  })
+
+  it('sets showingSummary=false for assistant messages with empty summary', () => {
+    const msgs = [
+      { role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'Hello' }] }), summary: '' },
+    ]
+    const result = parseMessages(msgs, mockParser)
+    expect(result[0].showingSummary).toBe(false)
+  })
+
+  it('sets showingSummary=false for assistant messages with null summary', () => {
+    const msgs = [
+      { role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'Hello' }] }), summary: null },
+    ]
+    const result = parseMessages(msgs, mockParser)
+    expect(result[0].showingSummary).toBe(false)
+  })
+
+  it('sets showingSummary=false for assistant messages without summary field', () => {
+    const msgs = [
+      { role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'Hello' }] }) },
+    ]
+    const result = parseMessages(msgs, mockParser)
+    expect(result[0].showingSummary).toBe(false)
+  })
 })
 
 function customParser(content: string) {
