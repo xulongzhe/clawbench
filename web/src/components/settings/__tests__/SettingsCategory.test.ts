@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 import { ref, reactive } from 'vue'
 import SettingsCategory from '@/components/settings/SettingsCategory.vue'
+import PasswordChangeDialog from '@/components/settings/PasswordChangeDialog.vue'
 
 // Mock composables
 const mockSetLocalConfig = vi.fn()
@@ -94,6 +95,15 @@ vi.mock('@/composables/useGlobalEvents', () => ({
   useGlobalEvents: () => ({ pushRegistered: ref(false) }),
 }))
 
+vi.mock('@/utils/api', () => ({
+  apiPost: vi.fn().mockResolvedValue({ needs_restart: true }),
+}))
+
+const mockToastShow = vi.fn()
+vi.mock('@/composables/useToast', () => ({
+  useToast: () => ({ show: mockToastShow }),
+}))
+
 const i18n = createI18n({
   legacy: false,
   locale: 'zh',
@@ -102,7 +112,7 @@ const i18n = createI18n({
       common: { ok: '确定' },
       settings: {
         needsRestart: '需重启',
-        categories: { chat: '聊天', agents: '智能体', appearance: '外观', tts: '语音', summarization: '摘要', portForward: '端口转发', push: '推送', terminal: '终端', rag: 'RAG', files: '文件', about: '关于', android: 'Android' },
+        categories: { chat: '聊天', agents: '智能体', appearance: '外观', tts: '语音', summarization: '摘要', portForward: '端口转发', push: '推送', terminal: '终端', rag: 'RAG', files: '文件', about: '关于', android: 'Android', security: '安全' },
         items: {
           defaultAgent: '默认智能体',
           autoSpeech: '自动语音',
@@ -175,6 +185,27 @@ const i18n = createI18n({
           themeDark: '深色',
           localeZh: '中文',
           localeEn: 'English',
+          changePassword: '修改密码',
+          changePasswordDesc: '更改登录密码',
+        },
+        dialog: {
+          changePasswordTitle: '修改密码',
+          currentPassword: '当前密码',
+          newPassword: '新密码',
+          confirmPassword: '确认密码',
+          currentPasswordPlaceholder: '输入当前密码',
+          newPasswordPlaceholder: '输入新密码',
+          confirmPasswordPlaceholder: '再次输入新密码',
+          changePasswordBtn: '修改',
+          changingPassword: '修改中...',
+          passwordChanged: '密码修改成功',
+          wrongCurrentPassword: '当前密码错误',
+          passwordTooShort: '密码太短',
+          passwordMismatch: '密码不一致',
+          passwordSameAsOld: '新密码与旧密码相同',
+          currentPasswordRequired: '请输入当前密码',
+          passwordTooManyAttempts: '尝试次数过多',
+          passwordChangeFailed: '密码修改失败',
         },
       },
     },
@@ -686,6 +717,93 @@ describe('SettingsCategory', () => {
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
       const appVersionItem = allItems.find(i => i.props().label === 'APP版本')
       expect(appVersionItem).toBeFalsy()
+    })
+  })
+
+  // ─── Security category ──────────────────────────────
+  describe('security category', () => {
+    it('renders changePassword as action item', () => {
+      const wrapper = mountCategory('security')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '修改密码')
+      expect(item).toBeTruthy()
+      expect(item!.props().type).toBe('action')
+    })
+
+    it('opens password dialog when changePassword action is clicked', async () => {
+      const wrapper = mountCategory('security')
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '修改密码')
+      expect(item).toBeTruthy()
+
+      // Dialog should not be visible initially
+      expect(wrapper.find('.password-dialog-overlay').exists()).toBe(false)
+
+      // Click the action item
+      await item!.vm.$emit('click')
+      await wrapper.vm.$nextTick()
+
+      // PasswordChangeDialog should be visible
+      expect(wrapper.find('.password-dialog-overlay').exists()).toBe(true)
+    })
+
+    it('closes password dialog when dialog emits close', async () => {
+      const wrapper = mountCategory('security')
+
+      // Open the dialog first
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '修改密码')
+      await item!.vm.$emit('click')
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.password-dialog-overlay').exists()).toBe(true)
+
+      // Close it by emitting 'close' from the dialog component
+      const dialog = wrapper.findComponent({ name: 'PasswordChangeDialog' })
+      if (!dialog.exists()) {
+        // Fallback: find by the overlay element and trigger close via the parent's handler
+        // The PasswordChangeDialog may not have a name, so find by DOM
+        await wrapper.find('.password-dialog__btn--cancel').trigger('click')
+      } else {
+        await dialog.vm.$emit('close')
+      }
+      await wrapper.vm.$nextTick()
+
+      expect(wrapper.find('.password-dialog-overlay').exists()).toBe(false)
+    })
+
+    it('shows toast and emits restartNeeded when password changed with needsRestart=true', async () => {
+      const wrapper = mountCategory('security')
+
+      // Open the dialog
+      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
+      const item = allItems.find(i => i.props().label === '修改密码')
+      await item!.vm.$emit('click')
+      await wrapper.vm.$nextTick()
+
+      // Simulate successful password change
+      const dialog = wrapper.findComponent({ name: 'PasswordChangeDialog' })
+      if (dialog.exists()) {
+        await dialog.vm.$emit('changed', true)
+      } else {
+        // Fallback: find by DOM — find the form and submit
+        const overlay = wrapper.find('.password-dialog-overlay')
+        expect(overlay.exists()).toBe(true)
+        // Directly invoke handlePasswordChanged by emitting 'changed' from PasswordChangeDialog child
+        const passwordDialog = wrapper.findComponent(PasswordChangeDialog)
+        if (passwordDialog.exists()) {
+          await passwordDialog.vm.$emit('changed', true)
+        }
+      }
+      await wrapper.vm.$nextTick()
+
+      // Dialog should be closed
+      expect(wrapper.find('.password-dialog-overlay').exists()).toBe(false)
+      // Toast should show success
+      expect(mockToastShow).toHaveBeenCalled()
+      // restartNeeded should be emitted
+      expect(wrapper.emitted('restartNeeded')).toBeTruthy()
+      expect(wrapper.emitted('restartNeeded')![0]).toEqual([['password']])
     })
   })
 })

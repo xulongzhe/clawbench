@@ -221,6 +221,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/watch-dir", middleware.Auth(ServeWatchDir))
 	register("/api/config", middleware.Auth(ServeConfig))
 	register("/api/config/restart", middleware.Auth(ServeConfigRestart))
+	register("/api/config/password", middleware.Auth(ServeConfigPassword))
 	register("/api/projects", middleware.Auth(ServeProjects))
 	register("/api/project", middleware.Auth(ServeProjectSet))
 	register("/api/ai/chat", middleware.Auth(AIChat))

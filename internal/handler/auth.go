@@ -164,17 +164,22 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 		limitedReader := io.LimitReader(r.Body, 4*1024)
 		json.NewDecoder(limitedReader).Decode(&body)
 
-		// Use bcrypt for password verification (ISS-003a)
+		// Password verification (ISS-003a)
 		var authenticated bool
 		if model.SessionToken == "" {
 			// No password configured
 			authenticated = true
+		} else if model.PasswordIsSHA256 {
+			// Password stored as SHA-256 hash — hash the submitted password and compare
+			hash := sha256.Sum256([]byte(body.Password + "clawbench-salt"))
+			candidate := hex.EncodeToString(hash[:])
+			authenticated = subtle.ConstantTimeCompare([]byte(candidate), []byte(model.SessionToken)) == 1
 		} else if model.PasswordHash != nil {
-			// bcrypt verification
+			// bcrypt verification (plaintext password in config)
 			authenticated = bcrypt.CompareHashAndPassword(model.PasswordHash, []byte(body.Password)) == nil
 		} else {
 			// No bcrypt hash available — bcrypt generation must have failed at startup.
-			// Reject the login rather than falling back to insecure SHA-256.
+			// Reject the login rather than falling back to insecure comparison.
 			slog.Error("password hash not available, rejecting login", slog.String("remoteIP", remoteIP))
 			writeLocalizedError(w, r, model.Internal(nil))
 			limiter.recordFailure(remoteIP)

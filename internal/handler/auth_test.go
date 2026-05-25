@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"sync"
 	"testing"
@@ -217,6 +219,45 @@ func TestServeLogin(t *testing.T) {
 
 		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
 	})
+}
+
+// --- ISS-SHA256: SHA-256 password login test ---
+
+func TestServeLogin_SHA256StoredPassword(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	password := "sha256-password"
+	hash := sha256.Sum256([]byte(password + "clawbench-salt"))
+	model.SessionToken = hex.EncodeToString(hash[:])
+	model.PasswordIsSHA256 = true
+	model.PasswordHash = nil
+
+	req := newRequest(t, http.MethodPost, "/login", map[string]string{
+		"password": password,
+	})
+	w := callHandler(ServeLogin, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assertJSONField(t, w, "ok", true)
+}
+
+func TestServeLogin_SHA256StoredPassword_WrongPassword(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	password := "correct-sha256-password"
+	hash := sha256.Sum256([]byte(password + "clawbench-salt"))
+	model.SessionToken = hex.EncodeToString(hash[:])
+	model.PasswordIsSHA256 = true
+	model.PasswordHash = nil
+
+	req := newRequest(t, http.MethodPost, "/login", map[string]string{
+		"password": "wrong-password",
+	})
+	w := callHandler(ServeLogin, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
 // --- ISS-003c: Login rate limiting tests ---

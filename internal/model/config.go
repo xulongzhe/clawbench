@@ -1,5 +1,27 @@
 package model
 
+import "strings"
+
+// IsSHA256Password returns true if the password field contains a SHA-256
+// hashed value (prefixed with "sha256:"). These passwords are stored as
+// SHA-256(password + "clawbench-salt") and cannot be reversed to plaintext.
+func IsSHA256Password(password string) bool {
+	return strings.HasPrefix(password, "sha256:")
+}
+
+// ParseSHA256Hash extracts the hex hash from a "sha256:<hex>" formatted password.
+// Returns empty string if the format is invalid or not a SHA-256 password.
+func ParseSHA256Hash(password string) string {
+	if !IsSHA256Password(password) {
+		return ""
+	}
+	hash := strings.TrimPrefix(password, "sha256:")
+	if len(hash) != 64 { // SHA-256 hex is 64 chars
+		return ""
+	}
+	return hash
+}
+
 // Config holds the application configuration.
 type Config struct {
 	Port         int    `yaml:"port"`
@@ -150,6 +172,7 @@ var (
 	WatchDir       string
 	SessionToken   string
 	PasswordHash   []byte // bcrypt hash for password verification (ISS-003a)
+	PasswordIsSHA256 bool  // true when config.yaml stores password as sha256:<hex>
 	SessionCookie  = "clawbench_session"
 	DefaultAgentID string // Default agent for new sessions, set from config or first agent
 

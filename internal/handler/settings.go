@@ -1,10 +1,14 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +22,7 @@ import (
 	"clawbench/internal/version"
 	"net/http"
 
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -58,6 +63,7 @@ func SetRestartFunc(f func()) {
 // internal paths.
 type configResponse struct {
 	Version        string               `json:"version"`
+	HasPassword    bool                 `json:"has_password"` // true when a password is configured
 	DefaultAgent   string               `json:"default_agent"`
 	Chat           configChat           `json:"chat"`
 	Session        configSession        `json:"session"`
@@ -310,6 +316,7 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 
 	resp := configResponse{
 		Version:      getBuildVersion(),
+		HasPassword:  model.SessionToken != "",
 		DefaultAgent: cfg.DefaultAgent,
 		Chat: configChat{
 			InitialMessages:      cfg.Chat.InitialMessages,
@@ -1008,6 +1015,129 @@ func mergePatchIntoRaw(raw map[string]any, patch map[string]any) {
 			raw[key] = value
 		}
 	}
+}
+
+// ServeConfigPassword handles POST /api/config/password.
+// Validates the current password, then writes the new password as a SHA-256
+// hash to config.yaml. The change takes effect after server restart.
+func ServeConfigPassword(w http.ResponseWriter, r *http.Request) {
+	if !requireMethod(w, r, http.MethodPost) {
+		return
+	}
+
+	// Rate limiting — reuse the login limiter
+	remoteIP, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if remoteIP == "" {
+		remoteIP = r.RemoteAddr
+	}
+	limiter := getLoginLimiter()
+	if limiter.isBlocked(remoteIP) {
+		slog.Warn("password change blocked: too many failures", slog.String("ip", remoteIP))
+		writeLocalizedErrorf(w, r, http.StatusTooManyRequests, "TooManyLoginAttempts")
+		return
+	}
+
+	// Parse request body
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
+	if err != nil {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequest")
+		return
+	}
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   "invalid_json",
+			"message": "failed to parse request body as JSON",
+		})
+		return
+	}
+
+	// Validate inputs
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   "empty_password",
+			"message": "current_password and new_password are required",
+		})
+		return
+	}
+	if len(req.NewPassword) < 6 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   "password_too_short",
+			"message": "new password must be at least 6 characters",
+		})
+		return
+	}
+	if len(req.NewPassword) > 72 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error":   "password_too_long",
+			"message": "new password must be at most 72 characters",
+		})
+		return
+	}
+
+	// Verify current password
+	configMutex.RLock()
+	var authenticated bool
+	if model.PasswordIsSHA256 {
+		// Password stored as SHA-256 hash — hash submitted password and compare
+		hash := sha256.Sum256([]byte(req.CurrentPassword + "clawbench-salt"))
+		candidate := hex.EncodeToString(hash[:])
+		authenticated = subtle.ConstantTimeCompare([]byte(candidate), []byte(model.SessionToken)) == 1
+	} else if model.PasswordHash != nil {
+		// Plaintext password — bcrypt verification
+		authenticated = bcrypt.CompareHashAndPassword(model.PasswordHash, []byte(req.CurrentPassword)) == nil
+	}
+	configMutex.RUnlock()
+
+	if !authenticated {
+		limiter.recordFailure(remoteIP)
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"error":   "wrong_password",
+			"message": "current password is incorrect",
+		})
+		return
+	}
+
+	limiter.reset(remoteIP)
+
+	// Compute SHA-256 hash of the new password
+	hash := sha256.Sum256([]byte(req.NewPassword + "clawbench-salt"))
+	hashedPassword := "sha256:" + hex.EncodeToString(hash[:])
+
+	// Write to config.yaml under write lock
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
+	// Save old value for rollback on disk write failure
+	oldPassword := model.ConfigInstance.Password
+
+	// Update in-memory config
+	model.ConfigInstance.Password = hashedPassword
+
+	// Write to disk
+	patch := map[string]any{"password": hashedPassword}
+	if err := writeConfigYAML(patch); err != nil {
+		// Rollback memory state
+		model.ConfigInstance.Password = oldPassword
+		slog.Error("failed to write config.yaml after password change", "err", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error":   "write_failed",
+			"message": fmt.Sprintf("failed to write config.yaml: %v", err),
+		})
+		return
+	}
+
+	// Also remove the auto-password file (if any) since user has set an explicit password
+	autoPasswordFile := filepath.Join(model.BinDir, ".clawbench", "auto-password")
+	os.Remove(autoPasswordFile)
+
+	slog.Info("password changed via settings API (restart required)")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"needs_restart": true,
+	})
 }
 
 // ServeConfigRestart handles POST /api/config/restart — triggers server restart.

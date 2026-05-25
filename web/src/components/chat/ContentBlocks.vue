@@ -93,11 +93,6 @@
     <div v-if="streaming && !cancelled" class="placeholder-dots"><span></span><span></span><span></span></div>
     <!-- Cancelled marker -->
     <div v-if="cancelled" class="chat-cancelled-mark">{{ t('chat.contentBlocks.cancelled') }}</div>
-    <!-- Summary toggle banner -->
-    <div v-if="summary && !streaming" class="summary-banner" @click="emit('toggle-summary')">
-      <template v-if="showingSummary">{{ t('chat.contentBlocks.summaryViewOriginal') }}</template>
-      <template v-else>{{ t('chat.contentBlocks.summaryViewSummary') }}</template>
-    </div>
   </div>
 </template>
 
@@ -178,7 +173,7 @@ const props = defineProps({
   active: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush', 'toggle-summary'])
+const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush'])
 
 // Key helper: use msgId if available, otherwise msgIndex
 function key(bi) {
