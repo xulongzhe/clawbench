@@ -87,7 +87,7 @@
             <Paperclip :size="16" />
           </button>
         </div>
-        <button v-if="inputText && !loading" class="chat-clear-btn" @click="inputText = ''" :title="t('chat.input.clearInput')">
+        <button v-if="inputText" class="chat-clear-btn" @click="inputText = ''" :title="t('chat.input.clearInput')">
           <XCircle :size="16" />
         </button>
         <textarea class="chat-textarea"
@@ -782,6 +782,27 @@ defineExpose({
   cursor: not-allowed;
 }
 
+/* Clear input button (next to attach button) */
+.chat-clear-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  align-self: flex-end;
+}
+
+.chat-clear-btn:hover {
+  color: var(--danger-color, #dc3545);
+  background: color-mix(in srgb, var(--danger-color, #dc3545) 8%, transparent);
+}
+
 /* Attachment tags row */
 .chat-attachment-tags {
   display: flex;
@@ -893,27 +914,6 @@ defineExpose({
   align-items: flex-end;
   gap: 2px;
   padding: 4px 6px 6px;
-}
-
-/* Clear input button (next to attach button) */
-.chat-clear-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted, #999);
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  transition: color 0.15s, background 0.15s;
-  flex-shrink: 0;
-  align-self: flex-end;
-}
-
-.chat-clear-btn:hover {
-  color: var(--danger-color, #dc3545);
-  background: color-mix(in srgb, var(--danger-color, #dc3545) 8%, transparent);
 }
 
 .chat-textarea {
