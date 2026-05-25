@@ -133,6 +133,7 @@ cd clawbench
 | `summarize.backend` | simple | Unified summarization backend (shared by TTS + scheduled tasks), zero latency |
 | `summarize.model` | (empty) | Model for summarization, empty = backend default |
 | `summarize.api` | (empty) | API sub-config (used when backend is "api"), includes base_url/key/format |
+| `summarize.chat_summary` | true | Auto-generate summary of last assistant message on session complete (`*bool`, nil=true) |
 
 **Auto-password mechanism**: When `password` is not configured, the system auto-generates a random UUID as password, saved to `.clawbench/auto-password` (permissions 0600). On restart, the saved password is reused and not regenerated. Once `password` is configured, the file is auto-deleted. The startup script reads and displays the password from the file.
 
@@ -371,6 +372,7 @@ clawbench/
 │   ├── service/                 # Business logic
 │   │   ├── database.go          # SQLite initialization
 │   │   ├── chat.go              # Chat history management
+│   │   ├── summary.go           # Chat auto-summary (AsyncSummarize + summaries table)
 │   │   ├── scheduler.go         # Scheduled task scheduling
 │   │   ├── uuid.go              # UUID utility
 │   │   └── logger.go            # File logger (daily rotation)
@@ -416,6 +418,8 @@ clawbench/
 │       ├── anthropic.go         # Anthropic Messages API summarization
 │       ├── strip_markdown.go    # Markdown stripping
 │       ├── task.go              # Task execution summary generation
+├── web/src/components/common/  # Common components
+│   ├── SummaryToggle.vue        # Summary toggle (button/tab modes)
 ├── config/                      # Configuration files
 │   ├── rules.md                 # Agent shared rules and CLI reference
 │   ├── agents/                  # Agent configurations

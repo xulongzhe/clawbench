@@ -133,6 +133,7 @@ cd clawbench
 | `summarize.backend` | simple | 统一总结后端（TTS 语音 + 定时任务共用），零延迟 |
 | `summarize.model` | (空) | 总结模型，空则使用后端默认模型 |
 | `summarize.api` | (空) | API 子配置（backend 为 api 时使用），含 base_url/key/format |
+| `summarize.chat_summary` | true | 会话完成后自动生成最后助手消息摘要（`*bool`，nil=true） |
 
 **自动密码机制**：未配置 `password` 时，系统自动生成随机 UUID 作为密码，保存到 `.clawbench/auto-password`（权限 0600）。重启时复用已保存的密码，不会重新生成。配置 `password` 后自动删除该文件。启动脚本会从文件读取并显示密码。
 
@@ -371,6 +372,7 @@ clawbench/
 │   ├── service/                 # 业务逻辑
 │   │   ├── database.go          # SQLite 初始化
 │   │   ├── chat.go              # 聊天历史管理
+│   │   ├── summary.go           # 聊天自动摘要（AsyncSummarize + summaries 表）
 │   │   ├── scheduler.go         # 定时任务调度
 │   │   ├── uuid.go              # UUID 工具
 │   │   └── logger.go            # 文件日志（按天轮转）
@@ -416,6 +418,8 @@ clawbench/
 │       ├── anthropic.go         # Anthropic Messages API 总结
 │       ├── strip_markdown.go    # Markdown 剥离
 │       ├── task.go              # 任务执行摘要生成
+├── web/src/components/common/  # 通用组件
+│   ├── SummaryToggle.vue        # 摘要切换（按钮/标签模式）
 ├── config/                      # 配置目录
 │   ├── rules.md                 # 智能体共享规则和 CLI 参考
 │   ├── agents/                  # Agent 配置
