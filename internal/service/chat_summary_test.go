@@ -232,3 +232,65 @@ func TestAsyncSummarize_WithWSBroadcast(t *testing.T) {
 	assert.True(t, found)
 	assert.Contains(t, summary, "Summary text")
 }
+
+func TestAsyncSummarize_SaveSummaryError(t *testing.T) {
+	db, dbTeardown := setupTestDBForAsyncSummary(t)
+	defer dbTeardown()
+
+	origInstance := taskSummarizerInstance
+	defer func() { taskSummarizerInstance = origInstance }()
+
+	// Create mock backend that returns a summary
+	ch := make(chan ai.StreamEvent, 3)
+	ch <- ai.StreamEvent{Type: "content", Content: "Summary text"}
+	ch <- ai.StreamEvent{Type: "done"}
+	close(ch)
+	mock := &mockAsyncSummarizerBackend{streamCh: ch}
+	taskSummarizerInstance = &summarize.TaskSummarizer{Backend: mock}
+
+	// Drop the summaries table to force SaveSummary to fail
+	db.Exec("DROP TABLE summaries")
+
+	// Long text block — will trigger SaveSummary which will fail
+	longText := strings.Repeat("这是一段较长的AI回复内容。", 30)
+	blocks := []model.ContentBlock{{Type: "text", Text: longText}}
+
+	// Should not panic even when SaveSummary fails
+	AsyncSummarize("chat_message", 200, blocks, "/test", "session-err")
+
+	time.Sleep(300 * time.Millisecond)
+
+	// No summary saved since table was dropped
+	_, found := GetSummary("chat_message", 200)
+	assert.False(t, found)
+}
+
+func TestAsyncSummarize_ShortTextSaveError(t *testing.T) {
+	db, dbTeardown := setupTestDBForAsyncSummary(t)
+	defer dbTeardown()
+
+	origInstance := taskSummarizerInstance
+	defer func() { taskSummarizerInstance = origInstance }()
+
+	// Create a mock that returns done (for short text path)
+	ch := make(chan ai.StreamEvent, 1)
+	ch <- ai.StreamEvent{Type: "done"}
+	close(ch)
+	mock := &mockAsyncSummarizerBackend{streamCh: ch}
+	taskSummarizerInstance = &summarize.TaskSummarizer{Backend: mock}
+
+	// Drop the summaries table to force SaveSummary to fail
+	db.Exec("DROP TABLE summaries")
+
+	// Short text block — will try to save empty summary, which will fail
+	blocks := []model.ContentBlock{{Type: "text", Text: "短"}}
+
+	// Should not panic even when SaveSummary fails for short text
+	AsyncSummarize("chat_message", 300, blocks, "/test", "session-short-err")
+
+	time.Sleep(300 * time.Millisecond)
+
+	// No summary saved since table was dropped
+	_, found := GetSummary("chat_message", 300)
+	assert.False(t, found)
+}
