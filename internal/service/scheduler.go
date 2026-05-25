@@ -669,11 +669,21 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		newStatus = "completed"
 	}
 
-	schedule, _ := cron.ParseStandard(task.CronExpr)
+	schedule, err := cron.ParseStandard(task.CronExpr)
+	if err != nil {
+		slog.Error("failed to parse cron expression for next run calculation",
+			slog.Int64("task_id", task.ID),
+			slog.String("cron_expr", task.CronExpr),
+			slog.String("error", err.Error()))
+		// Fall through: nextRunAt remains nil, task stays active but no next_run_at
+	}
 	var nextRunAt *time.Time
-	if newStatus == "active" {
+	if newStatus == "active" && schedule != nil {
 		nr := schedule.Next(time.Now())
 		nextRunAt = &nr
+	} else if newStatus == "active" && schedule == nil {
+		slog.Error("nil cron schedule, cannot calculate next run",
+			slog.Int64("task_id", task.ID))
 	} else {
 		// Task completed, remove from cron
 		s.mu.Lock()

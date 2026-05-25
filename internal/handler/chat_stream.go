@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"clawbench/internal/model"
 	"clawbench/internal/service"
 )
 
@@ -16,7 +17,7 @@ func AIChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, ok := requireProject(w, r)
+	projectPath, ok := requireProject(w, r)
 	if !ok {
 		return
 	}
@@ -27,6 +28,13 @@ func AIChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	if sessionID == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "SessionIdRequired")
+		return
+	}
+
+	// Verify the session belongs to the requesting project (ISS-180)
+	// Skip ownership check if session doesn't exist in DB (not-yet-persisted or in-memory only)
+	if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != "" && sessionProject != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 

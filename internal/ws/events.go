@@ -46,8 +46,16 @@ func EventsHandler(w http.ResponseWriter, r *http.Request) {
 		clientID = "default"
 	}
 
+	// Extract user's locale preference for push notification i18n (ISS-129)
+	locale := r.Header.Get("X-Locale")
+	if locale == "" {
+		if c, err := r.Cookie("clawbench-locale"); err == nil {
+			locale = c.Value
+		}
+	}
+
 	var writeMu sync.Mutex
-	sub := mgr.Subscribe(conn, &writeMu, clientID)
+	sub := mgr.Subscribe(conn, &writeMu, clientID, locale)
 	if sub == nil {
 		// Subscription rejected (e.g. limit reached) — conn already closed by Subscribe
 		return

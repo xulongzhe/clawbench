@@ -717,3 +717,22 @@ func TestAIChatStream_ClientDisconnectDuringStream(t *testing.T) {
 	reason := service.GetAndClearCancelReason(sessionID)
 	assert.Equal(t, "disconnect", reason)
 }
+
+// ---------- Session ownership validation (ISS-180) ----------
+
+func TestAIChatStream_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	require.NoError(t, err)
+
+	// Try to stream that session using the current project's cookie
+	req := newRequest(t, http.MethodGet, "/api/ai/chat/stream?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir) // different project
+	w := callHandler(AIChatStream, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}

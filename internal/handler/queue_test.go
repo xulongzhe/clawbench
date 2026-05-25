@@ -324,3 +324,233 @@ func TestQueueHandler_Enqueue_FilesWithUploads(t *testing.T) {
 	assert.Equal(t, ".clawbench/uploads/img.png", files[0])
 	assert.Equal(t, "src/main.go", files[1])
 }
+
+// ---------- Session ownership validation (ISS-180) ----------
+
+func TestQueueHandler_Enqueue_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	body := map[string]any{"message": "hello world"}
+	req := newRequest(t, http.MethodPost, "/api/ai/queue?session_id="+sessionID, body)
+	req = withProjectCookie(req, env.ProjectDir) // different project
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+func TestQueueHandler_Get_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+
+	req := newRequest(t, http.MethodGet, "/api/ai/queue?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir) // different project
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+func TestQueueHandler_Delete_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir) // different project
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+// TestQueueHandler_Enqueue_SessionBelongsToSameProject verifies that enqueue
+// succeeds when the session belongs to the requesting project (ISS-180).
+func TestQueueHandler_Enqueue_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to the same project
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	body := map[string]any{"message": "hello world"}
+	req := newRequest(t, http.MethodPost, "/api/ai/queue?session_id="+sessionID, body)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertOK(t, w)
+	var result map[string]any
+	json.Unmarshal(w.Body.Bytes(), &result)
+	assert.Equal(t, true, result["ok"])
+}
+
+// TestQueueHandler_Get_SessionBelongsToSameProject verifies that get succeeds
+// when the session belongs to the requesting project (ISS-180).
+func TestQueueHandler_Get_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text:      "hello",
+		CreatedAt: time.Now().Format(time.RFC3339),
+	})
+
+	req := newRequest(t, http.MethodGet, "/api/ai/queue?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertOK(t, w)
+	var result map[string]any
+	json.Unmarshal(w.Body.Bytes(), &result)
+	queue := result["queue"].([]any)
+	assert.Len(t, queue, 1)
+}
+
+// TestQueueHandler_Delete_SessionBelongsToSameProject verifies that delete succeeds
+// when the session belongs to the requesting project (ISS-180).
+func TestQueueHandler_Delete_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg1", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg2", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+
+	// Test clear all
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertOK(t, w)
+}
+
+// TestQueueHandler_DeleteByIndex_SessionBelongsToSameProject verifies that
+// delete by index succeeds when the session belongs to the requesting project.
+func TestQueueHandler_DeleteByIndex_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg1", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg2", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg3", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+
+	// Delete item at index 1
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID+"&index=1", nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertOK(t, w)
+	var result map[string]any
+	json.Unmarshal(w.Body.Bytes(), &result)
+	assert.Equal(t, true, result["ok"])
+	queue := result["queue"].([]any)
+	assert.Len(t, queue, 2)
+}
+
+// TestQueueHandler_InvalidIndex_SameProject verifies that delete with invalid
+// index returns 400 when the session belongs to the requesting project.
+func TestQueueHandler_InvalidIndex_SameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg1", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID+"&index=abc", nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusBadRequest)
+}
+
+// ---------- requireProject failure paths (ISS-180) ----------
+
+// TestQueueHandler_Enqueue_MissingProjectCookie verifies that the enqueue
+// handler rejects requests without a project cookie (requireProject fails).
+func TestQueueHandler_Enqueue_MissingProjectCookie(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "q-enqueue-noproj"
+	defer service.ClearQueue(sessionID)
+
+	body := map[string]any{"message": "hello world"}
+	req := newRequest(t, http.MethodPost, "/api/ai/queue?session_id="+sessionID, body)
+	// Intentionally NOT setting project cookie
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+// TestQueueHandler_Get_MissingProjectCookie verifies that the get handler
+// rejects requests without a project cookie (requireProject fails).
+func TestQueueHandler_Get_MissingProjectCookie(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "q-get-noproj"
+	defer service.ClearQueue(sessionID)
+
+	req := newRequest(t, http.MethodGet, "/api/ai/queue?session_id="+sessionID, nil)
+	// Intentionally NOT setting project cookie
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+// TestQueueHandler_Delete_MissingProjectCookie verifies that the delete handler
+// rejects requests without a project cookie (requireProject fails).
+func TestQueueHandler_Delete_MissingProjectCookie(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "q-del-noproj"
+	defer service.ClearQueue(sessionID)
+
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID, nil)
+	// Intentionally NOT setting project cookie
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}

@@ -83,6 +83,12 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				writeLocalizedErrorf(w, r, http.StatusNotFound, "SessionNotFound")
 				return
 			}
+			// Verify the session belongs to the requesting project (ISS-180)
+			// Skip ownership check if session doesn't exist in DB (session auto-created below)
+			if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != "" && sessionProject != projectPath {
+				writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+				return
+			}
 	} else {
 		// No specific session requested — use lightweight query to find the most recent session
 		latestID, latestBackend, err := service.GetLatestSessionID(projectPath)
@@ -210,6 +216,14 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	backendName := service.GetSessionBackend(sessionID)
 	if backendName == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "SessionBackendNotFound")
+		return
+	}
+
+	// Verify the session belongs to the requesting project (ISS-180)
+	// For POST, sessionID is always from a DB-backed session (auto-created above or from cookie),
+	// so an empty sessionProject means the session doesn't exist — will fail at backendName check.
+	if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != "" && sessionProject != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 
