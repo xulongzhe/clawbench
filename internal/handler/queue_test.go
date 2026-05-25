@@ -438,10 +438,68 @@ func TestQueueHandler_Delete_SessionBelongsToSameProject(t *testing.T) {
 	service.EnqueueMessage(sessionID, model.QueuedMessage{
 		Text: "msg1", CreatedAt: time.Now().Format(time.RFC3339),
 	})
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg2", CreatedAt: time.Now().Format(time.RFC3339),
+	})
 
+	// Test clear all
 	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID, nil)
 	req = withProjectCookie(req, env.ProjectDir)
 	w := callHandler(QueueHandler, req)
 
 	assertOK(t, w)
+}
+
+// TestQueueHandler_DeleteByIndex_SessionBelongsToSameProject verifies that
+// delete by index succeeds when the session belongs to the requesting project.
+func TestQueueHandler_DeleteByIndex_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg1", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg2", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg3", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+
+	// Delete item at index 1
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID+"&index=1", nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertOK(t, w)
+	var result map[string]any
+	json.Unmarshal(w.Body.Bytes(), &result)
+	assert.Equal(t, true, result["ok"])
+	queue := result["queue"].([]any)
+	assert.Len(t, queue, 2)
+}
+
+// TestQueueHandler_InvalidIndex_SameProject verifies that delete with invalid
+// index returns 400 when the session belongs to the requesting project.
+func TestQueueHandler_InvalidIndex_SameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg1", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID+"&index=abc", nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusBadRequest)
 }
