@@ -146,6 +146,8 @@ export default {
       viewDetails: 'View details',
       speaking: 'Speaking',
       readAloud: 'Read',
+      summaryViewOriginal: 'View Original',
+      summaryViewSummary: 'View Summary',
       deepThinking: 'Thinking',
     },
     speech: {
@@ -371,6 +373,8 @@ export default {
       allExecutionsDeleted: 'All execution records cleared',
       clearAll: 'Clear all',
       completed: 'Execution completed',
+      tabOriginal: 'Original',
+      tabSummary: 'Summary',
     },
   },
   file: {

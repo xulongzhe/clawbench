@@ -146,6 +146,8 @@ export default {
       viewDetails: '查看详情',
       speaking: '朗读中',
       readAloud: '朗读',
+      summaryViewOriginal: '查看原文',
+      summaryViewSummary: '查看摘要',
       deepThinking: '深度思考',
     },
     speech: {
@@ -371,6 +373,8 @@ export default {
       allExecutionsDeleted: '执行记录已清除',
       clearAll: '清除全部',
       completed: '执行完毕',
+      tabOriginal: '原文',
+      tabSummary: '摘要',
     },
   },
   file: {

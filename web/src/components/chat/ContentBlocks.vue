@@ -336,20 +336,9 @@ onUnmounted(() => {
   margin-top: 4px;
 }
 
-.summary-banner {
-  text-align: center;
-  font-size: 11px;
-  color: var(--text-muted, #999);
-  background: color-mix(in srgb, var(--text-muted, #999) 6%, transparent);
-  padding: 4px 0;
-  margin-top: 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  user-select: none;
-}
-.summary-banner:hover {
-  background: color-mix(in srgb, var(--text-muted, #999) 10%, transparent);
-}
+
+
+
 
 .chat-error-card {
   display: flex;
