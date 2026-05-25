@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"clawbench/internal/ai"
+	"clawbench/internal/model"
 )
 
 // taskSummarizePrompt is the system prompt for task execution summarization.
@@ -32,8 +33,8 @@ func TaskSummarizePrompt() string {
 // from input or output — the summary retains formatting for readability.
 type TaskSummarizer struct {
 	// When using an AI CLI backend (claude/codebuddy/gemini etc.):
-	backend ai.AIBackend
-	model   string // model ID override (empty = use backend default)
+	Backend ai.AIBackend // exported for test construction
+	model   string       // model ID override (empty = use backend default)
 
 	// When using an API backend (OpenAI/Anthropic) via pipeline:
 	pipeline *ttsPipeline
@@ -47,7 +48,7 @@ func NewTaskSummarizer(backendType, model string) (*TaskSummarizer, error) {
 		return nil, fmt.Errorf("failed to create AI backend for task summarization: %w", err)
 	}
 	return &TaskSummarizer{
-		backend: backend,
+		Backend: backend,
 		model:   model,
 	}, nil
 }
@@ -95,7 +96,7 @@ func (t *TaskSummarizer) Summarize(ctx context.Context, text string, language st
 		Resume:       false,
 	}
 
-	ch, err := t.backend.ExecuteStream(ctx, req)
+	ch, err := t.Backend.ExecuteStream(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("task summarization backend failed to start: %w", err)
 	}
@@ -122,4 +123,20 @@ func (t *TaskSummarizer) Summarize(ctx context.Context, text string, language st
 	)
 
 	return result, nil
+}
+
+// ExtractTextFromBlocks extracts plain text from ContentBlock array.
+// Only text-type blocks are included; tool_use, thinking, etc. are skipped.
+// Text blocks are joined with double newlines.
+func ExtractTextFromBlocks(blocks []model.ContentBlock) string {
+	var buf strings.Builder
+	for _, b := range blocks {
+		if b.Type == "text" && b.Text != "" {
+			if buf.Len() > 0 {
+				buf.WriteString("\n\n")
+			}
+			buf.WriteString(b.Text)
+		}
+	}
+	return buf.String()
 }

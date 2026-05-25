@@ -132,6 +132,14 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		CREATE INDEX IF NOT EXISTS idx_history_session ON chat_history(project_path, backend, session_id, created_at);
 		CREATE INDEX IF NOT EXISTS idx_sessions_project_backend ON chat_sessions(project_path, backend);
 		CREATE INDEX IF NOT EXISTS idx_executions_session ON task_executions(session_id);
+		CREATE TABLE IF NOT EXISTS summaries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			target_type TEXT NOT NULL,
+			target_id   INTEGER NOT NULL,
+			summary     TEXT NOT NULL,
+			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(target_type, target_id)
+		);
 		CREATE TABLE IF NOT EXISTS ai_raw_responses (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			session_id TEXT NOT NULL,

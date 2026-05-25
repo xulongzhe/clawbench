@@ -174,6 +174,11 @@ function connect() {
                     handler(msg.event!, msg.data)
                 }
 
+                // Dispatch summary_update as a custom event for ChatPanelContent
+                if (msg.event === 'summary_update' && msg.data?.targetType === 'chat_message') {
+                    window.dispatchEvent(new CustomEvent('clawbench-summary-update', { detail: msg.data }))
+                }
+
                 // Send ack
                 if (msg.id) {
                     send({ type: 'ack', id: msg.id })

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"clawbench/internal/ai"
 	"clawbench/internal/model"
@@ -699,48 +698,10 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		slog.String("status", newStatus),
 	)
 
-	// Generate summary asynchronously if task summarizer is configured
-	if s.taskSummarizer != nil {
-		capturedExecID := executionID // capture for goroutine
-		capturedBlocks := blocks      // capture for goroutine
-		go func() {
-			// Use independent context with timeout — do NOT inherit executeTask's
-			// ctx which is cancelled when this function returns.
-			sumCtx, sumCancel := context.WithTimeout(context.Background(), 5*time.Minute)
-			defer sumCancel()
-
-			text := extractTextFromBlocks(capturedBlocks)
-			if utf8.RuneCountInString(text) < summarize.ShortTextThreshold {
-				// Text too short, mark as empty (frontend shows original)
-				if err := UpdateExecutionSummary(capturedExecID, ""); err != nil {
-					slog.Warn("failed to update execution summary (short text)",
-						slog.Int64("exec_id", capturedExecID),
-						slog.String("err", err.Error()),
-					)
-				}
-				return
-			}
-			summary, err := s.taskSummarizer.Summarize(sumCtx, text, "")
-			if err != nil {
-				slog.Warn("task execution summary failed",
-					slog.Int64("task_id", task.ID),
-					slog.Int64("exec_id", capturedExecID),
-					slog.String("err", err.Error()),
-				)
-				return // summary stays NULL, frontend shows original
-			}
-			if err := UpdateExecutionSummary(capturedExecID, summary); err != nil {
-				slog.Warn("failed to update execution summary",
-					slog.Int64("exec_id", capturedExecID),
-					slog.String("err", err.Error()),
-				)
-			}
-			slog.Info("task execution summary completed",
-				slog.Int64("task_id", task.ID),
-				slog.Int64("exec_id", capturedExecID),
-				slog.Int("summary_len", utf8.RuneCountInString(summary)),
-			)
-		}()
+	// Generate summary asynchronously using unified AsyncSummarize
+	if taskSummarizerInstance != nil {
+		projectPath := task.ProjectPath
+		AsyncSummarize("task_execution", executionID, blocks, projectPath, sessionID)
 	}
 }
 
@@ -889,32 +850,6 @@ func MarkExecutionRead(executionID string) error {
 		executionID,
 	)
 	return err
-}
-
-// UpdateExecutionSummary updates the summary column for a task execution.
-// summary is NULL when not yet generated, "" when text was too short,
-// and non-empty when summarization succeeded.
-func UpdateExecutionSummary(executionID int64, summary string) error {
-	_, err := DB.Exec(
-		"UPDATE task_executions SET summary = ? WHERE id = ?",
-		summary, executionID,
-	)
-	return err
-}
-
-// extractTextFromBlocks extracts plain text from ContentBlock array.
-// Only text-type blocks are included; tool_use, thinking, etc. are skipped.
-func extractTextFromBlocks(blocks []model.ContentBlock) string {
-	var buf strings.Builder
-	for _, b := range blocks {
-		if b.Type == "text" && b.Text != "" {
-			if buf.Len() > 0 {
-				buf.WriteString("\n\n")
-			}
-			buf.WriteString(b.Text)
-		}
-	}
-	return buf.String()
 }
 
 // DeleteTaskExecution deletes a single task execution and soft-deletes the

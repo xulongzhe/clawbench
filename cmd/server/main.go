@@ -553,6 +553,10 @@ func main() {
 			)
 		} else {
 			scheduler.SetTaskSummarizer(taskSummarizer)
+			// Also set the global instance for AsyncSummarize (chat messages + task executions)
+			service.SetTaskSummarizerInstance(taskSummarizer)
+			// Configure chat message auto-summarization based on config
+			service.SetChatSummaryEnabled(cfg.Summarize.IsChatSummaryEnabled())
 			slog.Info("task summarizer configured",
 				slog.String("backend", cfg.Summarize.Backend),
 			)

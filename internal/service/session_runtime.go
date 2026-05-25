@@ -139,6 +139,10 @@ func SetSessionRunning(sessionID string, running bool, skipEvent ...bool) {
 	if len(skipEvent) == 0 || !skipEvent[0] {
 		if !running {
 			EmitSessionEvent(sessionID, "completed", true)
+
+			// Trigger async summarization for chat messages on normal completion
+			// (cancel/disconnect uses skipEvent=true, so this only runs on "completed")
+			triggerChatSummarization(sessionID)
 		} else {
 			EmitSessionEvent(sessionID, "running", false)
 		}
@@ -308,4 +312,62 @@ func SendSessionEvent(sessionID string, event ai.StreamEvent) bool {
 		}
 	}
 	return false
+}
+
+// chatSummaryEnabled controls whether chat message auto-summarization is active.
+// Set during server startup based on config.
+var chatSummaryEnabled = true
+
+// SetChatSummaryEnabled configures whether chat messages are auto-summarized on completion.
+func SetChatSummaryEnabled(enabled bool) {
+	chatSummaryEnabled = enabled
+}
+
+// triggerChatSummarization triggers async summarization for the last assistant
+// message(s) in a session when it completes normally.
+// Skipped for cancelled/disconnected sessions (those use skipEvent=true in SetSessionRunning).
+func triggerChatSummarization(sessionID string) {
+	if !chatSummaryEnabled || taskSummarizerInstance == nil {
+		return
+	}
+
+	// Get the last assistant message for this session
+	messages, err := GetMessagesBySessionID(sessionID)
+	if err != nil || len(messages) == 0 {
+		return
+	}
+
+	// Find the last assistant message
+	var lastAssistant *model.ChatMessage
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			lastAssistant = &messages[i]
+			break
+		}
+	}
+	if lastAssistant == nil {
+		return
+	}
+
+	// Parse blocks from the assistant content
+	var content struct {
+		Blocks []model.ContentBlock `json:"blocks"`
+	}
+	if err := json.Unmarshal([]byte(lastAssistant.Content), &content); err != nil {
+		return
+	}
+	if len(content.Blocks) == 0 {
+		return
+	}
+
+	// Check if already summarized
+	_, found := GetSummary("chat_message", lastAssistant.ID)
+	if found {
+		return
+	}
+
+	// Get project path for WS event
+	projectPath := GetSessionProjectPath(sessionID)
+
+	AsyncSummarize("chat_message", lastAssistant.ID, content.Blocks, projectPath, sessionID)
 }

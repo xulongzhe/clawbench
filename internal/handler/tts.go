@@ -50,8 +50,9 @@ func SetSummarizer(s summarize.Summarizer) {
 
 // ttsGenerateRequest is the request body for POST /api/tts/generate.
 type ttsGenerateRequest struct {
-	Text     string `json:"text"`
-	Language string `json:"language"` // language code, e.g. "zh", "en"; defaults to "zh" if empty
+	Text      string `json:"text"`
+	Language  string `json:"language"`  // language code, e.g. "zh", "en"; defaults to "zh" if empty
+	MessageID int64  `json:"messageId"`  // chat_history.id for TTS summary caching
 }
 
 // TTSGenerate handles POST /api/tts/generate.
@@ -120,7 +121,10 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 			slog.String("path", relAudioPath),
 		)
 		// Try DB for cached summary
-		summary, _ := service.GetTTSSummary(cacheKey)
+		var summary string
+		if req.MessageID > 0 {
+			summary, _ = service.GetTTSSummaryByMessageID(req.MessageID)
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"cached":    true,
 			"audioPath": relAudioPath,
@@ -141,8 +145,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 
 		// Phase 1: Summarize
 		var summary string
-		cachedSummary, found := service.GetTTSSummary(cacheKey)
-		if found && cachedSummary != "" {
+		cachedSummary, found := service.GetTTSSummaryByMessageID(req.MessageID)
+		if found && cachedSummary != "" && req.MessageID > 0 {
 			slog.Info("tts summary cache hit, skipping summarization",
 				slog.String("cache_key", cacheKey),
 			)
@@ -173,10 +177,12 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 			)
 
 			// Save summary to database
-			if err := service.SaveTTSSummary(cacheKey, summary); err != nil {
-				slog.Warn("tts failed to cache summary to DB",
-					slog.String("error", err.Error()),
-				)
+			if req.MessageID > 0 {
+				if err := service.SaveTTSSummaryByMessageID(req.MessageID, summary); err != nil {
+					slog.Warn("tts failed to cache summary to DB",
+						slog.String("error", err.Error()),
+					)
+				}
 			}
 		}
 

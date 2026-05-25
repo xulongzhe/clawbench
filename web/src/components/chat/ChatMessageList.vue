@@ -58,6 +58,7 @@
       @expand="handleExpand"
       @collapse="handleCollapse"
       @render-flush="emit('render-flush')"
+      @toggle-summary="$emit('toggle-summary', $event)"
     />
     </div>
 
@@ -106,7 +107,7 @@ const props = defineProps({
   active: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'file-open', 'load-more', 'task-card-click', 'send-message', 'remove-pending', 'render-flush'])
+const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'file-open', 'load-more', 'task-card-click', 'send-message', 'remove-pending', 'render-flush', 'toggle-summary'])
 
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()

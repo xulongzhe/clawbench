@@ -164,10 +164,13 @@ export function useAutoSpeech() {
 
     try {
       // Step 1: POST to create TTS job (or get cached result)
+      const body: any = { text, language: i18n.global.locale.value }
+      const msgId = parseInt(id, 10)
+      if (!isNaN(msgId)) body.messageId = msgId
       const resp = await fetch('/api/tts/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, language: i18n.global.locale.value }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       })
 

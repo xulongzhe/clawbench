@@ -18,6 +18,7 @@ type ChatMessage struct {
 	Streaming   bool      `json:"streaming,omitempty"`
 	Indexed     bool      `json:"indexed,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
+	Summary     *string   `json:"summary,omitempty"` // reading summary (nil=not summarized, ""=too short, non-empty=summary)
 }
 
 // ChatSession represents a chat session
