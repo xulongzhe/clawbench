@@ -4,7 +4,7 @@ package ws
 type ServerMessage struct {
 	Type  string `json:"type"`            // "event", "ping"
 	ID    string `json:"id,omitempty"`    // event ID for ack (e.g., "evt_1706000000_1")
-	Event string `json:"event,omitempty"` // "session_update", "task_update", "queue_update"
+	Event string `json:"event,omitempty"` // "session_update", "task_update", "queue_update", "summary_update"
 	Data  any    `json:"data,omitempty"`
 }
 
@@ -40,4 +40,13 @@ type TaskUpdateData struct {
 type QueueUpdateData struct {
 	SessionID string `json:"session_id"`
 	Count     int    `json:"count"`
+}
+
+// SummaryUpdateData is the data payload for "summary_update" events.
+type SummaryUpdateData struct {
+	TargetType  string `json:"targetType"`            // "chat_message" or "task_execution"
+	TargetID    int64  `json:"targetID"`               // chat_history.id or task_executions.id
+	Summary     string `json:"summary"`                // empty = too short, non-empty = summary content
+	ProjectPath string `json:"projectPath,omitempty"`
+	SessionID   string `json:"sessionID,omitempty"`
 }

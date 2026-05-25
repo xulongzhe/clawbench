@@ -197,6 +197,46 @@ func getTableColumns(t *testing.T, db *sql.DB, table string) map[string]bool {
 	return cols
 }
 
+func TestSchema_SummariesTable(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	columns := getTableColumns(t, DB, "summaries")
+	assert.Contains(t, columns, "target_type", "summaries should have target_type column")
+	assert.Contains(t, columns, "target_id", "summaries should have target_id column")
+	assert.Contains(t, columns, "summary", "summaries should have summary column")
+}
+
+func TestSchema_TTSSummariesNewSchema(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	columns := getTableColumns(t, DB, "tts_summaries")
+	assert.Contains(t, columns, "message_id", "tts_summaries should have message_id column")
+	assert.Contains(t, columns, "tts_summary", "tts_summaries should have tts_summary column")
+	assert.NotContains(t, columns, "cache_key", "tts_summaries should NOT have cache_key column (old schema)")
+}
+
 // getIndexes returns a set of index names from sqlite_master.
 func getIndexes(t *testing.T, db *sql.DB) map[string]bool {
 	t.Helper()
@@ -1100,4 +1140,190 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 		count++
 	}
 	assert.Equal(t, 2, count, "should have 2 rows after migration")
+}
+
+// ---------- Summaries (unified reading summaries) ----------
+
+// setupTestDBForSummaries creates an in-memory SQLite database with the summaries table
+// for testing SaveSummary and GetSummary.
+func setupTestDBForSummaries(t *testing.T) (*sql.DB, func()) {
+	t.Helper()
+	origDB := DB
+	origDBRead := DBRead
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory db: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS summaries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			target_type TEXT NOT NULL,
+			target_id   INTEGER NOT NULL,
+			summary     TEXT NOT NULL,
+			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(target_type, target_id)
+		);
+	`)
+	if err != nil {
+		t.Fatalf("failed to create tables: %v", err)
+	}
+
+	DB = db
+	DBRead = db
+	teardown := func() {
+		DB = origDB
+		DBRead = origDBRead
+		db.Close()
+	}
+	return db, teardown
+}
+
+func TestGetSummary_NotFound(t *testing.T) {
+	_, teardown := setupTestDBForSummaries(t)
+	defer teardown()
+
+	summary, found := GetSummary("chat_message", 42)
+	assert.Equal(t, "", summary)
+	assert.False(t, found)
+}
+
+func TestSaveSummary_AndGetSummary(t *testing.T) {
+	_, teardown := setupTestDBForSummaries(t)
+	defer teardown()
+
+	err := SaveSummary("chat_message", 123, "This is a summary")
+	assert.NoError(t, err)
+
+	summary, found := GetSummary("chat_message", 123)
+	assert.Equal(t, "This is a summary", summary)
+	assert.True(t, found)
+}
+
+func TestSaveSummary_ShortText(t *testing.T) {
+	_, teardown := setupTestDBForSummaries(t)
+	defer teardown()
+
+	// Short text: save empty string
+	err := SaveSummary("chat_message", 456, "")
+	assert.NoError(t, err)
+
+	summary, found := GetSummary("chat_message", 456)
+	assert.Equal(t, "", summary)
+	assert.True(t, found)
+}
+
+func TestSaveSummary_DifferentTargetTypes(t *testing.T) {
+	_, teardown := setupTestDBForSummaries(t)
+	defer teardown()
+
+	// Same target_id, different target_type → different rows
+	err := SaveSummary("chat_message", 1, "chat summary")
+	assert.NoError(t, err)
+
+	err = SaveSummary("task_execution", 1, "task summary")
+	assert.NoError(t, err)
+
+	chatSummary, chatFound := GetSummary("chat_message", 1)
+	assert.Equal(t, "chat summary", chatSummary)
+	assert.True(t, chatFound)
+
+	taskSummary, taskFound := GetSummary("task_execution", 1)
+	assert.Equal(t, "task summary", taskSummary)
+	assert.True(t, taskFound)
+}
+
+func TestSaveSummary_Upsert(t *testing.T) {
+	_, teardown := setupTestDBForSummaries(t)
+	defer teardown()
+
+	err := SaveSummary("chat_message", 789, "version 1")
+	assert.NoError(t, err)
+
+	err = SaveSummary("chat_message", 789, "version 2")
+	assert.NoError(t, err)
+
+	summary, found := GetSummary("chat_message", 789)
+	assert.Equal(t, "version 2", summary)
+	assert.True(t, found)
+}
+
+// ---------- TTS Summaries (new table with message_id) ----------
+
+// setupTestDBForNewTTSSummaries creates an in-memory SQLite database with the new tts_summaries table
+// for testing GetTTSSummary and SaveTTSSummary with message_id.
+func setupTestDBForNewTTSSummaries(t *testing.T) (*sql.DB, func()) {
+	t.Helper()
+	origDB := DB
+	origDBRead := DBRead
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("failed to open in-memory db: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS tts_summaries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id   INTEGER NOT NULL,
+			tts_summary  TEXT NOT NULL,
+			created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(message_id)
+		);
+	`)
+	if err != nil {
+		t.Fatalf("failed to create tables: %v", err)
+	}
+
+	DB = db
+	DBRead = db
+	teardown := func() {
+		DB = origDB
+		DBRead = origDBRead
+		db.Close()
+	}
+	return db, teardown
+}
+
+func TestGetTTSSummaryByMessageID_NotFound(t *testing.T) {
+	_, teardown := setupTestDBForNewTTSSummaries(t)
+	defer teardown()
+
+	summary, found := GetTTSSummaryByMessageID(42)
+	assert.Equal(t, "", summary)
+	assert.False(t, found)
+}
+
+func TestSaveTTSSummaryByMessageID_AndGet(t *testing.T) {
+	_, teardown := setupTestDBForNewTTSSummaries(t)
+	defer teardown()
+
+	err := SaveTTSSummaryByMessageID(123, "TTS summary for message 123")
+	assert.NoError(t, err)
+
+	summary, found := GetTTSSummaryByMessageID(123)
+	assert.Equal(t, "TTS summary for message 123", summary)
+	assert.True(t, found)
+}
+
+func TestSaveTTSSummaryByMessageID_Upsert(t *testing.T) {
+	_, teardown := setupTestDBForNewTTSSummaries(t)
+	defer teardown()
+
+	err := SaveTTSSummaryByMessageID(456, "version 1")
+	assert.NoError(t, err)
+
+	err = SaveTTSSummaryByMessageID(456, "version 2")
+	assert.NoError(t, err)
+
+	summary, found := GetTTSSummaryByMessageID(456)
+	assert.Equal(t, "version 2", summary)
+	assert.True(t, found)
 }

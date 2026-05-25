@@ -83,7 +83,12 @@ func scanMessages(rows *sql.Rows, sessionID string) ([]model.ChatMessage, error)
 		msg.SessionID = sessionID
 		messages = append(messages, msg)
 	}
-	return messages, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Enrich assistant messages with reading summaries
+	enrichMessagesWithSummaries(messages)
+	return messages, nil
 }
 
 // GetChatMessageCount returns the number of messages in a session.
@@ -815,4 +820,57 @@ func PurgeDeletedData(sessionIDs []string) (sessionsPurged int64, messagesPurged
 		return 0, 0, err
 	}
 	return sessionsPurged, messagesPurged, nil
+}
+
+// enrichMessagesWithSummaries populates the Summary field for assistant messages
+// by batch-querying the summaries table. Only messages with role "assistant" are queried.
+func enrichMessagesWithSummaries(messages []model.ChatMessage) {
+	// Collect IDs of assistant messages
+	var assistantIDs []int64
+	for _, msg := range messages {
+		if msg.Role == "assistant" {
+			assistantIDs = append(assistantIDs, msg.ID)
+		}
+	}
+	if len(assistantIDs) == 0 {
+		return
+	}
+
+	// Batch query summaries for all assistant messages
+	query := "SELECT target_id, summary FROM summaries WHERE target_type = 'chat_message' AND target_id IN ("
+	args := make([]any, len(assistantIDs))
+	for i, id := range assistantIDs {
+		if i > 0 {
+			query += ","
+		}
+		query += "?"
+		args[i] = id
+	}
+	query += ")"
+
+	rows, err := DBRead.Query(query, args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	// Build map of message ID -> summary
+	summaryMap := make(map[int64]string)
+	for rows.Next() {
+		var targetID int64
+		var summary string
+		if err := rows.Scan(&targetID, &summary); err != nil {
+			continue
+		}
+		summaryMap[targetID] = summary
+	}
+
+	// Enrich messages
+	for i := range messages {
+		if messages[i].Role == "assistant" {
+			if summary, ok := summaryMap[messages[i].ID]; ok {
+				messages[i].Summary = &summary
+			}
+		}
+	}
 }

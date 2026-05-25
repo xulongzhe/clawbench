@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"clawbench/internal/ai"
+	"clawbench/internal/model"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -15,7 +16,7 @@ import (
 func TestTaskSummarizer_ShortText(t *testing.T) {
 	// Short text should return empty string (no summarization needed)
 	s := &TaskSummarizer{
-		backend: &mockTaskBackend{},
+		Backend: &mockTaskBackend{},
 	}
 
 	result, err := s.Summarize(context.Background(), "短文本", "")
@@ -52,7 +53,7 @@ func TestTaskSummarizer_LongText_ViaBackend(t *testing.T) {
 
 	mock := &mockTaskBackend{streamCh: ch}
 	s := &TaskSummarizer{
-		backend: mock,
+		Backend: mock,
 		model:   "test-model",
 	}
 
@@ -73,7 +74,7 @@ func TestTaskSummarizer_BackendError(t *testing.T) {
 		executeErr: context.DeadlineExceeded,
 	}
 	s := &TaskSummarizer{
-		backend: mock,
+		Backend: mock,
 	}
 
 	longText := strings.Repeat("这是一段较长的AI回复内容。", 30)
@@ -89,7 +90,7 @@ func TestTaskSummarizer_StreamError(t *testing.T) {
 
 	mock := &mockTaskBackend{streamCh: ch}
 	s := &TaskSummarizer{
-		backend: mock,
+		Backend: mock,
 	}
 
 	longText := strings.Repeat("这是一段较长的AI回复内容。", 30)
@@ -105,7 +106,7 @@ func TestTaskSummarizer_EmptyOutput(t *testing.T) {
 
 	mock := &mockTaskBackend{streamCh: ch}
 	s := &TaskSummarizer{
-		backend: mock,
+		Backend: mock,
 	}
 
 	longText := strings.Repeat("这是一段较长的AI回复内容。", 30)
@@ -126,7 +127,7 @@ func TestTaskSummarizer_Truncation(t *testing.T) {
 
 	mock := &mockTaskBackend{streamCh: ch}
 	s := &TaskSummarizer{
-		backend: mock,
+		Backend: mock,
 	}
 
 	longText := strings.Repeat("长文本", 200) // 600 runes
@@ -178,4 +179,53 @@ func TestNewTaskSummarizer_UnsupportedBackend(t *testing.T) {
 	_, err := NewTaskSummarizer("nonexistent_backend_type", "")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create AI backend")
+}
+
+// --- ExtractTextFromBlocks ---
+
+func TestExtractTextFromBlocks_TextOnly(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "Hello world"},
+		{Type: "text", Text: "Second paragraph"},
+	}
+	result := ExtractTextFromBlocks(blocks)
+	assert.Equal(t, "Hello world\n\nSecond paragraph", result)
+}
+
+func TestExtractTextFromBlocks_SkipsNonText(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "Important content"},
+		{Type: "thinking", Text: "internal reasoning"},
+		{Type: "tool_use", Name: "Bash", ID: "1"},
+		{Type: "warning", Text: "some warning"},
+		{Type: "error", Text: "some error"},
+		{Type: "text", Text: "More content"},
+	}
+	result := ExtractTextFromBlocks(blocks)
+	assert.Equal(t, "Important content\n\nMore content", result)
+}
+
+func TestExtractTextFromBlocks_Empty(t *testing.T) {
+	blocks := []model.ContentBlock{}
+	result := ExtractTextFromBlocks(blocks)
+	assert.Equal(t, "", result)
+}
+
+func TestExtractTextFromBlocks_NoTextBlocks(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "tool_use", Name: "Read", ID: "1"},
+		{Type: "thinking", Text: "hmm"},
+	}
+	result := ExtractTextFromBlocks(blocks)
+	assert.Equal(t, "", result)
+}
+
+func TestExtractTextFromBlocks_EmptyTextSkipped(t *testing.T) {
+	blocks := []model.ContentBlock{
+		{Type: "text", Text: "Content"},
+		{Type: "text", Text: ""}, // empty text should be skipped
+		{Type: "text", Text: "More"},
+	}
+	result := ExtractTextFromBlocks(blocks)
+	assert.Equal(t, "Content\n\nMore", result)
 }

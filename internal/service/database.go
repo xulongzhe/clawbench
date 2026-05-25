@@ -137,10 +137,13 @@ func InitDB(runFromServer ...bool) error {
 		-- Index for task listing by project
 		CREATE INDEX IF NOT EXISTS idx_tasks_project ON scheduled_tasks(project_path, created_at DESC);
 
-		CREATE TABLE IF NOT EXISTS tts_summaries (
-			cache_key TEXT PRIMARY KEY,
-			summary TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		CREATE TABLE IF NOT EXISTS summaries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			target_type TEXT NOT NULL,
+			target_id   INTEGER NOT NULL,
+			summary     TEXT NOT NULL,
+			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(target_type, target_id)
 		);
 
 		CREATE TABLE IF NOT EXISTS forwarded_ports (
@@ -236,6 +239,46 @@ func InitDB(runFromServer ...bool) error {
 	// SKIP when called from CLI subcommands (task/rag) — the server process
 	// may still be actively streaming, and these are NOT orphaned messages.
 	isServerStartup := len(runFromServer) > 0 && runFromServer[0]
+
+	// Migrate: replace old tts_summaries table (cache_key) with new schema (message_id).
+	// The old table has cache_key as primary key; the new table uses message_id.
+	// Since we don't do backward compatibility, drop the old table if it exists
+	// and recreate with the new schema.
+	var hasTTSCacheKey int
+	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('tts_summaries') WHERE name='cache_key'").Scan(&hasTTSCacheKey)
+	if hasTTSCacheKey > 0 {
+		// Old table exists with cache_key — drop and recreate
+		if _, err := DB.Exec("DROP TABLE tts_summaries"); err != nil {
+			return fmt.Errorf("failed to drop old tts_summaries table: %w", err)
+		}
+		if _, err := DB.Exec(`
+			CREATE TABLE tts_summaries (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				message_id   INTEGER NOT NULL,
+				tts_summary  TEXT NOT NULL,
+				created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(message_id)
+			);
+		`); err != nil {
+			return fmt.Errorf("failed to create new tts_summaries table: %w", err)
+		}
+	}
+	// Create new tts_summaries table if it doesn't exist yet (fresh install)
+	var hasTTSSummaries int
+	DB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tts_summaries'").Scan(&hasTTSSummaries)
+	if hasTTSSummaries == 0 {
+		if _, err := DB.Exec(`
+			CREATE TABLE tts_summaries (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				message_id   INTEGER NOT NULL,
+				tts_summary  TEXT NOT NULL,
+				created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(message_id)
+			);
+		`); err != nil {
+			return fmt.Errorf("failed to create tts_summaries table: %w", err)
+		}
+	}
 
 	// Initialize read connection pool for concurrent reads (WAL mode).
 	// WAL contract: DB (MaxOpenConns=1) serializes writes; DBRead (MaxOpenConns=2)
@@ -336,6 +379,53 @@ func SaveTTSSummary(cacheKey, summary string) error {
 	_, err := DB.Exec(
 		"INSERT OR REPLACE INTO tts_summaries (cache_key, summary, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
 		cacheKey, summary,
+	)
+	return err
+}
+
+// GetSummary looks up a reading summary by target type and target ID.
+// Returns (summary, found). Empty summary = text was too short.
+func GetSummary(targetType string, targetID int64) (string, bool) {
+	var summary string
+	err := DBRead.QueryRow(
+		"SELECT summary FROM summaries WHERE target_type = ? AND target_id = ?",
+		targetType, targetID,
+	).Scan(&summary)
+	if err != nil {
+		return "", false
+	}
+	return summary, true
+}
+
+// SaveSummary persists a reading summary for a target (chat message or task execution).
+// summary = "" means text was too short; non-empty is the actual summary.
+func SaveSummary(targetType string, targetID int64, summary string) error {
+	_, err := DB.Exec(
+		"INSERT OR REPLACE INTO summaries (target_type, target_id, summary, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+		targetType, targetID, summary,
+	)
+	return err
+}
+
+// GetTTSSummaryByMessageID looks up a TTS summary by message ID.
+// Returns (ttsSummary, found).
+func GetTTSSummaryByMessageID(messageID int64) (string, bool) {
+	var ttsSummary string
+	err := DBRead.QueryRow(
+		"SELECT tts_summary FROM tts_summaries WHERE message_id = ?",
+		messageID,
+	).Scan(&ttsSummary)
+	if err != nil {
+		return "", false
+	}
+	return ttsSummary, true
+}
+
+// SaveTTSSummaryByMessageID persists a TTS summary for a chat message.
+func SaveTTSSummaryByMessageID(messageID int64, ttsSummary string) error {
+	_, err := DB.Exec(
+		"INSERT OR REPLACE INTO tts_summaries (message_id, tts_summary, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+		messageID, ttsSummary,
 	)
 	return err
 }

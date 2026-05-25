@@ -16,6 +16,8 @@
         :blockAskQuestions="blockAskQuestions"
         :streaming="msg.streaming"
         :cancelled="msg.cancelled"
+        :summary="msg.summary"
+        :showingSummary="msg.showingSummary"
         :renderTextBlock="renderTextBlock"
         :formatToolInput="formatToolInput"
         :toolCallSummary="toolCallSummary"
@@ -32,6 +34,7 @@
         @task-card-click="$emit('task-card-click', $event)"
         @send-message="$emit('send-message', $event)"
         @render-flush="$emit('render-flush')"
+        @toggle-summary="$emit('toggle-summary', msg.id)"
       />
     </div>
 
@@ -119,7 +122,7 @@ const props = defineProps({
   active: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'expand', 'collapse', 'task-card-click', 'send-message', 'render-flush'])
+const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'expand', 'collapse', 'task-card-click', 'send-message', 'render-flush', 'toggle-summary'])
 
 const autoSpeech = inject('autoSpeech')
 const layoutRefreshKey = inject('layoutRefreshKey', ref(0))

@@ -365,9 +365,10 @@ func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID int64, p
 
 	query := `
 		SELECT te.id, te.session_id, te.trigger_type, te.status, te.created_at,
-		       te.read_at, te.summary,
+		       te.read_at, sm.summary,
 		       ch.content AS assistant_content
 		FROM task_executions te
+		LEFT JOIN summaries sm ON sm.target_type = 'task_execution' AND sm.target_id = te.id
 		LEFT JOIN chat_history ch ON ch.session_id = te.session_id
 		    AND ch.role = 'assistant'
 		    AND ch.deleted = 0

@@ -28,6 +28,12 @@ export function parseMessages(
       if (metadata) msg.metadata = metadata
       if (cancelled) msg.cancelled = cancelled
       if (msg.streaming) { msg.streaming = true; msg.fromDB = true }
+      // Auto-show summary for messages that have a non-empty summary
+      if (msg.summary != null && msg.summary !== '') {
+        msg.showingSummary = true
+      } else {
+        msg.showingSummary = false
+      }
     } else if (msg.role === 'user' && !msg.blocks) {
       // User messages also use ContentBlocks for unified rendering & auto-collapse
       msg.blocks = msg.content ? [{ type: 'text', text: msg.content }] : []

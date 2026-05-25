@@ -27,6 +27,7 @@
       @send-message="handleToolSendMessage"
       @remove-pending="manager.handleRemovePending"
       @render-flush="scrollBottom()"
+      @toggle-summary="handleToggleSummary"
     />
 
     <!-- Session switching overlay — placed here to cover the entire message area -->
@@ -584,6 +585,33 @@ const removeEventHandler = onEvent((event, data) => {
     }
 })
 
+// Handle summary_update from WebSocket (dispatched by useGlobalEvents as custom event)
+function handleSummaryUpdate(e) {
+    const data = (e as CustomEvent).detail
+    if (!data?.targetID) return
+    const msgId = String(data.targetID)
+    const msg = messages.value.find(m => String(m.id) === msgId)
+    if (!msg) return
+    msg.summary = data.summary
+    // Auto-show summary if user hasn't manually toggled
+    if (msg.showingSummary !== true && msg.showingSummary !== false) {
+        // showingSummary was never set (undefined) — auto-set based on summary content
+        msg.showingSummary = data.summary != null && data.summary !== ''
+    } else if (data.summary != null && data.summary !== '') {
+        // If currently showing original and a new summary arrives, auto-switch to summary
+        if (!msg.showingSummary) {
+            msg.showingSummary = true
+        }
+    }
+}
+
+// Toggle summary/original view for a message
+function handleToggleSummary(msgId) {
+    const msg = messages.value.find(m => m.id === msgId)
+    if (!msg) return
+    msg.showingSummary = !msg.showingSummary
+}
+
 // Start one-time session load when component mounts
 onMounted(() => {
     // Request notification permission on mount
@@ -593,6 +621,7 @@ onMounted(() => {
 
     session.loadSessionsOnce()
     document.addEventListener('visibilitychange', session.handleVisibilityChange)
+    window.addEventListener('clawbench-summary-update', handleSummaryUpdate)
 })
 
 // Cleanup preview URLs on unmount
@@ -604,6 +633,7 @@ onUnmounted(() => {
     session.stopMsgCountPolling()
     document.removeEventListener('visibilitychange', session.handleVisibilityChange)
     document.removeEventListener('visibilitychange', manager._visibilityHandler)
+    window.removeEventListener('clawbench-summary-update', handleSummaryUpdate)
     notification.closeAll()
 })
 </script>
