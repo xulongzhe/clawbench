@@ -71,3 +71,6 @@ InvalidModelForAgent: Invalid model for this agent
 InvalidThinkingEffort: Invalid thinking effort level for this agent
 InvalidSHA: Invalid commit SHA format
 InvalidBranchName: Invalid branch name
+PushTaskCompleted: AI Task Completed
+PushSessionEnded: AI session ended
+PushScheduledTaskDone: Scheduled task completed

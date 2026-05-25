@@ -324,3 +324,55 @@ func TestQueueHandler_Enqueue_FilesWithUploads(t *testing.T) {
 	assert.Equal(t, ".clawbench/uploads/img.png", files[0])
 	assert.Equal(t, "src/main.go", files[1])
 }
+
+// ---------- Session ownership validation (ISS-180) ----------
+
+func TestQueueHandler_Enqueue_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	body := map[string]any{"message": "hello world"}
+	req := newRequest(t, http.MethodPost, "/api/ai/queue?session_id="+sessionID, body)
+	req = withProjectCookie(req, env.ProjectDir) // different project
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+func TestQueueHandler_Get_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+
+	req := newRequest(t, http.MethodGet, "/api/ai/queue?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir) // different project
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+func TestQueueHandler_Delete_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir) // different project
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}

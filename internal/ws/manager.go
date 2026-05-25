@@ -11,6 +11,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"clawbench/internal/i18n"
 	"clawbench/internal/model"
 	"clawbench/internal/push"
 	"unicode/utf8"
@@ -23,6 +24,7 @@ type ClientSubscription struct {
 	writeMu     *sync.Mutex // shared with EventsHandler for serialized writes
 	clientID    string      // identifies the client device (for logging)
 	pushRegID   string      // JPush registration ID (set via WS "register" message)
+	locale      string      // user's preferred locale (for push notification i18n)
 	lastActive  time.Time
 	eventBuffer []ServerMessage
 	bufferStart time.Time
@@ -92,7 +94,7 @@ func GetManager() *Manager {
 
 // Subscribe registers a new WS connection for a client identified by clientID.
 // If a subscription with the same clientID already exists, its connection is replaced.
-func (m *Manager) Subscribe(conn *websocket.Conn, writeMu *sync.Mutex, clientID string) *ClientSubscription {
+func (m *Manager) Subscribe(conn *websocket.Conn, writeMu *sync.Mutex, clientID, locale string) *ClientSubscription {
 	m.mu.Lock()
 
 	// Check subscription limit (existing clientID reconnect is allowed)
@@ -114,6 +116,7 @@ func (m *Manager) Subscribe(conn *websocket.Conn, writeMu *sync.Mutex, clientID 
 	oldConn := sub.conn
 	sub.conn = conn
 	sub.writeMu = writeMu
+	sub.locale = locale
 	sub.lastActive = time.Now()
 	sub.eventBuffer = nil
 	sub.bufferStart = time.Time{}
@@ -303,10 +306,11 @@ func (m *Manager) broadcastToSubscription(key string, msg ServerMessage, deliver
 				extras["project_path"] = d.ProjectPath
 			}
 		}
-		title := "AI任务完成"
-		alert := "AI会话已结束"
+		loc := i18n.LocalizerForLocale(sub.locale)
+		title := i18n.T(loc, "PushTaskCompleted")
+		alert := i18n.T(loc, "PushSessionEnded")
 		if msg.Event == "task_update" {
-			alert = "计划任务已完成"
+			alert = i18n.T(loc, "PushScheduledTaskDone")
 		}
 		// Extract session title and response preview from event data for both
 		// session_update and task_update events, then format the notification:
