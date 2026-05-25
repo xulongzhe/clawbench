@@ -360,29 +360,6 @@ func CloseDB() {
 	}
 }
 
-// GetTTSSummary looks up a cached TTS summary by cache key.
-// Returns (summary, found).
-func GetTTSSummary(cacheKey string) (string, bool) {
-	var summary string
-	err := DBRead.QueryRow(
-		"SELECT summary FROM tts_summaries WHERE cache_key = ?",
-		cacheKey,
-	).Scan(&summary)
-	if err != nil {
-		return "", false
-	}
-	return summary, true
-}
-
-// SaveTTSSummary persists a TTS summary to the database.
-func SaveTTSSummary(cacheKey, summary string) error {
-	_, err := DB.Exec(
-		"INSERT OR REPLACE INTO tts_summaries (cache_key, summary, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-		cacheKey, summary,
-	)
-	return err
-}
-
 // GetSummary looks up a reading summary by target type and target ID.
 // Returns (summary, found). Empty summary = text was too short.
 func GetSummary(targetType string, targetID int64) (string, bool) {
