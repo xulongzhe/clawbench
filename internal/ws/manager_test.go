@@ -37,15 +37,32 @@ func TestManager_Subscribe(t *testing.T) {
 	}
 }
 
+func TestManager_Subscribe_StoresLocale(t *testing.T) {
+	mgr := newTestManager(nil)
+	var writeMu sync.Mutex
+
+	sub := mgr.Subscribe(nil, &writeMu, "client-locale", "zh")
+	if sub == nil {
+		t.Fatal("expected non-nil subscription")
+	}
+
+	sub.mu.Lock()
+	locale := sub.locale
+	sub.mu.Unlock()
+	if locale != "zh" {
+		t.Errorf("expected locale %q, got %q", "zh", locale)
+	}
+}
+
 func TestManager_SubscribeReplacesExisting(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu1, writeMu2 sync.Mutex
 
-	sub1 := mgr.Subscribe(nil, &writeMu1, "client-1", "")
+	sub1 := mgr.Subscribe(nil, &writeMu1, "client-1", "en")
 	_ = sub1
 
-	// Second subscribe with same clientID should replace the first
-	sub2 := mgr.Subscribe(nil, &writeMu2, "client-1", "")
+	// Second subscribe with same clientID should replace the first and update locale
+	sub2 := mgr.Subscribe(nil, &writeMu2, "client-1", "zh")
 
 	mgr.mu.Lock()
 	stored := mgr.subscriptions["client-1"]
@@ -53,6 +70,11 @@ func TestManager_SubscribeReplacesExisting(t *testing.T) {
 	if stored != sub2 {
 		t.Error("expected subscription to be replaced")
 	}
+	sub2.mu.Lock()
+	if sub2.locale != "zh" {
+		t.Errorf("expected locale to be updated to %q, got %q", "zh", sub2.locale)
+	}
+	sub2.mu.Unlock()
 }
 
 func TestManager_SubscribeMultipleClients(t *testing.T) {

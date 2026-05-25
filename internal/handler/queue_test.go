@@ -376,3 +376,72 @@ func TestQueueHandler_Delete_SessionBelongsToDifferentProject(t *testing.T) {
 
 	assertStatus(t, w, http.StatusForbidden)
 }
+
+// TestQueueHandler_Enqueue_SessionBelongsToSameProject verifies that enqueue
+// succeeds when the session belongs to the requesting project (ISS-180).
+func TestQueueHandler_Enqueue_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to the same project
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	body := map[string]any{"message": "hello world"}
+	req := newRequest(t, http.MethodPost, "/api/ai/queue?session_id="+sessionID, body)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertOK(t, w)
+	var result map[string]any
+	json.Unmarshal(w.Body.Bytes(), &result)
+	assert.Equal(t, true, result["ok"])
+}
+
+// TestQueueHandler_Get_SessionBelongsToSameProject verifies that get succeeds
+// when the session belongs to the requesting project (ISS-180).
+func TestQueueHandler_Get_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text:      "hello",
+		CreatedAt: time.Now().Format(time.RFC3339),
+	})
+
+	req := newRequest(t, http.MethodGet, "/api/ai/queue?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertOK(t, w)
+	var result map[string]any
+	json.Unmarshal(w.Body.Bytes(), &result)
+	queue := result["queue"].([]any)
+	assert.Len(t, queue, 1)
+}
+
+// TestQueueHandler_Delete_SessionBelongsToSameProject verifies that delete succeeds
+// when the session belongs to the requesting project (ISS-180).
+func TestQueueHandler_Delete_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Project Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+	defer service.ClearQueue(sessionID)
+
+	service.EnqueueMessage(sessionID, model.QueuedMessage{
+		Text: "msg1", CreatedAt: time.Now().Format(time.RFC3339),
+	})
+
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(QueueHandler, req)
+
+	assertOK(t, w)
+}
