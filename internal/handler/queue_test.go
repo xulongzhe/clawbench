@@ -503,3 +503,54 @@ func TestQueueHandler_InvalidIndex_SameProject(t *testing.T) {
 
 	assertStatus(t, w, http.StatusBadRequest)
 }
+
+// ---------- requireProject failure paths (ISS-180) ----------
+
+// TestQueueHandler_Enqueue_MissingProjectCookie verifies that the enqueue
+// handler rejects requests without a project cookie (requireProject fails).
+func TestQueueHandler_Enqueue_MissingProjectCookie(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "q-enqueue-noproj"
+	defer service.ClearQueue(sessionID)
+
+	body := map[string]any{"message": "hello world"}
+	req := newRequest(t, http.MethodPost, "/api/ai/queue?session_id="+sessionID, body)
+	// Intentionally NOT setting project cookie
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+// TestQueueHandler_Get_MissingProjectCookie verifies that the get handler
+// rejects requests without a project cookie (requireProject fails).
+func TestQueueHandler_Get_MissingProjectCookie(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "q-get-noproj"
+	defer service.ClearQueue(sessionID)
+
+	req := newRequest(t, http.MethodGet, "/api/ai/queue?session_id="+sessionID, nil)
+	// Intentionally NOT setting project cookie
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+// TestQueueHandler_Delete_MissingProjectCookie verifies that the delete handler
+// rejects requests without a project cookie (requireProject fails).
+func TestQueueHandler_Delete_MissingProjectCookie(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "q-del-noproj"
+	defer service.ClearQueue(sessionID)
+
+	req := newRequest(t, http.MethodDelete, "/api/ai/queue?session_id="+sessionID, nil)
+	// Intentionally NOT setting project cookie
+	w := callHandler(QueueHandler, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
