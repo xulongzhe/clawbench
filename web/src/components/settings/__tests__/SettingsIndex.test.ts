@@ -18,9 +18,11 @@ const i18n = createI18n({
           files: '文件',
           terminal: '终端',
           tts: 'TTS语音',
+          summarization: '摘要',
           rag: 'RAG记忆',
           portForward: '端口转发',
           push: '推送',
+          security: '安全',
           android: 'Android',
           about: '关于',
         },
@@ -42,6 +44,7 @@ const globalStubs = {
   'lucide-brain': true,
   'lucide-arrow-left-right': true,
   'lucide-bell': true,
+  'lucide-shield': true,
   'lucide-smartphone': true,
   'lucide-info': true,
 }
@@ -59,12 +62,12 @@ function mountIndex() {
 }
 
 describe('SettingsIndex', () => {
-  it('renders 12 category rows in web mode (no Android)', () => {
+  it('renders 13 category rows in web mode (no Android)', () => {
     isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(12)
+    expect(rows.length).toBe(13)
   })
 
   it('renders category labels in web mode', () => {
@@ -79,6 +82,7 @@ describe('SettingsIndex', () => {
     expect(labels).toContain('文件')
     expect(labels).toContain('端口转发')
     expect(labels).toContain('推送')
+    expect(labels).toContain('安全')
     expect(labels).toContain('关于')
   })
 
@@ -99,7 +103,7 @@ describe('SettingsIndex', () => {
 
     const expectedIds = [
       'appearance', 'project', 'chat', 'agents', 'files', 'terminal',
-      'tts', 'summarization', 'rag', 'portForward', 'push', 'about',
+      'tts', 'summarization', 'rag', 'portForward', 'push', 'security', 'about',
     ]
 
     const rows = wrapper.findAll('.settings-index__row')
@@ -109,12 +113,12 @@ describe('SettingsIndex', () => {
     }
   })
 
-  it('shows 13 categories including Android in app mode', () => {
+  it('shows 14 categories including Android in app mode', () => {
     isAppModeRef.value = true
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(13)
+    expect(rows.length).toBe(14)
 
     const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
     expect(labels).toContain('Android')

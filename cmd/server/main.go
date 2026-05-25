@@ -437,14 +437,23 @@ func main() {
 		fmt.Printf("Auto-generated password: %s\n", autoPassword)
 	}
 
-	// Hash the password for session comparison
-	hash := sha256.Sum256([]byte(cfg.Password + "clawbench-salt"))
-	model.SessionToken = hex.EncodeToString(hash[:])
-
-	// Generate bcrypt hash for secure password verification (ISS-003a)
-	if cfg.Password != "" {
-		bcryptHash := generateBcryptHash(cfg.Password)
-		model.PasswordHash = bcryptHash
+	// Initialize password verification state
+	if sha256Hash := model.ParseSHA256Hash(cfg.Password); sha256Hash != "" {
+		// Password is stored as SHA-256 hash — use directly as SessionToken
+		model.SessionToken = sha256Hash
+		model.PasswordIsSHA256 = true
+		// No bcrypt: the SHA-256 hash IS the verifier for login/SSH
+		model.PasswordHash = nil
+	} else {
+		// Plaintext password (or auto-generated) — existing behavior
+		hash := sha256.Sum256([]byte(cfg.Password + "clawbench-salt"))
+		model.SessionToken = hex.EncodeToString(hash[:])
+		model.PasswordIsSHA256 = false
+		// Generate bcrypt hash for secure password verification (ISS-003a)
+		if cfg.Password != "" {
+			bcryptHash := generateBcryptHash(cfg.Password)
+			model.PasswordHash = bcryptHash
+		}
 	}
 
 	// Ensure the watch directory exists

@@ -1,6 +1,8 @@
 package ssh
 
 import (
+	crypto_sha256 "crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -102,6 +104,69 @@ func newTestRegistry(t *testing.T) *service.ProxyRegistry {
 	r := service.NewProxyRegistry(0)
 	t.Cleanup(func() { r.Stop() })
 	return r
+}
+
+// --- SHA-256 Password Auth Tests ---
+
+func TestSSHServer_SHA256PasswordAuth_Success(t *testing.T) {
+	portReg := newTestRegistry(t)
+	// Store password as SHA-256 hash
+	sha256Password := "sha256:" + sha256Hex("my-secret-password")
+	srv := testServerHelper(t, sha256Password, portReg)
+
+	// Authenticate with the plaintext password — server should hash and compare
+	client := testSSHClient(t, srv.addr, "clawbench", "my-secret-password")
+
+	// Verify connection works
+	if err := client.Close(); err != nil {
+		t.Errorf("failed to close client: %v", err)
+	}
+}
+
+func TestSSHServer_SHA256PasswordAuth_WrongPassword(t *testing.T) {
+	portReg := newTestRegistry(t)
+	sha256Password := "sha256:" + sha256Hex("correct-password")
+	srv := testServerHelper(t, sha256Password, portReg)
+
+	clientCfg := &gossh.ClientConfig{
+		User: "clawbench",
+		Auth: []gossh.AuthMethod{
+			gossh.Password("wrong-password"),
+		},
+		HostKeyCallback: gossh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	}
+
+	_, err := gossh.Dial("tcp", srv.addr, clientCfg)
+	if err == nil {
+		t.Error("expected auth failure for wrong password with SHA-256 stored hash")
+	}
+}
+
+func TestSSHServer_SHA256PasswordAuth_WrongUser(t *testing.T) {
+	portReg := newTestRegistry(t)
+	sha256Password := "sha256:" + sha256Hex("my-secret-password")
+	srv := testServerHelper(t, sha256Password, portReg)
+
+	clientCfg := &gossh.ClientConfig{
+		User: "root",
+		Auth: []gossh.AuthMethod{
+			gossh.Password("my-secret-password"),
+		},
+		HostKeyCallback: gossh.InsecureIgnoreHostKey(),
+		Timeout:         5 * time.Second,
+	}
+
+	_, err := gossh.Dial("tcp", srv.addr, clientCfg)
+	if err == nil {
+		t.Error("expected auth failure for wrong username with SHA-256 stored hash")
+	}
+}
+
+// sha256Hex returns the SHA-256 hex digest of (s + "clawbench-salt"), matching the server's derivation.
+func sha256Hex(s string) string {
+	h := crypto_sha256.Sum256([]byte(s + "clawbench-salt"))
+	return hex.EncodeToString(h[:])
 }
 
 // --- Connection & Auth Tests ---

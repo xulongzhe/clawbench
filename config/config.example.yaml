@@ -55,6 +55,9 @@
 # 建议设置强密码保护服务安全。
 # Uncomment to set a fixed password / 取消注释以设置固定密码
 # password: "your-password-here"
+# Password can also be set via Settings UI, which stores it as SHA-256 hash:
+# 也可通过设置面板修改密码，将以 SHA-256 哈希存储：
+# password: "sha256:<64-char-hex-hash>"
 
 # Upload limits / 文件上传限制
 # upload:

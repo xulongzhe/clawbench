@@ -29,6 +29,7 @@ import {
   Brain,
   ArrowLeftRight,
   Bell,
+  Shield,
   Smartphone,
   Info,
   ChevronRight,
@@ -55,6 +56,7 @@ const categoryDefs = computed(() => [
   { id: 'rag', icon: Brain },
   { id: 'portForward', icon: ArrowLeftRight },
   { id: 'push', icon: Bell },
+  { id: 'security', icon: Shield },
   ...(isAppMode.value ? [{ id: 'android', icon: Smartphone }] : []),
   { id: 'about', icon: Info },
 ])
