@@ -477,6 +477,7 @@ export default {
     tunnelConnectedButNoResponse: 'SSH 隧道已连接，但所有端口的服务均未响应',
     backgroundTip: '使用外部浏览器时，请确保已授予应用后台运行权限，否则 APP 进入后台后 SSH 隧道会被系统终止',
     retryCheck: '重新检测',
+    reconnectPort: '重连',
     noPorts: '暂无转发端口',
     emptyHint: '添加服务器上的端口，即可在浏览器或其他应用中直接访问',
     addPort: '添加端口',
@@ -519,6 +520,8 @@ export default {
   portForward: {
     tunnelDegraded: 'SSH 隧道已连接，但所有转发端口均无服务响应',
     tunnelDisconnected: 'SSH 隧道未连接，端口转发将无法使用',
+    tunnelReconnected: 'SSH 隧道已重连',
+    portUnreachable: '端口连接失败，请检查服务是否运行',
   },
   pwa: {
     installTitle: '安装 ClawBench',

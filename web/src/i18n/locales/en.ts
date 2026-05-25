@@ -477,6 +477,7 @@ export default {
     tunnelConnectedButNoResponse: 'SSH tunnel connected, but all port services are unresponsive',
     backgroundTip: 'When using external browser, ensure background running permission is granted — otherwise the SSH tunnel will be killed when app goes to background',
     retryCheck: 'Retry',
+    reconnectPort: 'Reconnect',
     noPorts: 'No forwarded ports',
     emptyHint: 'Add a server port to access it directly from browser or other apps',
     addPort: 'Add port',
@@ -519,6 +520,8 @@ export default {
   portForward: {
     tunnelDegraded: 'SSH tunnel connected, but all forwarded ports are unresponsive',
     tunnelDisconnected: 'SSH tunnel disconnected, port forwarding unavailable',
+    tunnelReconnected: 'SSH tunnel reconnected',
+    portUnreachable: 'Port unreachable, please check if the service is running',
   },
   pwa: {
     installTitle: 'Install ClawBench',

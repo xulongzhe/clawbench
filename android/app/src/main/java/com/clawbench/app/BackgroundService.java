@@ -38,9 +38,11 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -168,6 +170,44 @@ public class BackgroundService extends Service {
             lastError = null;
         }
         return connected;
+    }
+
+    /**
+     * Force-reconnect the SSH tunnel from an external caller (e.g. WebAppInterface).
+     * Disconnects the current (possibly stale) session, then reconnects and
+     * re-establishes all port forwards.
+     * Blocks the calling thread until reconnection completes or times out.
+     *
+     * @param timeoutMs Maximum time to wait for reconnection (milliseconds)
+     * @return true if reconnection succeeded, false if failed or timed out
+     */
+    public static boolean forceReconnect(long timeoutMs) {
+        if (instance == null) return false;
+
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicBoolean result = new AtomicBoolean(false);
+
+        instance.networkExecutor.execute(() -> {
+            try {
+                instance.intentionalDisconnect = false;
+                instance.disconnectInternal();
+                instance.ensureConnection();
+                result.set(true);
+                AppLog.i(TAG, "SSH: forceReconnect succeeded");
+            } catch (Exception e) {
+                lastError = e.getMessage();
+                AppLog.e(TAG, "SSH: forceReconnect failed: " + e.getMessage(), e);
+            } finally {
+                latch.countDown();
+            }
+        });
+
+        try {
+            return latch.await(timeoutMs, TimeUnit.MILLISECONDS) && result.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /**

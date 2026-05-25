@@ -114,8 +114,10 @@
               :protocol="p.protocol"
               :active="p.active"
               :tunnel-disconnected="tunnelStatus === 'disconnected'"
+              :reconnecting="reconnectingPorts.has(p.localPort)"
               @open="openPort"
               @open-external="openInExternalBrowser"
+              @reconnect="handleReconnect"
               @edit="handleEdit"
               @remove="handleRemove"
             />
@@ -245,10 +247,13 @@ watch(showForm, (val) => {
   }
 })
 
-const { ports, detectedPorts, loading, isAppMode, sshInfo, tunnelStatus, tunnelMessage, tunnelChecking, tunnelError, tunnelErrorType, registerPort, updatePort, unregisterPort, detectPorts, checkTunnelHealth, openPort, openInExternalBrowser } = usePortForward()
+const { ports, detectedPorts, loading, isAppMode, sshInfo, tunnelStatus, tunnelMessage, tunnelChecking, tunnelError, tunnelErrorType, registerPort, updatePort, unregisterPort, detectPorts, checkTunnelHealth, openPort, openInExternalBrowser, reconnectPort } = usePortForward()
 const toast = useToast()
 
 const sshCopied = ref(false)
+
+// Track which ports are currently reconnecting (for spinning button state)
+const reconnectingPorts = ref(new Set())
 
 // Compute contextual error detail based on error type from native bridge
 const tunnelErrorDetail = computed(() => {
@@ -331,6 +336,19 @@ async function handleDetect() {
     await detectPorts()
   } finally {
     detecting.value = false
+  }
+}
+
+async function handleReconnect(localPort) {
+  if (reconnectingPorts.value.has(localPort)) return
+  reconnectingPorts.value.add(localPort)
+  // Trigger reactivity by replacing the Set
+  reconnectingPorts.value = new Set(reconnectingPorts.value)
+  try {
+    await reconnectPort(localPort)
+  } finally {
+    reconnectingPorts.value.delete(localPort)
+    reconnectingPorts.value = new Set(reconnectingPorts.value)
   }
 }
 

@@ -1564,6 +1564,45 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /**
+         * Test whether a local forwarded port is reachable by attempting a TCP connect.
+         * Uses a short timeout (3s) since we're connecting to localhost.
+         * Returns true if the port accepts a TCP connection, false otherwise.
+         * Used by the frontend to verify tunnel health before opening a port.
+         */
+        @JavascriptInterface
+        public boolean testPortReachable(int port) {
+            if (port <= 0 || port > 65535) return false;
+            try (java.net.Socket socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress("127.0.0.1", port), 3000);
+                return true;
+            } catch (Exception e) {
+                AppLog.d(TAG, "testPortReachable: port " + port + " unreachable: " + e.getMessage());
+                return false;
+            }
+        }
+
+        /**
+         * Force-reconnect the SSH tunnel.
+         * Disconnects the current (possibly stale) session and establishes a new one.
+         * Returns true if reconnection succeeded (port forwards re-established),
+         * false if reconnection failed or timed out.
+         * This is a blocking call (up to 15s) — runs on the JavaBridge thread.
+         */
+        @JavascriptInterface
+        public boolean reconnectTunnel() {
+            if (!BackgroundService.isRunning()) {
+                AppLog.w(TAG, "reconnectTunnel: BackgroundService not running");
+                return false;
+            }
+            try {
+                return BackgroundService.forceReconnect(15000);
+            } catch (Exception e) {
+                AppLog.e(TAG, "reconnectTunnel: failed", e);
+                return false;
+            }
+        }
+
+        /**
          * Get the saved SSH/web password for auto-login.
          * Returns empty string if no password is saved.
          */
