@@ -28,21 +28,12 @@
         :title="t('chat.actions.autoSpeech')">
         <Volume2 :size="14" />
       </button>
-      <!-- Model chip (show for all agents, click only for multi-model) -->
-      <button class="chat-action-btn model-chip" ref="modelChipRef"
-        :class="{ clickable: isMultiModel(currentAgentId) }"
-        @click.stop="toggleModelMenu"
-        :title="isMultiModel(currentAgentId) ? t('chat.actions.switchModel') + ' · ' + currentModelName : currentModelName">
+      <!-- Model & thinking chip — opens modal -->
+      <button class="chat-action-btn model-chip clickable"
+        @click.stop="showModelModal = true"
+        :title="t('chat.actions.switchModel') + ' · ' + currentModelName">
         <Cpu :size="14" />
         <span class="chat-action-label">{{ currentModelName }}</span>
-        <ChevronDown v-if="isMultiModel(currentAgentId)" :size="10" />
-      </button>
-      <!-- Thinking effort chip (show only when agent supports it) -->
-      <button v-if="thinkingEffortLevels.length > 0" class="chat-action-btn thinking-effort-chip" ref="thinkingEffortChipRef"
-        @click.stop="toggleThinkingEffortMenu"
-        :title="t('chat.actions.switchThinkingEffort') + (thinkingEffortDisplay ? ' · ' + thinkingEffortDisplay : '')">
-        <Brain :size="14" />
-        <span class="chat-action-label">{{ thinkingEffortDisplay }}</span>
         <ChevronDown :size="10" />
       </button>
     </div>
@@ -157,29 +148,14 @@
           ⚙️ {{ t('chat.quickSend.edit') }}
         </button>
       </PopupMenu>
-      <!-- Teleported model switcher menu -->
-      <PopupMenu v-model:show="showModelMenu" :target-element="modelChipRef" :max-width="220" :max-height="320" :menu-items-count="agentModels.length">
-        <div class="model-menu-title">{{ t('chat.modelSwitcher.title') }}</div>
-        <button v-for="m in agentModels" :key="m.id" class="model-menu-item" :class="{ active: m.id === currentModelId }" @click="selectModel(m)">
-          <Check v-if="m.id === currentModelId" :size="14" />
-          <span v-else class="model-menu-check-spacer"></span>
-          <span>{{ m.name }}</span>
-        </button>
-      </PopupMenu>
-      <!-- Teleported thinking effort switcher menu -->
-      <PopupMenu v-model:show="showThinkingEffortMenu" :target-element="thinkingEffortChipRef" :max-width="200" :max-height="320" :menu-items-count="thinkingEffortLevels.length + 1">
-        <div class="model-menu-title">{{ t('chat.thinkingEffortSwitcher.title') }}</div>
-        <button class="model-menu-item" :class="{ active: !currentThinkingEffort }" @click="selectThinkingEffort('')">
-          <Check v-if="!currentThinkingEffort" :size="14" />
-          <span v-else class="model-menu-check-spacer"></span>
-          <span>{{ t('chat.thinkingEffortSwitcher.auto') }}</span>
-        </button>
-        <button v-for="level in thinkingEffortLevels" :key="level" class="model-menu-item" :class="{ active: level === currentThinkingEffort }" @click="selectThinkingEffort(level)">
-          <Check v-if="level === currentThinkingEffort" :size="14" />
-          <span v-else class="model-menu-check-spacer"></span>
-          <span>{{ level }}</span>
-        </button>
-      </PopupMenu>
+      <!-- Model selection modal -->
+      <ModelModal
+        :show="showModelModal"
+        :agent-id="currentAgentId"
+        @update:show="showModelModal = $event"
+        @switch-model="handleSwitchModel"
+        @switch-thinking-effort="handleSwitchThinkingEffort"
+      />
       <QuickSendDialog :open="props.active && quickSendStore.showEditDialog.value" @close="quickSendStore.showEditDialog.value = false" />
     </div>
   </div>
@@ -188,11 +164,12 @@
 <script setup>
 import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessageSquare, List, Plus, Trash2, Volume2, Upload, Paperclip, FileImage, FileText, Folder, XCircle, Inbox, Send, Square, Cpu, ChevronDown, Check, Brain, Zap } from 'lucide-vue-next'
+import { MessageSquare, List, Plus, Trash2, Volume2, Upload, Paperclip, FileImage, FileText, Folder, XCircle, Inbox, Send, Square, Cpu, Check, Brain, Zap } from 'lucide-vue-next'
 import { baseName } from '@/utils/path.ts'
 import { computeRecentReferencedFiles, computeHasFileGroups, computeAttachMenuItemCount } from '@/utils/chatInputUtils.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
 import QuickSendDialog from '@/components/chat/QuickSendDialog.vue'
+import ModelModal from '@/components/chat/ModelModal.vue'
 import { createStopButtonMachine } from '@/utils/stopButtonMachine.ts'
 import { useDialog } from '@/composables/useDialog.ts'
 import { useQuickSend } from '@/composables/useQuickSend'
@@ -218,9 +195,6 @@ const props = defineProps({
   currentModelId: String,
   currentModelName: String,
   currentThinkingEffort: String,
-  thinkingEffortLevels: { type: Array, default: () => [] },
-  agentModels: { type: Array, default: () => [] },
-  isMultiModel: { type: Function, default: () => false },
   currentAgentId: String,
   active: Boolean,
 })
@@ -252,10 +226,7 @@ const showAttachMenu = ref(false)
 const attachMenuRef = ref(null)
 const showQuickMenu = ref(false)
 const sendBtnRef = ref(null)
-const showModelMenu = ref(false)
-const modelChipRef = ref(null)
-const showThinkingEffortMenu = ref(false)
-const thinkingEffortChipRef = ref(null)
+const showModelModal = ref(false)
 
 // Keyboard detection for iOS (no adjustResize) — activates visualViewport monitoring
 // when textarea is focused so App.vue can compensate the layout.
@@ -436,32 +407,18 @@ function toggleQuickMenu() {
   showQuickMenu.value = !showQuickMenu.value
 }
 
-function toggleModelMenu() {
-  showModelMenu.value = !showModelMenu.value
-}
-
-function selectModel(model) {
-  showModelMenu.value = false
+function handleSwitchModel(model) {
   emit('switch-model', model)
 }
 
-// Thinking effort display: show level name or "Auto"
-const thinkingEffortDisplay = computed(() => props.currentThinkingEffort || t('chat.thinkingEffortSwitcher.auto'))
-
-function toggleThinkingEffortMenu() {
-  showThinkingEffortMenu.value = !showThinkingEffortMenu.value
-}
-
-function selectThinkingEffort(level) {
-  showThinkingEffortMenu.value = false
+function handleSwitchThinkingEffort(level) {
   emit('switch-thinking-effort', level)
 }
 
 // Menu mutual exclusion: opening one closes the others
-watch(showAttachMenu, (v) => { if (v) { showQuickMenu.value = false; showModelMenu.value = false; showThinkingEffortMenu.value = false } })
-watch(showQuickMenu, (v) => { if (v) { showAttachMenu.value = false; showModelMenu.value = false; showThinkingEffortMenu.value = false } })
-watch(showModelMenu, (v) => { if (v) { showAttachMenu.value = false; showQuickMenu.value = false; showThinkingEffortMenu.value = false } })
-watch(showThinkingEffortMenu, (v) => { if (v) { showAttachMenu.value = false; showQuickMenu.value = false; showModelMenu.value = false } })
+watch(showAttachMenu, (v) => { if (v) { showQuickMenu.value = false; showModelModal.value = false } })
+watch(showQuickMenu, (v) => { if (v) { showAttachMenu.value = false; showModelModal.value = false } })
+watch(showModelModal, (v) => { if (v) { showAttachMenu.value = false; showQuickMenu.value = false } })
 
 onMounted(() => {
   fetchItems()
@@ -1011,32 +968,14 @@ defineExpose({
 }
 
 /* Model switcher chip */
-.model-chip,
-.thinking-effort-chip {
+.model-chip {
   font-variant-numeric: tabular-nums;
   flex-shrink: 1;
   min-width: 0;
   overflow: hidden;
 }
 
-.model-chip:not(.clickable),
-.thinking-effort-chip {
-  cursor: default;
-}
-
-.model-chip:not(.clickable):hover,
-.thinking-effort-chip:hover {
-  background: none;
-  color: var(--text-muted, #999);
-}
-
-.model-chip:not(.clickable):active,
-.thinking-effort-chip:active {
-  transform: none;
-}
-
-.model-chip .chat-action-label,
-.thinking-effort-chip .chat-action-label {
+.model-chip .chat-action-label {
   overflow-x: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -267,6 +267,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/recent-projects", middleware.Auth(ServeRecentProjects))
 	register("/api/local-file/", middleware.Auth(ServeLocalFile))
 	register("/api/agents", middleware.Auth(ServeAgents))
+	register("/api/agents/", middleware.Auth(ServeAgentSubRoutes))
 	register("/api/tts/generate", middleware.Auth(TTSGenerate))
 	register("/api/tts/stream/", middleware.Auth(TTSStream))
 	register("/api/tasks", middleware.Auth(ServeTasks))

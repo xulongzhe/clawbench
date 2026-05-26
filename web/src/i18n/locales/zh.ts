@@ -108,6 +108,16 @@ export default {
     modelSwitcher: {
       title: '选择模型',
     },
+    modelModal: {
+      searchPlaceholder: '搜索模型...',
+      refresh: '刷新模型',
+      refreshSuccess: '模型列表已刷新',
+      refreshFailed: '刷新模型失败',
+      defaultBadge: '默认',
+      setAsDefault: '设为默认',
+      noModels: '暂无可用模型',
+      noSearchResults: '未找到匹配的模型',
+    },
     thinkingEffortSwitcher: {
       title: '选择思考档位',
       auto: '自动',

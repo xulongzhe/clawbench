@@ -94,42 +94,8 @@ const items = computed(() => {
         source: 'local' as const,
         modelValue: '',
       })
-      // Model preference (only if agent has multiple models)
-      const models = getAgentModels(agent.id)
-      if (models.length > 1) {
-        const savedModel = getAgentModelPref(agent.id)
-        const currentModel = savedModel || getDefaultModelId(agent.id)
-        result.push({
-          key: `agent-model-${agent.id}`,
-          label: t('settings.items.agentModel'),
-          labelKey: 'settings.items.agentModel',
-          type: 'select' as const,
-          source: 'local' as const,
-          modelValue: currentModel,
-          options: models.map((m: any) => ({
-            label: m.name || m.id,
-            value: m.id,
-          })),
-        })
-      }
-      // Thinking effort preference (only if agent supports it)
-      if (hasThinkingEffortLevels(agent.id)) {
-        const levels = getAgentThinkingEffortLevels(agent.id)
-        const savedThinking = getAgentThinkingPref(agent.id)
-        const currentThinking = savedThinking || agent.preferredThinkingEffort || agent.thinkingEffort || ''
-        result.push({
-          key: `agent-thinking-${agent.id}`,
-          label: t('settings.items.agentThinking'),
-          labelKey: 'settings.items.agentThinking',
-          type: 'select' as const,
-          source: 'local' as const,
-          modelValue: currentThinking,
-          options: levels.map((level: string) => ({
-            label: level,
-            value: level,
-          })),
-        })
-      }
+      // Note: model and thinking effort preferences are now managed via
+      // the ModelModal (accessible from the chat input bar), not here.
     }
     return result
   }
@@ -199,13 +165,6 @@ function getItemValue(item: any): any {
   if (item.modelValue !== undefined && item.source === 'local' && item.type === 'info') {
     return item.modelValue
   }
-  // Agent model/thinking prefs are handled specially
-  if (item.key?.startsWith('agent-model-')) {
-    return item.modelValue
-  }
-  if (item.key?.startsWith('agent-thinking-')) {
-    return item.modelValue
-  }
   if (item.key?.startsWith('agent-header-')) {
     return ''
   }
@@ -232,18 +191,6 @@ function getItemValue(item: any): any {
 }
 
 async function handleUpdate(item: any, value: any) {
-  // Agent model preference
-  if (item.key?.startsWith('agent-model-')) {
-    const agentId = item.key.replace('agent-model-', '')
-    try { await patchAgentPref(agentId, 'preferred_model', value) } catch { toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 }) }
-    return
-  }
-  // Agent thinking preference
-  if (item.key?.startsWith('agent-thinking-')) {
-    const agentId = item.key.replace('agent-thinking-', '')
-    try { await patchAgentPref(agentId, 'preferred_thinking_effort', value) } catch { toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 }) }
-    return
-  }
   // Password type: skip if empty or still masked (contains bullet chars)
   if (item.type === 'password') {
     if (!value || value.includes('•')) return

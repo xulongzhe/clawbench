@@ -495,6 +495,7 @@ func main() {
 
 	// Model cache directory
 	modelCacheDir := filepath.Join(model.BinDir, ".clawbench", "model-cache")
+	model.ModelCacheDir = modelCacheDir
 
 	// 1. Load existing agent YAMLs
 	if err := model.LoadAgents(agentsDir); err != nil {

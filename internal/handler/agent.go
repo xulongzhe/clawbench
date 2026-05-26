@@ -1,10 +1,22 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
+	"strings"
 
 	"clawbench/internal/model"
 )
+
+// ServeAgentSubRoutes handles /api/agents/* sub-routes (e.g. /api/agents/{id}/refresh-models).
+func ServeAgentSubRoutes(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	if strings.HasSuffix(path, "/refresh-models") && r.Method == http.MethodPost {
+		ServeAgentRefreshModels(w, r)
+		return
+	}
+	writeLocalizedErrorf(w, r, http.StatusNotFound, "NotFound")
+}
 
 // ServeAgents returns the list of configured AI agents.
 func ServeAgents(w http.ResponseWriter, r *http.Request) {
@@ -102,4 +114,60 @@ func serveAgentsPatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, agent)
+}
+
+// ServeAgentRefreshModels handles POST /api/agents/{id}/refresh-models — triggers model re-discovery
+// for the specified agent and returns the updated model list. The discovered models completely replace
+// the agent's current model list (both in memory and in the cache file).
+func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
+		return
+	}
+
+	// Extract agent ID from path: /api/agents/{id}/refresh-models
+	path := strings.TrimPrefix(r.URL.Path, "/api/agents/")
+	agentID := strings.TrimSuffix(path, "/refresh-models")
+
+	if agentID == "" || strings.Contains(agentID, "/") {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+		return
+	}
+
+	configMutex.Lock()
+	defer configMutex.Unlock()
+
+	agent, ok := model.Agents[agentID]
+	if !ok {
+		writeLocalizedErrorf(w, r, http.StatusNotFound, "AgentNotFound")
+		return
+	}
+
+	// Find the BackendSpec for this agent
+	spec := model.FindSpecByBackend(agent.Backend)
+	if spec == nil || !model.CanDiscoverModels(*spec) {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "ModelDiscoveryNotSupported")
+		return
+	}
+
+	// Run model discovery
+	models := model.DiscoverModels(*spec)
+	if len(models) == 0 {
+		slog.Warn("model refresh returned no models", "agent", agentID, "backend", agent.Backend)
+		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "ModelDiscoveryFailed")
+		return
+	}
+
+	// Update in-memory agent (regardless of ModelsAutoDetected — manual refresh always overrides)
+	agent.Models = models
+	agent.ModelsAutoDetected = true
+
+	// Update cache file
+	if err := model.WriteModelCache(model.ModelCacheDir, agent.Backend, models); err != nil {
+		slog.Warn("failed to write model cache after refresh", "backend", agent.Backend, "error", err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"models": models,
+	})
 }

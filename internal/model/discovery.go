@@ -91,7 +91,10 @@ func CheckCLIExists(cmd string) bool {
 // DiscoverModels runs the CLI's model-list command and returns parsed models.
 // Returns nil if the CLI doesn't support model listing or if the command fails.
 // Errors are logged but not propagated — model discovery is best-effort.
-func DiscoverModels(spec BackendSpec) []AgentModel {
+// This is a variable so it can be overridden in tests.
+var DiscoverModels = discoverModels
+
+func discoverModels(spec BackendSpec) []AgentModel {
 	// Custom discovery function takes priority (e.g. binary strings scan for claude)
 	if spec.DiscoverModelsFunc != nil {
 		models := spec.DiscoverModelsFunc()
@@ -271,9 +274,9 @@ func SyncDiscoverAgents(dir string) map[string]bool {
 	return present
 }
 
-// canDiscoverModels returns true if the spec supports model discovery
+// CanDiscoverModels returns true if the spec supports model discovery
 // via either DiscoverModelsFunc or ListModelsCmd+ParseModels.
-func canDiscoverModels(spec BackendSpec) bool {
+func CanDiscoverModels(spec BackendSpec) bool {
 	return spec.DiscoverModelsFunc != nil || (len(spec.ListModelsCmd) > 0 && spec.ParseModels != nil)
 }
 
@@ -282,7 +285,7 @@ func canDiscoverModels(spec BackendSpec) bool {
 // on first startup (when cache is empty).
 func SyncDiscoverModels(cacheDir string) {
 	for _, spec := range BackendRegistry {
-		if !canDiscoverModels(spec) {
+		if !CanDiscoverModels(spec) {
 			continue
 		}
 		models := DiscoverModels(spec)
@@ -303,7 +306,7 @@ func SyncDiscoverModels(cacheDir string) {
 func AsyncRefreshModelCache(cacheDir string) {
 	go func() {
 		for _, spec := range BackendRegistry {
-			if !canDiscoverModels(spec) {
+			if !CanDiscoverModels(spec) {
 				continue
 			}
 			models := DiscoverModels(spec)

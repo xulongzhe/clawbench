@@ -333,37 +333,16 @@ describe('SettingsCategory', () => {
 
   // ─── Agents category ──────────────────────────────
   describe('agents category', () => {
-    it('renders agent header, model selector, and thinking selector', () => {
+    it('renders only agent headers (model/thinking now in ModelModal)', () => {
       const wrapper = mountCategory('agents')
       const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
 
-      // codebuddy has 2 models + thinking => header + model + thinking
-      // claude has 1 model + no thinking => header only
-      expect(allItems.length).toBe(4)
-    })
-
-    it('saves agent model preference via PATCH when selected', async () => {
-      const wrapper = mountCategory('agents')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const modelItem = allItems.find(i => i.props().label === '首选模型')
-      expect(modelItem).toBeTruthy()
-
-      await modelItem!.vm.$emit('update:modelValue', 'glm-4')
-      await wrapper.vm.$nextTick()
-
-      expect(mockPatchAgentPref).toHaveBeenCalledWith('codebuddy', 'preferred_model', 'glm-4')
-    })
-
-    it('saves agent thinking preference via PATCH when selected', async () => {
-      const wrapper = mountCategory('agents')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-      const thinkingItem = allItems.find(i => i.props().label === '思考强度')
-      expect(thinkingItem).toBeTruthy()
-
-      await thinkingItem!.vm.$emit('update:modelValue', 'high')
-      await wrapper.vm.$nextTick()
-
-      expect(mockPatchAgentPref).toHaveBeenCalledWith('codebuddy', 'preferred_thinking_effort', 'high')
+      // codebuddy: header only
+      // claude: header only
+      // Model and thinking selectors have been moved to ModelModal
+      expect(allItems.length).toBe(2)
+      // All items should be info type (headers)
+      expect(allItems.every(i => i.props().type === 'info')).toBe(true)
     })
   })
 

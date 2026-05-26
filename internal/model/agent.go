@@ -73,10 +73,11 @@ func (a *Agent) EffectiveThinkingEffort() string {
 }
 
 var (
-	Agents      map[string]*Agent // indexed by ID
-	AgentList   []*Agent          // ordered list for API responses
-	ClawbenchBin string           // absolute path to clawbench binary for {{CLAWBENCH_BIN}} replacement
-	agentsDir   string            // saved from LoadAgents for BuildCommonPrompt re-calls
+	Agents        map[string]*Agent // indexed by ID
+	AgentList     []*Agent          // ordered list for API responses
+	ClawbenchBin  string            // absolute path to clawbench binary for {{CLAWBENCH_BIN}} replacement
+	ModelCacheDir string            // model cache directory, set by main.go at startup
+	agentsDir     string            // saved from LoadAgents for BuildCommonPrompt re-calls
 )
 
 // GetDefaultAgentID returns the default agent ID for new sessions.

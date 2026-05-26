@@ -108,6 +108,16 @@ export default {
     modelSwitcher: {
       title: 'Select model',
     },
+    modelModal: {
+      searchPlaceholder: 'Search models...',
+      refresh: 'Refresh models',
+      refreshSuccess: 'Models refreshed',
+      refreshFailed: 'Failed to refresh models',
+      defaultBadge: 'Default',
+      setAsDefault: 'Set as default',
+      noModels: 'No models available',
+      noSearchResults: 'No matching models',
+    },
     thinkingEffortSwitcher: {
       title: 'Thinking effort',
       auto: 'Auto',
