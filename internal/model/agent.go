@@ -37,6 +37,11 @@ type Agent struct {
 	// (from cache) rather than user-defined in YAML. Used by AsyncRefreshModelCache
 	// to know which agents should have their models updated.
 	ModelsAutoDetected bool `yaml:"-" json:"-"`
+
+	// CanRefreshModels indicates whether this agent supports model refresh via the API.
+	// Computed from BackendRegistry at load time based on whether the backend spec
+	// has model discovery capability (DiscoverModelsFunc or ListModelsCmd+ParseModels).
+	CanRefreshModels bool `yaml:"-" json:"canRefreshModels"`
 }
 
 // DefaultModelID returns the default model ID for this agent.

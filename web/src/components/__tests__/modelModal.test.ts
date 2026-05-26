@@ -44,6 +44,7 @@ const mockAgents = {
       thinkingEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
       preferredModel: 'claude-sonnet-4-6',
       preferredThinkingEffort: '',
+      canRefreshModels: true,
     },
     {
       id: 'gemini',
@@ -54,6 +55,7 @@ const mockAgents = {
       thinkingEffortLevels: [],
       preferredModel: '',
       preferredThinkingEffort: '',
+      canRefreshModels: false,
     },
   ]),
   getAgentModels: vi.fn((agentId: string) => {
@@ -72,6 +74,10 @@ const mockAgents = {
   }),
   getAgent: vi.fn((agentId: string) => {
     return mockAgents.agents.value.find(a => a.id === agentId)
+  }),
+  canRefreshModels: vi.fn((agentId: string) => {
+    const a = mockAgents.agents.value.find(a => a.id === agentId)
+    return !!a?.canRefreshModels
   }),
 }
 
@@ -216,9 +222,32 @@ describe('ModelModal', () => {
 
   // --- Refresh ---
 
-  it('has refresh button in model tab', () => {
+  it('has refresh button for agents that support model refresh', () => {
     const wrapper = mountModal()
     expect(wrapper.find('.refresh-btn').exists()).toBe(true)
+  })
+
+  it('hides refresh button for agents that do not support model refresh', () => {
+    const wrapper = mountModal({ agentId: 'gemini' })
+    expect(wrapper.find('.refresh-btn').exists()).toBe(false)
+  })
+
+  // --- Visual dividers ---
+
+  it('renders dividers between model items', () => {
+    const wrapper = mountModal()
+    const dividers = wrapper.findAll('.model-divider')
+    // 3 models = 2 dividers between them
+    expect(dividers.length).toBe(2)
+  })
+
+  // --- Set default button ---
+
+  it('has set-default star button on non-default models', () => {
+    const wrapper = mountModal()
+    const setDefaultBtns = wrapper.findAll('.set-default-btn')
+    // 3 models, 1 is default (no star btn), 2 have star btns
+    expect(setDefaultBtns.length).toBe(2)
   })
 
   // --- No models ---

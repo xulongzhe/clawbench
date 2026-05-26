@@ -113,6 +113,8 @@ export default {
       refresh: 'Refresh models',
       refreshSuccess: 'Models refreshed',
       refreshFailed: 'Failed to refresh models',
+      cliNotFound: 'CLI tool not found, please install it first',
+      discoveryNotSupported: 'This agent does not support model discovery',
       defaultBadge: 'Default',
       setAsDefault: 'Set as default',
       noModels: 'No models available',

@@ -113,6 +113,8 @@ export default {
       refresh: '刷新模型',
       refreshSuccess: '模型列表已刷新',
       refreshFailed: '刷新模型失败',
+      cliNotFound: 'CLI 工具未找到，请先安装',
+      discoveryNotSupported: '该智能体不支持模型自动发现',
       defaultBadge: '默认',
       setAsDefault: '设为默认',
       noModels: '暂无可用模型',

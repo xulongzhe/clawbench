@@ -153,6 +153,12 @@ func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
 	// Run model discovery
 	models := model.DiscoverModels(*spec)
 	if len(models) == 0 {
+		// Check if the CLI binary exists — give a more specific error
+		if err := model.CheckCLIExistsErr(spec.DefaultCmd); err != nil {
+			slog.Warn("model refresh failed: CLI not available", "agent", agentID, "backend", agent.Backend, "cmd", spec.DefaultCmd, "error", err)
+			writeLocalizedErrorf(w, r, http.StatusNotFound, "CLINotFound")
+			return
+		}
 		slog.Warn("model refresh returned no models", "agent", agentID, "backend", agent.Backend)
 		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "ModelDiscoveryFailed")
 		return

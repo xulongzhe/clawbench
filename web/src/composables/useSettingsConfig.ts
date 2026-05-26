@@ -256,7 +256,7 @@ const serverDefaults: Record<string, any> = {
 // in agent YAML files via PATCH /api/agents.
 
 /** Patch an agent's preferred_model or preferred_thinking_effort on the server. */
-async function patchAgentPref(agentId: string, field: 'preferred_model' | 'preferred_thinking_effort', value: string): Promise<void> {
+export async function patchAgentPref(agentId: string, field: 'preferred_model' | 'preferred_thinking_effort', value: string): Promise<void> {
   await apiPatch('/api/agents', { id: agentId, [field]: value })
   // Also update the agent object in useAgents so the UI reflects immediately
   const { updateAgentField } = useAgents()

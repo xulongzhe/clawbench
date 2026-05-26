@@ -88,6 +88,29 @@ func CheckCLIExists(cmd string) bool {
 	return false
 }
 
+// CheckCLIExistsErr returns an error describing why the CLI is not available,
+// or nil if the CLI is available. This is used for more specific error reporting.
+func CheckCLIExistsErr(cmd string) error {
+	if cmd == "" {
+		return fmt.Errorf("empty command")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := exec.CommandContext(ctx, cmd, "--version").Run()
+	if err == nil {
+		return nil
+	}
+
+	_, lookupErr := exec.LookPath(cmd)
+	if lookupErr == nil {
+		// Binary exists but --version failed — CLI is still available
+		return nil
+	}
+
+	return fmt.Errorf("CLI %q not found on PATH: %w", cmd, lookupErr)
+}
+
 // DiscoverModels runs the CLI's model-list command and returns parsed models.
 // Returns nil if the CLI doesn't support model listing or if the command fails.
 // Errors are logged but not propagated — model discovery is best-effort.
@@ -356,13 +379,14 @@ func MergeDiscoveredData(cacheDir string, present ...map[string]bool) {
 		AgentList = keep
 	}
 
-	// Fill models and thinking effort levels
+	// Fill models, thinking effort levels, and CanRefreshModels
 	for _, agent := range AgentList {
 		spec := FindSpecByBackend(agent.Backend)
 
 		// ThinkingEffortLevels: always from Registry (ignore YAML values)
 		if spec != nil {
 			agent.ThinkingEffortLevels = spec.ThinkingEffortLevels
+			agent.CanRefreshModels = CanDiscoverModels(*spec)
 		}
 
 		// Models: user-defined takes priority; otherwise use cache

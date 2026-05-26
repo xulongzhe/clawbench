@@ -26,27 +26,35 @@
           :placeholder="t('chat.modelModal.searchPlaceholder')"
           v-model="searchQuery"
         />
-        <button class="refresh-btn" :class="{ loading: refreshing }" @click="handleRefresh" :disabled="refreshing" :title="t('chat.modelModal.refresh')">
+        <button v-if="canRefresh" class="refresh-btn" :class="{ loading: refreshing }" @click="handleRefresh" :disabled="refreshing" :title="t('chat.modelModal.refresh')">
           <RefreshCw :size="14" :class="{ spin: refreshing }" />
         </button>
       </div>
       <!-- Model list -->
       <div class="model-list">
-        <button
-          v-for="m in filteredModels"
+        <div
+          v-for="(m, idx) in filteredModels"
           :key="m.id"
-          class="model-item"
-          :class="{ current: m.id === currentModelId, 'is-default': m.id === defaultModelId }"
-          @click="selectModel(m)"
-          @contextmenu.prevent="showDefaultMenu(m)"
-          @touchstart="onTouchStart(m, $event)"
-          @touchend="onTouchEnd"
-          @touchmove="onTouchMove"
+          class="model-item-wrapper"
         >
-          <span class="model-item-indicator" :class="{ active: m.id === currentModelId }"></span>
-          <span class="model-item-name">{{ m.name }}</span>
-          <span v-if="m.id === defaultModelId" class="default-badge">{{ t('chat.modelModal.defaultBadge') }}</span>
-        </button>
+          <button
+            class="model-item"
+            :class="{ current: m.id === currentModelId, 'is-default': m.id === defaultModelId }"
+            @click="selectModel(m)"
+            @contextmenu.prevent="showDefaultMenu(m)"
+            @touchstart="onTouchStart(m, $event)"
+            @touchend="onTouchEnd"
+            @touchmove="onTouchMove"
+          >
+            <span class="model-item-indicator" :class="{ active: m.id === currentModelId }"></span>
+            <span class="model-item-name">{{ m.name }}</span>
+            <span v-if="m.id === defaultModelId" class="default-badge">{{ t('chat.modelModal.defaultBadge') }}</span>
+            <button v-if="m.id !== defaultModelId" class="set-default-btn" @click.stop="setDefaultModel(m)" :title="t('chat.modelModal.setAsDefault')">
+              <Star :size="12" />
+            </button>
+          </button>
+          <div v-if="idx < filteredModels.length - 1" class="model-divider"></div>
+        </div>
         <div v-if="filteredModels.length === 0" class="model-empty">
           {{ searchQuery ? t('chat.modelModal.noSearchResults') : t('chat.modelModal.noModels') }}
         </div>
@@ -56,38 +64,52 @@
     <!-- Thinking effort tab -->
     <div v-if="activeTab === 'thinking'" class="model-tab-content">
       <div class="model-list">
-        <button
-          class="thinking-item"
-          :class="{ current: !currentThinkingEffort, 'is-default': !defaultThinkingEffort }"
-          @click="selectThinkingEffort('')"
-          @contextmenu.prevent="showThinkingDefaultMenu('')"
-          @touchstart="onTouchStartThinking('', $event)"
-          @touchend="onTouchEnd"
-          @touchmove="onTouchMove"
-        >
-          <span class="model-item-indicator" :class="{ active: !currentThinkingEffort }"></span>
-          <span class="model-item-name">{{ t('chat.thinkingEffortSwitcher.auto') }}</span>
-          <span v-if="!defaultThinkingEffort" class="default-badge">{{ t('chat.modelModal.defaultBadge') }}</span>
-        </button>
-        <button
-          v-for="level in thinkingLevels"
+        <div class="model-item-wrapper">
+          <button
+            class="thinking-item"
+            :class="{ current: !currentThinkingEffort, 'is-default': !defaultThinkingEffort }"
+            @click="selectThinkingEffort('')"
+            @contextmenu.prevent="showThinkingDefaultMenu('')"
+            @touchstart="onTouchStartThinking('', $event)"
+            @touchend="onTouchEnd"
+            @touchmove="onTouchMove"
+          >
+            <span class="model-item-indicator" :class="{ active: !currentThinkingEffort }"></span>
+            <span class="model-item-name">{{ t('chat.thinkingEffortSwitcher.auto') }}</span>
+            <span v-if="!defaultThinkingEffort" class="default-badge">{{ t('chat.modelModal.defaultBadge') }}</span>
+            <button v-if="defaultThinkingEffort" class="set-default-btn" @click.stop="setDefaultThinkingEffort('')" :title="t('chat.modelModal.setAsDefault')">
+              <Star :size="12" />
+            </button>
+          </button>
+          <div class="model-divider"></div>
+        </div>
+        <div
+          v-for="(level, idx) in thinkingLevels"
           :key="level"
-          class="thinking-item"
-          :class="{ current: level === currentThinkingEffort, 'is-default': level === defaultThinkingEffort }"
-          @click="selectThinkingEffort(level)"
-          @contextmenu.prevent="showThinkingDefaultMenu(level)"
-          @touchstart="onTouchStartThinking(level, $event)"
-          @touchend="onTouchEnd"
-          @touchmove="onTouchMove"
+          class="model-item-wrapper"
         >
-          <span class="model-item-indicator" :class="{ active: level === currentThinkingEffort }"></span>
-          <span class="model-item-name">{{ level }}</span>
-          <span v-if="level === defaultThinkingEffort" class="default-badge">{{ t('chat.modelModal.defaultBadge') }}</span>
-        </button>
+          <button
+            class="thinking-item"
+            :class="{ current: level === currentThinkingEffort, 'is-default': level === defaultThinkingEffort }"
+            @click="selectThinkingEffort(level)"
+            @contextmenu.prevent="showThinkingDefaultMenu(level)"
+            @touchstart="onTouchStartThinking(level, $event)"
+            @touchend="onTouchEnd"
+            @touchmove="onTouchMove"
+          >
+            <span class="model-item-indicator" :class="{ active: level === currentThinkingEffort }"></span>
+            <span class="model-item-name">{{ level }}</span>
+            <span v-if="level === defaultThinkingEffort" class="default-badge">{{ t('chat.modelModal.defaultBadge') }}</span>
+            <button v-if="level !== defaultThinkingEffort" class="set-default-btn" @click.stop="setDefaultThinkingEffort(level)" :title="t('chat.modelModal.setAsDefault')">
+              <Star :size="12" />
+            </button>
+          </button>
+          <div v-if="idx < thinkingLevels.length - 1" class="model-divider"></div>
+        </div>
       </div>
     </div>
 
-    <!-- Long-press PopupMenu for "Set as Default" -->
+    <!-- Long-press PopupMenu for "Set as Default" (kept for backward compat) -->
     <PopupMenu v-model:show="showDefaultPopupMenu" :target-element="longPressTarget" :max-width="180" :max-height="100" :menu-items-count="1">
       <button class="popup-set-default" @click="setAsDefault">
         {{ t('chat.modelModal.setAsDefault') }}
@@ -99,7 +121,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Cpu, Brain, RefreshCw } from 'lucide-vue-next'
+import { Cpu, Brain, RefreshCw, Star } from 'lucide-vue-next'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import PopupMenu from '@/components/common/PopupMenu.vue'
 import { useAgents } from '@/composables/useAgents'
@@ -117,7 +139,7 @@ const emit = defineEmits(['update:show', 'switch-model', 'switch-thinking-effort
 
 const { t } = useI18n()
 const toast = useToast()
-const { getAgentModels, getAgentThinkingEffortLevels, getAgent, updateAgentField, getDefaultModelId } = useAgents()
+const { getAgentModels, getAgentThinkingEffortLevels, getAgent, updateAgentField, getDefaultModelId, canRefreshModels } = useAgents()
 const { currentModelId, currentThinkingEffort } = useSessionIdentity()
 
 const activeTab = ref('model')
@@ -135,6 +157,7 @@ const longPressTriggered = ref(false)
 // Computed data
 const models = computed(() => getAgentModels(props.agentId || ''))
 const thinkingLevels = computed(() => getAgentThinkingEffortLevels(props.agentId || ''))
+const canRefresh = computed(() => canRefreshModels(props.agentId || ''))
 
 const agentName = computed(() => {
   const agent = getAgent(props.agentId || '')
@@ -200,13 +223,40 @@ async function handleRefresh() {
       toast.show(t('chat.modelModal.refreshSuccess'), { icon: '✓', type: 'success', duration: 2000 })
     }
   } catch (err) {
-    toast.show(t('chat.modelModal.refreshFailed'), { icon: '⚠️', type: 'error', duration: 3000 })
+    const msgKey = err?.msgKey
+    if (msgKey === 'CLINotFound') {
+      toast.show(t('chat.modelModal.cliNotFound'), { icon: '⚠️', type: 'error', duration: 4000 })
+    } else if (msgKey === 'ModelDiscoveryNotSupported') {
+      toast.show(t('chat.modelModal.discoveryNotSupported'), { icon: '⚠️', type: 'error', duration: 4000 })
+    } else {
+      toast.show(t('chat.modelModal.refreshFailed'), { icon: '⚠️', type: 'error', duration: 3000 })
+    }
   } finally {
     refreshing.value = false
   }
 }
 
-// --- Long-press for "Set as Default" ---
+// --- Set default model/thinking directly via star button ---
+
+async function setDefaultModel(model) {
+  try {
+    await patchAgentPref(props.agentId, 'preferred_model', model.id)
+    updateAgentField(props.agentId, 'preferredModel', model.id)
+  } catch (err) {
+    toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 })
+  }
+}
+
+async function setDefaultThinkingEffort(level) {
+  try {
+    await patchAgentPref(props.agentId, 'preferred_thinking_effort', level)
+    updateAgentField(props.agentId, 'preferredThinkingEffort', level)
+  } catch (err) {
+    toast.show(t('settings.saveFailed'), { icon: '⚠️', type: 'error', duration: 3000 })
+  }
+}
+
+// --- Long-press for "Set as Default" (kept for popup menu compat) ---
 
 function onTouchStart(model, event) {
   longPressTriggered.value = false
@@ -387,7 +437,17 @@ function handleClose() {
 .model-list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 0;
+}
+
+.model-item-wrapper {
+  /* No extra styling — items are flush */
+}
+
+.model-divider {
+  height: 1px;
+  background: var(--border-color, #e5e5e5);
+  margin: 0 14px;
 }
 
 .model-item,
@@ -445,12 +505,40 @@ function handleClose() {
 
 .default-badge {
   font-size: 10px;
-  color: var(--text-muted, #999);
-  background: var(--bg-tertiary, #f0f0f0);
-  padding: 1px 6px;
-  border-radius: 4px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-color, #0066cc);
+  padding: 1px 5px;
+  border-radius: 3px;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.set-default-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted, #999);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.4;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.model-item:hover .set-default-btn,
+.thinking-item:hover .set-default-btn {
+  opacity: 0.7;
+}
+
+.set-default-btn:hover {
+  opacity: 1 !important;
+  color: var(--accent-color, #0066cc);
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 12%, transparent);
 }
 
 .model-empty {
