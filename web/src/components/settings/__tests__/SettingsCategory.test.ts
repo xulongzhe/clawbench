@@ -331,21 +331,6 @@ describe('SettingsCategory', () => {
     })
   })
 
-  // ─── Agents category ──────────────────────────────
-  describe('agents category', () => {
-    it('renders only agent headers (model/thinking now in ModelModal)', () => {
-      const wrapper = mountCategory('agents')
-      const allItems = wrapper.findAllComponents({ name: 'SettingsItem' })
-
-      // codebuddy: header only
-      // claude: header only
-      // Model and thinking selectors have been moved to ModelModal
-      expect(allItems.length).toBe(2)
-      // All items should be info type (headers)
-      expect(allItems.every(i => i.props().type === 'info')).toBe(true)
-    })
-  })
-
   // ─── TTS category ──────────────────────────────
   describe('tts category', () => {
     it('shows engine select and common fields', () => {

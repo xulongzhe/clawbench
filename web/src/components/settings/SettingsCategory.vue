@@ -50,17 +50,17 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const toast = useToast()
-const { localConfig, serverConfig, setLocalConfig, getServerValueWithDefault, setServerValue, patchAgentPref, getAgentModelPref, getAgentThinkingPref } = useSettingsConfig()
-const { agents, loadAgents, getAgentModels, getAgentThinkingEffortLevels, hasThinkingEffortLevels, getDefaultModelId } = useAgents()
+const { localConfig, serverConfig, setLocalConfig, getServerValueWithDefault, setServerValue, patchAgentPref } = useSettingsConfig()
+const { agents, loadAgents, getAgentModels } = useAgents()
 const { isAppMode } = useAppMode()
 const { pushRegistered } = useGlobalEvents()
 
 const openEditorKey = ref<string | null>(null)
 const showPasswordDialog = ref(false)
 
-// Load agents when this category is shown
+// Load agents when chat category is shown (for default_agent options)
 watch(() => props.categoryId, (id) => {
-  if (id === 'chat' || id === 'agents') loadAgents(true)
+  if (id === 'chat') loadAgents(true)
 }, { immediate: true })
 
 function resolveConfigValue(key: string): any {
@@ -80,26 +80,6 @@ function isDependsOnMet(dependsOn: ItemSpec['dependsOn']): boolean {
 
 // Resolve i18n labels at runtime, and dynamically inject agent options
 const items = computed(() => {
-  // For the 'agents' category, dynamically build items from the agent list
-  if (props.categoryId === 'agents') {
-    const result: any[] = []
-
-    for (const agent of agents.value) {
-      // Agent group header — just shows the agent icon + name as a label
-      result.push({
-        key: `agent-header-${agent.id}`,
-        label: `${agent.icon} ${agent.name}`,
-        labelKey: '',
-        type: 'info' as const,
-        source: 'local' as const,
-        modelValue: '',
-      })
-      // Note: model and thinking effort preferences are now managed via
-      // the ModelModal (accessible from the chat input bar), not here.
-    }
-    return result
-  }
-
   const raw = categoryItems[props.categoryId] ?? []
   // Filter by dependsOn and inject header pseudo-items
   const expanded: any[] = []
@@ -161,12 +141,9 @@ function resolveOptionLabel(_itemKey: string, opt: { labelKey: string; value: an
 function getItemValue(item: any): any {
   // Header pseudo-items have no value
   if (item.type === 'header') return undefined
-  // Dynamically injected items with explicit modelValue
+  // Dynamically injected items with explicit modelValue (e.g. push-registration-status)
   if (item.modelValue !== undefined && item.source === 'local' && item.type === 'info') {
     return item.modelValue
-  }
-  if (item.key?.startsWith('agent-header-')) {
-    return ''
   }
   // Version info items
   if (item.key === 'serverVersion') {

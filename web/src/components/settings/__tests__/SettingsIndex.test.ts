@@ -62,12 +62,12 @@ function mountIndex() {
 }
 
 describe('SettingsIndex', () => {
-  it('renders 13 category rows in web mode (no Android)', () => {
+  it('renders 12 category rows in web mode (no Android)', () => {
     isAppModeRef.value = false
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(13)
+    expect(rows.length).toBe(12)
   })
 
   it('renders category labels in web mode', () => {
@@ -78,7 +78,6 @@ describe('SettingsIndex', () => {
     expect(labels).toContain('外观')
     expect(labels).toContain('项目')
     expect(labels).toContain('聊天')
-    expect(labels).toContain('Agent偏好')
     expect(labels).toContain('文件')
     expect(labels).toContain('端口转发')
     expect(labels).toContain('推送')
@@ -102,7 +101,7 @@ describe('SettingsIndex', () => {
     const wrapper = mountIndex()
 
     const expectedIds = [
-      'appearance', 'project', 'chat', 'agents', 'files', 'terminal',
+      'appearance', 'project', 'chat', 'files', 'terminal',
       'tts', 'summarization', 'rag', 'portForward', 'push', 'security', 'about',
     ]
 
@@ -118,7 +117,7 @@ describe('SettingsIndex', () => {
     const wrapper = mountIndex()
 
     const rows = wrapper.findAll('.settings-index__row')
-    expect(rows.length).toBe(14)
+    expect(rows.length).toBe(13)
 
     const labels = wrapper.findAll('.settings-index__label').map(el => el.text())
     expect(labels).toContain('Android')
