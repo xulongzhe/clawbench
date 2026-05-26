@@ -34,7 +34,6 @@
         :title="t('chat.actions.switchModel') + ' · ' + currentModelName">
         <Cpu :size="14" />
         <span class="chat-action-label">{{ currentModelName }}</span>
-        <ChevronDown :size="10" />
       </button>
     </div>
     <!-- Input container -->
