@@ -17,10 +17,14 @@ func okHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// withSavedToken saves model.SessionToken, runs f, then restores it.
+// withSavedToken saves model.SessionToken and model.CookieToken, runs f, then restores them.
 func withSavedToken(f func()) {
-	orig := model.SessionToken
-	defer func() { model.SessionToken = orig }()
+	origSession := model.SessionToken
+	origCookie := model.CookieToken
+	defer func() {
+		model.SessionToken = origSession
+		model.CookieToken = origCookie
+	}()
 	f()
 }
 

@@ -26,7 +26,7 @@ func IsLocalhost(r *http.Request) bool {
 func Auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// No password configured — open access
-		if model.SessionToken == "" {
+		if model.SessionToken == "" && model.CookieToken == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -36,8 +36,15 @@ func Auth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		// Remote — cookie-based auth
+		// Use CookieToken (cryptographically random) if available; fall back
+		// to SessionToken for backward compatibility during migration.
+		// (ISS-117, ISS-131, ISS-183)
+		validateToken := model.CookieToken
+		if validateToken == "" {
+			validateToken = model.SessionToken
+		}
 		token, err := r.Cookie(model.SessionCookie)
-		if err == nil && token != nil && subtle.ConstantTimeCompare([]byte(token.Value), []byte(model.SessionToken)) == 1 {
+		if err == nil && token != nil && subtle.ConstantTimeCompare([]byte(token.Value), []byte(validateToken)) == 1 {
 			next.ServeHTTP(w, r)
 			return
 		}

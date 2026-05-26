@@ -119,7 +119,7 @@ func (l *loginLimiter) cleanupLoop() {
 // ServeAuthCheck returns 200 if the session cookie is valid, 401 otherwise.
 // Localhost requests are always considered authenticated (same as middleware.Auth).
 func ServeAuthCheck(w http.ResponseWriter, r *http.Request) {
-	if model.SessionToken == "" {
+	if model.SessionToken == "" && model.CookieToken == "" {
 		// No password set, always authenticated
 		w.WriteHeader(http.StatusOK)
 		return
@@ -129,8 +129,15 @@ func ServeAuthCheck(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
+	// Use CookieToken (cryptographically random) if available; fall back
+	// to SessionToken for backward compatibility during migration.
+	// (ISS-117, ISS-131, ISS-183)
+	validateToken := model.CookieToken
+	if validateToken == "" {
+		validateToken = model.SessionToken
+	}
 	token, err := r.Cookie(model.SessionCookie)
-	if err != nil || token == nil || subtle.ConstantTimeCompare([]byte(token.Value), []byte(model.SessionToken)) != 1 {
+	if err != nil || token == nil || subtle.ConstantTimeCompare([]byte(token.Value), []byte(validateToken)) != 1 {
 		writeLocalizedError(w, r, model.Unauthorized(nil))
 		return
 	}
@@ -188,15 +195,19 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 
 		if authenticated {
 			limiter.reset(remoteIP)
-			// Generate session token (SHA-256 of password + salt — used as cookie value, not password hash)
-			sessionToken := model.SessionToken
-			if sessionToken == "" {
-				hash := sha256.Sum256([]byte(body.Password + "clawbench-salt"))
-				sessionToken = hex.EncodeToString(hash[:])
+			// Generate a cryptographically random session token for the cookie.
+			// This decouples the cookie value from the password hash, so that
+			// obtaining the cookie does not reveal or allow computation of the
+			// password hash. (ISS-117, ISS-131, ISS-183)
+			cookieToken := model.CookieToken
+			if cookieToken == "" {
+				cookieToken = model.GenerateRandomToken(32)
+				model.CookieToken = cookieToken
+				model.PersistCookieToken(cookieToken)
 			}
 			http.SetCookie(w, &http.Cookie{
 				Name:     model.SessionCookie,
-				Value:    sessionToken,
+				Value:    cookieToken,
 				Path:     "/",
 				HttpOnly: true,
 				Secure:   r.TLS != nil,

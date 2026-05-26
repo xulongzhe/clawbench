@@ -1134,9 +1134,19 @@ func ServeConfigPassword(w http.ResponseWriter, r *http.Request) {
 	autoPasswordFile := filepath.Join(model.BinDir, ".clawbench", "auto-password")
 	os.Remove(autoPasswordFile)
 
-	slog.Info("password changed via settings API (restart required)")
+	// Update in-memory auth state so the change takes effect immediately
+	// (ISS-197 partial fix: password change should not require restart for auth)
+	newSHA256Hash := hex.EncodeToString(hash[:])
+	model.SessionToken = newSHA256Hash
+	model.PasswordIsSHA256 = true
+	model.PasswordHash = nil // SHA-256 mode: no bcrypt
+	// Rotate the cookie token so old sessions are invalidated
+	model.CookieToken = model.GenerateRandomToken(32)
+	model.PersistCookieToken(model.CookieToken)
+
+	slog.Info("password changed via settings API (in-memory auth state updated, old sessions invalidated)")
 	writeJSON(w, http.StatusOK, map[string]any{
-		"needs_restart": true,
+		"needs_restart": false, // Auth state updated in-memory; no restart needed for auth
 	})
 }
 
