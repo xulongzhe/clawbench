@@ -953,13 +953,6 @@ func TestCheckCLIExistsErr_EmptyCommand(t *testing.T) {
 // --- Test 16: DiscoverCodebuddyModels with mock product JSON ---
 
 func TestDiscoverCodebuddyModels_ProductJSON(t *testing.T) {
-	// This tests the product.cloudhosted.json parsing path by creating a
-	// temp script that acts as "codebuddy" CLI and placing the product JSON
-	// in the expected directory structure.
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping test that modifies PATH in CI")
-	}
-
 	// Create directory structure: .../bin/fake-codebuddy and .../product.cloudhosted.json
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
@@ -984,7 +977,7 @@ func TestDiscoverCodebuddyModels_ProductJSON(t *testing.T) {
 
 	// Add tmpDir/bin to PATH
 	origPath := os.Getenv("PATH")
-	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
 
 	models := model.DiscoverCodebuddyModels()
@@ -1008,10 +1001,6 @@ func TestDiscoverCodebuddyModels_ProductJSON(t *testing.T) {
 }
 
 func TestDiscoverCodebuddyModels_ProductJSON_EmptyModels(t *testing.T) {
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping test that modifies PATH in CI")
-	}
-
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1024,7 +1013,7 @@ func TestDiscoverCodebuddyModels_ProductJSON_EmptyModels(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
 
 	origPath := os.Getenv("PATH")
-	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
 
 	models := model.DiscoverCodebuddyModels()
@@ -1032,10 +1021,6 @@ func TestDiscoverCodebuddyModels_ProductJSON_EmptyModels(t *testing.T) {
 }
 
 func TestDiscoverCodebuddyModels_ProductJSON_InvalidJSON(t *testing.T) {
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping test that modifies PATH in CI")
-	}
-
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1047,7 +1032,7 @@ func TestDiscoverCodebuddyModels_ProductJSON_InvalidJSON(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte("not json"), 0644))
 
 	origPath := os.Getenv("PATH")
-	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
 
 	models := model.DiscoverCodebuddyModels()
@@ -1055,10 +1040,6 @@ func TestDiscoverCodebuddyModels_ProductJSON_InvalidJSON(t *testing.T) {
 }
 
 func TestDiscoverCodebuddyModels_ProductJSON_NoFile(t *testing.T) {
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping test that modifies PATH in CI")
-	}
-
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1069,7 +1050,7 @@ func TestDiscoverCodebuddyModels_ProductJSON_NoFile(t *testing.T) {
 	// No product.cloudhosted.json file created
 
 	origPath := os.Getenv("PATH")
-	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
 
 	models := model.DiscoverCodebuddyModels()
@@ -1079,7 +1060,7 @@ func TestDiscoverCodebuddyModels_ProductJSON_NoFile(t *testing.T) {
 func TestDiscoverCodebuddyModels_NotOnPATH(t *testing.T) {
 	// When codebuddy is not on PATH at all, should return nil
 	origPath := os.Getenv("PATH")
-	require.NoError(t, os.Setenv("PATH", "/nonexistent/path"))
+	require.NoError(t, os.Setenv("PATH", t.TempDir()))
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
 
 	models := model.DiscoverCodebuddyModels()
@@ -1088,10 +1069,6 @@ func TestDiscoverCodebuddyModels_NotOnPATH(t *testing.T) {
 
 func TestDiscoverCodebuddyModels_ProductJSON_NameFallback(t *testing.T) {
 	// Test the name fallback: when a model has no name, use its ID as name
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping test that modifies PATH in CI")
-	}
-
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1108,7 +1085,7 @@ func TestDiscoverCodebuddyModels_ProductJSON_NameFallback(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
 
 	origPath := os.Getenv("PATH")
-	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
 
 	models := model.DiscoverCodebuddyModels()
@@ -1120,10 +1097,6 @@ func TestDiscoverCodebuddyModels_ProductJSON_NameFallback(t *testing.T) {
 
 func TestDiscoverCodebuddyModels_ProductJSON_NoDefault(t *testing.T) {
 	// Test when no model is marked isDefault — first non-skipped model should get Default=true
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping test that modifies PATH in CI")
-	}
-
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1141,7 +1114,7 @@ func TestDiscoverCodebuddyModels_ProductJSON_NoDefault(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
 
 	origPath := os.Getenv("PATH")
-	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
 	t.Cleanup(func() { os.Setenv("PATH", origPath) })
 
 	models := model.DiscoverCodebuddyModels()
