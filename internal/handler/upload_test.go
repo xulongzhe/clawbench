@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -400,5 +401,33 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		w := callHandler(UploadFile, req)
 		// Should fail with 500 (can't create .clawbench/uploads/ directory)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+
+	t.Run("SymlinkDirOutsideWatchDir_Returns403", func(t *testing.T) {
+		// Skip on Windows — symlinks require elevated privileges
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping symlink test on Windows")
+		}
+
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a real directory OUTSIDE WatchDir
+		outsideDir := filepath.Join(os.TempDir(), "clawbench_outside")
+		os.MkdirAll(outsideDir, 0755)
+		defer os.RemoveAll(outsideDir)
+
+		// Create a symlink INSIDE the project that points OUTSIDE
+		linkPath := filepath.Join(env.ProjectDir, "link_out")
+		os.Symlink(outsideDir, linkPath)
+		defer os.Remove(linkPath)
+
+		req := createMultipartUploadRequest(t, "test.txt", "content", "link_out")
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(UploadFile, req)
+		// The symlink target is outside WatchDir, so isPathUnderBase should fail
+		assert.True(t, w.Code == http.StatusForbidden || w.Code == http.StatusBadRequest,
+			"expected 403 or 400, got %d", w.Code)
 	})
 }

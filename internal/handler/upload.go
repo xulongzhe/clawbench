@@ -117,17 +117,11 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// For custom dir: validate the final destination path is under WatchDir
-	if customDir {
-		dstAbs, err := filepath.Abs(dstPath)
-		if err != nil {
-			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
-			return
-		}
-		watchAbs, _ := filepath.Abs(model.WatchDir)
-		if !isPathUnderBase(dstAbs, watchAbs) {
-			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
-			return
-		}
+	// (defense-in-depth: resolveAbsPath already validated dir, but filepath.Join
+	// could theoretically produce unexpected results)
+	if customDir && !isPathUnderBase(dstPath, model.WatchDir) {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+		return
 	}
 
 	// Create destination file
