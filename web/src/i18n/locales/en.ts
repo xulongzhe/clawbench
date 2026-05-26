@@ -83,6 +83,7 @@ export default {
       placeholderOptional: 'Add description (optional)...',
       send: 'Send',
       enqueue: 'Enqueue',
+      quickMenu: 'Quick commands',
       clearInput: 'Clear input',
       stopGenerating: 'Stop generating',
       confirmStop: 'Confirm stop',

@@ -83,6 +83,7 @@ export default {
       placeholderOptional: '添加描述（可选）...',
       send: '发送',
       enqueue: '加入队列',
+      quickMenu: '快捷指令',
       clearInput: '清空输入',
       stopGenerating: '停止生成',
       confirmStop: '确认停止',
