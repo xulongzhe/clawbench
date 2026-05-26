@@ -22,10 +22,11 @@ import (
 var validGitSHA = regexp.MustCompile(`^[0-9a-f]{6,40}$`)
 
 // isValidGitRefName checks that a git ref name (branch/tag) is safe to pass
-// as a CLI argument. Disallows names starting with "-" (which git would
-// interpret as a flag) and names containing whitespace or control characters.
-// (ISS-151, ISS-152)
-var validGitRefName = regexp.MustCompile(`^[^ \t\n\r\x00-\x1f-][^ \t\n\r\x00-\x1f]*$`)
+// as a CLI argument. Only allows characters valid in git ref names:
+// alphanumeric, dot, slash, underscore, hyphen (not leading).
+// Tightened from the original permissive regex to prevent shell metacharacters
+// like `\`, `;`, `|`, `$`, backticks, `!` from passing validation. (ISS-179)
+var validGitRefName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9./_-]*$`)
 
 // isValidGitSHA returns true if s looks like a valid hex commit SHA.
 // Also accepts "HEAD" which is a safe git ref used for working tree diffs.

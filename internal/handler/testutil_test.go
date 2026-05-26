@@ -24,11 +24,12 @@ import (
 
 // testEnv holds test environment state for setup/teardown.
 type testEnv struct {
-	ProjectDir string
-	WatchDir   string
-	OrigToken  string
-	OrigWatch  string
-	OrigDB     *sql.DB
+	ProjectDir      string
+	WatchDir        string
+	OrigToken       string
+	OrigCookieToken string
+	OrigWatch       string
+	OrigDB          *sql.DB
 }
 
 // setupTestEnv creates a temporary project directory, initializes an in-memory DB,
@@ -43,6 +44,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 
 	// Save original globals
 	origToken := model.SessionToken
+	origCookieToken := model.CookieToken
 	origWatch := model.WatchDir
 	origDB := service.DB
 	origDBRead := service.DBRead
@@ -51,6 +53,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 
 	// Set test globals
 	model.SessionToken = ""
+	model.CookieToken = ""
 	model.WatchDir = watchDir
 
 	// Init in-memory SQLite
@@ -189,15 +192,17 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	model.AgentList = []*model.Agent{model.Agents["codebuddy"], model.Agents["claude"]}
 
 	env := &testEnv{
-		ProjectDir: projectDir,
-		WatchDir:   watchDir,
-		OrigToken:  origToken,
-		OrigWatch:  origWatch,
-		OrigDB:     origDB,
+		ProjectDir:      projectDir,
+		WatchDir:        watchDir,
+		OrigToken:       origToken,
+		OrigCookieToken: origCookieToken,
+		OrigWatch:       origWatch,
+		OrigDB:          origDB,
 	}
 
 	teardown := func() {
 		model.SessionToken = origToken
+		model.CookieToken = origCookieToken
 		model.WatchDir = origWatch
 		model.Agents = origAgents
 		model.AgentList = origAgentList

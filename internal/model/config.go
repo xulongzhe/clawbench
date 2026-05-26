@@ -1,6 +1,11 @@
 package model
 
-import "strings"
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"os"
+	"strings"
+)
 
 // IsSHA256Password returns true if the password field contains a SHA-256
 // hashed value (prefixed with "sha256:"). These passwords are stored as
@@ -170,7 +175,8 @@ var ConfigInstance Config
 var (
 	BinDir         string // Directory of the running binary
 	WatchDir       string
-	SessionToken   string
+	SessionToken   string // Legacy: stores the password-derived token for "has password" check; NOT used for cookie validation when CookieToken is set
+	CookieToken    string // Cryptographically random session token for cookie validation (ISS-117, ISS-131, ISS-183)
 	PasswordHash   []byte // bcrypt hash for password verification (ISS-003a)
 	PasswordIsSHA256 bool  // true when config.yaml stores password as sha256:<hex>
 	SessionCookie  = "clawbench_session"
@@ -196,3 +202,45 @@ var (
 	// TTS cache limits (set from config, with defaults)
 	TTSMaxCacheFiles int // Default: 100; 0 = unlimited
 )
+
+// GenerateRandomToken creates a cryptographically random hex token of the
+// specified byte length. Used for session cookie tokens to decouple them
+// from password hashes. (ISS-117, ISS-131, ISS-183)
+func GenerateRandomToken(byteLen int) string {
+	b := make([]byte, byteLen)
+	// crypto/rand.Read always fills b or returns an error; panic is appropriate
+	// for a failure this fundamental (system entropy source unavailable).
+	if _, err := rand.Read(b); err != nil {
+		panic("crypto/rand: failed to generate random token: " + err.Error())
+	}
+	return hex.EncodeToString(b)
+}
+
+// PersistCookieToken writes the cookie token to .clawbench/cookie-token so it
+// survives server restarts. The token is not secret (it's validated via
+// constant-time compare), but it should not be readable by other users.
+func PersistCookieToken(token string) {
+	if BinDir == "" {
+		return
+	}
+	dir := BinDir + "/.clawbench"
+	os.MkdirAll(dir, 0755) // best-effort: if this fails, WriteFile will also fail
+	path := dir + "/cookie-token"
+	if err := os.WriteFile(path, []byte(token), 0600); err != nil {
+		// Non-fatal: cookie will simply not survive restart; user re-logs in.
+		_ = err
+	}
+}
+
+// LoadCookieToken reads the persisted cookie token from .clawbench/cookie-token.
+// Returns empty string if the file does not exist or cannot be read.
+func LoadCookieToken() string {
+	if BinDir == "" {
+		return ""
+	}
+	data, err := os.ReadFile(BinDir + "/.clawbench/cookie-token")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}

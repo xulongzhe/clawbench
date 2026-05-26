@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // initGitRepo initializes a real git repo in dir with an initial commit.
@@ -3028,4 +3029,104 @@ func TestServeGitDeleteTag_UploadPackInjection(t *testing.T) {
 
 	w := callHandler(ServeGitTags, req)
 	assertStatus(t, w, http.StatusBadRequest)
+}
+
+// --- ISS-179: Tightened isValidGitRefName regex ---
+
+func TestIsValidGitRefName_ValidNames(t *testing.T) {
+	valid := []string{
+		"main",
+		"feature-x",
+		"feature_x",
+		"release/v1.0",
+		"v1.0",
+		"fix/issue-123",
+		"my-branch",
+		"123branch",
+		"a",
+	}
+	for _, name := range valid {
+		assert.True(t, isValidGitRefName(name), "expected %q to be valid", name)
+	}
+}
+
+func TestIsValidGitRefName_InvalidNames(t *testing.T) {
+	invalid := []string{
+		// Leading dash (flag injection)
+		"-evil",
+		// Shell metacharacters (ISS-179: tightened to reject these)
+		"foo;rm",
+		"foo|bar",
+		"foo$(cmd)",
+		"foo`cmd`",
+		"foo!bar",
+		"foo\\bar",
+		// Whitespace and control characters
+		"foo bar",
+		"foo\tbar",
+		"foo\nbar",
+		// Empty string
+		"",
+	}
+	for _, name := range invalid {
+		assert.False(t, isValidGitRefName(name), "expected %q to be invalid", name)
+	}
+}
+
+// --- ISS-117/131/183: Cookie token decoupled from password hash ---
+
+func TestServeLogin_CookieTokenDiffersFromPasswordHash(t *testing.T) {
+	// After login, the cookie value must NOT equal the password hash (SessionToken).
+	// The cookie value should be a cryptographically random CookieToken instead.
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.SessionToken = hashPassword("testpass")
+	bcryptHash, err := bcrypt.GenerateFromPassword([]byte("testpass"), bcrypt.MinCost)
+	require.NoError(t, err)
+	model.PasswordHash = bcryptHash
+
+	req := newRequest(t, http.MethodPost, "/login", map[string]string{
+		"password": "testpass",
+	})
+	w := callHandler(ServeLogin, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Find the session cookie
+	var cookieValue string
+	for _, c := range w.Result().Cookies() {
+		if c.Name == model.SessionCookie {
+			cookieValue = c.Value
+		}
+	}
+	assert.NotEmpty(t, cookieValue, "expected session cookie to be set")
+	// Cookie must differ from the password hash (SessionToken)
+	assert.NotEqual(t, model.SessionToken, cookieValue,
+		"cookie value must NOT equal the password-derived SessionToken (ISS-117, ISS-131, ISS-183)")
+	// CookieToken must be set and match the cookie
+	assert.NotEmpty(t, model.CookieToken, "CookieToken must be set after login")
+	assert.Equal(t, model.CookieToken, cookieValue, "cookie value must equal CookieToken")
+}
+
+func TestServeAuthCheck_UsesCookieToken(t *testing.T) {
+	// ServeAuthCheck should validate against CookieToken, not SessionToken
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.SessionToken = hashPassword("testpass")
+	model.CookieToken = model.GenerateRandomToken(32)
+
+	// Request with CookieToken should succeed
+	req := newRequest(t, http.MethodGet, "/api/auth/check", nil)
+	withAuthCookie(req, model.CookieToken)
+	w := callHandler(ServeAuthCheck, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Request with SessionToken (password hash) should fail
+	req2 := newRequest(t, http.MethodGet, "/api/auth/check", nil)
+	withAuthCookie(req2, model.SessionToken)
+	w2 := callHandler(ServeAuthCheck, req2)
+	assert.Equal(t, http.StatusUnauthorized, w2.Code,
+		"password hash should NOT be accepted as cookie value (ISS-117, ISS-131, ISS-183)")
 }

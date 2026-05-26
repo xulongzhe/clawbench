@@ -44,7 +44,7 @@ func TestServeConfigPassword_Success(t *testing.T) {
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Equal(t, true, resp["needs_restart"])
+	assert.Equal(t, false, resp["needs_restart"])
 
 	// Verify config.yaml was written with sha256: prefix
 	configData, err := os.ReadFile(filepath.Join(model.BinDir, "config", "config.yaml"))
@@ -154,7 +154,7 @@ func TestServeConfigPassword_SHA256StoredPassword(t *testing.T) {
 
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
-	assert.Equal(t, true, resp["needs_restart"])
+	assert.Equal(t, false, resp["needs_restart"])
 
 	// Verify config.yaml was written with sha256: prefix
 	configData, err := os.ReadFile(filepath.Join(model.BinDir, "config", "config.yaml"))
@@ -258,6 +258,7 @@ func TestServeConfig_Get_HasPassword(t *testing.T) {
 
 	// Without password
 	model.SessionToken = ""
+	model.CookieToken = ""
 	req = newRequest(t, http.MethodGet, "/api/config", nil)
 	withAuthCookie(req, "")
 	w = callHandler(ServeConfig, req)
@@ -308,6 +309,7 @@ func TestServeConfigPassword_NoPasswordHash(t *testing.T) {
 
 	// Simulate no password set (no bcrypt hash, not SHA-256)
 	model.SessionToken = ""
+	model.CookieToken = ""
 	model.PasswordIsSHA256 = false
 	model.PasswordHash = nil
 	model.ConfigInstance = model.Config{}

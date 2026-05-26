@@ -18,8 +18,9 @@ func TestServeAuthCheck(t *testing.T) {
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
-		// No password set
+		// No password set — both tokens must be empty
 		model.SessionToken = ""
+		model.CookieToken = ""
 
 		req := newRequest(t, http.MethodGet, "/api/auth/check", nil)
 		w := callHandler(ServeAuthCheck, req)
@@ -130,14 +131,18 @@ func TestServeLogin(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 		assertJSONField(t, w, "ok", true)
 
-		// Verify cookie is set
+		// Verify cookie is set with the cryptographically random CookieToken
+		// (ISS-117, ISS-131, ISS-183: cookie value must NOT equal the password hash)
 		var foundCookie bool
 		for _, c := range w.Result().Cookies() {
 			if c.Name == model.SessionCookie {
 				foundCookie = true
-				assert.Equal(t, model.SessionToken, c.Value)
+				// Cookie value should be the random CookieToken, not the password-derived SessionToken
+				assert.Equal(t, model.CookieToken, c.Value)
 				assert.Equal(t, "/", c.Path)
 				assert.True(t, c.HttpOnly)
+				// Cookie must differ from the password hash (security: decoupled tokens)
+				assert.NotEqual(t, model.SessionToken, c.Value, "cookie must not equal password hash")
 			}
 		}
 		assert.True(t, foundCookie, "expected session cookie to be set")
@@ -199,6 +204,7 @@ func TestServeLogin(t *testing.T) {
 		defer teardown()
 
 		model.SessionToken = ""
+		model.CookieToken = ""
 		model.PasswordHash = nil
 
 		req := newRequest(t, http.MethodPost, "/login", map[string]string{

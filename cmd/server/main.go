@@ -439,7 +439,7 @@ func main() {
 
 	// Initialize password verification state
 	if sha256Hash := model.ParseSHA256Hash(cfg.Password); sha256Hash != "" {
-		// Password is stored as SHA-256 hash — use directly as SessionToken
+		// Password is stored as SHA-256 hash — use directly for login/SSH verification
 		model.SessionToken = sha256Hash
 		model.PasswordIsSHA256 = true
 		// No bcrypt: the SHA-256 hash IS the verifier for login/SSH
@@ -453,6 +453,19 @@ func main() {
 		if cfg.Password != "" {
 			bcryptHash := generateBcryptHash(cfg.Password)
 			model.PasswordHash = bcryptHash
+		}
+	}
+
+	// Initialize cookie token (cryptographically random, decoupled from password).
+	// Load from disk if available; otherwise generate a new one.
+	// This ensures the cookie value cannot be derived from the password hash.
+	// (ISS-117, ISS-131, ISS-183)
+	if model.SessionToken != "" {
+		if persisted := model.LoadCookieToken(); persisted != "" {
+			model.CookieToken = persisted
+		} else {
+			model.CookieToken = model.GenerateRandomToken(32)
+			model.PersistCookieToken(model.CookieToken)
 		}
 	}
 
