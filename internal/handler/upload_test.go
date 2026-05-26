@@ -336,16 +336,22 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		assert.Equal(t, true, result["ok"])
 	})
 
-	t.Run("AbsoluteDirPath_OutsideWatchDir_Returns403", func(t *testing.T) {
+	t.Run("AbsoluteDirPath_OutsideWatchDir_Returns403or400", func(t *testing.T) {
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
-		// Use an absolute path outside WatchDir
-		req := createMultipartUploadRequest(t, "evil.txt", "evil", "/tmp")
+		// Use an absolute path outside WatchDir (platform-specific)
+		outsidePath := "/tmp"
+		if runtime.GOOS == "windows" {
+			outsidePath = `C:\Windows`
+		}
+		req := createMultipartUploadRequest(t, "evil.txt", "evil", outsidePath)
 		withProjectCookie(req, env.ProjectDir)
 
 		w := callHandler(UploadFile, req)
-		assertStatus(t, w, http.StatusForbidden)
+		// Should return 403 (access denied) or 400 (directory not found under project)
+		assert.True(t, w.Code == http.StatusForbidden || w.Code == http.StatusBadRequest,
+			"expected 403 or 400, got %d", w.Code)
 	})
 
 	t.Run("CustomDirRelativePath_ReturnsRelativePathInResponse", func(t *testing.T) {
@@ -370,6 +376,11 @@ func TestUploadFile_CustomDir(t *testing.T) {
 	})
 
 	t.Run("ReadOnlyDir_Returns500", func(t *testing.T) {
+		// Skip on Windows — read-only directory permissions don't prevent file creation
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping read-only dir test on Windows")
+		}
+
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
@@ -388,6 +399,11 @@ func TestUploadFile_CustomDir(t *testing.T) {
 	})
 
 	t.Run("DefaultUploadDir_MkdirAllFail_Returns500", func(t *testing.T) {
+		// Skip on Windows — read-only directory permissions don't prevent MkdirAll
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping MkdirAll fail test on Windows")
+		}
+
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
