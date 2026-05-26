@@ -357,12 +357,11 @@ func TestAgentRefreshModels_DiscoveryNotSupported(t *testing.T) {
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 
-	// gemini backend has no model discovery capability
-	// Add a gemini agent for this test
-	model.Agents["gemini"] = &model.Agent{ID: "gemini", Backend: "gemini"}
-	model.AgentList = append(model.AgentList, model.Agents["gemini"])
+	// Use a fictional backend that has no discovery capability
+	model.Agents["unknown"] = &model.Agent{ID: "unknown", Backend: "unknown"}
+	model.AgentList = append(model.AgentList, model.Agents["unknown"])
 
-	req := newRequest(t, http.MethodPost, "/api/agents/gemini/refresh-models", nil)
+	req := newRequest(t, http.MethodPost, "/api/agents/unknown/refresh-models", nil)
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeAgentRefreshModels, req)
 

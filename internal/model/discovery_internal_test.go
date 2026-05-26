@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -213,4 +214,262 @@ func TestDiscoverCodebuddyModels_InvalidJSON(t *testing.T) {
 	var product codebuddyProduct
 	err := json.Unmarshal([]byte("not json"), &product)
 	assert.Error(t, err)
+}
+
+// --- LoadClaudeModelOverrides internal tests ---
+
+func TestLoadClaudeModelOverrides_ValidFile(t *testing.T) {
+	// Create a temp directory with a valid settings.json
+	tmpDir := t.TempDir()
+	settingsContent := `{
+		"modelOverrides": {
+			"claude-opus-4-6": "MiniMax-M2.7",
+			"claude-sonnet-4-6": "MiniMax-M2.7",
+			"claude-haiku-4-5-20251001": "MiniMax-M2.5-highspeed"
+		}
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+
+	// Override claudeConfigDir to point to temp dir
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	require.NotNil(t, overrides)
+	assert.Len(t, overrides, 3)
+	assert.Equal(t, "MiniMax-M2.7", overrides["claude-opus-4-6"])
+	assert.Equal(t, "MiniMax-M2.7", overrides["claude-sonnet-4-6"])
+	assert.Equal(t, "MiniMax-M2.5-highspeed", overrides["claude-haiku-4-5-20251001"])
+}
+
+func TestLoadClaudeModelOverrides_MissingFile(t *testing.T) {
+	// Point to a temp dir with no settings.json
+	tmpDir := t.TempDir()
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	assert.Nil(t, overrides, "should return nil when settings.json is missing")
+}
+
+func TestLoadClaudeModelOverrides_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte("not json"), 0644))
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	assert.Nil(t, overrides, "should return nil when settings.json has invalid JSON")
+}
+
+func TestLoadClaudeModelOverrides_NoOverridesKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	settingsContent := `{"env": {"KEY": "value"}, "permissions": {}}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	assert.Nil(t, overrides, "should return nil when no modelOverrides key in settings")
+}
+
+func TestLoadClaudeModelOverrides_EmptyOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	settingsContent := `{"modelOverrides": {}}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	assert.Nil(t, overrides, "should return nil when modelOverrides is empty")
+}
+
+func TestLoadClaudeModelOverrides_PartialMatch(t *testing.T) {
+	// Only some models have overrides; others should not appear in the result
+	tmpDir := t.TempDir()
+	settingsContent := `{
+		"modelOverrides": {
+			"claude-sonnet-4-6": "MiniMax-M2.7"
+		}
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	require.NotNil(t, overrides)
+	assert.Len(t, overrides, 1)
+	assert.Equal(t, "MiniMax-M2.7", overrides["claude-sonnet-4-6"])
+	_, hasOpus := overrides["claude-opus-4-6"]
+	assert.False(t, hasOpus, "should not contain unmapped models")
+}
+
+// --- codexTargetTriple internal tests ---
+
+func TestCodexTargetTriple(t *testing.T) {
+	// codexTargetTriple should return a non-empty string for the current platform
+	result := codexTargetTriple()
+	// On supported platforms (linux/darwin/windows with amd64/arm64) it returns a triple
+	// On unsupported combos (e.g. plan9) it returns ""
+	// We just verify it doesn't panic and returns a valid format if non-empty
+	if result != "" {
+		assert.Contains(t, result, "-")
+	}
+}
+
+// --- DiscoverCodexModels internal tests ---
+
+func TestDiscoverCodexModelsDefaults(t *testing.T) {
+	// discoverCodexModelsDefaults returns nil if codex is not installed
+	models := discoverCodexModelsDefaults()
+	// On CI, codex is not installed, so this should return nil
+	// If codex is installed locally, it returns the defaults
+	if _, err := exec.LookPath("codex"); err != nil {
+		assert.Nil(t, models)
+	} else {
+		assert.NotEmpty(t, models)
+		assert.Equal(t, "gpt-5.5", models[0].ID)
+		assert.True(t, models[0].Default)
+	}
+}
+
+func TestDiscoverCodexModelsFromBinary_NotInstalled(t *testing.T) {
+	// When codex is not on PATH, returns nil
+	// (If codex IS installed, this test verifies it doesn't panic)
+	models := discoverCodexModelsFromBinary()
+	if _, err := exec.LookPath("codex"); err != nil {
+		assert.Nil(t, models)
+	}
+}
+
+func TestDiscoverCodexModelsFromStateDB_NoCodexDir(t *testing.T) {
+	// When ~/.codex doesn't exist, returns nil
+	models := discoverCodexModelsFromStateDB()
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		if _, err := os.Stat(filepath.Join(homeDir, ".codex")); os.IsNotExist(err) {
+			assert.Nil(t, models)
+		}
+	}
+}
+
+// --- DiscoverVeCLIModels internal parsing tests ---
+
+func TestVeCLIModelParsing(t *testing.T) {
+	// Test the regex patterns used in DiscoverVeCLIModels
+	tests := []struct {
+		name     string
+		input    string
+		wantID   string
+		wantName string
+	}{
+		{
+			name:     "standard entry",
+			input:    `{ id: "deepseek-r1", name: "DeepSeek R1", enabled: true }`,
+			wantID:   "deepseek-r1",
+			wantName: "DeepSeek R1",
+		},
+		{
+			name:     "no name",
+			input:    `{ id: "model-a", enabled: false }`,
+			wantID:   "model-a",
+			wantName: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if m := vecliModelIDRe.FindStringSubmatch(tt.input); len(m) >= 2 {
+				assert.Equal(t, tt.wantID, m[1])
+			} else {
+				assert.Empty(t, tt.wantID)
+			}
+			if m := vecliModelNameRe.FindStringSubmatch(tt.input); len(m) >= 2 {
+				assert.Equal(t, tt.wantName, m[1])
+			} else {
+				assert.Empty(t, tt.wantName)
+			}
+		})
+	}
+}
+
+// --- codexModelRe tests ---
+
+func TestCodexModelRe(t *testing.T) {
+	tests := []struct {
+		modelID  string
+		expected bool
+	}{
+		{"gpt-5.5", true},
+		{"gpt-5.4", true},
+		{"gpt-5.4-mini", true},
+		{"o3", true},
+		{"o4-mini", true},
+		{"gpt-3.5", true},
+		{"gpt-4.0", true},
+		{"gpt-4.0-mini", true},
+		{"claude-3", false},
+		{"gpt", false},
+		{"o3-mini-pro", false},
+		{"gpt-5.5-turbo", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.modelID, func(t *testing.T) {
+			assert.Equal(t, tt.expected, codexModelRe.MatchString(tt.modelID))
+		})
+	}
+}
+
+// --- codexModelOrder tests ---
+
+func TestCodexModelOrder(t *testing.T) {
+	assert.Contains(t, codexModelOrder, "gpt-5.5")
+	assert.Contains(t, codexModelOrder, "o3")
+	assert.Equal(t, 0, codexModelOrder["gpt-5.5"])
+	assert.Less(t, codexModelOrder["gpt-5.5"], codexModelOrder["gpt-5.4"])
+}
+
+// --- qoderSkipModels / qoderModelKeyRe tests ---
+
+func TestQoderSkipModels(t *testing.T) {
+	assert.True(t, qoderSkipModels["auto"])
+	assert.True(t, qoderSkipModels["ultimate"])
+	assert.True(t, qoderSkipModels["performance"])
+	assert.True(t, qoderSkipModels["efficient"])
+	assert.True(t, qoderSkipModels["lite"])
+	assert.False(t, qoderSkipModels["qwen-3"])
+}
+
+func TestQoderModelKeyRe(t *testing.T) {
+	tests := []struct {
+		key      string
+		expected bool
+		match    string
+	}{
+		{"modelSelector.item.qmodel", true, "qmodel"},
+		{"modelSelector.item.deepseek-v3", true, "deepseek-v3"},
+		{"other.item.model", false, ""},
+		{"modelSelector.other.key", false, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			m := qoderModelKeyRe.FindStringSubmatch(tt.key)
+			if tt.expected {
+				require.Len(t, m, 2)
+				assert.Equal(t, tt.match, m[1])
+			} else {
+				assert.Nil(t, m)
+			}
+		})
+	}
 }

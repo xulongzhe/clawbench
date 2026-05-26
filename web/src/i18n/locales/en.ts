@@ -218,6 +218,8 @@ export default {
       repeat: 'Repeat:',
       prompt: 'Prompt:',
       cancelled: 'Cancelled',
+      summaryViewOriginal: 'AI summarized · View original',
+      summaryViewSummary: 'View summary',
       loading: 'Loading...',
       pause: 'Disable',
       resume: 'Enable',

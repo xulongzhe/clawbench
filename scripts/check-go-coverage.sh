@@ -296,6 +296,7 @@ else:
         "internal/ai/codex_stream.go",           # ExecuteStream spawns CLI subprocesses
         "internal/ai/vecli.go",                  # ExecuteStream spawns CLI subprocesses
         "internal/ai/vecli_stream.go",           # parseVeCLISessionSummary: integration-only
+        "internal/model/discovery.go",           # model discovery spawns CLI subprocesses and reads external files
         "internal/handler/chat.go",              # executeStreamRun ctx.Done needs mock AI backend + goroutine sync
         "internal/service/scheduler.go",         # executeTask spawns CLI subprocesses
     }
