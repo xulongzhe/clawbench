@@ -407,53 +407,6 @@ func SaveTTSSummaryByMessageID(messageID int64, ttsSummary string) error {
 	return err
 }
 
-// GetSummary looks up a reading summary by target type and target ID.
-// Returns (summary, found). Empty summary = text was too short.
-func GetSummary(targetType string, targetID int64) (string, bool) {
-	var summary string
-	err := DBRead.QueryRow(
-		"SELECT summary FROM summaries WHERE target_type = ? AND target_id = ?",
-		targetType, targetID,
-	).Scan(&summary)
-	if err != nil {
-		return "", false
-	}
-	return summary, true
-}
-
-// SaveSummary persists a reading summary for a target (chat message or task execution).
-// summary = "" means text was too short; non-empty is the actual summary.
-func SaveSummary(targetType string, targetID int64, summary string) error {
-	_, err := DB.Exec(
-		"INSERT OR REPLACE INTO summaries (target_type, target_id, summary, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
-		targetType, targetID, summary,
-	)
-	return err
-}
-
-// GetTTSSummaryByMessageID looks up a TTS summary by message ID.
-// Returns (ttsSummary, found).
-func GetTTSSummaryByMessageID(messageID int64) (string, bool) {
-	var ttsSummary string
-	err := DBRead.QueryRow(
-		"SELECT tts_summary FROM tts_summaries WHERE message_id = ?",
-		messageID,
-	).Scan(&ttsSummary)
-	if err != nil {
-		return "", false
-	}
-	return ttsSummary, true
-}
-
-// SaveTTSSummaryByMessageID persists a TTS summary for a chat message.
-func SaveTTSSummaryByMessageID(messageID int64, ttsSummary string) error {
-	_, err := DB.Exec(
-		"INSERT OR REPLACE INTO tts_summaries (message_id, tts_summary, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-		messageID, ttsSummary,
-	)
-	return err
-}
-
 // quickCommandExtra holds the additional fields needed for terminal_quick_commands
 // beyond the shared (label, command, sort_order) triplet.
 type quickCommandExtra struct{ hidden, autoExec int }
