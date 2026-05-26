@@ -196,6 +196,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - **断连保护**：消息立即落库，网络断开不丢失，15 秒心跳保活 + 30 秒超时自动重连（降级轮询时实时更新内容）
 - **自动恢复**：Claude / CodeBuddy / Qoder / DeepSeek / Pi 退出 Plan Mode 后自动发送"继续"
 - **消息队列**：AI 忙碌时消息排队，依次发送
+- **自动摘要**：会话完成后自动生成最后一条助手消息的摘要，底部横幅一键切换摘要/原文；TTS 朗读也使用摘要
 
 ### 🤖 AI 对话
 - **工具调用可视化**：名称、参数、执行结果实时展示，成功/失败状态一目了然
@@ -235,6 +236,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - **自动端口分配**：同一目标端口转发到不同主机时自动分配本地端口
 - **端口编辑**：支持修改已注册的端口转发配置
 - **Localhost URL 自动打开**：聊天中出现的 localhost URL（如 AI 启动的 Web 服务），App 模式下一键自动注册端口转发并通过 WebView 打开
+- **隧道健康检测与重连**：打开 localhost URL 前自动检测隧道健康状态，异常时自动重连；断开的隧道支持一键重连
 
 ### 💻 Web 终端
 - **交互式终端**：基于 PTY + WebSocket + xterm.js，浏览器内直接操作服务器终端

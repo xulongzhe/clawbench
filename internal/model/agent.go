@@ -37,6 +37,11 @@ type Agent struct {
 	// (from cache) rather than user-defined in YAML. Used by AsyncRefreshModelCache
 	// to know which agents should have their models updated.
 	ModelsAutoDetected bool `yaml:"-" json:"-"`
+
+	// CanRefreshModels indicates whether this agent supports model refresh via the API.
+	// Computed from BackendRegistry at load time based on whether the backend spec
+	// has model discovery capability (DiscoverModelsFunc or ListModelsCmd+ParseModels).
+	CanRefreshModels bool `yaml:"-" json:"canRefreshModels"`
 }
 
 // DefaultModelID returns the default model ID for this agent.
@@ -73,10 +78,11 @@ func (a *Agent) EffectiveThinkingEffort() string {
 }
 
 var (
-	Agents      map[string]*Agent // indexed by ID
-	AgentList   []*Agent          // ordered list for API responses
-	ClawbenchBin string           // absolute path to clawbench binary for {{CLAWBENCH_BIN}} replacement
-	agentsDir   string            // saved from LoadAgents for BuildCommonPrompt re-calls
+	Agents        map[string]*Agent // indexed by ID
+	AgentList     []*Agent          // ordered list for API responses
+	ClawbenchBin  string            // absolute path to clawbench binary for {{CLAWBENCH_BIN}} replacement
+	ModelCacheDir string            // model cache directory, set by main.go at startup
+	agentsDir     string            // saved from LoadAgents for BuildCommonPrompt re-calls
 )
 
 // GetDefaultAgentID returns the default agent ID for new sessions.

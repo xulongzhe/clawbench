@@ -89,15 +89,10 @@
       <div v-else-if="block.type === 'text'" v-html="getBlockHtml(bi, block)"></div>
     </template>
     </template>
-    <!-- Loading dots while AI is still streaming (not when cancelled) -->
-    <div v-if="streaming && !cancelled" class="placeholder-dots"><span></span><span></span><span></span></div>
+    <!-- Loading dots while AI is still streaming (not when cancelled, and not when showing summary) -->
+    <div v-if="streaming && !cancelled && !(showingSummary && summary)" class="placeholder-dots"><span></span><span></span><span></span></div>
     <!-- Cancelled marker -->
     <div v-if="cancelled" class="chat-cancelled-mark">{{ t('chat.contentBlocks.cancelled') }}</div>
-    <!-- Summary toggle banner -->
-    <div v-if="summary && !streaming" class="summary-banner" @click="emit('toggle-summary')">
-      <template v-if="showingSummary">{{ t('chat.contentBlocks.summaryViewOriginal') }}</template>
-      <template v-else>{{ t('chat.contentBlocks.summaryViewSummary') }}</template>
-    </div>
   </div>
 </template>
 
@@ -178,7 +173,7 @@ const props = defineProps({
   active: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush', 'toggle-summary'])
+const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush'])
 
 // Key helper: use msgId if available, otherwise msgIndex
 function key(bi) {
@@ -336,20 +331,9 @@ onUnmounted(() => {
   margin-top: 4px;
 }
 
-.summary-banner {
-  text-align: center;
-  font-size: 11px;
-  color: var(--text-muted, #999);
-  background: color-mix(in srgb, var(--text-muted, #999) 6%, transparent);
-  padding: 4px 0;
-  margin-top: 6px;
-  border-radius: 4px;
-  cursor: pointer;
-  user-select: none;
-}
-.summary-banner:hover {
-  background: color-mix(in srgb, var(--text-muted, #999) 10%, transparent);
-}
+
+
+
 
 .chat-error-card {
   display: flex;

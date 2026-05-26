@@ -949,7 +949,7 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 	defer ws.SetManagerForTest(nil)
 
 	var writeMu sync.Mutex
-	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit")
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit", "")
 	_ = sub
 
 	EmitSessionEvent("session-emit-1", "completed", true)
@@ -982,7 +982,7 @@ func TestEmitSessionEvent_RunningNoPreview(t *testing.T) {
 	defer ws.SetManagerForTest(nil)
 
 	var writeMu sync.Mutex
-	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit2")
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-emit2", "")
 	_ = sub
 
 	EmitSessionEvent("session-emit-2", "running", false)
@@ -1098,7 +1098,7 @@ func TestEmitTaskEvent_WithSessionIDAndProjectPath(t *testing.T) {
 	defer ws.SetManagerForTest(nil)
 
 	var writeMu sync.Mutex
-	sub := mgr.Subscribe(nil, &writeMu, "test-client-task-emit")
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-task-emit", "")
 	_ = sub
 
 	emitTaskEvent("42", "completed", "100", "session-task-1", "/home/user/project", "test task")
@@ -1125,7 +1125,7 @@ func TestEmitTaskEvent_EmptyOptionalFields(t *testing.T) {
 	defer ws.SetManagerForTest(nil)
 
 	var writeMu sync.Mutex
-	sub := mgr.Subscribe(nil, &writeMu, "test-client-task-emit2")
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-task-emit2", "")
 	_ = sub
 
 	emitTaskEvent("43", "failed", "101", "", "", "")
@@ -1280,7 +1280,7 @@ func TestExecuteTask_BackendCreationFailed(t *testing.T) {
 
 	// Subscribe a client to capture events
 	var writeMu sync.Mutex
-	sub := mgr.Subscribe(nil, &writeMu, "test-client-exec")
+	sub := mgr.Subscribe(nil, &writeMu, "test-client-exec", "")
 	_ = sub
 
 	// Execute the task — should fail at backend creation and emit "failed" event

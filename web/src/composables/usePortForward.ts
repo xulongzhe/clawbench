@@ -2,6 +2,7 @@ import { ref } from 'vue'
 import { apiGet, apiPost, apiPut, apiDelete } from '@/utils/api'
 import { useAppMode } from './useAppMode.ts'
 import { gt } from '@/composables/useLocale'
+import { useToast } from '@/composables/useToast.ts'
 import { tunnelStatusFromPorts as tunnelStatusFromPortsUtil, buildPortUrl } from '@/utils/portForwardUtils.ts'
 
 interface ForwardedPort {
@@ -339,21 +340,106 @@ export function usePortForward() {
     }
   }
 
-  /** Open a forwarded port — in app mode opens sandbox browser, otherwise window.open */
-  function openPort(localPort: number, protocol?: string, host?: string) {
+  /** Internal helper: actually open the port in sandbox or external browser */
+  function doOpen(native: any, localPort: number, protocol?: string, hostArg?: string) {
+    if (native?.openInSandbox) {
+      native.openInSandbox(localPort, protocol === 'https' ? 'https' : 'http', hostArg || '')
+    } else if (native?.openInBrowser) {
+      native.openInBrowser(localPort, protocol === 'https' ? 'https' : 'http', hostArg || '')
+    }
+  }
+
+  /** Open a forwarded port — in app mode opens sandbox browser, otherwise window.open.
+   *  In app mode: first tests if the port is reachable, auto-reconnects SSH tunnel if not.
+   *  Shows toast on success or failure after reconnection attempt. */
+  async function openPort(localPort: number, protocol?: string, host?: string) {
     console.log('[PortForward] openPort: localPort=' + localPort + ', protocol=' + protocol + ', host=' + (host || ''))
+
     if (isAppMode.value) {
       const native = (window as any).AndroidNative
       const hostArg = host || ''
-      // Prefer sandbox browser (isolated process), fall back to external browser
-      if (native?.openInSandbox) {
-        native.openInSandbox(localPort, protocol === 'https' ? 'https' : 'http', hostArg)
-      } else if (native?.openInBrowser) {
-        native.openInBrowser(localPort, protocol === 'https' ? 'https' : 'http', hostArg)
+
+      // Pre-check: test if the local port is reachable
+      if (native?.testPortReachable) {
+        const reachable = native.testPortReachable(localPort)
+        if (reachable) {
+          // Port is reachable — open immediately
+          doOpen(native, localPort, protocol, hostArg)
+          return
+        }
+
+        // Port unreachable — yield UI then reconnect tunnel
+        console.log('[PortForward] openPort: port ' + localPort + ' unreachable, attempting tunnel reconnect')
+        await new Promise(r => setTimeout(r, 50))
+
+        let reconnected = false
+        if (native?.reconnectTunnel) {
+          reconnected = native.reconnectTunnel()
+        }
+
+        const toast = useToast()
+        if (reconnected) {
+          // Re-test after reconnect
+          const reachableAfter = native.testPortReachable(localPort)
+          if (reachableAfter) {
+            toast.show(gt('portForward.tunnelReconnected'), { type: 'success' })
+            doOpen(native, localPort, protocol, hostArg)
+            return
+          }
+        }
+
+        // Still unreachable after reconnect — show error
+        toast.show(gt('portForward.portUnreachable'), { type: 'error' })
+        return
       }
+
+      // Fallback: no testPortReachable available (old APK) — open directly
+      doOpen(native, localPort, protocol, hostArg)
     } else {
       window.open(buildPortUrl(localPort, protocol), '_blank')
     }
+  }
+
+  /** Reconnect a specific forwarded port: test reachability, reconnect tunnel if needed.
+   *  Used by the per-port reconnect button in the port forwarding panel.
+   *  The caller tracks which ports are reconnecting and shows a spinning icon.
+   *  Shows toast on success or failure, not during checking. */
+  async function reconnectPort(localPort: number) {
+    const native = (window as any).AndroidNative
+    const toast = useToast()
+
+    // Yield to let Vue render the spinning button before any blocking bridge calls
+    await new Promise(r => setTimeout(r, 50))
+
+    if (isAppMode.value && native?.testPortReachable) {
+      // Step 1: Test if the port is already reachable
+      const reachable = native.testPortReachable(localPort)
+      if (reachable) {
+        toast.show(gt('portForward.tunnelReconnected'), { type: 'success' })
+        await loadPorts(true)
+        return
+      }
+
+      // Step 2: Port unreachable — reconnect tunnel
+      let reconnected = false
+      if (native?.reconnectTunnel) {
+        reconnected = native.reconnectTunnel()
+      }
+
+      if (reconnected) {
+        const reachableAfter = native.testPortReachable(localPort)
+        if (reachableAfter) {
+          toast.show(gt('portForward.tunnelReconnected'), { type: 'success' })
+        } else {
+          toast.show(gt('portForward.portUnreachable'), { type: 'error' })
+        }
+      } else {
+        toast.show(gt('portForward.portUnreachable'), { type: 'error' })
+      }
+    }
+
+    // Refresh port list — spinning button stops when caller sees this resolve
+    await loadPorts(true)
   }
 
   /** Open a forwarded port in external/system browser */
@@ -408,6 +494,7 @@ export function usePortForward() {
     checkTunnelHealth,
     openPort,
     openInExternalBrowser,
+    reconnectPort,
     ensurePortRegistered,
   }
 }

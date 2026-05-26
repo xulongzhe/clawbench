@@ -9,24 +9,35 @@ export function useFileUpload() {
   const pendingFiles = ref([])
   const attachedFiles = ref([])
 
-  function uploadOneFile(file) {
+  // Upload progress for directory uploads (file manager)
+  const dirUploading = ref(false)
+  const dirUploadProgress = ref(0)
+  const dirUploadTotal = ref(0)
+  const dirUploadDone = ref(0)
+
+  function uploadOneFile(file, dir) {
     return new Promise((resolve) => {
       const isImage = file.type.startsWith('image/')
       const previewUrl = isImage ? URL.createObjectURL(file) : null
 
-      // Push entry then get reactive proxy from array
-      const idx = pendingFiles.value.length
-      pendingFiles.value.push({
-        path: '',
-        previewUrl,
-        isImage,
-        uploading: true,
-        progress: 0,
-      })
-      const entry = pendingFiles.value[idx]
+      // Push entry then get reactive proxy from array (only for chat upload, not dir upload)
+      const isDirUpload = !!dir
+      let entry = null
+      if (!isDirUpload) {
+        const idx = pendingFiles.value.length
+        pendingFiles.value.push({
+          path: '',
+          previewUrl,
+          isImage,
+          uploading: true,
+          progress: 0,
+        })
+        entry = pendingFiles.value[idx]
+      }
 
       const formData = new FormData()
       formData.append('file', file)
+      if (dir) formData.append('dir', dir)
 
       const xhr = new XMLHttpRequest()
       xhr.open('POST', '/api/upload/file')
@@ -34,48 +45,60 @@ export function useFileUpload() {
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
-          entry.progress = Math.round((e.loaded / e.total) * 100)
+          const pct = Math.round((e.loaded / e.total) * 100)
+          if (entry) entry.progress = pct
+          if (isDirUpload) dirUploadProgress.value = pct
         }
       }
 
       xhr.onload = () => {
-        entry.uploading = false
-        entry.progress = 100
         try {
           const data = JSON.parse(xhr.responseText)
           if (data.ok) {
-            entry.path = data.path
+            if (entry) {
+              entry.uploading = false
+              entry.progress = 100
+              entry.path = data.path
+            }
             resolve(true)
           } else {
-            if (previewUrl) URL.revokeObjectURL(previewUrl)
-            const i = pendingFiles.value.indexOf(entry)
-            if (i !== -1) pendingFiles.value.splice(i, 1)
+            if (entry) {
+              if (previewUrl) URL.revokeObjectURL(previewUrl)
+              const i = pendingFiles.value.indexOf(entry)
+              if (i !== -1) pendingFiles.value.splice(i, 1)
+            }
             toast.show(gt('upload.failed', { error: data.error || gt('upload.unknownError') }), { icon: '⚠️', type: 'error' })
             resolve(false)
           }
         } catch {
-          if (previewUrl) URL.revokeObjectURL(previewUrl)
-          const i = pendingFiles.value.indexOf(entry)
-          if (i !== -1) pendingFiles.value.splice(i, 1)
+          if (entry) {
+            if (previewUrl) URL.revokeObjectURL(previewUrl)
+            const i = pendingFiles.value.indexOf(entry)
+            if (i !== -1) pendingFiles.value.splice(i, 1)
+          }
           toast.show(gt('upload.parseError'), { icon: '⚠️', type: 'error' })
           resolve(false)
         }
       }
 
       xhr.onerror = () => {
-        entry.uploading = false
-        if (previewUrl) URL.revokeObjectURL(previewUrl)
-        const i = pendingFiles.value.indexOf(entry)
-        if (i !== -1) pendingFiles.value.splice(i, 1)
+        if (entry) {
+          entry.uploading = false
+          if (previewUrl) URL.revokeObjectURL(previewUrl)
+          const i = pendingFiles.value.indexOf(entry)
+          if (i !== -1) pendingFiles.value.splice(i, 1)
+        }
         toast.show(gt('upload.networkError'), { icon: '⚠️', type: 'error' })
         resolve(false)
       }
 
       xhr.ontimeout = () => {
-        entry.uploading = false
-        if (previewUrl) URL.revokeObjectURL(previewUrl)
-        const i = pendingFiles.value.indexOf(entry)
-        if (i !== -1) pendingFiles.value.splice(i, 1)
+        if (entry) {
+          entry.uploading = false
+          if (previewUrl) URL.revokeObjectURL(previewUrl)
+          const i = pendingFiles.value.indexOf(entry)
+          if (i !== -1) pendingFiles.value.splice(i, 1)
+        }
         toast.show(gt('upload.timeout'), { icon: '⚠️', type: 'error' })
         resolve(false)
       }
@@ -84,7 +107,7 @@ export function useFileUpload() {
     })
   }
 
-  async function uploadFiles(files) {
+  async function uploadFiles(files, dir) {
     const maxFiles = store.state.uploadMaxFiles
     const currentCount = pendingFiles.value.filter(f => !f.uploading).length
     const remaining = maxFiles - currentCount
@@ -100,12 +123,28 @@ export function useFileUpload() {
 
     const maxSizeBytes = store.state.uploadMaxSizeMB * 1024 * 1024
 
+    // Dir upload progress tracking
+    const isDirUpload = !!dir
+    if (isDirUpload) {
+      dirUploading.value = true
+      dirUploadTotal.value = toUpload.length
+      dirUploadDone.value = 0
+      dirUploadProgress.value = 0
+    }
+
     for (const file of toUpload) {
       if (file.size > maxSizeBytes) {
         toast.show(gt('upload.fileTooLarge', { name: file.name, max: store.state.uploadMaxSizeMB }), { icon: '⚠️', type: 'error' })
+        if (isDirUpload) dirUploadDone.value++
         continue
       }
-      await uploadOneFile(file)
+      await uploadOneFile(file, dir)
+      if (isDirUpload) dirUploadDone.value++
+    }
+
+    if (isDirUpload) {
+      dirUploading.value = false
+      dirUploadProgress.value = 0
     }
   }
 
@@ -121,6 +160,18 @@ export function useFileUpload() {
   async function handleFileDrop(files) {
     if (files.length === 0) return
     await uploadFiles(files)
+  }
+
+  async function handleFileSelectToDir(e, dir) {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (files.length === 0) return
+    await uploadFiles(files, dir)
+  }
+
+  async function handleFileDropToDir(files, dir) {
+    if (files.length === 0) return
+    await uploadFiles(files, dir)
   }
 
   function removeFile(index) {
@@ -162,5 +213,13 @@ export function useFileUpload() {
     removeAttachedFile,
     cleanupPreviewUrls,
     clearPendingFiles,
+    // Directory upload (file manager)
+    dirUploading,
+    dirUploadProgress,
+    dirUploadTotal,
+    dirUploadDone,
+    uploadFilesToDir: uploadFiles,
+    handleFileSelectToDir,
+    handleFileDropToDir,
   }
 }

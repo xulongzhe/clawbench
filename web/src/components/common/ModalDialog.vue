@@ -80,7 +80,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 44px 2px 48px;
+  padding: 44px 20px 48px;
   animation: modal-fadeIn 0.2s ease;
 }
 
@@ -90,7 +90,7 @@ defineExpose({
 
 .modal-dialog {
   background: var(--bg-secondary, #fff);
-  border-radius: 12px;
+  border-radius: 0;
   width: 100%;
   max-height: 100%;
   height: auto;
@@ -144,7 +144,7 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--accent-color, #0066cc) 15%, var(--border-color, #e5e5e5));
   background: color-mix(in srgb, var(--accent-color, #0066cc) 6%, transparent);
   flex-shrink: 0;
@@ -152,8 +152,8 @@ defineExpose({
 
 .modal-close-btn {
   margin-left: auto;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   border: none;
   background: var(--bg-tertiary, #eee);

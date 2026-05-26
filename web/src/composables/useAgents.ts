@@ -134,6 +134,12 @@ function updateAgentField(agentId: string, field: string, value: any): void {
     }
 }
 
+/** Check if an agent supports model refresh (has canRefreshModels from backend). */
+function canRefreshModels(agentId: string): boolean {
+    const agent = agents.value.find(a => a.id === agentId)
+    return !!agent?.canRefreshModels
+}
+
 export function useAgents() {
     return {
         agents,
@@ -154,5 +160,6 @@ export function useAgents() {
         hasThinkingEffortLevels,
         getEffectiveThinkingEffort,
         updateAgentField,
+        canRefreshModels,
     }
 }

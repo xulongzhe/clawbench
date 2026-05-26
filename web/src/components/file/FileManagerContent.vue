@@ -3,31 +3,31 @@
     <!-- Dir nav -->
     <div id="dirNav" class="dir-nav">
       <div class="dir-toolbar">
-        <div class="sort-dropdown-wrap">
+        <div class="toolbar-dropdown-wrap">
           <button class="toolbar-btn" :class="{ 'sort-active': sortField }" @click="sortMenuOpen = !sortMenuOpen" :title="t('file.sortDefault')">
             <ArrowDownAz v-if="!sortField || sortDir === 'asc'" :size="16" />
             <ArrowUpZa v-else :size="16" />
           </button>
-          <div v-if="sortMenuOpen" class="sort-dropdown" @click.stop>
-            <button class="sort-dropdown-item" :class="{ active: sortField === 'name' }" @click="onSortSelect('name')">
+          <div v-if="sortMenuOpen" class="toolbar-dropdown" @click.stop>
+            <button class="toolbar-dropdown-item" :class="{ active: sortField === 'name' }" @click="onSortSelect('name')">
               <ArrowDownAz :size="14" />
               <span>{{ t('file.sortByName') }}</span>
               <ChevronUp v-if="sortField === 'name' && sortDir === 'asc'" :size="12" class="sort-dir-icon" />
               <ChevronDown v-else-if="sortField === 'name' && sortDir === 'desc'" :size="12" class="sort-dir-icon" />
             </button>
-            <button class="sort-dropdown-item" :class="{ active: sortField === 'time' }" @click="onSortSelect('time')">
+            <button class="toolbar-dropdown-item" :class="{ active: sortField === 'time' }" @click="onSortSelect('time')">
               <Clock :size="14" />
               <span>{{ t('file.sortByTime') }}</span>
               <ChevronUp v-if="sortField === 'time' && sortDir === 'asc'" :size="12" class="sort-dir-icon" />
               <ChevronDown v-else-if="sortField === 'time' && sortDir === 'desc'" :size="12" class="sort-dir-icon" />
             </button>
-            <button class="sort-dropdown-item" :class="{ active: sortField === 'type' }" @click="onSortSelect('type')">
+            <button class="toolbar-dropdown-item" :class="{ active: sortField === 'type' }" @click="onSortSelect('type')">
               <FileText :size="14" />
               <span>{{ t('file.sortByType') }}</span>
               <ChevronUp v-if="sortField === 'type' && sortDir === 'asc'" :size="12" class="sort-dir-icon" />
               <ChevronDown v-else-if="sortField === 'type' && sortDir === 'desc'" :size="12" class="sort-dir-icon" />
             </button>
-            <button class="sort-dropdown-item" :class="{ active: sortField === 'size' }" @click="onSortSelect('size')">
+            <button class="toolbar-dropdown-item" :class="{ active: sortField === 'size' }" @click="onSortSelect('size')">
               <HardDrive :size="14" />
               <span>{{ t('file.sortBySize') }}</span>
               <ChevronUp v-if="sortField === 'size' && sortDir === 'asc'" :size="12" class="sort-dir-icon" />
@@ -39,19 +39,32 @@
           <EyeOff v-if="!showHidden" :size="16" />
           <Eye v-else :size="16" />
         </button>
-        <button class="toolbar-btn" :disabled="!currentFile?.path" @click="syncToCurrentFile" :title="t('file.syncToCurrentDir')">
-          <ArrowRightLeft :size="16" />
-        </button>
         <button class="toolbar-btn" @click="$emit('refresh')" :title="t('nav.refresh')">
           <RotateCw :size="16" />
         </button>
         <button class="toolbar-btn" :class="{ active: multiSelect.active }" @click="multiSelect.active ? exitMultiSelect() : enterMultiSelect()" :title="multiSelect.active ? t('file.multiSelect.exit') : t('file.multiSelect.enter')">
           <CheckSquare :size="16" />
         </button>
-        <button class="toolbar-btn" :class="{ active: viewMode === 'grid' }" @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'" :title="viewMode === 'grid' ? t('file.viewList') : t('file.viewGrid')">
-          <LayoutGrid v-if="viewMode === 'list'" :size="16" />
-          <LayoutList v-else :size="16" />
-        </button>
+        <div class="toolbar-dropdown-wrap">
+          <button class="toolbar-btn" @click="moreMenuOpen = !moreMenuOpen" :title="t('nav.more')">
+            <MoreHorizontal :size="16" />
+          </button>
+          <div v-if="moreMenuOpen" class="toolbar-dropdown toolbar-dropdown-right" @click.stop>
+            <button class="toolbar-dropdown-item" :disabled="dirUploading" @click="triggerUpload(); moreMenuOpen = false">
+              <Upload :size="14" />
+              <span>{{ t('file.uploadHere') }}</span>
+            </button>
+            <button class="toolbar-dropdown-item" :disabled="!currentFile?.path" @click="syncToCurrentFile(); moreMenuOpen = false">
+              <ArrowRightLeft :size="14" />
+              <span>{{ t('file.syncToCurrentDir') }}</span>
+            </button>
+            <button class="toolbar-dropdown-item" @click="viewMode = viewMode === 'grid' ? 'list' : 'grid'; moreMenuOpen = false">
+              <LayoutGrid v-if="viewMode === 'list'" :size="14" />
+              <LayoutList v-else :size="14" />
+              <span>{{ viewMode === 'grid' ? t('file.viewList') : t('file.viewGrid') }}</span>
+            </button>
+          </div>
+        </div>
         <SearchInput v-model="searchQuery" :placeholder="t('search.defaultPlaceholder')" @dblclick="searchQuery = ''" />
       </div>
       <!-- Multi-select info bar -->
@@ -65,6 +78,15 @@
         </button>
       </div>
       <DirBreadcrumb v-else :path="currentDir" @navigate="$emit('navigateDir', $event)" />
+    </div>
+
+    <!-- Hidden file input for upload -->
+    <input type="file" ref="uploadInputRef" @change="onUploadFileSelect" style="display:none" multiple />
+
+    <!-- Upload progress bar -->
+    <div v-if="dirUploading" class="dir-upload-progress">
+      <div class="dir-upload-progress-bar" :style="{ width: dirUploadProgress + '%' }"></div>
+      <span class="dir-upload-progress-text">{{ dirUploadDone }}/{{ dirUploadTotal }}</span>
     </div>
 
     <!-- File list -->
@@ -275,7 +297,7 @@
 <script setup>
 import { ref, computed, reactive, inject, nextTick, onMounted, onUnmounted, Teleport, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Folder, ArrowDownAz, ArrowUpZa, ChevronDown, ChevronUp, Clock, FileText, HardDrive, Eye, EyeOff, ArrowRightLeft, Loader, FileImage, FileMusic, ChevronRight, Copy, Scissors, ClipboardPaste, FilePlus, FolderPlus, Pencil, Download, Trash2, FolderOpen, RotateCw, Terminal as TerminalIcon, CheckSquare, Check, X, LayoutList, LayoutGrid, FileVideo, Package } from 'lucide-vue-next'
+import { Folder, ArrowDownAz, ArrowUpZa, ChevronDown, ChevronUp, Clock, FileText, HardDrive, Eye, EyeOff, ArrowRightLeft, Loader, FileImage, FileMusic, ChevronRight, Copy, Scissors, ClipboardPaste, FilePlus, FolderPlus, Pencil, Download, Trash2, FolderOpen, RotateCw, Terminal as TerminalIcon, CheckSquare, Check, X, LayoutList, LayoutGrid, FileVideo, Package, Upload, MoreHorizontal } from 'lucide-vue-next'
 import { getFileType } from '@/utils/fileType.ts'
 import { dirName } from '@/utils/path.ts'
 import {
@@ -291,12 +313,27 @@ import { useAppMode } from '@/composables/useAppMode.ts'
 import { useDialog } from '@/composables/useDialog.ts'
 import { useTerminalStatus } from '@/composables/useTerminalStatus.ts'
 import { useFeatureBackHandler } from '@/composables/useEdgeSwipeBack'
+import { useFileUpload } from '@/composables/useFileUpload.ts'
 import SearchInput from '@/components/common/SearchInput.vue'
 import DirBreadcrumb from './DirBreadcrumb.vue'
 
 const toast = inject('toast', null)
 const { isAppMode } = useAppMode()
 const { t, locale } = useI18n()
+
+// File upload to current directory
+const { dirUploading, dirUploadProgress, dirUploadTotal, dirUploadDone, handleFileSelectToDir } = useFileUpload()
+const uploadInputRef = ref(null)
+
+function triggerUpload() {
+  uploadInputRef.value?.click()
+}
+
+async function onUploadFileSelect(e) {
+  await handleFileSelectToDir(e, props.currentDir || '.')
+  // Refresh directory listing after uploads complete
+  emit('refresh')
+}
 const dialog = useDialog()
 const { terminalRuntimeEnabled } = useTerminalStatus()
 const isTerminalDisabled = computed(() => terminalRuntimeEnabled.value !== true)
@@ -325,6 +362,7 @@ const emit = defineEmits(['navigateDir', 'selectFile', 'toggleSort', 'toggleHidd
 
 const searchQuery = ref('')
 const sortMenuOpen = ref(false)
+const moreMenuOpen = ref(false)
 
 // ── View mode (list / grid) from settings config ──
 const viewMode = ref(localConfig.fileView || 'list')
@@ -371,14 +409,15 @@ function onSortSelect(field) {
   sortMenuOpen.value = false
 }
 
-function closeSortMenu(e) {
-  if (!e.target.closest('.sort-dropdown-wrap')) {
+function closeDropdowns(e) {
+  if (!e.target.closest('.toolbar-dropdown-wrap')) {
     sortMenuOpen.value = false
+    moreMenuOpen.value = false
   }
 }
 
-onMounted(() => document.addEventListener('click', closeSortMenu))
-onUnmounted(() => document.removeEventListener('click', closeSortMenu))
+onMounted(() => document.addEventListener('click', closeDropdowns))
+onUnmounted(() => document.removeEventListener('click', closeDropdowns))
 
 // Sync button: navigate to the directory of the currently opened file
 const isInSync = computed(() => {
@@ -1119,12 +1158,12 @@ function doDelete() {
 }
 
 /* Sort dropdown */
-.sort-dropdown-wrap {
+.toolbar-dropdown-wrap {
     position: relative;
     flex-shrink: 0;
 }
 
-.sort-dropdown {
+.toolbar-dropdown {
     position: absolute;
     top: calc(100% + 4px);
     left: 0;
@@ -1137,7 +1176,7 @@ function doDelete() {
     padding: 4px;
 }
 
-.sort-dropdown-item {
+.toolbar-dropdown-item {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -1152,21 +1191,31 @@ function doDelete() {
     white-space: nowrap;
 }
 
-.sort-dropdown-item:hover {
+.toolbar-dropdown-item:hover {
     background: var(--bg-tertiary, #f0f0f0);
 }
 
-.sort-dropdown-item.active {
+.toolbar-dropdown-item.active {
     color: var(--accent-color, #4a90d9);
     font-weight: 500;
 }
 
-.sort-dropdown-item svg {
+.toolbar-dropdown-item svg {
     flex-shrink: 0;
 }
 
-.sort-dropdown-item .sort-dir-icon {
+.toolbar-dropdown-item .sort-dir-icon {
     margin-left: auto;
+}
+
+.toolbar-dropdown-item:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.toolbar-dropdown-right {
+    left: auto;
+    right: 0;
 }
 
 /* ── File Items ── */
@@ -1414,6 +1463,31 @@ function doDelete() {
 
 [data-theme="dark"] .grid-item.grid-dir .grid-thumb {
     background: color-mix(in srgb, var(--accent-color, #4a90d9) 12%, var(--bg-secondary, #2a2a2a));
+}
+
+/* Upload progress bar */
+.dir-upload-progress {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    height: 20px;
+    background: color-mix(in srgb, var(--accent-color, #4a90d9) 8%, transparent);
+    flex-shrink: 0;
+}
+
+.dir-upload-progress-bar {
+    flex: 1;
+    height: 3px;
+    background: var(--accent-color, #4a90d9);
+    border-radius: 2px;
+    transition: width 0.15s ease;
+}
+
+.dir-upload-progress-text {
+    font-size: 11px;
+    color: var(--text-secondary, #666);
+    white-space: nowrap;
 }
 
 </style>

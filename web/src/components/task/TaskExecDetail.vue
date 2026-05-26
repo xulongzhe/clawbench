@@ -11,10 +11,7 @@
     <!-- Scrollable message content -->
     <div class="exec-detail-content" ref="contentRef" @click="handleContentClick">
       <!-- Summary / Original tab bar -->
-      <div v-if="hasSummary" class="exec-tab-bar">
-        <button class="exec-tab-btn" :class="{ active: activeTab === 'summary' }" @click="setTab('summary')">📌 总结</button>
-        <button class="exec-tab-btn" :class="{ active: activeTab === 'original' }" @click="setTab('original')">📄 原文</button>
-      </div>
+      <SummaryToggle v-if="hasSummary" mode="tab" :showing-summary="activeTab === 'summary'" i18n-prefix="task.exec" @toggle="setTab(activeTab === 'summary' ? 'original' : 'summary')" />
       <ChatMessageItem
         v-if="activeMsgData"
         :msg="activeMsgData"
@@ -69,6 +66,7 @@ import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import ChatMessageItem from '@/components/chat/ChatMessageItem.vue'
 import ToolDetailOverlay from '@/components/chat/ToolDetailOverlay.vue'
 import ChatMetadataModal from '@/components/chat/ChatMetadataModal.vue'
+import SummaryToggle from '@/components/common/SummaryToggle.vue'
 import { useChatRender } from '@/composables/useChatRender.ts'
 import { useAgents } from '@/composables/useAgents'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
@@ -366,43 +364,6 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 12px 8px;
-}
-
-.exec-tab-bar {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 12px;
-  background: var(--bg-secondary, #f1f5f9);
-  border-radius: 8px;
-  padding: 3px;
-}
-
-.exec-tab-btn {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary, #6b7280);
-  font-size: 13px;
-  font-weight: 500;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-}
-
-.exec-tab-btn.active {
-  background: var(--bg-primary, #ffffff);
-  color: var(--text-primary, #1a1a1a);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-}
-
-@media (hover: hover) {
-  .exec-tab-btn:not(.active):hover {
-    color: var(--text-primary, #1a1a1a);
-    background: var(--bg-tertiary, #e2e8f0);
-  }
 }
 
 .exec-detail-empty {

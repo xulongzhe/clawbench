@@ -14,7 +14,7 @@ import (
 )
 
 // setupTestDBForTTS creates an in-memory SQLite database with the tts_summaries table
-// for testing GetTTSSummary and SaveTTSSummary.
+// for testing TTS summary functions.
 func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 	t.Helper()
 	origDB := DB
@@ -30,9 +30,19 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS tts_summaries (
-			cache_key TEXT PRIMARY KEY,
-			summary TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id   INTEGER NOT NULL,
+			tts_summary  TEXT NOT NULL,
+			created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(message_id)
+		);
+		CREATE TABLE IF NOT EXISTS summaries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			target_type TEXT NOT NULL,
+			target_id   INTEGER NOT NULL,
+			summary     TEXT NOT NULL,
+			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(target_type, target_id)
 		);
 		CREATE TABLE IF NOT EXISTS chat_history (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -603,13 +613,13 @@ func orphanCleanup(t *testing.T, db *sql.DB, isServerStartup bool) {
 	}
 }
 
-// ---------- TTS Summary cache ----------
+// ---------- TTS Summary cache (message_id-based) ----------
 
 func TestGetTTSSummary_NotFound(t *testing.T) {
 	_, teardown := setupTestDBForTTS(t)
 	defer teardown()
 
-	summary, found := GetTTSSummary("nonexistent-key")
+	summary, found := GetTTSSummaryByMessageID(9999)
 	assert.Equal(t, "", summary)
 	assert.False(t, found)
 }
@@ -618,10 +628,10 @@ func TestGetTTSSummary_Found(t *testing.T) {
 	_, teardown := setupTestDBForTTS(t)
 	defer teardown()
 
-	err := SaveTTSSummary("key-1", "hello world")
+	err := SaveTTSSummaryByMessageID(1, "hello world")
 	assert.NoError(t, err)
 
-	summary, found := GetTTSSummary("key-1")
+	summary, found := GetTTSSummaryByMessageID(1)
 	assert.Equal(t, "hello world", summary)
 	assert.True(t, found)
 }
@@ -630,10 +640,10 @@ func TestGetTTSSummary_FailedEntry(t *testing.T) {
 	_, teardown := setupTestDBForTTS(t)
 	defer teardown()
 
-	err := SaveTTSSummary("key-fail", "raw text")
+	err := SaveTTSSummaryByMessageID(2, "raw text")
 	assert.NoError(t, err)
 
-	summary, found := GetTTSSummary("key-fail")
+	summary, found := GetTTSSummaryByMessageID(2)
 	assert.Equal(t, "raw text", summary)
 	assert.True(t, found)
 }
@@ -642,13 +652,13 @@ func TestSaveTTSSummary_Upsert(t *testing.T) {
 	_, teardown := setupTestDBForTTS(t)
 	defer teardown()
 
-	err := SaveTTSSummary("key-upsert", "version 1")
+	err := SaveTTSSummaryByMessageID(3, "version 1")
 	assert.NoError(t, err)
 
-	err = SaveTTSSummary("key-upsert", "version 2")
+	err = SaveTTSSummaryByMessageID(3, "version 2")
 	assert.NoError(t, err)
 
-	summary, found := GetTTSSummary("key-upsert")
+	summary, found := GetTTSSummaryByMessageID(3)
 	assert.True(t, found)
 	assert.Equal(t, "version 2", summary)
 }
@@ -1326,4 +1336,73 @@ func TestSaveTTSSummaryByMessageID_Upsert(t *testing.T) {
 	summary, found := GetTTSSummaryByMessageID(456)
 	assert.Equal(t, "version 2", summary)
 	assert.True(t, found)
+}
+
+// ---------- InitDB migration: tts_summaries cache_key → message_id ----------
+
+func TestInitDB_TTSSummariesMigrationFromOldSchema(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// First: create a DB with the old schema (cache_key column)
+	dbPath := filepath.Join(tmpDir, ".clawbench", "clawbench.db")
+	os.MkdirAll(filepath.Dir(dbPath), 0755)
+
+	db, err := sql.Open("sqlite", dbPath)
+	assert.NoError(t, err)
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS tts_summaries (
+			cache_key TEXT PRIMARY KEY,
+			summary TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	assert.NoError(t, err)
+	db.Close()
+
+	// Now call InitDB — should detect cache_key column and migrate
+	err = InitDB()
+	assert.NoError(t, err)
+
+	// Verify new schema: should have message_id column, not cache_key
+	columns := getTableColumns(t, DB, "tts_summaries")
+	assert.Contains(t, columns, "message_id", "tts_summaries should have message_id column after migration")
+	assert.NotContains(t, columns, "cache_key", "tts_summaries should NOT have cache_key column after migration")
+
+	// Verify the new API works
+	err = SaveTTSSummaryByMessageID(100, "post-migration summary")
+	assert.NoError(t, err)
+	summary, found := GetTTSSummaryByMessageID(100)
+	assert.True(t, found)
+	assert.Equal(t, "post-migration summary", summary)
+
+	CloseDB()
+}
+
+func TestInitDB_TTSSummariesFreshInstall(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Fresh install: no tts_summaries table exists yet
+	err := InitDB()
+	assert.NoError(t, err)
+
+	// Verify new schema: should have message_id column
+	columns := getTableColumns(t, DB, "tts_summaries")
+	assert.Contains(t, columns, "message_id", "tts_summaries should have message_id column on fresh install")
+	assert.Contains(t, columns, "tts_summary", "tts_summaries should have tts_summary column on fresh install")
+
+	CloseDB()
 }

@@ -1519,6 +1519,66 @@ func TestConvertAskQuestionBlocks_ObfuscatedCloseTag(t *testing.T) {
 	}
 }
 
+// ---------- Session ownership validation (ISS-180) — AIChat handler ----------
+
+// TestAIChat_Get_SessionBelongsToDifferentProject verifies that the GET path
+// in AIChat rejects access to a session that belongs to another project.
+func TestAIChat_Get_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project-chat-get"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// GET with a session_id belonging to another project → Forbidden
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(AIChat, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
+// TestAIChat_Get_SessionBelongsToSameProject verifies that the GET path
+// in AIChat allows access to a session that belongs to the requesting project.
+func TestAIChat_Get_SessionBelongsToSameProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to the same project
+	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Same Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// GET with a session_id belonging to same project → OK
+	req := newRequest(t, http.MethodGet, "/api/ai/chat?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(AIChat, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// TestAIChat_Post_SessionBelongsToDifferentProject verifies that the POST path
+// in AIChat rejects access to a session that belongs to another project.
+func TestAIChat_Post_SessionBelongsToDifferentProject(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a session that belongs to a different project
+	otherProject := "/other-project-chat-post"
+	sessionID, err := service.CreateSession(otherProject, "claude", "Other Session", "claude", "", "default", "chat")
+	assert.NoError(t, err)
+
+	// POST with a session cookie pointing to another project's session → Forbidden
+	body := map[string]any{"message": "hello"}
+	req := newRequest(t, http.MethodPost, "/api/ai/chat", body)
+	req = withProjectCookie(req, env.ProjectDir)
+	req = withSessionCookie(req, sessionID)
+	w := callHandler(AIChat, req)
+
+	assertStatus(t, w, http.StatusForbidden)
+}
+
 // ============================================================================
 // buildChatRequest external session ID tests
 // ============================================================================

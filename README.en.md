@@ -195,6 +195,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Disconnect Protection**: Messages persist immediately, no data loss on disconnect, 15s heartbeat keep-alive + 30s timeout auto-reconnect (live content updates during polling fallback)
 - **Auto Resume**: Automatically sends "continue" after Claude/CodeBuddy/Qoder/DeepSeek/Pi exits Plan Mode
 - **Message Queue**: Messages queue when AI is busy, sent sequentially
+- **Auto Summary**: Automatically generates a summary of the last assistant message on session complete; toggle between summary/original via bottom banner; TTS playback also uses the summary
 
 ### ⏰ Scheduled Tasks
 - **Cron Scheduling**: AI creates Cron schedules via CLI subcommands, executes automatically
@@ -247,6 +248,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Auto Port Assignment**: Automatically allocates local ports when forwarding the same target port to different hosts
 - **Port Editing**: Modify existing port forwarding configurations
 - **Auto-Open Localhost URLs**: localhost URLs appearing in chat (e.g., web services started by AI) can be opened with one tap — port forwarding is auto-registered and the URL opens via WebView in App mode
+- **Tunnel Health Check & Reconnect**: Auto-checks tunnel health before opening localhost URLs; reconnects if unhealthy; one-tap reconnect for disconnected tunnels
 
 ### 💻 Web Terminal
 - **Interactive Terminal**: PTY + WebSocket + xterm.js, operate server terminal directly in browser

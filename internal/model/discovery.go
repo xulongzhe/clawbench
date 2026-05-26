@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -39,7 +40,7 @@ var BackendRegistry = []BackendSpec{
 		DiscoverModelsFunc: DiscoverClaudeModels,
 		ThinkingEffortLevels: []string{"low", "medium", "high", "xhigh", "max"}},
 	{ID: "codebuddy", Backend: "codebuddy", DefaultCmd: "codebuddy", Name: "Codebuddy", Icon: "🐛", Specialty: "全栈开发助手",
-		ListModelsCmd: []string{"--help"}, ParseModels: ParseCodebuddyModels,
+		DiscoverModelsFunc: DiscoverCodebuddyModels,
 		ThinkingEffortLevels: []string{"low", "medium", "high", "xhigh"}},
 	{ID: "opencode", Backend: "opencode", DefaultCmd: "opencode", Name: "OpenCode", Icon: "📟", Specialty: "终端编码工具",
 		ListModelsCmd: []string{"models"}, ParseModels: ParseOpenCodeModels,
@@ -88,10 +89,36 @@ func CheckCLIExists(cmd string) bool {
 	return false
 }
 
+// CheckCLIExistsErr returns an error describing why the CLI is not available,
+// or nil if the CLI is available. This is used for more specific error reporting.
+func CheckCLIExistsErr(cmd string) error {
+	if cmd == "" {
+		return fmt.Errorf("empty command")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := exec.CommandContext(ctx, cmd, "--version").Run()
+	if err == nil {
+		return nil
+	}
+
+	_, lookupErr := exec.LookPath(cmd)
+	if lookupErr == nil {
+		// Binary exists but --version failed — CLI is still available
+		return nil
+	}
+
+	return fmt.Errorf("CLI %q not found on PATH: %w", cmd, lookupErr)
+}
+
 // DiscoverModels runs the CLI's model-list command and returns parsed models.
 // Returns nil if the CLI doesn't support model listing or if the command fails.
 // Errors are logged but not propagated — model discovery is best-effort.
-func DiscoverModels(spec BackendSpec) []AgentModel {
+// This is a variable so it can be overridden in tests.
+var DiscoverModels = discoverModels
+
+func discoverModels(spec BackendSpec) []AgentModel {
 	// Custom discovery function takes priority (e.g. binary strings scan for claude)
 	if spec.DiscoverModelsFunc != nil {
 		models := spec.DiscoverModelsFunc()
@@ -271,9 +298,9 @@ func SyncDiscoverAgents(dir string) map[string]bool {
 	return present
 }
 
-// canDiscoverModels returns true if the spec supports model discovery
+// CanDiscoverModels returns true if the spec supports model discovery
 // via either DiscoverModelsFunc or ListModelsCmd+ParseModels.
-func canDiscoverModels(spec BackendSpec) bool {
+func CanDiscoverModels(spec BackendSpec) bool {
 	return spec.DiscoverModelsFunc != nil || (len(spec.ListModelsCmd) > 0 && spec.ParseModels != nil)
 }
 
@@ -282,7 +309,7 @@ func canDiscoverModels(spec BackendSpec) bool {
 // on first startup (when cache is empty).
 func SyncDiscoverModels(cacheDir string) {
 	for _, spec := range BackendRegistry {
-		if !canDiscoverModels(spec) {
+		if !CanDiscoverModels(spec) {
 			continue
 		}
 		models := DiscoverModels(spec)
@@ -303,7 +330,7 @@ func SyncDiscoverModels(cacheDir string) {
 func AsyncRefreshModelCache(cacheDir string) {
 	go func() {
 		for _, spec := range BackendRegistry {
-			if !canDiscoverModels(spec) {
+			if !CanDiscoverModels(spec) {
 				continue
 			}
 			models := DiscoverModels(spec)
@@ -353,13 +380,14 @@ func MergeDiscoveredData(cacheDir string, present ...map[string]bool) {
 		AgentList = keep
 	}
 
-	// Fill models and thinking effort levels
+	// Fill models, thinking effort levels, and CanRefreshModels
 	for _, agent := range AgentList {
 		spec := FindSpecByBackend(agent.Backend)
 
 		// ThinkingEffortLevels: always from Registry (ignore YAML values)
 		if spec != nil {
 			agent.ThinkingEffortLevels = spec.ThinkingEffortLevels
+			agent.CanRefreshModels = CanDiscoverModels(*spec)
 		}
 
 		// Models: user-defined takes priority; otherwise use cache
@@ -373,12 +401,103 @@ func MergeDiscoveredData(cacheDir string, present ...map[string]bool) {
 	}
 }
 
-// codebuddyModelRe extracts model IDs from codebuddy --help output.
+// codebuddyProductFile is the JSON file in the codebuddy installation that contains
+// the authoritative model list with names, capabilities, and default status.
+const codebuddyProductFile = "product.cloudhosted.json"
+
+// codebuddyProductModel represents a model entry in codebuddy's product JSON.
+type codebuddyProductModel struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"isDefault"`
+}
+
+// codebuddyProduct represents the top-level structure of codebuddy's product JSON.
+type codebuddyProduct struct {
+	Models []codebuddyProductModel `json:"models"`
+}
+
+// DiscoverCodebuddyModels discovers Codebuddy models by reading the product.cloudhosted.json
+// file from the CLI installation directory. This JSON file contains the authoritative model
+// list with proper names and default status, making it far more reliable than --help output
+// (which launches a TUI that hangs without a TTY) or JS bundle scanning (which is fragile).
+func DiscoverCodebuddyModels() []AgentModel {
+	// Find the codebuddy binary path
+	path, err := exec.LookPath("codebuddy")
+	if err != nil {
+		return nil
+	}
+
+	// Resolve symlink to find the actual installation directory
+	// Path is typically: .../node_modules/@tencent-ai/codebuddy-code/bin/codebuddy
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		realPath = path
+	}
+
+	// The product JSON is at .../codebuddy-code/product.cloudhosted.json
+	// From .../bin/codebuddy: Dir → .../bin, Dir again → .../codebuddy-code
+	pkgDir := filepath.Dir(filepath.Dir(realPath))
+	productPath := filepath.Join(pkgDir, codebuddyProductFile)
+
+	data, err := os.ReadFile(productPath)
+	if err != nil {
+		slog.Debug("codebuddy model discovery: product JSON not found", "path", productPath, "error", err)
+		return nil
+	}
+
+	var product codebuddyProduct
+	if err := json.Unmarshal(data, &product); err != nil {
+		slog.Debug("codebuddy model discovery: failed to parse product JSON", "error", err)
+		return nil
+	}
+
+	if len(product.Models) == 0 {
+		slog.Debug("codebuddy model discovery: no models in product JSON")
+		return nil
+	}
+
+	var models []AgentModel
+	for _, m := range product.Models {
+		// Skip pseudo-models like "default" and "auto" — these are selectors, not real model IDs
+		if m.ID == "default" || m.ID == "auto" {
+			continue
+		}
+		// Skip non-LLM models (e.g. text-to-image)
+		if m.ID == "hunyuan-image-v3.0" {
+			continue
+		}
+		name := m.Name
+		if name == "" {
+			name = m.ID
+		}
+		models = append(models, AgentModel{
+			ID:      m.ID,
+			Name:    name,
+			Default: m.IsDefault || (len(models) == 0 && m.ID != "default" && m.ID != "auto"),
+		})
+	}
+
+	if len(models) == 0 {
+		return nil
+	}
+
+	// First non-skipped model gets Default=true if none was marked isDefault
+	if !models[0].Default {
+		models[0].Default = true
+	}
+
+	slog.Info("codebuddy model discovery succeeded", "models", len(models))
+	return models
+}
+
+// codebuddyModelRe extracts model IDs from codebuddy --help output (legacy, kept for ParseCodebuddyModels).
 // Format: "Currently supported: (glm-4.7, glm-4.6, ...)"
 var codebuddyModelRe = regexp.MustCompile(`Currently supported: \(([^)]+)\)`)
 
 // ParseCodebuddyModels parses codebuddy --help output to extract model IDs.
 // Output format: "... --model <model>  Model for the current session. ... Currently supported: (glm-4.7, glm-4.6, ...)"
+// Deprecated: codebuddy --help launches a TUI that hangs without a TTY; use DiscoverCodebuddyModels instead.
 func ParseCodebuddyModels(output string) []AgentModel {
 	matches := codebuddyModelRe.FindStringSubmatch(output)
 	if len(matches) < 2 {

@@ -4,8 +4,10 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -122,19 +124,20 @@ func extractIP(addr net.Addr) string {
 // It allows authenticated clients to create `-L` tunnels to forward local ports
 // to any reachable host:port (localhost, LAN, or remote).
 type Server struct {
-	mu             sync.Mutex
-	listener       net.Listener
-	hostKey        gossh.Signer
-	password       string
-	portReg        *service.ProxyRegistry
-	done           chan struct{}
-	fingerprint    string
-	addr           string
-	cfg            model.PortForwardConfig
-	connCount      int
-	activeChannels int
-	lastConnected  time.Time
-	authTracker    *authTracker
+	mu                sync.Mutex
+	listener          net.Listener
+	hostKey           gossh.Signer
+	password          string
+	passwordIsSHA256  bool
+	portReg           *service.ProxyRegistry
+	done              chan struct{}
+	fingerprint       string
+	addr              string
+	cfg               model.PortForwardConfig
+	connCount         int
+	activeChannels    int
+	lastConnected     time.Time
+	authTracker       *authTracker
 }
 
 // NewServer creates a new SSH tunnel server.
@@ -147,12 +150,13 @@ func NewServer(cfg model.PortForwardConfig, mainPort int, password string, portR
 	}
 
 	return &Server{
-		password:    password,
-		portReg:     portReg,
-		done:        make(chan struct{}),
-		addr:        fmt.Sprintf("0.0.0.0:%d", sshPort),
-		cfg:         cfg,
-		authTracker: newAuthTracker(),
+		password:         password,
+		passwordIsSHA256: model.IsSHA256Password(password),
+		portReg:          portReg,
+		done:             make(chan struct{}),
+		addr:             fmt.Sprintf("0.0.0.0:%d", sshPort),
+		cfg:              cfg,
+		authTracker:      newAuthTracker(),
 	}
 }
 
@@ -172,9 +176,21 @@ func (s *Server) ListenAndServe() error {
 				return nil, fmt.Errorf("ssh: too many authentication failures")
 			}
 
-			if c.User() == "clawbench" && subtle.ConstantTimeCompare(pass, []byte(s.password)) == 1 {
-				s.authTracker.reset(remoteIP)
-				return nil, nil
+			if c.User() == "clawbench" {
+				if s.passwordIsSHA256 {
+					// Password is stored as SHA-256 hash — hash the submitted password and compare
+					hash := sha256.Sum256([]byte(string(pass) + "clawbench-salt"))
+					candidate := hex.EncodeToString(hash[:])
+					if subtle.ConstantTimeCompare([]byte(candidate), []byte(s.password[len("sha256:"):])) == 1 {
+						s.authTracker.reset(remoteIP)
+						return nil, nil
+					}
+				} else {
+					if subtle.ConstantTimeCompare(pass, []byte(s.password)) == 1 {
+						s.authTracker.reset(remoteIP)
+						return nil, nil
+					}
+				}
 			}
 
 			s.authTracker.recordFailure(remoteIP)

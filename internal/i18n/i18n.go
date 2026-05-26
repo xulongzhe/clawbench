@@ -56,3 +56,9 @@ func T(loc *i18n.Localizer, messageID string, templateData ...map[string]interfa
 	}
 	return msg
 }
+
+// LocalizerForLocale creates a Localizer for a given locale string (e.g., "zh", "en").
+// Used in contexts without an HTTP request (e.g., push notifications).
+func LocalizerForLocale(locale string) *i18n.Localizer {
+	return i18n.NewLocalizer(bundle, locale)
+}

@@ -28,9 +28,21 @@ func QueueHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleQueueEnqueue(w http.ResponseWriter, r *http.Request) {
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
 	sessionID := r.URL.Query().Get("session_id")
 	if sessionID == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "SessionIdRequired")
+		return
+	}
+
+	// Verify the session belongs to the requesting project (ISS-180)
+	// Skip ownership check if session doesn't exist in DB (not-yet-persisted or in-memory only)
+	if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != "" && sessionProject != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 
@@ -64,9 +76,21 @@ func handleQueueEnqueue(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleQueueGet(w http.ResponseWriter, r *http.Request) {
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
 	sessionID := r.URL.Query().Get("session_id")
 	if sessionID == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "SessionIdRequired")
+		return
+	}
+
+	// Verify the session belongs to the requesting project (ISS-180)
+	// Skip ownership check if session doesn't exist in DB (not-yet-persisted or in-memory only)
+	if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != "" && sessionProject != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 
@@ -80,9 +104,21 @@ func handleQueueGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleQueueDelete(w http.ResponseWriter, r *http.Request) {
+	projectPath, ok := requireProject(w, r)
+	if !ok {
+		return
+	}
+
 	sessionID := r.URL.Query().Get("session_id")
 	if sessionID == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "SessionIdRequired")
+		return
+	}
+
+	// Verify the session belongs to the requesting project (ISS-180)
+	// Skip ownership check if session doesn't exist in DB (not-yet-persisted or in-memory only)
+	if sessionProject := service.GetSessionProjectPath(sessionID); sessionProject != "" && sessionProject != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 

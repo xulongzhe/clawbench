@@ -543,3 +543,154 @@ func TestTTSStream_MissingJobID(t *testing.T) {
 	TTSStream(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+// --- TTSGenerate: MessageID-based summary lookup ---
+
+func TestTTSGenerate_WithMessageID_CachedAudio(t *testing.T) {
+	mockProvider := &mockSpeechProvider{}
+	mockSum := &mockSummarizer{result: "核心总结"}
+	env, teardown := setupTTSTest(t, mockProvider, mockSum)
+	defer teardown()
+
+	text := "这是一段较长的AI回复内容，需要被总结为语音。包含了详细的分析和代码示例，需要提取核心要点。"
+
+	// First request: generate and cache audio (with messageId for SaveTTSSummaryByMessageID)
+	req1 := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]any{"text": text, "messageId": 100})
+	req1 = withProjectCookie(req1, env.ProjectDir)
+	w1 := httptest.NewRecorder()
+	TTSGenerate(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	// Wait for TTS job to complete so audio is cached and SaveTTSSummaryByMessageID is called
+	hash := sha256.Sum256([]byte(text))
+	cacheKey := hex.EncodeToString(hash[:])[:summarize.CacheKeyHexLen]
+	job, ok := service.GetTTSJob(cacheKey)
+	if ok {
+		select {
+		case <-job.Done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("TTS job did not complete in time")
+		}
+	}
+
+	// Verify the summary was saved by the goroutine (covers SaveTTSSummaryByMessageID)
+	savedSummary, found := service.GetTTSSummaryByMessageID(100)
+	assert.True(t, found, "TTS summary should be saved for message ID 100")
+	assert.Equal(t, "核心总结", savedSummary)
+
+	// Second request with same text + messageId: should hit audio cache
+	// and look up summary by message ID instead of cache key
+	req2 := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]any{"text": text, "messageId": 100})
+	req2 = withProjectCookie(req2, env.ProjectDir)
+	w2 := httptest.NewRecorder()
+	TTSGenerate(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w2.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.Equal(t, true, resp["cached"])
+}
+
+func TestTTSGenerate_WithMessageID_SummaryCacheHit(t *testing.T) {
+	mockProvider := &mockSpeechProvider{}
+	mockSum := &mockSummarizer{result: "核心总结"}
+	env, teardown := setupTTSTest(t, mockProvider, mockSum)
+	defer teardown()
+
+	// Pre-save a TTS summary for message ID 200
+	err := service.SaveTTSSummaryByMessageID(200, "预设的TTS总结")
+	assert.NoError(t, err)
+
+	text := "这是一段较长的AI回复内容，需要被总结为语音。包含了详细的分析和代码示例，需要提取核心要点。"
+	req := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]any{"text": text, "messageId": 200})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := httptest.NewRecorder()
+
+	TTSGenerate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Wait for TTS job to complete
+	hash := sha256.Sum256([]byte(text))
+	cacheKey := hex.EncodeToString(hash[:])[:summarize.CacheKeyHexLen]
+	job, ok := service.GetTTSJob(cacheKey)
+	if ok {
+		select {
+		case <-job.Done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("TTS job did not complete in time")
+		}
+	}
+
+	// The mock summarizer should NOT have been called since we had a cached summary
+	assert.False(t, mockSum.called)
+}
+
+func TestTTSGenerate_WithZeroMessageID_SkipsMessageIDLookup(t *testing.T) {
+	mockProvider := &mockSpeechProvider{}
+	mockSum := &mockSummarizer{result: "总结"}
+	env, teardown := setupTTSTest(t, mockProvider, mockSum)
+	defer teardown()
+
+	text := "这是一段较长的AI回复内容，需要被总结为语音。包含了详细的分析和代码示例，需要提取核心要点。"
+	// messageId = 0 means no message-based lookup
+	req := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]any{"text": text, "messageId": 0})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := httptest.NewRecorder()
+
+	TTSGenerate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.NoError(t, err)
+	assert.Contains(t, resp, "jobId")
+
+	// Wait for completion
+	hash := sha256.Sum256([]byte(text))
+	cacheKey := hex.EncodeToString(hash[:])[:summarize.CacheKeyHexLen]
+	job, ok := service.GetTTSJob(cacheKey)
+	if ok {
+		select {
+		case <-job.Done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("TTS job did not complete in time")
+		}
+	}
+
+	// Summarizer should have been called (no cache hit for messageId=0)
+	assert.True(t, mockSum.called)
+}
+
+func TestTTSGenerate_SaveTTSSummaryByMessageID_DBError(t *testing.T) {
+	mockProvider := &mockSpeechProvider{}
+	mockSum := &mockSummarizer{result: "核心总结"}
+	env, teardown := setupTTSTest(t, mockProvider, mockSum)
+	defer teardown()
+
+	// Drop the tts_summaries table to force SaveTTSSummaryByMessageID to fail
+	service.DB.Exec("DROP TABLE tts_summaries")
+
+	text := "这是一段较长的AI回复内容，需要被总结为语音。包含了详细的分析和代码示例，需要提取核心要点。"
+	req := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]any{"text": text, "messageId": 300})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := httptest.NewRecorder()
+
+	TTSGenerate(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Wait for the TTS job to complete (should still succeed despite DB error)
+	hash := sha256.Sum256([]byte(text))
+	cacheKey := hex.EncodeToString(hash[:])[:summarize.CacheKeyHexLen]
+	job, ok := service.GetTTSJob(cacheKey)
+	if ok {
+		select {
+		case <-job.Done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("TTS job did not complete in time")
+		}
+	}
+
+	// Verify the job completed successfully despite the DB save error
+	assert.True(t, mockSum.called)
+}

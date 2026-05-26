@@ -360,13 +360,13 @@ func CloseDB() {
 	}
 }
 
-// GetTTSSummary looks up a cached TTS summary by cache key.
-// Returns (summary, found).
-func GetTTSSummary(cacheKey string) (string, bool) {
+// GetSummary looks up a reading summary by target type and target ID.
+// Returns (summary, found). Empty summary = text was too short.
+func GetSummary(targetType string, targetID int64) (string, bool) {
 	var summary string
 	err := DBRead.QueryRow(
-		"SELECT summary FROM tts_summaries WHERE cache_key = ?",
-		cacheKey,
+		"SELECT summary FROM summaries WHERE target_type = ? AND target_id = ?",
+		targetType, targetID,
 	).Scan(&summary)
 	if err != nil {
 		return "", false
@@ -374,11 +374,35 @@ func GetTTSSummary(cacheKey string) (string, bool) {
 	return summary, true
 }
 
-// SaveTTSSummary persists a TTS summary to the database.
-func SaveTTSSummary(cacheKey, summary string) error {
+// SaveSummary persists a reading summary for a target (chat message or task execution).
+// summary = "" means text was too short; non-empty is the actual summary.
+func SaveSummary(targetType string, targetID int64, summary string) error {
 	_, err := DB.Exec(
-		"INSERT OR REPLACE INTO tts_summaries (cache_key, summary, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
-		cacheKey, summary,
+		"INSERT OR REPLACE INTO summaries (target_type, target_id, summary, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+		targetType, targetID, summary,
+	)
+	return err
+}
+
+// GetTTSSummaryByMessageID looks up a TTS summary by message ID.
+// Returns (ttsSummary, found).
+func GetTTSSummaryByMessageID(messageID int64) (string, bool) {
+	var ttsSummary string
+	err := DBRead.QueryRow(
+		"SELECT tts_summary FROM tts_summaries WHERE message_id = ?",
+		messageID,
+	).Scan(&ttsSummary)
+	if err != nil {
+		return "", false
+	}
+	return ttsSummary, true
+}
+
+// SaveTTSSummaryByMessageID persists a TTS summary for a chat message.
+func SaveTTSSummaryByMessageID(messageID int64, ttsSummary string) error {
+	_, err := DB.Exec(
+		"INSERT OR REPLACE INTO tts_summaries (message_id, tts_summary, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+		messageID, ttsSummary,
 	)
 	return err
 }

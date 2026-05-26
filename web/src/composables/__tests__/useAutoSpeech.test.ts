@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { extractSpeakableText } from '@/composables/useAutoSpeech'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { extractSpeakableText, useAutoSpeech } from '@/composables/useAutoSpeech'
 
 // Mock useToast since it's used at module level
 vi.mock('@/composables/useToast', () => ({
@@ -237,5 +237,62 @@ describe('extractSpeakableText', () => {
     ]
     const result = extractSpeakableText(blocks)
     expect(result).toBe('Hello')
+  })
+})
+
+// ── TTS generation with messageId ──
+
+describe('useAutoSpeech._speak — TTS body includes messageId', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchSpy = vi.fn()
+    globalThis.fetch = fetchSpy
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('includes messageId in TTS request body when id is numeric', async () => {
+    // Mock a cached TTS response (simplest path: no EventSource needed)
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ cached: true, audioPath: '/tts/test.mp3' }),
+    })
+
+    // Mock Audio constructor to prevent actual playback
+    const mockAudio = { play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
+    vi.stubGlobal('Audio', vi.fn(() => mockAudio))
+
+    const { speakText } = useAutoSpeech()
+    await speakText('42', 'Hello world')
+
+    // Verify fetch was called with messageId in the body
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [url, options] = fetchSpy.mock.calls[0]
+    expect(url).toBe('/api/tts/generate')
+    const body = JSON.parse(options.body)
+    expect(body.text).toBe('Hello world')
+    expect(body.messageId).toBe(42)
+  })
+
+  it('omits messageId when id is not a numeric string', async () => {
+    fetchSpy.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ cached: true, audioPath: '/tts/test.mp3' }),
+    })
+
+    const mockAudio = { play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() }
+    vi.stubGlobal('Audio', vi.fn(() => mockAudio))
+
+    const { speakText } = useAutoSpeech()
+    await speakText('abc-123', 'Test text')
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [, options] = fetchSpy.mock.calls[0]
+    const body = JSON.parse(options.body)
+    expect(body.text).toBe('Test text')
+    expect(body.messageId).toBeUndefined()
   })
 })

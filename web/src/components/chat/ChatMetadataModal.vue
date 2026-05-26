@@ -12,7 +12,7 @@
       </div>
       <div v-if="createdAt" class="metadata-item">
         <span class="metadata-label">{{ t('chat.metadata.time') }}</span>
-        <span class="metadata-value">{{ formatDetailTime(createdAt) }}</span>
+        <span class="metadata-value">{{ formatDetailTime(createdAt) }} <span class="metadata-relative-time">{{ formatRelativeTime(createdAt) }}</span></span>
       </div>
       <div v-if="relatedFile" class="metadata-item">
         <span class="metadata-label">{{ t('chat.metadata.relatedFile') }}</span>
@@ -76,7 +76,7 @@ import { Copy } from 'lucide-vue-next'
 import { useI18n } from 'vue-i18n'
 import ModalDialog from '@/components/common/ModalDialog.vue'
 import { useToast } from '@/composables/useToast.ts'
-import { formatDuration } from '@/utils/format.ts'
+import { formatDuration, formatRelativeTime } from '@/utils/format.ts'
 
 const { t } = useI18n()
 
@@ -160,6 +160,12 @@ function copyValue(value, event) {
     font-size: 13px;
     color: var(--text-primary);
     word-break: break-all;
+}
+
+.metadata-relative-time {
+    font-size: 12px;
+    color: var(--text-muted, #9ca3af);
+    margin-left: 6px;
 }
 
 .metadata-session-id {

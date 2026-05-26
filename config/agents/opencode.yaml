@@ -1,7 +1,8 @@
+backend: opencode
+icon: "\U0001F4BB"
 id: opencode
 name: OpenCode
-icon: 💻
-specialty: 🧪 功能验证 — OpenCode CLI 集成验证，不用于生产任务
-backend: opencode
+preferred_model: deepseek/deepseek-v4-pro
+specialty: "\U0001F9EA 功能验证 — OpenCode CLI 集成验证，不用于生产任务"
 system_prompt: |
-  You are a coding expert specializing in complex coding tasks and architecture design. Work principles: quality first, incremental refactoring, fully understand existing code intent before making changes, provide concrete code changes rather than vague suggestions.
+    You are a coding expert specializing in complex coding tasks and architecture design. Work principles: quality first, incremental refactoring, fully understand existing code intent before making changes, provide concrete code changes rather than vague suggestions.

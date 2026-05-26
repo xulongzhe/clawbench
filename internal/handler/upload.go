@@ -22,6 +22,9 @@ func maxUploadSize() int64 {
 }
 
 // UploadFile handles POST /api/upload/file
+// Accepts an optional "dir" form field. When provided, the file is saved to
+// that directory (validated and resolved against the project root). When
+// omitted, the file is saved to .clawbench/uploads/ (chat attachment flow).
 func UploadFile(w http.ResponseWriter, r *http.Request) {
 	projectPath, ok := requireProject(w, r)
 	if !ok {
@@ -65,11 +68,35 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create uploads directory
-	uploadsDir := filepath.Join(projectPath, ".clawbench", "uploads")
-	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
-		model.WriteError(w, model.Internal(fmt.Errorf("failed to create uploads directory")))
-		return
+	// Determine target directory: custom dir or default .clawbench/uploads/
+	var targetDir string
+	var customDir bool
+	dir := r.FormValue("dir")
+	if dir != "" {
+		// Custom directory: validate and resolve
+		customDir = true
+		dirAbs, ok := resolveAbsPath(w, r, dir)
+		if !ok {
+			return
+		}
+		dirInfo, err := os.Stat(dirAbs)
+		if err != nil {
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "DirectoryNotFound")
+			return
+		}
+		if !dirInfo.IsDir() {
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "NotADirectory")
+			return
+		}
+		targetDir = dirAbs
+	} else {
+		// Default: .clawbench/uploads/
+		customDir = false
+		targetDir = filepath.Join(projectPath, ".clawbench", "uploads")
+		if err := os.MkdirAll(targetDir, 0755); err != nil {
+			model.WriteError(w, model.Internal(fmt.Errorf("failed to create uploads directory")))
+			return
+		}
 	}
 
 	// Generate filename: use original name, append sequential number if exists
@@ -78,15 +105,23 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	// Replace spaces with underscores for safety
 	nameWithoutExt = strings.ReplaceAll(nameWithoutExt, " ", "_")
 	filename := nameWithoutExt + ext
-	dstPath := filepath.Join(uploadsDir, filename)
+	dstPath := filepath.Join(targetDir, filename)
 	if _, err := os.Stat(dstPath); err == nil {
 		for i := 1; i <= 9999; i++ {
 			filename = fmt.Sprintf("%s_%d%s", nameWithoutExt, i, ext)
-			dstPath = filepath.Join(uploadsDir, filename)
+			dstPath = filepath.Join(targetDir, filename)
 			if _, err := os.Stat(dstPath); err != nil {
 				break
 			}
 		}
+	}
+
+	// For custom dir: validate the final destination path is under WatchDir
+	// (defense-in-depth: resolveAbsPath already validated dir, but filepath.Join
+	// could theoretically produce unexpected results)
+	if customDir && !isPathUnderBase(dstPath, model.WatchDir) {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+		return
 	}
 
 	// Create destination file
@@ -105,7 +140,16 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return relative path
-	relativePath := filepath.Join(".clawbench", "uploads", filename)
+	var relativePath string
+	if customDir {
+		relPath, err := filepath.Rel(projectPath, dstPath)
+		if err != nil {
+			relPath = filepath.Join(dir, filename)
+		}
+		relativePath = relPath
+	} else {
+		relativePath = filepath.Join(".clawbench", "uploads", filename)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

@@ -149,9 +149,11 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE IF NOT EXISTS tts_summaries (
-			cache_key TEXT PRIMARY KEY,
-			summary TEXT NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			message_id   INTEGER NOT NULL,
+			tts_summary  TEXT NOT NULL,
+			created_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(message_id)
 		);
 		CREATE TABLE IF NOT EXISTS terminal_quick_commands (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

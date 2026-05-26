@@ -75,9 +75,6 @@
       :currentModelId="identity.currentModelId.value"
       :currentModelName="identity.currentModelName.value"
       :currentThinkingEffort="identity.currentThinkingEffort.value"
-      :thinkingEffortLevels="agents.getAgentThinkingEffortLevels(identity.currentAgentId.value)"
-      :agentModels="agents.getAgentModels(identity.currentAgentId.value)"
-      :isMultiModel="(id) => agents.isMultiModel(id)"
       :currentAgentId="identity.currentAgentId.value"
       :active="props.active"
       @send="sendMessage"
@@ -587,7 +584,7 @@ const removeEventHandler = onEvent((event, data) => {
 
 // Handle summary_update from WebSocket (dispatched by useGlobalEvents as custom event)
 function handleSummaryUpdate(e) {
-    const data = (e as CustomEvent).detail
+    const data = e.detail
     if (!data?.targetID) return
     const msgId = String(data.targetID)
     const msg = messages.value.find(m => String(m.id) === msgId)

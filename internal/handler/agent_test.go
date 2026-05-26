@@ -292,3 +292,196 @@ func TestAgentPatch_MethodNotAllowed(t *testing.T) {
 
 	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
 }
+
+func TestAgentRefreshModels_Success(t *testing.T) {
+	tmpDir, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Override DiscoverModels for testing
+	origDiscover := model.DiscoverModels
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		if spec.Backend == "codebuddy" {
+			return []model.AgentModel{
+				{ID: "glm-6", Name: "GLM 6", Default: true},
+				{ID: "glm-5.1", Name: "GLM 5.1"},
+			}
+		}
+		return nil
+	}
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	// Create model cache dir and set global
+	cacheDir := filepath.Join(tmpDir, "model-cache")
+	require.NoError(t, os.MkdirAll(cacheDir, 0755))
+	origCacheDir := model.ModelCacheDir
+	model.ModelCacheDir = cacheDir
+	defer func() { model.ModelCacheDir = origCacheDir }()
+
+	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+
+	models, ok := resp["models"].([]any)
+	require.True(t, ok, "response should contain models array")
+	assert.Len(t, models, 2)
+
+	// Verify in-memory agent models were updated
+	assert.Equal(t, "glm-6", model.Agents["codebuddy"].Models[0].ID)
+	assert.Equal(t, "glm-5.1", model.Agents["codebuddy"].Models[1].ID)
+
+	// Verify cache file was written
+	cached := model.ReadModelCache(cacheDir, "codebuddy")
+	require.NotNil(t, cached)
+	assert.Len(t, cached, 2)
+	assert.Equal(t, "glm-6", cached[0].ID)
+}
+
+func TestAgentRefreshModels_AgentNotFound(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodPost, "/api/agents/nonexistent/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestAgentRefreshModels_DiscoveryNotSupported(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// gemini backend has no model discovery capability
+	// Add a gemini agent for this test
+	model.Agents["gemini"] = &model.Agent{ID: "gemini", Backend: "gemini"}
+	model.AgentList = append(model.AgentList, model.Agents["gemini"])
+
+	req := newRequest(t, http.MethodPost, "/api/agents/gemini/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAgentRefreshModels_DiscoveryFails(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Override DiscoverModels to return nil (simulating discovery failure)
+	origDiscover := model.DiscoverModels
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		return nil
+	}
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	// When discovery returns no models:
+	// - If CLI is on PATH but returns empty: 500 (ModelDiscoveryFailed)
+	// - If CLI is NOT on PATH: 404 (CLINotFound)
+	// CI may not have codebuddy installed, so accept either
+	assert.True(t, w.Code == http.StatusInternalServerError || w.Code == http.StatusNotFound,
+		"expected 500 or 404, got %d", w.Code)
+}
+
+func TestServeAgentSubRoutes_RefreshModels(t *testing.T) {
+	tmpDir, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Override DiscoverModels for testing
+	origDiscover := model.DiscoverModels
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		if spec.Backend == "codebuddy" {
+			return []model.AgentModel{{ID: "glm-6", Name: "GLM 6", Default: true}}
+		}
+		return nil
+	}
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	// Create model cache dir and set global
+	cacheDir := filepath.Join(tmpDir, "model-cache")
+	require.NoError(t, os.MkdirAll(cacheDir, 0755))
+	origCacheDir := model.ModelCacheDir
+	model.ModelCacheDir = cacheDir
+	defer func() { model.ModelCacheDir = origCacheDir }()
+
+	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentSubRoutes, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestServeAgentSubRoutes_NotFound(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodGet, "/api/agents/codebuddy/something-else", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentSubRoutes, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestServeAgentRefreshModels_MethodNotAllowed(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodGet, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+}
+
+func TestServeAgentRefreshModels_EmptyAgentID(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodPost, "/api/agents//refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeAgentRefreshModels_InvalidAgentID(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Path with extra slashes: /api/agents/foo/bar/refresh-models
+	req := newRequest(t, http.MethodPost, "/api/agents/foo/bar/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeAgentRefreshModels_CLINotFound(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Override DiscoverModels to return nil, simulating CLI not available
+	origDiscover := model.DiscoverModels
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		return nil
+	}
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	// Use claude agent (which has DiscoverModelsFunc) — CLI likely not on CI
+	req := newRequest(t, http.MethodPost, "/api/agents/claude/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	// Should be either 404 (CLINotFound) or 500 (ModelDiscoveryFailed)
+	assert.True(t, w.Code == http.StatusNotFound || w.Code == http.StatusInternalServerError,
+		"expected 404 or 500, got %d", w.Code)
+}

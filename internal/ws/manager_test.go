@@ -24,7 +24,7 @@ func TestManager_Subscribe(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	sub := mgr.Subscribe(nil, &writeMu, "client-1")
+	sub := mgr.Subscribe(nil, &writeMu, "client-1", "")
 	if sub == nil {
 		t.Fatal("expected non-nil subscription")
 	}
@@ -37,15 +37,32 @@ func TestManager_Subscribe(t *testing.T) {
 	}
 }
 
+func TestManager_Subscribe_StoresLocale(t *testing.T) {
+	mgr := newTestManager(nil)
+	var writeMu sync.Mutex
+
+	sub := mgr.Subscribe(nil, &writeMu, "client-locale", "zh")
+	if sub == nil {
+		t.Fatal("expected non-nil subscription")
+	}
+
+	sub.mu.Lock()
+	locale := sub.locale
+	sub.mu.Unlock()
+	if locale != "zh" {
+		t.Errorf("expected locale %q, got %q", "zh", locale)
+	}
+}
+
 func TestManager_SubscribeReplacesExisting(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu1, writeMu2 sync.Mutex
 
-	sub1 := mgr.Subscribe(nil, &writeMu1, "client-1")
+	sub1 := mgr.Subscribe(nil, &writeMu1, "client-1", "en")
 	_ = sub1
 
-	// Second subscribe with same clientID should replace the first
-	sub2 := mgr.Subscribe(nil, &writeMu2, "client-1")
+	// Second subscribe with same clientID should replace the first and update locale
+	sub2 := mgr.Subscribe(nil, &writeMu2, "client-1", "zh")
 
 	mgr.mu.Lock()
 	stored := mgr.subscriptions["client-1"]
@@ -53,14 +70,19 @@ func TestManager_SubscribeReplacesExisting(t *testing.T) {
 	if stored != sub2 {
 		t.Error("expected subscription to be replaced")
 	}
+	sub2.mu.Lock()
+	if sub2.locale != "zh" {
+		t.Errorf("expected locale to be updated to %q, got %q", "zh", sub2.locale)
+	}
+	sub2.mu.Unlock()
 }
 
 func TestManager_SubscribeMultipleClients(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu1, writeMu2 sync.Mutex
 
-	sub1 := mgr.Subscribe(nil, &writeMu1, "client-1")
-	sub2 := mgr.Subscribe(nil, &writeMu2, "client-2")
+	sub1 := mgr.Subscribe(nil, &writeMu1, "client-1", "")
+	sub2 := mgr.Subscribe(nil, &writeMu2, "client-2", "")
 
 	// Both should exist independently
 	mgr.mu.Lock()
@@ -82,7 +104,7 @@ func TestManager_Unsubscribe(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.DisconnectClient("client-1")
 
 	mgr.mu.Lock()
@@ -104,7 +126,7 @@ func TestManager_RegisterPushID(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("test-reg-id", "client-1")
 
 	mgr.mu.Lock()
@@ -124,10 +146,10 @@ func TestManager_RegisterPushID_Dedup(t *testing.T) {
 	var writeMu1, writeMu2 sync.Mutex
 
 	// Two clients, same pushRegID (same device reconnecting)
-	mgr.Subscribe(nil, &writeMu1, "client-1")
+	mgr.Subscribe(nil, &writeMu1, "client-1", "")
 	mgr.RegisterPushID("shared-reg-id", "client-1")
 
-	mgr.Subscribe(nil, &writeMu2, "client-2")
+	mgr.Subscribe(nil, &writeMu2, "client-2", "")
 	mgr.RegisterPushID("shared-reg-id", "client-2")
 
 	// Client-2 should have the regID
@@ -161,7 +183,7 @@ func TestManager_BroadcastEvent_Disconnected(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.DisconnectClient("client-1")
 
 	// Broadcast while disconnected — should buffer
@@ -197,7 +219,7 @@ func TestManager_BroadcastEvent_JPushWhenDisconnected(t *testing.T) {
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -211,7 +233,7 @@ func TestManager_BroadcastEvent_JPushDisabled(t *testing.T) {
 	mgr := newTestManager(nil) // nil jpush = disabled
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -225,8 +247,8 @@ func TestManager_BroadcastEvent_MultipleClients(t *testing.T) {
 	var writeMu1, writeMu2 sync.Mutex
 
 	// Two clients subscribed
-	mgr.Subscribe(nil, &writeMu1, "client-1")
-	mgr.Subscribe(nil, &writeMu2, "client-2")
+	mgr.Subscribe(nil, &writeMu1, "client-1", "")
+	mgr.Subscribe(nil, &writeMu2, "client-2", "")
 
 	// Disconnect both
 	mgr.DisconnectClient("client-1")
@@ -288,7 +310,7 @@ func TestCleanupStale_NoPushRegID(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.DisconnectClient("client-1")
 
 	// Set bufferStart to just past staleNoPushTimeout — should be cleaned up (no pushRegID)
@@ -313,7 +335,7 @@ func TestCleanupStale_NoPushRegID_RecentNotCleaned(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.DisconnectClient("client-1")
 
 	// Set bufferStart to well before staleNoPushTimeout — should NOT be cleaned up
@@ -338,7 +360,7 @@ func TestCleanupStale_WithPushRegID(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -380,7 +402,7 @@ func TestCleanupStale_RecentNotCleaned(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	// Not unsubscribing — conn is active, should not be cleaned
 
 	mgr.CleanupStale()
@@ -432,7 +454,7 @@ func TestBroadcastEvent_BufferWindow(t *testing.T) {
 	mgr := newTestManager(nil)
 	var writeMu sync.Mutex
 
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.DisconnectClient("client-1")
 
 	// Within buffer window (10s) — should buffer
@@ -489,7 +511,7 @@ func TestManager_BroadcastEvent_JPushAlert_WithSessionTitle(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -542,7 +564,7 @@ func TestManager_BroadcastEvent_JPushAlert_WithResponsePreview(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -559,8 +581,8 @@ func TestManager_BroadcastEvent_JPushAlert_WithResponsePreview(t *testing.T) {
 	}
 	mgr.BroadcastEvent(msg)
 
-	// Without session title, notification title stays as default
-	if receivedTitle != "AI任务完成" {
+	// Without session title, notification title stays as default (i18n-based, defaults to English)
+	if receivedTitle != "AI Task Completed" {
 		t.Errorf("expected default title, got %q", receivedTitle)
 	}
 	// Short preview should pass through unchanged (under pushAlertMaxRunes)
@@ -595,7 +617,7 @@ func TestManager_BroadcastEvent_JPushAlert_TruncatesLongPreview(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -655,7 +677,7 @@ func TestManager_BroadcastEvent_JPushAlert_WithoutTitleOrPreview(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -671,10 +693,10 @@ func TestManager_BroadcastEvent_JPushAlert_WithoutTitleOrPreview(t *testing.T) {
 	}
 	mgr.BroadcastEvent(msg)
 
-	if receivedTitle != "AI任务完成" {
+	if receivedTitle != "AI Task Completed" {
 		t.Errorf("expected default title, got %q", receivedTitle)
 	}
-	if receivedAlert != "AI会话已结束" {
+	if receivedAlert != "AI session ended" {
 		t.Errorf("expected default alert, got %q", receivedAlert)
 	}
 }
@@ -705,7 +727,7 @@ func TestManager_BroadcastEvent_JPushAlert_TaskUpdate(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -748,7 +770,7 @@ func TestManager_BroadcastEvent_JPushNotSentForRunning(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -795,7 +817,7 @@ func TestManager_BroadcastEvent_JPushSentForCompleted(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -834,7 +856,7 @@ func TestManager_BroadcastEvent_JPushNotSentForTaskRunning(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -873,7 +895,7 @@ func TestManager_BroadcastEvent_JPushSentForCancelled(t *testing.T) {
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -916,13 +938,13 @@ func TestManager_BroadcastEvent_JPushDedupSameRegID(t *testing.T) {
 
 	// Client-1: disconnected, has pushRegID
 	var writeMu1 sync.Mutex
-	mgr.Subscribe(nil, &writeMu1, "client-1")
+	mgr.Subscribe(nil, &writeMu1, "client-1", "")
 	mgr.RegisterPushID("reg-shared", "client-1")
 	mgr.DisconnectClient("client-1")
 
 	// Client-2: disconnected, manually set same pushRegID
 	var writeMu2 sync.Mutex
-	mgr.Subscribe(nil, &writeMu2, "client-2")
+	mgr.Subscribe(nil, &writeMu2, "client-2", "")
 	mgr.DisconnectClient("client-2")
 	mgr.mu.Lock()
 	s2 := mgr.subscriptions["client-2"]
@@ -972,7 +994,7 @@ func TestManager_BroadcastEvent_JPushExtras_SessionWithProjectPath(t *testing.T)
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -1028,7 +1050,7 @@ func TestManager_BroadcastEvent_JPushExtras_TaskWithSessionAndProjectPath(t *tes
 
 	mgr := newTestManager(jpush)
 	var writeMu sync.Mutex
-	mgr.Subscribe(nil, &writeMu, "client-1")
+	mgr.Subscribe(nil, &writeMu, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
@@ -1081,13 +1103,13 @@ func TestManager_BroadcastEvent_JPushWhenNoWS(t *testing.T) {
 
 	// Client-1: disconnected, has pushRegID
 	var writeMu1 sync.Mutex
-	mgr.Subscribe(nil, &writeMu1, "client-1")
+	mgr.Subscribe(nil, &writeMu1, "client-1", "")
 	mgr.RegisterPushID("reg-123", "client-1")
 	mgr.DisconnectClient("client-1")
 
 	// Client-2: disconnected, same pushRegID (simulating same device)
 	var writeMu2 sync.Mutex
-	mgr.Subscribe(nil, &writeMu2, "client-2")
+	mgr.Subscribe(nil, &writeMu2, "client-2", "")
 	mgr.DisconnectClient("client-2")
 	mgr.mu.Lock()
 	s2 := mgr.subscriptions["client-2"]

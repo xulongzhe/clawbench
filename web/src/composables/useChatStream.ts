@@ -264,10 +264,25 @@ export function useChatStream(options: UseChatStreamOptions) {
       if (!guard()) return
       resetStreamTimeout()
       // AutoResumeBackend detected ExitPlanMode and will auto-resume.
-      // Clear the streaming message's blocks so that resume content
-      // starts fresh — prevents duplicate rendering of pre-resume
-      // content (Issue #60).
-      streamingMsg.blocks = []
+      // Phase 1 content is already finalized in the DB — keep the current
+      // streamingMsg visible (user sees their Phase 1 reply) and create a
+      // NEW streaming message for Phase 2. This prevents:
+      //   1. Phase 1 content visually disappearing (blocks=[] was too aggressive)
+      //   2. guard() stale-reference issues if loadHistory replaces messages
+      // Finalize the Phase 1 message (remove streaming flag so it stays visible)
+      delete streamingMsg.streaming
+      // Create a new Phase 2 streaming message
+      messages.value.push({
+        role: 'assistant',
+        content: '',
+        blocks: [],
+        streaming: true,
+        createdAt: new Date().toISOString(),
+        backend: currentBackend.value
+      })
+      // Re-acquire from the reactive array so subsequent mutations go through Vue's proxy
+      streamingMsg = messages.value[messages.value.length - 1]
+      onRenderNeeded()
       debouncedRender()
     })
 

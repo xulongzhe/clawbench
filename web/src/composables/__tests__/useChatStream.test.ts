@@ -1267,4 +1267,155 @@ describe('useChatStream', () => {
       expect(options.onNotification).toHaveBeenCalled()
     })
   })
+
+  describe('resume_split event (AutoResume)', () => {
+    it('should finalize Phase 1 message and create new Phase 2 streaming message', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      // Phase 1: accumulate some content
+      es.simulate('content', { content: 'Phase 1 content' })
+
+      // Verify we have exactly 1 streaming assistant message
+      const streamingBefore = options.messages.value.filter(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(streamingBefore.length).toBe(1)
+      expect(streamingBefore[0].blocks[0].text).toBe('Phase 1 content')
+
+      // Trigger resume_split
+      es.simulate('resume_split', {})
+
+      // Phase 1 message should be finalized (no longer streaming)
+      const finalizedMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && !m.streaming && m.blocks?.some((b: any) => b.text === 'Phase 1 content')
+      )
+      expect(finalizedMsg).toBeDefined()
+      expect(finalizedMsg.streaming).toBeUndefined()
+      expect(finalizedMsg.blocks[0].text).toBe('Phase 1 content')
+
+      // Phase 2: new streaming message should be created
+      const streamingAfter = options.messages.value.filter(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(streamingAfter.length).toBe(1)
+      expect(streamingAfter[0].blocks).toEqual([])
+    })
+
+    it('should route Phase 2 content to the new streaming message', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      // Phase 1 content
+      es.simulate('content', { content: 'Phase 1' })
+      es.simulate('resume_split', {})
+
+      // Phase 2 content — should go to the NEW streaming message
+      es.simulate('content', { content: 'Phase 2' })
+
+      // Phase 1 message should NOT have Phase 2 content
+      const phase1Msg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && !m.streaming && m.blocks?.some((b: any) => b.text === 'Phase 1')
+      )
+      expect(phase1Msg).toBeDefined()
+      expect(phase1Msg.blocks.every((b: any) => !b.text?.includes('Phase 2'))).toBe(true)
+
+      // Phase 2 streaming message should have Phase 2 content
+      const phase2Msg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(phase2Msg).toBeDefined()
+      expect(phase2Msg.blocks[0].text).toBe('Phase 2')
+    })
+
+    it('should keep Phase 1 content visible (not cleared)', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      // Phase 1: add text and tool_use
+      es.simulate('content', { content: 'Before ExitPlanMode' })
+      es.simulate('tool_use', { name: 'ExitPlanMode', id: 'epm-1', input: {} })
+      es.simulate('tool_use', { name: 'ExitPlanMode', id: 'epm-1', done: true })
+
+      // resume_split
+      es.simulate('resume_split', {})
+
+      // Phase 1 message should retain all its blocks
+      const phase1Msg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && !m.streaming
+      )
+      expect(phase1Msg).toBeDefined()
+      expect(phase1Msg.blocks.length).toBe(2) // text + tool_use
+      expect(phase1Msg.blocks[0].text).toBe('Before ExitPlanMode')
+      expect(phase1Msg.blocks[1].name).toBe('ExitPlanMode')
+    })
+
+    it('should maintain guard validity after resume_split', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      es.simulate('content', { content: 'Phase 1' })
+      es.simulate('resume_split', {})
+
+      // After resume_split, Phase 2 streaming message should be in messages array
+      // so guard() still works — content events should be accepted
+      es.simulate('content', { content: ' Phase 2' })
+      es.simulate('thinking', { text: 'thinking...' })
+
+      const phase2Msg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(phase2Msg).toBeDefined()
+      expect(phase2Msg.blocks.length).toBe(2) // text + thinking
+    })
+
+    it('should create Phase 2 message with correct backend', () => {
+      const options = createOptions()
+      options.currentBackend.value = 'claude-code'
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      es.simulate('resume_split', {})
+
+      const phase2Msg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(phase2Msg).toBeDefined()
+      expect(phase2Msg.backend).toBe('claude-code')
+    })
+
+    it('should call onRenderNeeded on resume_split', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      options.onRenderNeeded.mockClear()
+
+      es.simulate('resume_split', {})
+
+      expect(options.onRenderNeeded).toHaveBeenCalled()
+    })
+  })
 })

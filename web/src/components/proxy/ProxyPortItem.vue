@@ -14,6 +14,9 @@
         <button class="port-action-btn open" @click.stop="$emit('openExternal', localPort, protocol, host)" :title="t('proxy.openInBrowser')">
           <ExternalLink :size="14" />
         </button>
+        <button class="port-action-btn reconnect" :class="{ spinning: reconnecting }" :disabled="reconnecting" @click.stop="$emit('reconnect', localPort)" :title="t('proxy.reconnectPort')">
+          <RotateCcw :size="14" />
+        </button>
         <button class="port-action-btn edit" @click.stop="$emit('edit', localPort)" :title="t('common.edit')">
           <Pencil :size="14" />
         </button>
@@ -32,7 +35,7 @@
 </template>
 
 <script setup>
-import { Box, ExternalLink, Pencil, Trash2 } from 'lucide-vue-next'
+import { Box, ExternalLink, RotateCcw, Pencil, Trash2 } from 'lucide-vue-next'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -46,9 +49,10 @@ const props = defineProps({
   protocol: { type: String, default: 'http' },
   active: { type: Boolean, default: false },
   tunnelDisconnected: { type: Boolean, default: false },
+  reconnecting: { type: Boolean, default: false },
 })
 
-defineEmits(['open', 'openExternal', 'edit', 'remove'])
+defineEmits(['open', 'openExternal', 'reconnect', 'edit', 'remove'])
 
 const hasDetail = computed(() => {
   return props.port !== props.localPort || props.host || props.name
@@ -188,6 +192,20 @@ const statusTitle = computed(() => {
   background: var(--bg-tertiary, #f0f0f0);
 }
 
+.port-action-btn.reconnect:hover {
+  color: #22c55e;
+  background: var(--bg-tertiary, #f0f0f0);
+}
+
+.port-action-btn.reconnect.spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+.port-action-btn.reconnect:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .port-action-btn.edit:hover {
   color: #f59e0b;
   background: var(--bg-tertiary, #f0f0f0);
@@ -196,6 +214,11 @@ const statusTitle = computed(() => {
 .port-action-btn.delete:hover {
   color: #dc3545;
   background: var(--bg-tertiary, #f0f0f0);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Bottom row: secondary info */

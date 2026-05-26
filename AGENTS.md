@@ -49,13 +49,13 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 
 **Packages:**
 - `internal/handler/` — HTTP/SSE endpoints. All `/api/` routes use `middleware.Auth` (localhost bypass for CLI). Key: `chat_stream.go`, `file.go`/`file_ops.go`/`file_thumb.go`/`file_archive.go`, `file_watch.go`, `events.go`, `git.go` (history/branch/worktree/tag CRUD + swipe-to-delete + parameter injection protection).
-- `internal/service/` — Business logic: chat persistence, scheduler (`robfig/cron/v3`), SQLite, ProxyRegistry, session runtime, EventBus (`eventbus.go`).
+- `internal/service/` — Business logic: chat persistence, chat auto-summary (`summary.go`, `AsyncSummarize`), scheduler (`robfig/cron/v3`), SQLite, ProxyRegistry, session runtime, EventBus (`eventbus.go`).
 - `internal/ai/` — AI backend abstraction. `AIBackend` interface → `CLIBackend` base (each backend provides CLI args + `LineParser`) → `AutoResumeBackend` wraps claude/codebuddy/qoder/deepseek/pi (ExitPlanMode → cancel → resume "继续"). Factory: `factory.go`.
 - `internal/model/` — Data models, config, structured errors (`NotFound`/`Forbidden`/`Internal`), `BackendRegistry` (backend specs + model discovery). Model cache (`.clawbench/model-cache/`); `ModelsAutoDetected` flag distinguishes auto-discovered vs. user-defined model lists.
 - `internal/cli/` — AI agent self-service: `task` (CRUD + trigger + `list-exec`), `rag` (search), `migrate`.
 - `internal/middleware/` — Auth, request logging, panic recovery, request ID.
 - `internal/speech/` — TTS: MiniMax/Edge TTS (cloud), Piper/Kokoro/MOSS-Nano (local).
-- `internal/summarize/` — Text summarization for TTS/task summaries (AI backends, OpenAI/Anthropic HTTP, text cleanup).
+- `internal/summarize/` — Text summarization for chat auto-summary, TTS, and task summaries (AI backends, OpenAI/Anthropic HTTP, text cleanup). `extractTextFromBlocks` exported for shared use.
 - `internal/ssh/` — SSH tunnel server (direct-tcpip, password auth, auto host key). Publishes `tunnel_status` via EventBus.
 - `internal/proxy/` — HTTP reverse proxy (`reverse_proxy.go`) + port forwarding logic. Solves SSH tunnel's TCP-level Host header mismatch for virtual-host backends by rewriting Host to match the original target. Privileged ports (< 1024) auto-remapped to non-privileged range for Android/non-root compatibility.
 - `internal/rag/` — RAG: DuckDB vector store, Ollama BGE-M3 embeddings, chunking, indexing, search.
@@ -66,25 +66,27 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 **Agent system:** `config/agents/*.yaml` defines agents (id, backend, system_prompt, optional model, thinking_effort). Models and thinking levels auto-discovered at runtime via `BackendRegistry` strategies (`ListModelsCmd+ParseModels` or `DiscoverModelsFunc`). First run: `SyncDiscoverModels` (sync); background: `AsyncRefreshModelCache`. User-defined models preserved; only auto-detected lists refreshed. `config/rules.md` injected into system prompts with `{{AVAILABLE_AGENTS}}`, `{{PORT}}`, `{{PROJECT_PATH}}` placeholders.
 
 **Core data flows:**
-- **Chat:** POST `/api/ai/chat` → resolve agent → `ExecuteStream()` spawns CLI → `LineParser` → SSE → SQLite. EventBus: `session_start` / `session_complete`.
+- **Chat:** POST `/api/ai/chat` → resolve agent → `ExecuteStream()` spawns CLI → `LineParser` → SSE → SQLite. EventBus: `session_start` / `session_complete`. Session complete triggers `AsyncSummarize` for last assistant message if `chat_summary` enabled.
+- **Chat auto-summary:** `AsyncSummarize` generates summary on session complete → saves to `summaries` table → WS `summary_update` event → frontend `SummaryToggle` (button/tab modes) toggles summary display. `tts_summaries` table (keyed by `message_id`) replaces old `cache_key`-based table.
 - **Real-time events:** State change → `ws.Manager.BroadcastEvent()` → WS if connected; JPush if disconnected + configured; buffer for replay if neither. Client sends `ack`.
 - **System events SSE:** `GET /api/events` streams 6 types: `session_start`, `session_complete`, `message_new`, `task_update`, `task_exec_update`, `tunnel_status`. Lightweight payloads (IDs + status only); clients `fullStateSync()` via REST on reconnect.
 - **Push flow:** Android fetches config from `/api/push/config` → init JPush → reports Registration ID via `POST /api/push/register` (login-level lifecycle). Background: push available → disconnect WS (JPush delivers); push unavailable → keep WS alive.
 - **Scheduled tasks:** POST `/api/tasks` → cron → chat session → AI backend. `CLAWBENCH_SCHEDULED=1` for anti-recursion. Managed via `clawbench task` CLI.
 - **Soft-delete:** Chat sessions/messages use `deleted=1` (RAG still searchable). `CleanupWorker` purges past retention. Tasks use hard delete.
+- **Chat auto-summary:** On session complete, `AsyncSummarize` generates a summary of the last assistant message and stores it in the `summaries` table (unified for chat + task). Frontend `SummaryToggle` component provides button mode (in `ChatMessageItem` meta bar) and tab mode (in `TaskExecDetail`). WS `summary_update` event pushes new summaries in real time. `tts_summaries` table uses `message_id` (replaces old `cache_key`). Config: `summarize.chat_summary` (default: true, `*bool` nil=true).
 
 ### Frontend (Vue 3 + TypeScript)
 
 **Source root:** `web/src/` — No Vue Router, drawer-based single-page layout. Single `reactive()` store in `stores/app.ts`.
 
 **Composables by function:**
-- **Chat:** `useChatSession` (CRUD), `useChatStream` (SSE + reconnect + polling), `useChatRender` (block parsing + coalescing), `useAutoSpeech` (TTS), `useQuickSend` (SQLite CRUD), `useSessionIdentity` (model/thinking persistence), `useLocalhostAnnotation` (localhost URL detection + port-forward/WebView buttons; App mode only), `useWorktreeAnnotation` (worktree path detection + switch/browse buttons; list-based cache, coexists with file path annotation).
-- **Connectivity:** `useReconnect` (generic exponential backoff), `useFileRefresh` (file change + flash highlight), `useSystemEvents` (SSE singleton, 6 event types, 5 reconnect → HTTP polling fallback, visibility-aware), `useGlobalEvents` (WS singleton, push-aware background strategy).
+- **Chat:** `useChatSession` (CRUD), `useChatStream` (SSE + reconnect + polling), `useChatRender` (block parsing + coalescing), `useAutoSpeech` (TTS, `messageId`-based), `useQuickSend` (SQLite CRUD), `useSessionIdentity` (model/thinking persistence), `useLocalhostAnnotation` (localhost URL detection + port-forward/WebView buttons; App mode only), `useWorktreeAnnotation` (worktree path detection + switch/browse buttons; list-based cache, coexists with file path annotation). Chat summary state (`showingSummary`) managed per-message via `chatSessionUtils`.
+- **Connectivity:** `useReconnect` (generic exponential backoff), `useFileRefresh` (file change + flash highlight), `useSystemEvents` (SSE singleton, 6 event types, 5 reconnect → HTTP polling fallback, visibility-aware), `useGlobalEvents` (WS singleton, push-aware background strategy, `summary_update` event handling), `usePortForward` (port forwarding CRUD, reconnect button, pre-open tunnel health check).
 - **Navigation:** `useBackHandler` (global back navigation registry for drill-down pages), `useEdgeSwipeBack` (right-edge swipe gesture for back navigation on mobile).
 - **Terminal:** `useTerminalSession` (WS lifecycle), `useTerminalKeys` (modifier state machine), `useTerminalGestures` (swipe/pinch), `useTerminalViewport` (xterm.js + keyboard avoidance).
 - **Git:** `useSwipeDelete` (direction-locked swipe-to-delete with offset clamping), `useCommitNavigation` (commit/branch navigation state), `useSwipeSession` (chat session swipe switching, toggle-able via settings).
 
-**Components:** `ChatPanel`, `FileManager`/`FileViewer`, `TaskTab` (4-level breadcrumb), `TerminalPanel` (xterm.js + virtual keys + gestures), `GitGraph`, `GitManageContent` (3-tab: Worktree/Branches/Tags), `SwipeToDeleteRow`, `BottomSheet`, `Lightbox`, `PopupMenu` (auto-positioning).
+**Components:** `ChatPanel`, `FileManager`/`FileViewer`, `TaskTab` (4-level breadcrumb), `TerminalPanel` (xterm.js + virtual keys + gestures), `GitGraph`, `GitManageContent` (3-tab: Worktree/Branches/Tags), `SwipeToDeleteRow`, `BottomSheet`, `Lightbox`, `PopupMenu` (auto-positioning), `SummaryToggle` (button/tab mode toggle for chat/task summaries).
 
 **Vite:** `hljsThemeWrapper` plugin for light/dark coexistence. Root `web/`, output `public/`. Alias `@` → `web/src/`.
 
@@ -105,6 +107,7 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 - **Edge swipe back:** `useBackHandler` provides a global registry for back navigation on drill-down pages (file browser, git history, settings, tasks). `useEdgeSwipeBack` detects right-edge swipe gestures for back navigation on mobile. Android `onBackPressed` delegates to JS layer — handled by JS prevents exit, unhandled falls through to native `super.onBackPressed()`.
 - **Swipe session toggle:** `useSwipeSession` controls whether left/right swipe in chat area switches sessions. Default off to prevent accidental switches when scrolling wide content (code blocks, tables). Togglable via Settings → Chat.
 - **Push notification preview:** Task completion push notifications include response preview text (last text after tool_use block) and `Done:` prefix. Session title used as notification title on completed/cancelled tasks.
+- **Port forward reconnect & health check:** `usePortForward` adds a reconnect button for disconnected tunnels. Before opening a localhost URL, the system auto-checks tunnel health; if unhealthy, it attempts reconnection before proceeding. Android `BackgroundService.forceReconnectTunnel()` provides native-level reconnect.
 - **Coverage gate (CI 合入门槛):** Two-tier check. Tier 1 (Project): per-package/directory coverage `>= baseline% - 1.5%`, baseline from CI artifact. Tier 2 (Diff): changed lines coverage `>= 80%`. CI enforces on every PR/push to main.
 - **Bugfix workflow (GitHub Issues):** All AI agents should report newly discovered bugs as GitHub Issues (`gh issue create`). A scheduled task runs hourly to auto-fix open issues: fetches open issues without any `bugfix:*` label (sorted by creation time) → evaluates complexity → claims and fixes in bugfix worktree (`.worktrees/bugfix`) → writes test → builds → starts on port 20100 → auto-verifies → updates issue with result. Max 3 fixes per run. Merge to main requires manual trigger. Issue labels track state: none = pending, `bugfix:in-progress` = AI claimed, `bugfix:awaiting-review` = fixed awaiting human verification, `bugfix:needs-design` = too complex for auto-fix (skipped), `bugfix:failed` = auto-fix failed. Human closes issue after verification.
 
@@ -121,7 +124,7 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 | Recent Projects | `recent_projects.max_count` (10, configurable limit for header dropdown) |
 | TLS | `tls.enabled`, `tls.cert_file`, `tls.key_file` |
 | TTS | `tts.engine`, `tts.speed`, `tts.voice`, `tts.max_cache_files` (100, auto-eviction) |
-| Summarize | `summarize.backend` ("simple"), `summarize.model`, `summarize.api` (unified for TTS + task summaries) |
+| Summarize | `summarize.backend` ("simple"), `summarize.model`, `summarize.api` (unified for TTS + task summaries), `summarize.chat_summary` (true, auto-summarize chat on session complete; `*bool` nil=true) |
 | Port Forward | `port_forward.enabled` (true), `port_forward.port` (0=auto), `port_forward.host_key`, `port_forward.allowed_ports` (""=all) |
 | RAG | `rag.enabled`, `rag.ollama_base_url`, `rag.ollama_model` (bge-m3), `rag.chunk_size` (512), `rag.retention_days` (90) |
 | Terminal | `terminal.enabled` (true), `terminal.idle_timeout` (10m), `terminal.max_sessions` (10) |

@@ -28,11 +28,8 @@
               <template v-if="isRunning(exec)">
                 <span class="exec-running-dot"></span>
                 <span class="exec-running-label">{{ t('task.exec.running') }}</span>
-                <span class="exec-relative-time">{{ formatRelativeTime(exec.createdAt) }}</span>
               </template>
               <template v-else>
-                <span class="exec-absolute-time">{{ formatAbsoluteTime(exec.createdAt) }}</span>
-                <span class="exec-relative-time">{{ formatRelativeTime(exec.createdAt) }}</span>
                 <span v-if="isUnreadDisplay(exec)" class="exec-unread-dot"></span>
               </template>
               <span v-if="exec.triggerType === 'manual'" class="exec-trigger-type manual">{{ t('task.exec.manual') }}</span>
@@ -83,7 +80,7 @@ import { useI18n } from 'vue-i18n'
 import { Square, Loader2, History, Trash2, RefreshCw } from 'lucide-vue-next'
 import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import { useTaskHistory } from '@/composables/useTaskHistory.ts'
-import { formatDuration, formatRelativeTime } from '@/utils/format.ts'
+import { formatDuration } from '@/utils/format.ts'
 
 const props = defineProps({
   task: Object,
@@ -136,17 +133,6 @@ function formatTokens(meta) {
   if (meta.inputTokens) parts.push(`${meta.inputTokens.toLocaleString()}↑`)
   if (meta.outputTokens) parts.push(`${meta.outputTokens.toLocaleString()}↓`)
   return parts.join(' ')
-}
-
-function formatAbsoluteTime(createdAt) {
-  const d = new Date(createdAt)
-  const y = d.getFullYear()
-  const mo = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  const h = String(d.getHours()).padStart(2, '0')
-  const mi = String(d.getMinutes()).padStart(2, '0')
-  const s = String(d.getSeconds()).padStart(2, '0')
-  return `${y}-${mo}-${day} ${h}:${mi}:${s}`
 }
 
 /** Set up IntersectionObserver for infinite scroll */
@@ -350,20 +336,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.exec-absolute-time {
-  font-size: 13px;
-  color: var(--text-primary, #1a1a1a);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.exec-relative-time {
-  font-size: 12px;
-  color: var(--text-muted, #9ca3af);
-  white-space: nowrap;
 }
 
 /* ── Unread dot (static) ── */
