@@ -88,6 +88,21 @@ merge_base = sys.argv[3] if len(sys.argv) > 3 else ""
 TIER1_TOLERANCE = 1.5
 DIFF_THRESHOLD = 80.0
 
+# ── Exempt files ─────────────────────────────────────────────────
+# Files exempt from coverage gates because they contain code that is
+# fundamentally untestable without integration setup (CLI subprocess
+# spawning, system-level port detection, etc.).
+exempt_files = {
+    "cmd/server/main.go",                    # package main: -coverprofile empty in certain modes
+    "internal/ai/cli_backend.go",            # ExecuteStream spawns CLI subprocesses
+    "internal/ai/codex_stream.go",           # ExecuteStream spawns CLI subprocesses
+    "internal/ai/vecli.go",                  # ExecuteStream spawns CLI subprocesses
+    "internal/ai/vecli_stream.go",           # parseVeCLISessionSummary: integration-only
+    "internal/model/discovery.go",           # model discovery spawns CLI subprocesses and reads external files
+    "internal/handler/chat.go",              # executeStreamRun ctx.Done needs mock AI backend + goroutine sync
+    "internal/service/scheduler.go",         # executeTask spawns CLI subprocesses
+}
+
 # ── Colors ──────────────────────────────────────────────────────
 BOLD = "\033[1m"
 RED = "\033[0;31m"
@@ -106,14 +121,49 @@ result = subprocess.run(
 )
 output = result.stdout + result.stderr
 
-current = {}
+# First pass: get raw per-package coverage from go test -cover
+current_raw = {}
 for line in output.split("\n"):
     m = re.search(r'^[ok?]{2}\s+(\S+)\s+.*?coverage:\s+([\d.]+)%', line)
     if m:
         pkg = m.group(1)
         if "node_modules" in pkg or "vendor" in pkg:
             continue
-        current[pkg] = float(m.group(2))
+        current_raw[pkg] = float(m.group(2))
+
+# Second pass: recalculate from coverprofile excluding exempt files
+current = dict(current_raw)
+if coverage_profile:
+    try:
+        pkg_stmts = defaultdict(lambda: {"covered": 0, "total": 0})
+        with open(coverage_profile) as f:
+            for line in f:
+                if line.startswith("mode:"):
+                    continue
+                m = re.match(r'(\S+):(\d+)\.\d+,(\d+)\.\d+\s+(\d+)\s+(\d+)', line.strip())
+                if not m:
+                    continue
+                file_path = m.group(1)
+                num_stmts = int(m.group(4))
+                count = int(m.group(5))
+                # Check exemption
+                is_exempt = False
+                for ef in exempt_files:
+                    if file_path.endswith("/" + ef) or file_path == ef:
+                        is_exempt = True
+                        break
+                if is_exempt:
+                    continue
+                pkg = "/".join(file_path.split("/")[:-1])
+                if pkg.startswith("clawbench/"):
+                    pkg_stmts[pkg]["total"] += num_stmts
+                    if count > 0:
+                        pkg_stmts[pkg]["covered"] += num_stmts
+        for pkg, data in pkg_stmts.items():
+            if data["total"] > 0:
+                current[pkg] = round((data["covered"] / data["total"]) * 100, 1)
+    except Exception:
+        pass  # Fall back to raw coverage
 
 # ══════════════════════════════════════════════════════════════════
 # TIER 1: Project Gate
@@ -183,6 +233,15 @@ else:
 
             if is_deleted:
                 continue  # Skip this entry — it's deleted code
+
+            # Check if this file is exempt from coverage gates
+            is_exempt = False
+            for ef in exempt_files:
+                if file_path.endswith("/" + ef) or file_path == ef:
+                    is_exempt = True
+                    break
+            if is_exempt:
+                continue  # Skip this entry — exempt file
 
             pkg = "/".join(file_path.split("/")[:-1])
             if pkg.startswith("clawbench/"):
@@ -286,20 +345,7 @@ else:
             for ln in range(start_line, end_line + 1):
                 line_coverage[file_path][ln] = covered
 
-    # Files exempt from Tier 2 because they contain code that is fundamentally
-    # untestable without integration setup (CLI subprocess spawning, system-level
-    # port detection, etc.). This is more precise than exempting entire packages —
-    # testable files within previously-exempt packages are now checked normally.
-    exempt_files = {
-        "cmd/server/main.go",                    # package main: -coverprofile empty in certain modes
-        "internal/ai/cli_backend.go",            # ExecuteStream spawns CLI subprocesses
-        "internal/ai/codex_stream.go",           # ExecuteStream spawns CLI subprocesses
-        "internal/ai/vecli.go",                  # ExecuteStream spawns CLI subprocesses
-        "internal/ai/vecli_stream.go",           # parseVeCLISessionSummary: integration-only
-        "internal/model/discovery.go",           # model discovery spawns CLI subprocesses and reads external files
-        "internal/handler/chat.go",              # executeStreamRun ctx.Done needs mock AI backend + goroutine sync
-        "internal/service/scheduler.go",         # executeTask spawns CLI subprocesses
-    }
+    # Use the global exempt_files (defined above Tier 1)
 
     # Cross-reference: match git diff files with coverage profile files
     diff_stats = {}
