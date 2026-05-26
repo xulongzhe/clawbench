@@ -39,7 +39,7 @@ var BackendRegistry = []BackendSpec{
 		DiscoverModelsFunc: DiscoverClaudeModels,
 		ThinkingEffortLevels: []string{"low", "medium", "high", "xhigh", "max"}},
 	{ID: "codebuddy", Backend: "codebuddy", DefaultCmd: "codebuddy", Name: "Codebuddy", Icon: "🐛", Specialty: "全栈开发助手",
-		ListModelsCmd: []string{"--help"}, ParseModels: ParseCodebuddyModels,
+		DiscoverModelsFunc: DiscoverCodebuddyModels,
 		ThinkingEffortLevels: []string{"low", "medium", "high", "xhigh"}},
 	{ID: "opencode", Backend: "opencode", DefaultCmd: "opencode", Name: "OpenCode", Icon: "📟", Specialty: "终端编码工具",
 		ListModelsCmd: []string{"models"}, ParseModels: ParseOpenCodeModels,
@@ -400,12 +400,125 @@ func MergeDiscoveredData(cacheDir string, present ...map[string]bool) {
 	}
 }
 
-// codebuddyModelRe extracts model IDs from codebuddy --help output.
+// codebuddyModelIDRe matches GLM model IDs like "glm-5.1", "glm-4.7-flash", "glm-5-turbo", "glm-4.6v-flash", "glm-4-32b", "glm-4.7-flashx", etc.
+// Excludes internal JS variable references like "glm-4p5" (without dots) which are minified names.
+var codebuddyModelIDRe = regexp.MustCompile(`\bglm-\d+(?:\.\d+)?v?(?:-\w+)*\b`)
+
+// codebuddyExcludeModelRe matches model IDs that are JS minified variable references, not real model IDs.
+// E.g. "glm-4p5" is the minified variable for "glm-4.5", "glm-4p7" for "glm-4.7", "glm-5p1" for "glm-5.1"
+var codebuddyExcludeModelRe = regexp.MustCompile(`\bglm-\dp\d\b`)
+
+// codebuddyKnownModels is a curated list of known codebuddy model IDs for deduplication and ordering.
+// Models not in this list are still included but appear after known ones.
+var codebuddyKnownModels = []string{
+	"glm-5.1", "glm-5", "glm-5-turbo", "glm-5v-turbo",
+	"glm-4.7", "glm-4.7-flash", "glm-4.7-flashx",
+	"glm-4.6", "glm-4.6v", "glm-4.6v-flash",
+	"glm-4.5", "glm-4.5-air", "glm-4.5v",
+	"glm-4-32b",
+}
+
+// DiscoverCodebuddyModels discovers Codebuddy model IDs by scanning the headless JS bundle.
+// Codebuddy's --help command launches an interactive TUI that hangs without a TTY,
+// so we extract model IDs from the installed JS files instead (similar to Claude's strings approach).
+func DiscoverCodebuddyModels() []AgentModel {
+	// Find the codebuddy binary path
+	path, err := exec.LookPath("codebuddy")
+	if err != nil {
+		return nil
+	}
+
+	// Resolve symlink to find the actual installation directory
+	// Path is typically: .../node_modules/@tencent-ai/codebuddy-code/bin/codebuddy
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		realPath = path
+	}
+
+	// The JS bundles are in .../codebuddy-code/dist/codebuddy-headless.js and .../dist/codebuddy.js
+	// From .../bin/codebuddy: Dir → .../bin, Dir again → .../codebuddy-code
+	pkgDir := filepath.Dir(filepath.Dir(realPath))
+	distDir := filepath.Join(pkgDir, "dist")
+	candidates := []string{
+		filepath.Join(distDir, "codebuddy-headless.js"),
+		filepath.Join(distDir, "codebuddy.js"),
+	}
+
+	var data []byte
+	for _, f := range candidates {
+		d, err := os.ReadFile(f)
+		if err == nil {
+			data = d
+			break
+		}
+	}
+
+	if len(data) == 0 {
+		slog.Debug("codebuddy model discovery: no JS bundle found", "path", distDir)
+		return nil
+	}
+
+	// Extract model IDs using regex on the minified JS content
+	// Split by commas/semicolons first to avoid matching across variable boundaries
+	content := string(data)
+	// Replace common JS separators with spaces for better tokenization
+	for _, sep := range []string{",", ";", "(", ")", "[", "]", "{", "}", ":", "=", "'", "`", "\""} {
+		content = strings.ReplaceAll(content, sep, " ")
+	}
+
+	matches := codebuddyModelIDRe.FindAllString(content, -1)
+	seen := make(map[string]bool)
+	var models []AgentModel
+
+	// First, add known models in preferred order
+	knownSet := make(map[string]bool)
+	for _, id := range codebuddyKnownModels {
+		knownSet[id] = true
+	}
+	for _, id := range codebuddyKnownModels {
+		if !seen[id] {
+			for _, m := range matches {
+				if m == id {
+					seen[id] = true
+					models = append(models, AgentModel{
+						ID:      id,
+						Name:    id,
+						Default: len(models) == 0,
+					})
+					break
+				}
+			}
+		}
+	}
+
+	// Then add any remaining discovered models not in the known list
+	for _, m := range matches {
+		if seen[m] || codebuddyExcludeModelRe.MatchString(m) {
+			continue
+		}
+		seen[m] = true
+		models = append(models, AgentModel{
+			ID:   m,
+			Name: m,
+		})
+	}
+
+	if len(models) == 0 {
+		slog.Debug("codebuddy model discovery: no models found in JS bundle")
+		return nil
+	}
+
+	slog.Info("codebuddy model discovery succeeded", "models", len(models))
+	return models
+}
+
+// codebuddyModelRe extracts model IDs from codebuddy --help output (legacy, kept for ParseCodebuddyModels).
 // Format: "Currently supported: (glm-4.7, glm-4.6, ...)"
 var codebuddyModelRe = regexp.MustCompile(`Currently supported: \(([^)]+)\)`)
 
 // ParseCodebuddyModels parses codebuddy --help output to extract model IDs.
 // Output format: "... --model <model>  Model for the current session. ... Currently supported: (glm-4.7, glm-4.6, ...)"
+// Deprecated: codebuddy --help launches a TUI that hangs without a TTY; use DiscoverCodebuddyModels instead.
 func ParseCodebuddyModels(output string) []AgentModel {
 	matches := codebuddyModelRe.FindStringSubmatch(output)
 	if len(matches) < 2 {

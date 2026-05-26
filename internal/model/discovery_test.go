@@ -366,9 +366,8 @@ func TestBackendRegistry_ModelDiscoveryConfig(t *testing.T) {
 		specs[s.ID] = s
 	}
 
-	// codebuddy should have model discovery
-	assert.NotEmpty(t, specs["codebuddy"].ListModelsCmd, "codebuddy should have ListModelsCmd")
-	assert.NotNil(t, specs["codebuddy"].ParseModels, "codebuddy should have ParseModels")
+	// codebuddy should have model discovery via DiscoverModelsFunc (JS bundle scanning)
+	assert.NotNil(t, specs["codebuddy"].DiscoverModelsFunc, "codebuddy should have DiscoverModelsFunc")
 
 	// opencode should have model discovery
 	assert.NotEmpty(t, specs["opencode"].ListModelsCmd, "opencode should have ListModelsCmd")
@@ -382,10 +381,14 @@ func TestBackendRegistry_ModelDiscoveryConfig(t *testing.T) {
 	assert.NotEmpty(t, specs["pi"].ListModelsCmd, "pi should have ListModelsCmd")
 	assert.NotNil(t, specs["pi"].ParseModels, "pi should have ParseModels")
 
-	// claude, gemini, codex, qoder, vecli should NOT have model discovery
-	for _, id := range []string{"claude", "gemini", "codex", "qoder", "vecli"} {
+	// claude should have model discovery via DiscoverModelsFunc (binary strings scanning)
+	assert.NotNil(t, specs["claude"].DiscoverModelsFunc, "claude should have DiscoverModelsFunc")
+
+	// gemini, codex, qoder, vecli should NOT have model discovery
+	for _, id := range []string{"gemini", "codex", "qoder", "vecli"} {
 		assert.Empty(t, specs[id].ListModelsCmd, "%s should not have ListModelsCmd", id)
 		assert.Nil(t, specs[id].ParseModels, "%s should not have ParseModels", id)
+		assert.Nil(t, specs[id].DiscoverModelsFunc, "%s should not have DiscoverModelsFunc", id)
 	}
 }
 
@@ -495,8 +498,7 @@ func TestFindSpecByBackend_Found(t *testing.T) {
 	require.NotNil(t, spec)
 	assert.Equal(t, "codebuddy", spec.Backend)
 	assert.Equal(t, "codebuddy", spec.DefaultCmd)
-	assert.NotEmpty(t, spec.ListModelsCmd)
-	assert.NotNil(t, spec.ParseModels)
+	assert.NotNil(t, spec.DiscoverModelsFunc, "codebuddy should have DiscoverModelsFunc")
 }
 
 func TestFindSpecByBackend_NotFound(t *testing.T) {
@@ -816,6 +818,40 @@ func TestDiscoverClaudeModels_WithRealCLI(t *testing.T) {
 	assert.True(t, models[0].Default, "first model should be default")
 
 	t.Logf("Discovered %d Claude models:", len(models))
+	for _, m := range models {
+		t.Logf("  %s (%s) default=%v", m.ID, m.Name, m.Default)
+	}
+}
+
+// --- Test 12b: DiscoverCodebuddyModels ---
+
+func TestDiscoverCodebuddyModels_WithRealCLI(t *testing.T) {
+	if !model.CheckCLIExists("codebuddy") {
+		t.Skip("codebuddy not installed, skipping integration test")
+	}
+
+	models := model.DiscoverCodebuddyModels()
+	if len(models) == 0 {
+		t.Skip("codebuddy model discovery returned no models (JS bundle may not be found)")
+	}
+
+	// All models should have glm- prefixed IDs
+	for _, m := range models {
+		assert.True(t, strings.HasPrefix(m.ID, "glm-"), "model ID should start with glm-, got: %s", m.ID)
+		assert.NotEmpty(t, m.Name, "model should have a name")
+	}
+
+	// First model should be default
+	assert.True(t, models[0].Default, "first model should be default")
+
+	// Should not contain minified variable references like glm-4p5
+	for _, m := range models {
+		assert.NotContains(t, m.ID, "p5", "should not contain minified variable reference: %s", m.ID)
+		assert.NotContains(t, m.ID, "p7", "should not contain minified variable reference: %s", m.ID)
+		assert.NotContains(t, m.ID, "p1", "should not contain minified variable reference: %s", m.ID)
+	}
+
+	t.Logf("Discovered %d Codebuddy models:", len(models))
 	for _, m := range models {
 		t.Logf("  %s (%s) default=%v", m.ID, m.Name, m.Default)
 	}
