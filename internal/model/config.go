@@ -223,7 +223,9 @@ func PersistCookieToken(token string) {
 	if BinDir == "" {
 		return
 	}
-	path := BinDir + "/.clawbench/cookie-token"
+	dir := BinDir + "/.clawbench"
+	os.MkdirAll(dir, 0755) // best-effort: if this fails, WriteFile will also fail
+	path := dir + "/cookie-token"
 	if err := os.WriteFile(path, []byte(token), 0600); err != nil {
 		// Non-fatal: cookie will simply not survive restart; user re-logs in.
 		_ = err

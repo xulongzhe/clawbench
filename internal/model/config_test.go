@@ -86,3 +86,81 @@ func TestApplyDefaults_SHA256PasswordRemovesAutoPasswordFile(t *testing.T) {
 	_, err := os.Stat(autoFile)
 	assert.True(t, os.IsNotExist(err), "auto-password file should be removed when SHA-256 password is set")
 }
+
+// --- ISS-117/131/183: GenerateRandomToken, PersistCookieToken, LoadCookieToken ---
+
+func TestGenerateRandomToken_Length(t *testing.T) {
+	token := GenerateRandomToken(32)
+	// 32 bytes = 64 hex chars
+	assert.Len(t, token, 64)
+}
+
+func TestGenerateRandomToken_Uniqueness(t *testing.T) {
+	token1 := GenerateRandomToken(32)
+	token2 := GenerateRandomToken(32)
+	assert.NotEqual(t, token1, token2, "two random tokens should differ")
+}
+
+func TestGenerateRandomToken_HexChars(t *testing.T) {
+	token := GenerateRandomToken(16)
+	for _, c := range token {
+		assert.True(t, (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'),
+			"token should only contain hex chars, got: %c", c)
+	}
+}
+
+func TestPersistAndLoadCookieToken(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := BinDir
+	BinDir = tmpDir
+	defer func() { BinDir = origBinDir }()
+
+	token := GenerateRandomToken(32)
+	PersistCookieToken(token)
+
+	loaded := LoadCookieToken()
+	assert.Equal(t, token, loaded)
+}
+
+func TestLoadCookieToken_NoFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := BinDir
+	BinDir = tmpDir
+	defer func() { BinDir = origBinDir }()
+
+	// No file exists yet
+	loaded := LoadCookieToken()
+	assert.Equal(t, "", loaded)
+}
+
+func TestLoadCookieToken_EmptyBinDir(t *testing.T) {
+	origBinDir := BinDir
+	BinDir = ""
+	defer func() { BinDir = origBinDir }()
+
+	loaded := LoadCookieToken()
+	assert.Equal(t, "", loaded, "empty BinDir should return empty token")
+}
+
+func TestPersistCookieToken_EmptyBinDir(t *testing.T) {
+	origBinDir := BinDir
+	BinDir = ""
+	defer func() { BinDir = origBinDir }()
+
+	// Should not panic
+	PersistCookieToken("some-token")
+}
+
+func TestPersistCookieToken_WriteFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := BinDir
+	BinDir = tmpDir
+	defer func() { BinDir = origBinDir }()
+
+	// Create .clawbench as a read-only file (not a directory) to cause WriteFile to fail
+	clawbenchDir := filepath.Join(tmpDir, ".clawbench")
+	require.NoError(t, os.WriteFile(clawbenchDir, []byte("not-a-dir"), 0600))
+
+	// Should not panic — error is silently ignored
+	PersistCookieToken("some-token")
+}
