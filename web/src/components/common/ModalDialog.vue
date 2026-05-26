@@ -80,7 +80,7 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 44px 2px 48px;
+  padding: 44px 20px 48px;
   animation: modal-fadeIn 0.2s ease;
 }
 
@@ -90,7 +90,7 @@ defineExpose({
 
 .modal-dialog {
   background: var(--bg-secondary, #fff);
-  border-radius: 12px;
+  border-radius: 0;
   width: 100%;
   max-height: 100%;
   height: auto;
