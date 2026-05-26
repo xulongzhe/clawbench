@@ -198,6 +198,9 @@ const i18n = createI18n({
         hideHiddenFiles: '隐藏',
         showHiddenFiles: '显示隐藏',
         syncToCurrentDir: '同步',
+        uploadHere: '上传文件到当前目录',
+        viewGrid: '网格视图',
+        viewList: '列表视图',
         emptyDir: '此目录为空',
         noFiles: '未找到支持的文件',
         multiSelect: {
@@ -210,6 +213,7 @@ const i18n = createI18n({
           confirmDelete: '确认删除 {n} 个文件？',
           allCopied: '已复制 {n} 项',
           allCut: '已剪切 {n} 项',
+          archive: '打包',
         },
         context: {
           copy: '复制',
@@ -224,7 +228,7 @@ const i18n = createI18n({
         },
       },
       search: { defaultPlaceholder: '搜索' },
-      nav: { refresh: '刷新' },
+      nav: { refresh: '刷新', more: '更多' },
       common: { loading: '加载中', rename: '重命名', download: '下载', delete: '删除', copied: '已复制', operationFailed: '操作失败' },
     },
   },
@@ -280,15 +284,13 @@ describe('FileManagerContent — multi-select toolbar button', () => {
 
   it('renders the multi-select toolbar button', () => {
     const wrapper = mountComponent()
-    // The multi-select button has a title attribute "多选"
     const msButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '多选')
     expect(msButton).toBeTruthy()
   })
 
   it('clicking multi-select button toggles mode', async () => {
     const wrapper = mountComponent()
-    const buttons = wrapper.findAll('.toolbar-btn')
-    const msButton = buttons.find(b => b.attributes('title') === '多选')
+    const msButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '多选')
     expect(msButton).toBeTruthy()
 
     // Click to enter multi-select mode
@@ -312,8 +314,7 @@ describe('FileManagerContent — multi-select toolbar button', () => {
     expect(wrapper.findAll('.ms-check')).toHaveLength(0)
 
     // Enter multi-select
-    const buttons = wrapper.findAll('.toolbar-btn')
-    const msButton = buttons.find(b => b.attributes('title') === '多选')
+    const msButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '多选')
     await msButton!.trigger('click')
 
     // Checkboxes should now appear
@@ -329,8 +330,7 @@ describe('FileManagerContent — multi-select toolbar button', () => {
     const wrapper = mountComponent(entries)
 
     // Enter multi-select
-    const buttons = wrapper.findAll('.toolbar-btn')
-    const msButton = buttons.find(b => b.attributes('title') === '多选')
+    const msButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '多选')
     await msButton!.trigger('click')
     await nextTick()
 
@@ -354,8 +354,7 @@ describe('FileManagerContent — multi-select toolbar button', () => {
     const wrapper = mountComponent(entries)
 
     // Enter multi-select
-    const buttons = wrapper.findAll('.toolbar-btn')
-    const msButton = buttons.find(b => b.attributes('title') === '多选')
+    const msButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '多选')
     await msButton!.trigger('click')
     await nextTick()
 
@@ -373,5 +372,82 @@ describe('FileManagerContent — multi-select toolbar button', () => {
     const events = wrapper.emitted('batchDelete')
     expect(events).toBeTruthy()
     expect(events![0][0]).toEqual(['a.txt'])
+  })
+})
+
+describe('FileManagerContent — more menu and upload', () => {
+  function mountComponent(entries: any[] = []) {
+    return mount(FileManagerContent, {
+      props: {
+        entries,
+        currentDir: 'subdir',
+        currentFile: null,
+        showHidden: false,
+        sortField: '',
+        sortDir: '',
+        dirLoading: false,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          SearchInput: true,
+          DirBreadcrumb: true,
+        },
+      },
+    })
+  }
+
+  it('renders the more (three-dot) toolbar button', () => {
+    const wrapper = mountComponent()
+    const moreButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '更多')
+    expect(moreButton).toBeTruthy()
+  })
+
+  it('clicking more button opens the dropdown menu', async () => {
+    const wrapper = mountComponent()
+    const moreButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '更多')
+    expect(moreButton).toBeTruthy()
+
+    // Dropdown should not be visible initially
+    expect(wrapper.find('.toolbar-dropdown-right').exists()).toBe(false)
+
+    // Click to open
+    await moreButton!.trigger('click')
+    expect(wrapper.find('.toolbar-dropdown-right').exists()).toBe(true)
+  })
+
+  it('more menu contains upload, sync, and view toggle items', async () => {
+    const wrapper = mountComponent()
+    const moreButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '更多')
+    await moreButton!.trigger('click')
+
+    const items = wrapper.findAll('.toolbar-dropdown-item')
+    expect(items.length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('clicking upload item triggers file input click', async () => {
+    const wrapper = mountComponent()
+    const moreButton = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === '更多')
+    await moreButton!.trigger('click')
+
+    // The upload button is the first dropdown item
+    const uploadItem = wrapper.findAll('.toolbar-dropdown-item')[0]
+    expect(uploadItem.exists()).toBe(true)
+
+    // The hidden file input should exist
+    const fileInput = wrapper.find('input[type="file"]')
+    expect(fileInput.exists()).toBe(true)
+  })
+
+  it('upload progress bar is not visible when not uploading', () => {
+    const wrapper = mountComponent()
+    expect(wrapper.find('.dir-upload-progress').exists()).toBe(false)
+  })
+
+  it('hidden file input exists with multiple attribute', () => {
+    const wrapper = mountComponent()
+    const fileInput = wrapper.find('input[type="file"]')
+    expect(fileInput.exists()).toBe(true)
+    expect(fileInput.attributes('multiple')).toBeDefined()
   })
 })

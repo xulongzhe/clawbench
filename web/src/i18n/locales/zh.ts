@@ -388,6 +388,7 @@ export default {
     hideHiddenFiles: '隐藏隐藏文件',
     showHiddenFiles: '显示隐藏文件',
     syncToCurrentDir: '同步到当前文件目录',
+    uploadHere: '上传文件到当前目录',
     truncateHint: '仅展示前 {max} 项（共 {total} 项），请使用搜索精确定位',
     alreadyInDir: '已在当前文件目录',
     emptyDir: '此目录为空',

@@ -388,6 +388,7 @@ export default {
     hideHiddenFiles: 'Hide hidden files',
     showHiddenFiles: 'Show hidden files',
     syncToCurrentDir: 'Sync to current file directory',
+    uploadHere: 'Upload files here',
     truncateHint: 'Showing first {max} of {total} items, use search to narrow down',
     alreadyInDir: 'Already in current directory',
     emptyDir: 'This directory is empty.',
