@@ -57,7 +57,7 @@ func TestUploadFile_DefaultDir(t *testing.T) {
 		// Path should be under .clawbench/uploads/
 		pathStr, ok := result["path"].(string)
 		assert.True(t, ok)
-		assert.Contains(t, pathStr, ".clawbench/uploads/hello.txt")
+		assert.Contains(t, filepath.ToSlash(pathStr), ".clawbench/uploads/hello.txt")
 
 		// File should exist on disk
 		fullPath := filepath.Join(env.ProjectDir, pathStr)
@@ -226,7 +226,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 
 		pathStr, ok := result["path"].(string)
 		assert.True(t, ok)
-		assert.Contains(t, pathStr, "subdir/test.txt")
+		assert.Contains(t, filepath.ToSlash(pathStr), "subdir/test.txt")
 
 		// Verify file on disk
 		fullPath := filepath.Join(env.ProjectDir, pathStr)
@@ -313,7 +313,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		var result map[string]interface{}
 		json.Unmarshal(w.Body.Bytes(), &result)
 		pathStr := result["path"].(string)
-		assert.Contains(t, pathStr, "a/b/c/deep.txt")
+		assert.Contains(t, filepath.ToSlash(pathStr), "a/b/c/deep.txt")
 	})
 
 	t.Run("AbsoluteDirPath_UnderWatchDir_Succeeds", func(t *testing.T) {
