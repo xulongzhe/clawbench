@@ -16,13 +16,15 @@ describe('useAgents', () => {
   const { agents, defaultAgentId, loadAgents, getAgentIcon, getAgentName,
     isDefaultAgent, getDefaultModelId, getAgentModels, isMultiModel,
     getAgent, getAgentModel, getAgentDefaultModelName, agentHeaderTitle,
-    syncModelFromAgent, getAgentThinkingEffortLevels, hasThinkingEffortLevels } = useAgents()
+    syncModelFromAgent, getAgentThinkingEffortLevels, hasThinkingEffortLevels,
+    updateAgentField, canRefreshModels } = useAgents()
 
   const testAgents = [
     {
       id: 'claude',
       name: 'Claude',
       icon: '🤖',
+      canRefreshModels: true,
       models: [
         { id: 'claude-3.5', name: 'Claude 3.5 Sonnet', default: true },
         { id: 'claude-3-haiku', name: 'Claude 3 Haiku', default: false },
@@ -33,6 +35,7 @@ describe('useAgents', () => {
       id: 'gpt',
       name: 'GPT-4',
       icon: '🧠',
+      canRefreshModels: true,
       models: [{ id: 'gpt-4o', name: 'GPT-4o', default: true }],
       thinkingEffortLevels: ['low', 'medium', 'high'],
     },
@@ -41,6 +44,7 @@ describe('useAgents', () => {
       name: 'Simple Agent',
       icon: '⚡',
       models: [],
+      canRefreshModels: false,
       // no thinkingEffortLevels — unsupported backend
     },
   ]
@@ -404,6 +408,45 @@ describe('useAgents', () => {
       // Only one API call should have been made (deduplication via loadPromise)
       expect(mockApiGet).toHaveBeenCalledTimes(1)
       expect(agents.value).toHaveLength(3)
+    })
+  })
+
+  // --- canRefreshModels ---
+
+  describe('canRefreshModels', () => {
+    it('returns true for agent with canRefreshModels=true', () => {
+      expect(canRefreshModels('claude')).toBe(true)
+    })
+
+    it('returns true for another agent with canRefreshModels=true', () => {
+      expect(canRefreshModels('gpt')).toBe(true)
+    })
+
+    it('returns false for agent with canRefreshModels=false', () => {
+      expect(canRefreshModels('simple')).toBe(false)
+    })
+
+    it('returns false for unknown agent', () => {
+      expect(canRefreshModels('nonexistent')).toBe(false)
+    })
+
+    it('returns false for empty string', () => {
+      expect(canRefreshModels('')).toBe(false)
+    })
+  })
+
+  // --- updateAgentField ---
+
+  describe('updateAgentField', () => {
+    it('updates a field on an existing agent', () => {
+      expect(getAgent('claude')!.preferredModel).toBeUndefined()
+      updateAgentField('claude', 'preferredModel', 'claude-3-haiku')
+      expect(getAgent('claude')!.preferredModel).toBe('claude-3-haiku')
+    })
+
+    it('does nothing for unknown agent', () => {
+      // Should not throw
+      updateAgentField('nonexistent', 'preferredModel', 'test')
     })
   })
 })

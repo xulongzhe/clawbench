@@ -930,4 +930,281 @@ func TestAsyncRefreshModelCache_DoesNotPanic(t *testing.T) {
 	})
 }
 
+// --- Test 15: CheckCLIExistsErr ---
+
+func TestCheckCLIExistsErr_ExistingCommand(t *testing.T) {
+	// "ls" exists on all platforms
+	err := model.CheckCLIExistsErr("ls")
+	assert.NoError(t, err)
+}
+
+func TestCheckCLIExistsErr_NonExistingCommand(t *testing.T) {
+	err := model.CheckCLIExistsErr("definitely_not_a_real_command_xyz_12345")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found on PATH")
+}
+
+func TestCheckCLIExistsErr_EmptyCommand(t *testing.T) {
+	err := model.CheckCLIExistsErr("")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty command")
+}
+
+// --- Test 16: DiscoverCodebuddyModels with mock product JSON ---
+
+func TestDiscoverCodebuddyModels_ProductJSON(t *testing.T) {
+	// This tests the product.cloudhosted.json parsing path by creating a
+	// temp script that acts as "codebuddy" CLI and placing the product JSON
+	// in the expected directory structure.
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping test that modifies PATH in CI")
+	}
+
+	// Create directory structure: .../bin/fake-codebuddy and .../product.cloudhosted.json
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	// Create a fake "codebuddy" script
+	fakeCLI := filepath.Join(binDir, "codebuddy")
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+
+	// Create product.cloudhosted.json in the parent directory
+	productJSON := `{
+		"models": [
+			{"id": "glm-5.1", "name": "GLM 5.1", "isDefault": true},
+			{"id": "glm-4-flash", "name": "GLM 4 Flash", "isDefault": false},
+			{"id": "deepseek-v3", "name": "DeepSeek V3", "isDefault": false},
+			{"id": "default", "name": "Default", "isDefault": false},
+			{"id": "auto", "name": "Auto", "isDefault": false},
+			{"id": "hunyuan-image-v3.0", "name": "Hunyuan Image", "isDefault": false}
+		]
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+
+	// Add tmpDir/bin to PATH
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverCodebuddyModels()
+	require.NotEmpty(t, models, "should discover models from product JSON")
+
+	// Should contain 3 models (glm-5.1, glm-4-flash, deepseek-v3)
+	// Pseudo-models "default", "auto", and image model should be skipped
+	assert.Len(t, models, 3)
+	assert.Equal(t, "glm-5.1", models[0].ID)
+	assert.Equal(t, "GLM 5.1", models[0].Name)
+	assert.True(t, models[0].Default, "first model should be default")
+	assert.Equal(t, "deepseek-v3", models[2].ID)
+	assert.Equal(t, "DeepSeek V3", models[2].Name)
+
+	// Verify no pseudo-models
+	for _, m := range models {
+		assert.NotEqual(t, "default", m.ID)
+		assert.NotEqual(t, "auto", m.ID)
+		assert.NotEqual(t, "hunyuan-image-v3.0", m.ID)
+	}
+}
+
+func TestDiscoverCodebuddyModels_ProductJSON_EmptyModels(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping test that modifies PATH in CI")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	fakeCLI := filepath.Join(binDir, "codebuddy")
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+
+	// Empty models array
+	productJSON := `{"models": []}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverCodebuddyModels()
+	assert.Nil(t, models, "should return nil when no models in product JSON")
+}
+
+func TestDiscoverCodebuddyModels_ProductJSON_InvalidJSON(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping test that modifies PATH in CI")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	fakeCLI := filepath.Join(binDir, "codebuddy")
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+
+	// Invalid JSON
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte("not json"), 0644))
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverCodebuddyModels()
+	assert.Nil(t, models, "should return nil when product JSON is invalid")
+}
+
+func TestDiscoverCodebuddyModels_ProductJSON_NoFile(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping test that modifies PATH in CI")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	fakeCLI := filepath.Join(binDir, "codebuddy")
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+
+	// No product.cloudhosted.json file created
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverCodebuddyModels()
+	assert.Nil(t, models, "should return nil when product JSON file doesn't exist")
+}
+
+func TestDiscoverCodebuddyModels_NotOnPATH(t *testing.T) {
+	// When codebuddy is not on PATH at all, should return nil
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", "/nonexistent/path"))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverCodebuddyModels()
+	assert.Nil(t, models, "should return nil when codebuddy is not on PATH")
+}
+
+func TestDiscoverCodebuddyModels_ProductJSON_NameFallback(t *testing.T) {
+	// Test the name fallback: when a model has no name, use its ID as name
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping test that modifies PATH in CI")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	fakeCLI := filepath.Join(binDir, "codebuddy")
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+
+	// Model with empty name — should fall back to ID
+	productJSON := `{
+		"models": [
+			{"id": "glm-5.1", "name": "", "isDefault": true}
+		]
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverCodebuddyModels()
+	require.Len(t, models, 1)
+	assert.Equal(t, "glm-5.1", models[0].ID)
+	// Name should fall back to ID when empty in JSON
+	assert.Equal(t, "glm-5.1", models[0].Name)
+}
+
+func TestDiscoverCodebuddyModels_ProductJSON_NoDefault(t *testing.T) {
+	// Test when no model is marked isDefault — first non-skipped model should get Default=true
+	if os.Getenv("CI") != "" {
+		t.Skip("Skipping test that modifies PATH in CI")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	fakeCLI := filepath.Join(binDir, "codebuddy")
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+
+	// No isDefault=true on any model
+	productJSON := `{
+		"models": [
+			{"id": "glm-5.1", "name": "GLM 5.1", "isDefault": false},
+			{"id": "glm-4-flash", "name": "GLM 4 Flash", "isDefault": false}
+		]
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+":"+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverCodebuddyModels()
+	require.Len(t, models, 2)
+	// First model should get Default=true as fallback
+	assert.True(t, models[0].Default, "first model should be default when none marked isDefault")
+	assert.False(t, models[1].Default)
+}
+
+// --- Test 17: MergeDiscoveredData CanRefreshModels ---
+
+func TestMergeDiscoveredData_SetsCanRefreshModels(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	dir := filepath.Join(t.TempDir(), "agents")
+	require.NoError(t, os.MkdirAll(dir, 0755))
+
+	// Create a minimal YAML with codebuddy backend (has model discovery)
+	yamlContent := `id: test-refresh
+name: Test Refresh
+backend: codebuddy
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-refresh.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, model.LoadAgents(dir))
+
+	agent := model.Agents["test-refresh"]
+	require.NotNil(t, agent)
+
+	cacheDir := filepath.Join(t.TempDir(), "model-cache")
+	model.MergeDiscoveredData(cacheDir)
+
+	// codebuddy has DiscoverModelsFunc, so CanRefreshModels should be true
+	assert.True(t, agent.CanRefreshModels, "codebuddy agent should have CanRefreshModels=true")
+}
+
+func TestMergeDiscoveredData_CanRefreshModelsFalseForNoDiscovery(t *testing.T) {
+	t.Cleanup(func() {
+		model.Agents = nil
+		model.AgentList = nil
+	})
+
+	dir := filepath.Join(t.TempDir(), "agents")
+	require.NoError(t, os.MkdirAll(dir, 0755))
+
+	// Create a minimal YAML with gemini backend (no model discovery)
+	yamlContent := `id: test-no-refresh
+name: Test No Refresh
+backend: gemini
+`
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-no-refresh.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, model.LoadAgents(dir))
+
+	agent := model.Agents["test-no-refresh"]
+	require.NotNil(t, agent)
+
+	cacheDir := filepath.Join(t.TempDir(), "model-cache")
+	model.MergeDiscoveredData(cacheDir)
+
+	// gemini has no model discovery, so CanRefreshModels should be false
+	assert.False(t, agent.CanRefreshModels, "gemini agent should have CanRefreshModels=false")
+}
+
 // --- Test 15: ParseCodebuddyModels edge cases ---
