@@ -107,6 +107,7 @@ defineExpose({
   right: 0;
   top: 0;
   background: var(--bg-secondary, #fff);
+  border-top: 1px solid var(--border-color, #e0e0e0);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -119,6 +120,7 @@ defineExpose({
   height: auto;
   max-height: 50%;
   border-radius: 0;
+  border-top: 1px solid var(--border-color, #e0e0e0);
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
 }
 
@@ -241,6 +243,7 @@ defineExpose({
   height: auto;
   max-height: 100%;
   border-radius: 0;
+  border-top: 1px solid var(--border-color, #e0e0e0);
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
 }
 

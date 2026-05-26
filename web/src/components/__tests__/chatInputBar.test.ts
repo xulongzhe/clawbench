@@ -64,6 +64,7 @@ const i18n = createI18n({
           placeholder: '输入消息…',
           placeholderQueue: '排队消息…',
           placeholderOptional: '添加描述（可选）',
+          placeholderQuickSend: '点击可执行快捷指令 →',
           send: '发送',
           enqueue: '排队',
           quickMenu: '快捷指令',

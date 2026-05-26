@@ -81,6 +81,7 @@ export default {
       placeholder: '输入消息...',
       placeholderQueue: '输入消息加入队列...',
       placeholderOptional: '添加描述（可选）...',
+      placeholderQuickSend: '点击可执行快捷指令 →',
       send: '发送',
       enqueue: '加入队列',
       quickMenu: '快捷指令',

@@ -72,9 +72,6 @@
         </div>
       </button>
     </div>
-    <template #footer>
-      <button class="btn btn-secondary" @click="showAgentSelector = false">{{ t('common.cancel') }}</button>
-    </template>
   </ModalDialog>
 </template>
 
@@ -570,20 +567,6 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.btn-secondary {
-  padding: 5px 14px;
-  border: none;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  background: var(--bg-tertiary, #f0f0f0);
-  color: var(--text-primary, #1a1a1a);
-  transition: background 0.15s;
-}
-
-.btn-secondary:hover { background: #e0e0e0; }
 
 .session-list-sentinel {
   height: 1px;

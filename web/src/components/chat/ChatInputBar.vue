@@ -84,7 +84,7 @@
           ref="textareaRef"
           v-model="inputText"
           :disabled="inputDisabled"
-          :placeholder="pendingFiles.length > 0 ? t('chat.input.placeholderOptional') : loading ? t('chat.input.placeholderQueue') : t('chat.input.placeholder')"
+          :placeholder="pendingFiles.length > 0 ? t('chat.input.placeholderOptional') : loading ? t('chat.input.placeholderQueue') : quickSendItems.length > 0 && !hasInputContent ? t('chat.input.placeholderQuickSend') : t('chat.input.placeholder')"
           rows="1"
           @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
           @focus="onTextareaFocus"

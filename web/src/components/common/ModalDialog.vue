@@ -20,7 +20,7 @@
         <div class="modal-body">
           <slot />
         </div>
-        <div v-if="$slots.footer" class="modal-footer">
+        <div class="modal-footer" :class="{ 'modal-footer-default': !$slots.footer }">
           <slot name="footer" />
         </div>
         <slot name="after" />
@@ -90,13 +90,15 @@ defineExpose({
 
 .modal-dialog {
   background: var(--bg-secondary, #fff);
-  border-radius: 0;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 12px;
   width: 100%;
   max-height: 100%;
   height: auto;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
   animation: modal-scaleIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -205,7 +207,15 @@ defineExpose({
   gap: 8px;
   padding: 6px 10px;
   border-top: 1px solid var(--border-color, #e5e5e5);
+  background: color-mix(in srgb, var(--accent-color, #0066cc) 3%, var(--bg-tertiary, #f8f8f8));
   flex-shrink: 0;
   justify-content: flex-end;
+  border-radius: 0 0 12px 12px;
+}
+
+.modal-footer-default {
+  min-height: 8px;
+  padding: 8px 10px;
+  justify-content: center;
 }
 </style>
