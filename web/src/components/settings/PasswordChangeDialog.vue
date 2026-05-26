@@ -7,16 +7,13 @@
         <label class="password-dialog__label">{{ t('settings.currentPassword') }}</label>
         <div class="password-dialog__input-row">
           <input
-            :type="showCurrent ? 'text' : 'password'"
+            type="password"
             class="password-dialog__input"
             v-model="currentPassword"
             :placeholder="t('settings.currentPasswordPlaceholder')"
             @keydown.enter="focusNew"
+            autocomplete="current-password"
           />
-          <button class="password-dialog__toggle" @click="showCurrent = !showCurrent" type="button">
-            <EyeOff v-if="showCurrent" :size="16" />
-            <Eye v-else :size="16" />
-          </button>
         </div>
       </div>
 
@@ -25,16 +22,13 @@
         <div class="password-dialog__input-row">
           <input
             ref="newPasswordRef"
-            :type="showNew ? 'text' : 'password'"
+            type="password"
             class="password-dialog__input"
             v-model="newPassword"
             :placeholder="t('settings.newPasswordPlaceholder')"
             @keydown.enter="focusConfirm"
+            autocomplete="new-password"
           />
-          <button class="password-dialog__toggle" @click="showNew = !showNew" type="button">
-            <EyeOff v-if="showNew" :size="16" />
-            <Eye v-else :size="16" />
-          </button>
         </div>
       </div>
 
@@ -43,16 +37,13 @@
         <div class="password-dialog__input-row">
           <input
             ref="confirmPasswordRef"
-            :type="showConfirm ? 'text' : 'password'"
+            type="password"
             class="password-dialog__input"
             v-model="confirmPassword"
             :placeholder="t('settings.confirmPasswordPlaceholder')"
             @keydown.enter="submit"
+            autocomplete="new-password"
           />
-          <button class="password-dialog__toggle" @click="showConfirm = !showConfirm" type="button">
-            <EyeOff v-if="showConfirm" :size="16" />
-            <Eye v-else :size="16" />
-          </button>
         </div>
       </div>
 
@@ -78,7 +69,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Eye, EyeOff } from 'lucide-vue-next'
 import { apiPost } from '@/utils/api'
 
 const emit = defineEmits<{
@@ -91,9 +81,6 @@ const { t } = useI18n()
 const currentPassword = ref('')
 const newPassword = ref('')
 const confirmPassword = ref('')
-const showCurrent = ref(false)
-const showNew = ref(false)
-const showConfirm = ref(false)
 const submitting = ref(false)
 const localError = ref('')
 const serverError = ref('')
@@ -152,7 +139,6 @@ async function submit() {
     })
     emit('changed', result.needs_restart ?? true)
   } catch (err: any) {
-    // apiPost throws Error with message = data.error string (e.g. "wrong_password")
     const errorCode = err?.message || ''
     if (errorCode === 'wrong_password') {
       serverError.value = t('settings.wrongCurrentPassword')
@@ -216,14 +202,8 @@ function handleClose() {
   margin-bottom: 4px;
 }
 
-.password-dialog__input-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .password-dialog__input {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   padding: 10px 12px;
   font-size: 15px;
@@ -232,21 +212,11 @@ function handleClose() {
   background: var(--bg-secondary);
   color: var(--text-primary);
   outline: none;
+  box-sizing: border-box;
 }
 
 .password-dialog__input:focus {
   border-color: var(--accent-color);
-}
-
-.password-dialog__toggle {
-  flex-shrink: 0;
-  padding: 8px;
-  border: none;
-  border-radius: 8px;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  cursor: pointer;
-  line-height: 1;
 }
 
 .password-dialog__error {
