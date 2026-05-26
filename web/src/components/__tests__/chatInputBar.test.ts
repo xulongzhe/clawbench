@@ -66,6 +66,7 @@ const i18n = createI18n({
           placeholderOptional: '添加描述（可选）',
           send: '发送',
           enqueue: '排队',
+          quickMenu: '快捷指令',
           stopGenerating: '停止生成',
           confirmStop: '确认停止',
         },
@@ -200,6 +201,29 @@ describe('ChatInputBar — input layout', () => {
     const sendBtn = wrapper.find('.chat-send-btn')
     expect(sendBtn.exists()).toBe(true)
     expect(sendBtn.classes()).toContain('queued')
+  })
+
+  it('shows shortcut style (green Zap) when input is empty', () => {
+    const wrapper = mountInputBar()
+    const sendBtn = wrapper.find('.chat-send-btn')
+    expect(sendBtn.exists()).toBe(true)
+    expect(sendBtn.classes()).toContain('shortcut')
+    expect(wrapper.findComponent({ name: 'Zap' }).exists() || sendBtn.find('svg').exists()).toBe(true)
+  })
+
+  it('removes shortcut style when input has content', async () => {
+    const wrapper = mountInputBar()
+    await wrapper.find('.chat-textarea').setValue('hello')
+    await nextTick()
+    const sendBtn = wrapper.find('.chat-send-btn')
+    expect(sendBtn.classes()).not.toContain('shortcut')
+  })
+
+  it('shows shortcut style in queue mode when input is empty', () => {
+    const wrapper = mountInputBar({ loading: true })
+    const sendBtn = wrapper.find('.chat-send-btn')
+    expect(sendBtn.classes()).toContain('queued')
+    expect(sendBtn.classes()).toContain('shortcut')
   })
 
   it('shows stop button when loading', () => {

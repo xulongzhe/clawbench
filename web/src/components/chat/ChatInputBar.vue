@@ -100,9 +100,11 @@
           @focus="onTextareaFocus"
           @blur="onTextareaBlur"
           ></textarea>
-        <button v-if="!stopPrimed" class="chat-send-btn" ref="sendBtnRef" :class="{ queued: loading }" @click.stop="handleSendClick" :title="loading ? t('chat.input.enqueue') : t('chat.input.send')">
+        <button v-if="!stopPrimed" class="chat-send-btn" ref="sendBtnRef" :class="{ queued: loading, shortcut: !hasInputContent }" @click.stop="handleSendClick" :title="!hasInputContent ? t('chat.input.quickMenu') : loading ? t('chat.input.enqueue') : t('chat.input.send')">
+          <!-- Empty input: green lightning (quick-menu shortcut) -->
+          <Zap v-if="!hasInputContent" :size="16" />
           <!-- Queue mode: inbox with down arrow (enqueue) -->
-          <Inbox v-if="loading" :size="16" />
+          <Inbox v-else-if="loading" :size="16" />
           <!-- Normal mode: paper plane (send) -->
           <Send v-else :size="16" />
         </button>
@@ -186,7 +188,7 @@
 <script setup>
 import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { MessageSquare, List, Plus, Trash2, Volume2, Upload, Paperclip, FileImage, FileText, Folder, XCircle, Inbox, Send, Square, Cpu, ChevronDown, Check, Brain } from 'lucide-vue-next'
+import { MessageSquare, List, Plus, Trash2, Volume2, Upload, Paperclip, FileImage, FileText, Folder, XCircle, Inbox, Send, Square, Cpu, ChevronDown, Check, Brain, Zap } from 'lucide-vue-next'
 import { baseName } from '@/utils/path.ts'
 import { computeRecentReferencedFiles, computeHasFileGroups, computeAttachMenuItemCount } from '@/utils/chatInputUtils.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
@@ -964,6 +966,12 @@ defineExpose({
   background: #e67e22;
 }
 .chat-send-btn.queued:hover { background: #d35400; }
+
+/* Send button when input is empty: green lightning (quick-menu shortcut) */
+.chat-send-btn.shortcut {
+  background: #27ae60;
+}
+.chat-send-btn.shortcut:hover { background: #219a52; }
 
 /* Stop button — default: dim red solid */
 .chat-stop-btn {
