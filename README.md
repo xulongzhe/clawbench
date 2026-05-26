@@ -188,6 +188,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - **多 Agent 支持**：全能助手、编码专家、勤杂工等，YAML 配置即插即用
 - **AI 后端切换**：CodeBuddy、Claude Code、OpenCode、Gemini CLI、Codex、Qoder CLI、VeCLI、DeepSeek TUI、Pi，会话级隔离
 - **深度思考档位**：支持按智能体选择思考深度（Auto / Low / Medium / High），Claude/CodeBuddy/OpenCode/Codex/Pi 五后端支持，选择自动持久化
+- **模型选择模态框**：统一模型切换与思考深度选择，双 Tab 界面，搜索过滤，一键刷新模型列表（支持自动发现的智能体），长按设为默认模型
 - **模型选择持久化**：每个智能体的模型选择和思考档位自动保存到 localStorage，刷新/切换会话自动恢复
 - **定时任务**：AI 通过 CLI 子命令创建 Cron 调度，定时自动执行；独立标签页管理，4 级面包屑导航；频率预设（每小时/每天/每周/每月）+ 自定义 Cron 表达式；任务卡片内嵌聊天消息；执行级别已读追踪 + TTS 朗读；执行完成后自动摘要 + 完成通知（音效/震动/Toast）
 - **多会话管理**：创建、切换、删除独立会话，滑动切换
@@ -203,7 +204,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - **深度思考**：复杂任务自动触发 extended thinking，推理过程实时可见
 - **文件路径跳转**：AI 回复中的文件路径可点击跳转
 - **Localhost URL 跳转**：AI 回复中的 localhost URL（如 http://localhost:3000）自动识别并添加打开按钮，App 模式下自动注册端口转发并通过 WebView 打开，无需手动配置
-- **快捷发送**：预设常用指令（继续、编译、提交等），支持拖拽排序，一键发送
+- **快捷发送**：预设常用指令（继续、编译、提交等），支持拖拽排序，一键发送，输入框占位提示当前快捷指令
 - **引用提问**：选中代码或文本，直接向 AI 提问，自动附带上下文
 - **当前目录附加**：聊天输入支持附加当前目录上下文，AI 自动获取目录结构
 - **未读徽章**：聊天面板图标显示未读消息数
@@ -270,7 +271,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - 可安装到主屏幕，独立窗口运行
 
 ### 🔒 安全
-- 可选密码保护（SHA-256 加盐）
+- 可选密码保护（SHA-256 加盐哈希存储，设置面板支持修改密码）
 - 路径穿越防护，所有操作限制在项目目录内
 - Git 参数注入防护（SHA/分支名/标签名校验，`--` 分隔符）
 - 文件上传大小和数量可配置（默认 10MB / 20 个）

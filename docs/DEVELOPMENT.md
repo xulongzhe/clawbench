@@ -232,19 +232,19 @@ chat:
 
 ClawBench 通过调用本地 CLI 实现与 AI 编程工具的交互，无需额外 API Key 配置。
 
-**CodeBuddy 后端**：安装 CodeBuddy CLI 并完成登录认证，确保 `codebuddy` 命令在 PATH 中可用。
+**CodeBuddy 后端**：安装 CodeBuddy CLI 并完成登录认证，确保 `codebuddy` 命令在 PATH 中可用。模型自动发现通过解析安装目录下的 `product.cloudhosted.json` 实现，支持 21+ 模型（GLM、DeepSeek、Kimi、MiniMax、Hunyuan 等）。
 
 **Claude Code 后端**：安装 Claude Code CLI 并完成认证，确保 `claude` 命令在 PATH 中可用。
 
 **OpenCode 后端**：安装 OpenCode CLI 并完成认证，确保 `opencode` 命令在 PATH 中可用。
 
-**Gemini CLI 后端**：安装 Gemini CLI 并完成认证，确保 `gemini` 命令在 PATH 中可用。
+**Gemini CLI 后端**：安装 Gemini CLI 并完成认证，确保 `gemini` 命令在 PATH 中可用。支持 API 方式自动发现可用模型。
 
-**Codex 后端**：安装 OpenAI Codex CLI 并完成认证，确保 `codex` 命令在 PATH 中可用。
+**Codex 后端**：安装 OpenAI Codex CLI 并完成认证，确保 `codex` 命令在 PATH 中可用。模型自动发现通过二进制字符串/状态数据库扫描实现。
 
-**Qoder 后端**：安装 Qoder CLI（阿里编码智能体）并完成认证，确保 `qoder` 命令在 PATH 中可用。Qoder 支持自动模型路由，无需指定具体模型。
+**Qoder 后端**：安装 Qoder CLI（阿里编码智能体）并完成认证，确保 `qoder` 命令在 PATH 中可用。Qoder 支持自动模型路由，无需指定具体模型。模型自动发现通过解析 `dynamic-texts.json` 实现。
 
-**VeCLI 后端**：安装 VeCLI（火山引擎 Doubao）并完成认证，确保 `vecli` 命令在 PATH 中可用。VeCLI 输出纯文本（非 JSON Lines），不支持会话恢复，元数据通过 `--session-summary` 文件在进程退出后提取。
+**VeCLI 后端**：安装 VeCLI（火山引擎 Doubao）并完成认证，确保 `vecli` 命令在 PATH 中可用。VeCLI 输出纯文本（非 JSON Lines），不支持会话恢复，元数据通过 `--session-summary` 文件在进程退出后提取。模型自动发现通过解析 `MODEL_REGISTRY` 实现。
 
 **DeepSeek TUI 后端**：安装 DeepSeek TUI（需 v0.8.33+）并完成认证，确保 `deepseek` 命令在 PATH 中可用。使用 `deepseek exec --auto --output-format stream-json` 模式，原生支持 `--system-prompt`、`--model`、`--resume` 参数。
 
@@ -361,6 +361,7 @@ clawbench/
 │   │   ├── file_thumb.go        # 图片缩略图生成（方形画布 + 主色调填充）
 │   │   ├── file_archive.go      # 文件打包下载（zip，防符号链接穿越）
 │   │   ├── file_watch.go        # 文件变更 SSE 推送
+│   │   ├── settings.go          # 设置（密码修改 + SHA-256 验证）
 │   │   ├── upload.go            # 文件上传
 │   │   ├── git.go               # Git 操作
 │   │   ├── project.go           # 项目管理

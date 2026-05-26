@@ -187,6 +187,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Multi-Agent Support**: General assistant, coding expert, handyman, etc. — YAML config, plug-and-play
 - **AI Backend Switching**: CodeBuddy, Claude Code, OpenCode, Gemini CLI, Codex, Qoder CLI, VeCLI, DeepSeek TUI, Pi — session-level isolation
 - **Thinking Effort Levels**: Per-agent thinking depth selection (Auto / Low / Medium / High), supported by 5 backends (Claude/CodeBuddy/OpenCode/Codex/Pi), selection auto-persisted
+- **Model Selection Modal**: Unified model switching and thinking effort selection in a dual-tab interface, with search filtering, one-click model list refresh (for agents supporting auto-discovery), and long-press to set default model
 - **Model Selection Persistence**: Model choice and thinking effort per agent auto-saved to localStorage, restored on reload/session switch
 - **Scheduled Tasks**: AI creates Cron schedules via CLI subcommands, executes automatically; independent tab with 4-level breadcrumb navigation; task cards embedded in chat messages; frequency presets (hourly/daily/weekly/monthly) + custom cron expressions; per-execution read tracking + TTS playback; execution auto-summary + completion notification (sound/haptic/toast)
 - **Multi-Session Management**: Create, switch, delete independent sessions, swipe to switch
@@ -215,7 +216,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Extended Thinking**: Complex tasks auto-trigger extended thinking, reasoning visible in real time
 - **File Path Navigation**: Clickable file paths in AI responses
 - **Localhost URL Navigation**: localhost URLs in AI responses (e.g., http://localhost:3000) are auto-detected with an open button; in App mode, port forwarding is auto-registered and the URL opens via WebView with zero manual config
-- **Quick Send**: Preset common commands (continue, build, commit, etc.) with drag reorder, one-click send
+- **Quick Send**: Preset common commands (continue, build, commit, etc.) with drag reorder, one-click send, input placeholder hint showing current quick send
 - **Quote & Ask**: Select code or text, ask AI directly, auto-attaches context
 - **Current Directory Attachment**: Chat input supports attaching current directory context, AI auto-gets directory structure
 - **Unread Badge**: Chat panel icon shows unread message count
@@ -282,7 +283,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - Installable to home screen, runs in standalone window
 
 ### 🔒 Security
-- Optional password protection (SHA-256 salted)
+- Optional password protection (SHA-256 salted hash storage, password change available in settings panel)
 - Path traversal protection, all operations restricted to project directory
 - Git parameter injection protection (SHA/branch name/tag name validation, `--` separator)
 - Configurable file upload size and count (default 10MB / 20 files)

@@ -232,19 +232,19 @@ chat:
 
 ClawBench interacts with AI programming tools by calling local CLIs, no extra API key configuration needed.
 
-**CodeBuddy backend**: Install CodeBuddy CLI and complete login authentication, ensure the `codebuddy` command is available in PATH.
+**CodeBuddy backend**: Install CodeBuddy CLI and complete login authentication, ensure the `codebuddy` command is available in PATH. Model auto-discovery is implemented by parsing `product.cloudhosted.json` in the installation directory, supporting 21+ models (GLM, DeepSeek, Kimi, MiniMax, Hunyuan, etc.).
 
 **Claude Code backend**: Install Claude Code CLI and complete authentication, ensure the `claude` command is available in PATH.
 
 **OpenCode backend**: Install OpenCode CLI and complete authentication, ensure the `opencode` command is available in PATH.
 
-**Gemini CLI backend**: Install Gemini CLI and complete authentication, ensure the `gemini` command is available in PATH.
+**Gemini CLI backend**: Install Gemini CLI and complete authentication, ensure the `gemini` command is available in PATH. Supports API-based auto-discovery of available models.
 
-**Codex backend**: Install OpenAI Codex CLI and complete authentication, ensure the `codex` command is available in PATH.
+**Codex backend**: Install OpenAI Codex CLI and complete authentication, ensure the `codex` command is available in PATH. Model auto-discovery is implemented via binary strings/state DB scanning.
 
-**Qoder backend**: Install Qoder CLI (Alibaba coding agent) and complete authentication, ensure the `qoder` command is available in PATH. Qoder supports automatic model routing without specifying a specific model.
+**Qoder backend**: Install Qoder CLI (Alibaba coding agent) and complete authentication, ensure the `qoder` command is available in PATH. Qoder supports automatic model routing without specifying a specific model. Model auto-discovery is implemented by parsing `dynamic-texts.json`.
 
-**VeCLI backend**: Install VeCLI (Volcengine Doubao) and complete authentication, ensure the `vecli` command is available in PATH. VeCLI outputs plain text (not JSON Lines), does not support session resume, and metadata is extracted from a `--session-summary` file after the process exits.
+**VeCLI backend**: Install VeCLI (Volcengine Doubao) and complete authentication, ensure the `vecli` command is available in PATH. VeCLI outputs plain text (not JSON Lines), does not support session resume, and metadata is extracted from a `--session-summary` file after the process exits. Model auto-discovery is implemented by parsing `MODEL_REGISTRY`.
 
 **DeepSeek TUI backend**: Install DeepSeek TUI (requires v0.8.33+) and complete authentication, ensure the `deepseek` command is available in PATH. Uses `deepseek exec --auto --output-format stream-json` mode with native `--system-prompt`, `--model`, and `--resume` flags.
 
@@ -361,6 +361,7 @@ clawbench/
 │   │   ├── file_thumb.go        # Image thumbnail generation (square canvas + dominant-color padding)
 │   │   ├── file_archive.go      # File archive download (zip, symlink traversal protection)
 │   │   ├── file_watch.go        # File change SSE notifications
+│   │   ├── settings.go          # Settings (password change + SHA-256 verification)
 │   │   ├── upload.go            # File upload
 │   │   ├── git.go               # Git operations
 │   │   ├── project.go           # Project management
