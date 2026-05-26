@@ -214,3 +214,102 @@ func TestDiscoverCodebuddyModels_InvalidJSON(t *testing.T) {
 	err := json.Unmarshal([]byte("not json"), &product)
 	assert.Error(t, err)
 }
+
+// --- LoadClaudeModelOverrides internal tests ---
+
+func TestLoadClaudeModelOverrides_ValidFile(t *testing.T) {
+	// Create a temp directory with a valid settings.json
+	tmpDir := t.TempDir()
+	settingsContent := `{
+		"modelOverrides": {
+			"claude-opus-4-6": "MiniMax-M2.7",
+			"claude-sonnet-4-6": "MiniMax-M2.7",
+			"claude-haiku-4-5-20251001": "MiniMax-M2.5-highspeed"
+		}
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+
+	// Override claudeConfigDir to point to temp dir
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	require.NotNil(t, overrides)
+	assert.Len(t, overrides, 3)
+	assert.Equal(t, "MiniMax-M2.7", overrides["claude-opus-4-6"])
+	assert.Equal(t, "MiniMax-M2.7", overrides["claude-sonnet-4-6"])
+	assert.Equal(t, "MiniMax-M2.5-highspeed", overrides["claude-haiku-4-5-20251001"])
+}
+
+func TestLoadClaudeModelOverrides_MissingFile(t *testing.T) {
+	// Point to a temp dir with no settings.json
+	tmpDir := t.TempDir()
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	assert.Nil(t, overrides, "should return nil when settings.json is missing")
+}
+
+func TestLoadClaudeModelOverrides_InvalidJSON(t *testing.T) {
+	tmpDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte("not json"), 0644))
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	assert.Nil(t, overrides, "should return nil when settings.json has invalid JSON")
+}
+
+func TestLoadClaudeModelOverrides_NoOverridesKey(t *testing.T) {
+	tmpDir := t.TempDir()
+	settingsContent := `{"env": {"KEY": "value"}, "permissions": {}}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	assert.Nil(t, overrides, "should return nil when no modelOverrides key in settings")
+}
+
+func TestLoadClaudeModelOverrides_EmptyOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	settingsContent := `{"modelOverrides": {}}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	assert.Nil(t, overrides, "should return nil when modelOverrides is empty")
+}
+
+func TestLoadClaudeModelOverrides_PartialMatch(t *testing.T) {
+	// Only some models have overrides; others should not appear in the result
+	tmpDir := t.TempDir()
+	settingsContent := `{
+		"modelOverrides": {
+			"claude-sonnet-4-6": "MiniMax-M2.7"
+		}
+	}`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+
+	origClaudeConfigDir := claudeConfigDir
+	claudeConfigDir = func() string { return tmpDir }
+	t.Cleanup(func() { claudeConfigDir = origClaudeConfigDir })
+
+	overrides := LoadClaudeModelOverrides()
+	require.NotNil(t, overrides)
+	assert.Len(t, overrides, 1)
+	assert.Equal(t, "MiniMax-M2.7", overrides["claude-sonnet-4-6"])
+	_, hasOpus := overrides["claude-opus-4-6"]
+	assert.False(t, hasOpus, "should not contain unmapped models")
+}

@@ -34,6 +34,7 @@
         @task-card-click="$emit('task-card-click', $event)"
         @send-message="$emit('send-message', $event)"
         @render-flush="$emit('render-flush')"
+        @toggle-summary="$emit('toggle-summary', msg.id)"
       />
     </div>
 
