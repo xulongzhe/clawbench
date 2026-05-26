@@ -832,23 +832,35 @@ func TestDiscoverCodebuddyModels_WithRealCLI(t *testing.T) {
 
 	models := model.DiscoverCodebuddyModels()
 	if len(models) == 0 {
-		t.Skip("codebuddy model discovery returned no models (JS bundle may not be found)")
+		t.Skip("codebuddy model discovery returned no models (product JSON may not be found)")
 	}
 
-	// All models should have glm- prefixed IDs
+	// All models should have valid IDs and names
 	for _, m := range models {
-		assert.True(t, strings.HasPrefix(m.ID, "glm-"), "model ID should start with glm-, got: %s", m.ID)
-		assert.NotEmpty(t, m.Name, "model should have a name")
+		assert.NotEmpty(t, m.ID, "model should have an ID")
+		assert.NotEmpty(t, m.Name, "model should have a name, got ID: %s", m.ID)
 	}
+
+	// Should contain both glm and non-glm models (deepseek, kimi, etc.)
+	hasGlm := false
+	hasNonGlm := false
+	for _, m := range models {
+		if strings.HasPrefix(m.ID, "glm-") {
+			hasGlm = true
+		} else {
+			hasNonGlm = true
+		}
+	}
+	assert.True(t, hasGlm, "should contain at least one glm model")
+	assert.True(t, hasNonGlm, "should contain non-glm models (deepseek, kimi, etc.)")
 
 	// First model should be default
 	assert.True(t, models[0].Default, "first model should be default")
 
-	// Should not contain minified variable references like glm-4p5
+	// Should not contain pseudo-models "default" or "auto"
 	for _, m := range models {
-		assert.NotContains(t, m.ID, "p5", "should not contain minified variable reference: %s", m.ID)
-		assert.NotContains(t, m.ID, "p7", "should not contain minified variable reference: %s", m.ID)
-		assert.NotContains(t, m.ID, "p1", "should not contain minified variable reference: %s", m.ID)
+		assert.NotEqual(t, "default", m.ID, "should not contain pseudo-model 'default'")
+		assert.NotEqual(t, "auto", m.ID, "should not contain pseudo-model 'auto'")
 	}
 
 	t.Logf("Discovered %d Codebuddy models:", len(models))

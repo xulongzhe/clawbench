@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -400,27 +401,26 @@ func MergeDiscoveredData(cacheDir string, present ...map[string]bool) {
 	}
 }
 
-// codebuddyModelIDRe matches GLM model IDs like "glm-5.1", "glm-4.7-flash", "glm-5-turbo", "glm-4.6v-flash", "glm-4-32b", "glm-4.7-flashx", etc.
-// Excludes internal JS variable references like "glm-4p5" (without dots) which are minified names.
-var codebuddyModelIDRe = regexp.MustCompile(`\bglm-\d+(?:\.\d+)?v?(?:-\w+)*\b`)
+// codebuddyProductFile is the JSON file in the codebuddy installation that contains
+// the authoritative model list with names, capabilities, and default status.
+const codebuddyProductFile = "product.cloudhosted.json"
 
-// codebuddyExcludeModelRe matches model IDs that are JS minified variable references, not real model IDs.
-// E.g. "glm-4p5" is the minified variable for "glm-4.5", "glm-4p7" for "glm-4.7", "glm-5p1" for "glm-5.1"
-var codebuddyExcludeModelRe = regexp.MustCompile(`\bglm-\dp\d\b`)
-
-// codebuddyKnownModels is a curated list of known codebuddy model IDs for deduplication and ordering.
-// Models not in this list are still included but appear after known ones.
-var codebuddyKnownModels = []string{
-	"glm-5.1", "glm-5", "glm-5-turbo", "glm-5v-turbo",
-	"glm-4.7", "glm-4.7-flash", "glm-4.7-flashx",
-	"glm-4.6", "glm-4.6v", "glm-4.6v-flash",
-	"glm-4.5", "glm-4.5-air", "glm-4.5v",
-	"glm-4-32b",
+// codebuddyProductModel represents a model entry in codebuddy's product JSON.
+type codebuddyProductModel struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"isDefault"`
 }
 
-// DiscoverCodebuddyModels discovers Codebuddy model IDs by scanning the headless JS bundle.
-// Codebuddy's --help command launches an interactive TUI that hangs without a TTY,
-// so we extract model IDs from the installed JS files instead (similar to Claude's strings approach).
+// codebuddyProduct represents the top-level structure of codebuddy's product JSON.
+type codebuddyProduct struct {
+	Models []codebuddyProductModel `json:"models"`
+}
+
+// DiscoverCodebuddyModels discovers Codebuddy models by reading the product.cloudhosted.json
+// file from the CLI installation directory. This JSON file contains the authoritative model
+// list with proper names and default status, making it far more reliable than --help output
+// (which launches a TUI that hangs without a TTY) or JS bundle scanning (which is fragile).
 func DiscoverCodebuddyModels() []AgentModel {
 	// Find the codebuddy binary path
 	path, err := exec.LookPath("codebuddy")
@@ -435,77 +435,56 @@ func DiscoverCodebuddyModels() []AgentModel {
 		realPath = path
 	}
 
-	// The JS bundles are in .../codebuddy-code/dist/codebuddy-headless.js and .../dist/codebuddy.js
+	// The product JSON is at .../codebuddy-code/product.cloudhosted.json
 	// From .../bin/codebuddy: Dir → .../bin, Dir again → .../codebuddy-code
 	pkgDir := filepath.Dir(filepath.Dir(realPath))
-	distDir := filepath.Join(pkgDir, "dist")
-	candidates := []string{
-		filepath.Join(distDir, "codebuddy-headless.js"),
-		filepath.Join(distDir, "codebuddy.js"),
-	}
+	productPath := filepath.Join(pkgDir, codebuddyProductFile)
 
-	var data []byte
-	for _, f := range candidates {
-		d, err := os.ReadFile(f)
-		if err == nil {
-			data = d
-			break
-		}
-	}
-
-	if len(data) == 0 {
-		slog.Debug("codebuddy model discovery: no JS bundle found", "path", distDir)
+	data, err := os.ReadFile(productPath)
+	if err != nil {
+		slog.Debug("codebuddy model discovery: product JSON not found", "path", productPath, "error", err)
 		return nil
 	}
 
-	// Extract model IDs using regex on the minified JS content
-	// Split by commas/semicolons first to avoid matching across variable boundaries
-	content := string(data)
-	// Replace common JS separators with spaces for better tokenization
-	for _, sep := range []string{",", ";", "(", ")", "[", "]", "{", "}", ":", "=", "'", "`", "\""} {
-		content = strings.ReplaceAll(content, sep, " ")
+	var product codebuddyProduct
+	if err := json.Unmarshal(data, &product); err != nil {
+		slog.Debug("codebuddy model discovery: failed to parse product JSON", "error", err)
+		return nil
 	}
 
-	matches := codebuddyModelIDRe.FindAllString(content, -1)
-	seen := make(map[string]bool)
+	if len(product.Models) == 0 {
+		slog.Debug("codebuddy model discovery: no models in product JSON")
+		return nil
+	}
+
 	var models []AgentModel
-
-	// First, add known models in preferred order
-	knownSet := make(map[string]bool)
-	for _, id := range codebuddyKnownModels {
-		knownSet[id] = true
-	}
-	for _, id := range codebuddyKnownModels {
-		if !seen[id] {
-			for _, m := range matches {
-				if m == id {
-					seen[id] = true
-					models = append(models, AgentModel{
-						ID:      id,
-						Name:    id,
-						Default: len(models) == 0,
-					})
-					break
-				}
-			}
-		}
-	}
-
-	// Then add any remaining discovered models not in the known list
-	for _, m := range matches {
-		if seen[m] || codebuddyExcludeModelRe.MatchString(m) {
+	for _, m := range product.Models {
+		// Skip pseudo-models like "default" and "auto" — these are selectors, not real model IDs
+		if m.ID == "default" || m.ID == "auto" {
 			continue
 		}
-		seen[m] = true
+		// Skip non-LLM models (e.g. text-to-image)
+		if m.ID == "hunyuan-image-v3.0" {
+			continue
+		}
+		name := m.Name
+		if name == "" {
+			name = m.ID
+		}
 		models = append(models, AgentModel{
-			ID:   m,
-			Name: m,
+			ID:      m.ID,
+			Name:    name,
+			Default: m.IsDefault || (len(models) == 0 && m.ID != "default" && m.ID != "auto"),
 		})
 	}
 
 	if len(models) == 0 {
-		slog.Debug("codebuddy model discovery: no models found in JS bundle")
 		return nil
+	}
+
+	// First non-skipped model gets Default=true if none was marked isDefault
+	if !models[0].Default {
+		models[0].Default = true
 	}
 
 	slog.Info("codebuddy model discovery succeeded", "models", len(models))
