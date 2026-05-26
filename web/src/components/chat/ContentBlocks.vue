@@ -89,8 +89,8 @@
       <div v-else-if="block.type === 'text'" v-html="getBlockHtml(bi, block)"></div>
     </template>
     </template>
-    <!-- Loading dots while AI is still streaming (not when cancelled) -->
-    <div v-if="streaming && !cancelled" class="placeholder-dots"><span></span><span></span><span></span></div>
+    <!-- Loading dots while AI is still streaming (not when cancelled, and not when showing summary) -->
+    <div v-if="streaming && !cancelled && !(showingSummary && summary)" class="placeholder-dots"><span></span><span></span><span></span></div>
     <!-- Cancelled marker -->
     <div v-if="cancelled" class="chat-cancelled-mark">{{ t('chat.contentBlocks.cancelled') }}</div>
   </div>
