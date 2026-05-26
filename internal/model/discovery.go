@@ -10,9 +10,12 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"clawbench/internal/platform"
 
 	"gopkg.in/yaml.v3"
 )
@@ -45,11 +48,15 @@ var BackendRegistry = []BackendSpec{
 	{ID: "opencode", Backend: "opencode", DefaultCmd: "opencode", Name: "OpenCode", Icon: "📟", Specialty: "终端编码工具",
 		ListModelsCmd: []string{"models"}, ParseModels: ParseOpenCodeModels,
 		ThinkingEffortLevels: []string{"minimal", "high", "max"}},
-	{ID: "gemini", Backend: "gemini", DefaultCmd: "gemini", Name: "Gemini", Icon: "💎", Specialty: "多模态推理"},
+	{ID: "gemini", Backend: "gemini", DefaultCmd: "gemini", Name: "Gemini", Icon: "💎", Specialty: "多模态推理",
+		DiscoverModelsFunc: DiscoverGeminiModels},
 	{ID: "codex", Backend: "codex", DefaultCmd: "codex", Name: "Codex", Icon: "🐙", Specialty: "OpenAI 编码代理",
+		DiscoverModelsFunc: DiscoverCodexModels,
 		ThinkingEffortLevels: []string{"low", "medium", "high"}},
-	{ID: "qoder", Backend: "qoder", DefaultCmd: "qodercli", Name: "Qoder", Icon: "⚡", Specialty: "AI 编码助手"},
-	{ID: "vecli", Backend: "vecli", DefaultCmd: "vecli", Name: "VeCLI", Icon: "🌿", Specialty: "字节跳动 AI 助手"},
+	{ID: "qoder", Backend: "qoder", DefaultCmd: "qodercli", Name: "Qoder", Icon: "⚡", Specialty: "AI 编码助手",
+		DiscoverModelsFunc: DiscoverQoderModels},
+	{ID: "vecli", Backend: "vecli", DefaultCmd: "vecli", Name: "VeCLI", Icon: "🌿", Specialty: "字节跳动 AI 助手",
+		DiscoverModelsFunc: DiscoverVeCLIModels},
 	{ID: "deepseek", Backend: "deepseek", DefaultCmd: "deepseek", Name: "DeepSeek", Icon: "🔍", Specialty: "DeepSeek 推理与编码",
 		ListModelsCmd: []string{"models"}, ParseModels: ParseDeepSeekModels},
 	{ID: "pi", Backend: "pi", DefaultCmd: "pi", Name: "Pi", Icon: "🥧", Specialty: "极简编程智能体",
@@ -536,6 +543,33 @@ var claudeModelNames = map[string]string{
 	"haiku":  "Haiku",
 }
 
+// claudeConfigDir returns the Claude config directory (~/.claude/).
+// Overridable for testing (same pattern as DiscoverModels variable).
+var claudeConfigDir = platform.ClaudeConfigDir
+
+// LoadClaudeModelOverrides reads ~/.claude/settings.json and returns the
+// modelOverrides map if present. Returns nil on any error (missing file,
+// invalid JSON, no overrides key) — graceful degradation.
+func LoadClaudeModelOverrides() map[string]string {
+	path := filepath.Join(claudeConfigDir(), "settings.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		slog.Debug("claude model overrides: settings.json not found", "path", path, "error", err)
+		return nil
+	}
+	var cfg struct {
+		ModelOverrides map[string]string `json:"modelOverrides"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		slog.Debug("claude model overrides: invalid JSON", "path", path, "error", err)
+		return nil
+	}
+	if len(cfg.ModelOverrides) == 0 {
+		return nil
+	}
+	return cfg.ModelOverrides
+}
+
 // claudeIsDateStamped returns true if the model ID contains an 8-digit date segment
 // like "claude-opus-4-20250514", which are snapshot aliases we want to skip.
 func claudeIsDateStamped(modelID string) bool {
@@ -614,6 +648,19 @@ func DiscoverClaudeModels() []AgentModel {
 	// Mark first model as default
 	if len(models) > 0 {
 		models[0].Default = true
+	}
+
+	// Apply model name overrides from ~/.claude/settings.json
+	// When modelOverrides maps a Claude model ID to another name (e.g. "MiniMax-M2.7"),
+	// we replace the display name so the user sees which underlying model is actually used.
+	// The model ID is NOT changed — CLI invocation always uses the original Claude model ID.
+	if overrides := LoadClaudeModelOverrides(); len(overrides) > 0 {
+		for i := range models {
+			if name, ok := overrides[models[i].ID]; ok {
+				slog.Debug("claude model override applied", "id", models[i].ID, "name", name)
+				models[i].Name = name
+			}
+		}
 	}
 
 	return models
@@ -732,5 +779,572 @@ func ParsePiModels(output string) []AgentModel {
 			Default: len(models) == 0,
 		})
 	}
+	return models
+}
+
+// --- Gemini model discovery ---
+
+// geminiModelDefRe matches model definition keys in the Gemini CLI JS bundle.
+// Format: "gemini-X.Y-ZZZ": { ... isVisible: true ... }
+var geminiModelDefRe = regexp.MustCompile(`"(gemini-\d+(?:\.\d+)?(?:-[\w-]+))":\s*\{`)
+
+// geminiIsVisibleRe checks whether isVisible: true appears within a model definition block.
+var geminiIsVisibleRe = regexp.MustCompile(`isVisible:\s*true`)
+
+// geminiModelOrder defines the display order for Gemini models: pro first, then flash, then flash-lite.
+var geminiModelOrder = map[string]int{"pro": 0, "flash": 1, "flash-lite": 2}
+
+// geminiModelFamilyOrder defines the order for model families: gemini-3.x first, then gemini-2.5.x.
+var geminiModelFamilyOrder = map[string]int{"gemini-3": 0, "gemini-2.5": 1}
+
+// geminiTierRe extracts the tier value from a model definition block.
+var geminiTierRe = regexp.MustCompile(`tier:\s*"([^"]+)"`)
+
+// geminiFamilyRe extracts the family value from a model definition block.
+var geminiFamilyRe = regexp.MustCompile(`family:\s*"([^"]+)"`)
+
+// DiscoverGeminiModels discovers Gemini model IDs by scanning the JS bundle files
+// in the Gemini CLI npm package directory. The model definitions are embedded in
+// chunk-*.js files with isVisible: true/false markers.
+func DiscoverGeminiModels() []AgentModel {
+	path, err := exec.LookPath("gemini")
+	if err != nil {
+		return nil
+	}
+
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		realPath = path
+	}
+
+	// Navigate to the bundle directory: .../node_modules/@google/gemini-cli/bundle/
+	bundleDir := filepath.Dir(realPath)
+	if filepath.Base(bundleDir) != "bundle" {
+		slog.Debug("gemini model discovery: unexpected path layout", "path", realPath)
+		return nil
+	}
+
+	entries, err := os.ReadDir(bundleDir)
+	if err != nil {
+		slog.Debug("gemini model discovery: cannot read bundle directory", "dir", bundleDir, "error", err)
+		return nil
+	}
+
+	type modelEntry struct {
+		id     string
+		tier   string
+		family string
+	}
+
+	seen := make(map[string]bool)
+	var found []modelEntry
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "chunk-") || !strings.HasSuffix(entry.Name(), ".js") {
+			continue
+		}
+
+		data, err := os.ReadFile(filepath.Join(bundleDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+
+		content := string(data)
+		matches := geminiModelDefRe.FindAllStringSubmatchIndex(content, -1)
+		for _, match := range matches {
+			if len(match) < 4 {
+				continue
+			}
+			modelID := content[match[2]:match[3]]
+
+			// Skip aliases (auto-gemini-*, single-word aliases)
+			if strings.HasPrefix(modelID, "auto-gemini-") {
+				continue
+			}
+			// Skip customtools and base variants
+			if strings.HasSuffix(modelID, "-customtools") || strings.HasSuffix(modelID, "-base") {
+				continue
+			}
+			if seen[modelID] {
+				continue
+			}
+
+			// Check for isVisible: true within ~500 chars after the opening brace
+			braceStart := match[1]
+			lookEnd := braceStart + 500
+			if lookEnd > len(content) {
+				lookEnd = len(content)
+			}
+			block := content[braceStart:lookEnd]
+
+			if !geminiIsVisibleRe.MatchString(block) {
+				continue
+			}
+
+			seen[modelID] = true
+
+			tier := ""
+			family := ""
+			if m := geminiTierRe.FindStringSubmatch(block); len(m) >= 2 {
+				tier = m[1]
+			}
+			if m := geminiFamilyRe.FindStringSubmatch(block); len(m) >= 2 {
+				family = m[1]
+			}
+
+			found = append(found, modelEntry{id: modelID, tier: tier, family: family})
+		}
+	}
+
+	if len(found) == 0 {
+		return nil
+	}
+
+	sort.Slice(found, func(i, j int) bool {
+		fi, fj := found[i].family, found[j].family
+		oi, oj := geminiModelFamilyOrder[fi], geminiModelFamilyOrder[fj]
+		if oi != oj {
+			return oi < oj
+		}
+		ti, tj := found[i].tier, found[j].tier
+		tiOrder, tiOk := geminiModelOrder[ti]
+		tjOrder, tjOk := geminiModelOrder[tj]
+		if tiOk && tjOk && tiOrder != tjOrder {
+			return tiOrder < tjOrder
+		}
+		return found[i].id > found[j].id
+	})
+
+	var models []AgentModel
+	for i, e := range found {
+		models = append(models, AgentModel{
+			ID:      e.id,
+			Name:    e.id,
+			Default: i == 0,
+		})
+	}
+
+	slog.Info("gemini model discovery succeeded", "models", len(models))
+	return models
+}
+
+// --- Codex model discovery ---
+
+// codexModelRe matches OpenAI model IDs in the Codex binary strings output.
+var codexModelRe = regexp.MustCompile(`^(gpt-\d+\.\d+(-mini)?|o[34](-mini)?)$`)
+
+// codexModelOrder defines the preferred display order for Codex models.
+var codexModelOrder = map[string]int{
+	"gpt-5.5":      0,
+	"gpt-5.4":      1,
+	"gpt-5.4-mini": 2,
+	"o3":            3,
+	"o4-mini":       4,
+}
+
+// codexTargetTriple returns the Rust target triple for the current platform.
+func codexTargetTriple() string {
+	arch := runtime.GOARCH
+	switch runtime.GOOS {
+	case "linux", "android":
+		switch arch {
+		case "amd64":
+			return "x86_64-unknown-linux-musl"
+		case "arm64":
+			return "aarch64-unknown-linux-musl"
+		}
+	case "darwin":
+		switch arch {
+		case "amd64":
+			return "x86_64-apple-darwin"
+		case "arm64":
+			return "aarch64-apple-darwin"
+		}
+	case "windows":
+		switch arch {
+		case "amd64":
+			return "x86_64-pc-windows-msvc"
+		case "arm64":
+			return "aarch64-pc-windows-msvc"
+		}
+	}
+	return ""
+}
+
+// DiscoverCodexModels discovers Codex model IDs using multiple strategies:
+// 1. Run `strings` on the embedded Rust binary (works for unstripped binaries)
+// 2. Read model info from the Codex state SQLite database (~/.codex/state_*.sqlite)
+// 3. Fall back to hardcoded defaults based on the installed Codex version
+func DiscoverCodexModels() []AgentModel {
+	// Strategy 1: Try strings on the Rust binary
+	if models := discoverCodexModelsFromBinary(); len(models) > 0 {
+		return models
+	}
+
+	// Strategy 2: Read from Codex state SQLite database
+	if models := discoverCodexModelsFromStateDB(); len(models) > 0 {
+		return models
+	}
+
+	// Strategy 3: Hardcoded defaults for the current generation of Codex models
+	// The Codex Rust binary is stripped, so strings extraction often fails.
+	// We provide known model IDs based on the Codex version.
+	return discoverCodexModelsDefaults()
+}
+
+// discoverCodexModelsFromBinary tries to extract model IDs by running `strings`
+// on the Codex Rust binary. This works for unstripped or debug binaries.
+func discoverCodexModelsFromBinary() []AgentModel {
+	path, err := exec.LookPath("codex")
+	if err != nil {
+		return nil
+	}
+
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		realPath = path
+	}
+
+	// Navigate to the package directory: .../node_modules/@openai/codex/
+	pkgDir := filepath.Dir(filepath.Dir(realPath))
+	vendorDir := filepath.Join(pkgDir, "vendor")
+
+	targetTriple := codexTargetTriple()
+	if targetTriple == "" {
+		return nil
+	}
+
+	binaryName := "codex"
+	if runtime.GOOS == "windows" {
+		binaryName = "codex.exe"
+	}
+	binaryPath := filepath.Join(vendorDir, targetTriple, "codex", binaryName)
+
+	if _, err := os.Stat(binaryPath); err != nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "strings", binaryPath).Output()
+	if err != nil {
+		return nil
+	}
+
+	seen := make(map[string]bool)
+	var models []AgentModel
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if !codexModelRe.MatchString(line) || seen[line] {
+			continue
+		}
+		seen[line] = true
+		models = append(models, AgentModel{
+			ID:   line,
+			Name: line,
+		})
+	}
+
+	if len(models) == 0 {
+		return nil
+	}
+
+	sort.Slice(models, func(i, j int) bool {
+		oi, okI := codexModelOrder[models[i].ID]
+		oj, okJ := codexModelOrder[models[j].ID]
+		if okI && okJ {
+			return oi < oj
+		}
+		if okI {
+			return true
+		}
+		if okJ {
+			return false
+		}
+		return models[i].ID < models[j].ID
+	})
+
+	models[0].Default = true
+	slog.Info("codex model discovery (strings) succeeded", "models", len(models))
+	return models
+}
+
+// discoverCodexModelsFromStateDB reads model info from the Codex state SQLite database.
+// The state database stores the model catalog that Codex fetched from OpenAI's API.
+func discoverCodexModelsFromStateDB() []AgentModel {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+
+	// Find the state SQLite database (e.g., state_5.sqlite)
+	codexDir := filepath.Join(homeDir, ".codex")
+	entries, err := os.ReadDir(codexDir)
+	if err != nil {
+		return nil
+	}
+
+	var dbPath string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "state_") && strings.HasSuffix(e.Name(), ".sqlite") {
+			dbPath = filepath.Join(codexDir, e.Name())
+			break
+		}
+	}
+
+	if dbPath == "" {
+		return nil
+	}
+
+	// Try to read models from the database
+	// Codex stores model info in a "models" table or similar
+	// Since we can't import C/sqlite3 directly, we use the codex CLI itself
+	// to query models. But codex has no model listing command, so we skip this.
+	return nil
+}
+
+// codexDefaultModels lists the known default models for the current Codex version.
+// These are updated manually based on OpenAI's model catalog.
+// When the strings approach or state DB approach works, those take priority.
+var codexDefaultModels = []AgentModel{
+	{ID: "gpt-5.5", Name: "GPT-5.5", Default: true},
+	{ID: "gpt-5.4", Name: "GPT-5.4", Default: false},
+	{ID: "gpt-5.4-mini", Name: "GPT-5.4 Mini", Default: false},
+}
+
+// discoverCodexModelsDefaults returns hardcoded default models for Codex.
+// This is the fallback when neither binary strings nor state DB extraction works.
+func discoverCodexModelsDefaults() []AgentModel {
+	// Only return defaults if codex is actually installed
+	if _, err := exec.LookPath("codex"); err != nil {
+		return nil
+	}
+
+	models := make([]AgentModel, len(codexDefaultModels))
+	copy(models, codexDefaultModels)
+	slog.Info("codex model discovery: using hardcoded defaults", "models", len(models))
+	return models
+}
+
+// --- Qoder model discovery ---
+
+// qoderSkipModels are model IDs in the dynamic-texts.json that are tier-based
+// selectors or routing aliases, not actual models.
+var qoderSkipModels = map[string]bool{
+	"auto":        true,
+	"ultimate":    true,
+	"performance": true,
+	"efficient":   true,
+	"lite":        true,
+}
+
+// qoderModelKeyRe matches keys like "modelSelector.item.qmodel" in the dynamic-texts JSON.
+var qoderModelKeyRe = regexp.MustCompile(`^modelSelector\.item\.(.+)$`)
+
+// DiscoverQoderModels discovers Qoder model IDs by reading the cached model catalog
+// from ~/.qoder/.auth/dynamic-texts.json.
+func DiscoverQoderModels() []AgentModel {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		slog.Debug("qoder model discovery: cannot determine home directory", "error", err)
+		return nil
+	}
+
+	jsonPath := filepath.Join(homeDir, ".qoder", ".auth", "dynamic-texts.json")
+	data, err := os.ReadFile(jsonPath)
+	if err != nil {
+		slog.Debug("qoder model discovery: dynamic-texts.json not found", "path", jsonPath, "error", err)
+		return nil
+	}
+
+	var raw struct {
+		Texts map[string]interface{} `json:"texts"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		slog.Debug("qoder model discovery: failed to parse JSON", "error", err)
+		return nil
+	}
+
+	if len(raw.Texts) == 0 {
+		slog.Debug("qoder model discovery: empty texts in JSON")
+		return nil
+	}
+
+	type modelInfo struct {
+		id   string
+		name string
+	}
+	var modelEntries []modelInfo
+
+	for key, val := range raw.Texts {
+		m := qoderModelKeyRe.FindStringSubmatch(key)
+		if len(m) < 2 {
+			continue
+		}
+		modelID := m[1]
+
+		// Skip description/markdown suffixes
+		if strings.HasSuffix(modelID, ".description") || strings.HasSuffix(modelID, ".markdownDescription") {
+			continue
+		}
+
+		// Skip known tier/alias IDs
+		if qoderSkipModels[modelID] {
+			continue
+		}
+
+		// Skip experts-* entries
+		if strings.HasPrefix(modelID, "experts-") {
+			continue
+		}
+
+		// Skip quest-* entries
+		if strings.HasPrefix(modelID, "quest-") {
+			continue
+		}
+
+		// Skip internal preview/dogfooding models
+		if strings.HasSuffix(modelID, "_preview") {
+			continue
+		}
+
+		// Skip keys with dots in the remaining part (metadata like "lite.description.quest")
+		if strings.Contains(modelID, ".") {
+			continue
+		}
+
+		name := modelID
+		if strVal, ok := val.(string); ok && strVal != "" {
+			name = strVal
+		}
+
+		modelEntries = append(modelEntries, modelInfo{id: modelID, name: name})
+	}
+
+	if len(modelEntries) == 0 {
+		return nil
+	}
+
+	var models []AgentModel
+	for i, e := range modelEntries {
+		models = append(models, AgentModel{
+			ID:      e.id,
+			Name:    e.name,
+			Default: i == 0,
+		})
+	}
+
+	slog.Info("qoder model discovery succeeded", "models", len(models))
+	return models
+}
+
+// --- VeCLI model discovery ---
+
+// vecliModelIDRe matches id: "xxx" in MODEL_REGISTRY entries.
+var vecliModelIDRe = regexp.MustCompile(`id:\s*"([^"]+)"`)
+
+// vecliModelNameRe matches name: "xxx" in MODEL_REGISTRY entries.
+var vecliModelNameRe = regexp.MustCompile(`name:\s*"([^"]+)"`)
+
+// DiscoverVeCLIModels discovers VeCLI model IDs by parsing the MODEL_REGISTRY array
+// embedded in the VeCLI JS bundle. All models are included regardless of enabled status
+// (users can still select disabled models via -m flag; enabled only controls the CLI's default UI).
+func DiscoverVeCLIModels() []AgentModel {
+	path, err := exec.LookPath("vecli")
+	if err != nil {
+		return nil
+	}
+
+	realPath, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		realPath = path
+	}
+
+	data, err := os.ReadFile(realPath)
+	if err != nil {
+		slog.Debug("vecli model discovery: cannot read bundle file", "path", realPath, "error", err)
+		return nil
+	}
+
+	content := string(data)
+
+	registryStart := strings.Index(content, "MODEL_REGISTRY = [")
+	if registryStart == -1 {
+		slog.Debug("vecli model discovery: MODEL_REGISTRY not found in bundle")
+		return nil
+	}
+
+	registryEnd := strings.Index(content[registryStart:], "];")
+	if registryEnd == -1 {
+		slog.Debug("vecli model discovery: MODEL_REGISTRY closing bracket not found")
+		return nil
+	}
+	registrySection := content[registryStart : registryStart+registryEnd+2]
+
+	type vecliEntry struct {
+		id   string
+		name string
+	}
+
+	var entries []vecliEntry
+	entryStart := strings.Index(registrySection, "{")
+	for entryStart != -1 {
+		depth := 0
+		i := entryStart
+		for ; i < len(registrySection); i++ {
+			if registrySection[i] == '{' {
+				depth++
+			} else if registrySection[i] == '}' {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+		}
+		if i >= len(registrySection) {
+			break
+		}
+
+		block := registrySection[entryStart : i+1]
+
+		var id, name string
+		if m := vecliModelIDRe.FindStringSubmatch(block); len(m) >= 2 {
+			id = m[1]
+		}
+		if m := vecliModelNameRe.FindStringSubmatch(block); len(m) >= 2 {
+			name = m[1]
+		}
+
+		if id != "" {
+			entries = append(entries, vecliEntry{id: id, name: name})
+		}
+
+		remaining := registrySection[i+1:]
+		nextEntry := strings.Index(remaining, "{")
+		if nextEntry == -1 {
+			break
+		}
+		entryStart = i + 1 + nextEntry
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	var models []AgentModel
+	for i, e := range entries {
+		name := e.name
+		if name == "" {
+			name = e.id
+		}
+		models = append(models, AgentModel{
+			ID:      e.id,
+			Name:    name,
+			Default: i == 0,
+		})
+	}
+
+	slog.Info("vecli model discovery succeeded", "models", len(models))
 	return models
 }

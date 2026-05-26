@@ -385,12 +385,21 @@ func TestBackendRegistry_ModelDiscoveryConfig(t *testing.T) {
 	// claude should have model discovery via DiscoverModelsFunc (binary strings scanning)
 	assert.NotNil(t, specs["claude"].DiscoverModelsFunc, "claude should have DiscoverModelsFunc")
 
-	// gemini, codex, qoder, vecli should NOT have model discovery
-	for _, id := range []string{"gemini", "codex", "qoder", "vecli"} {
-		assert.Empty(t, specs[id].ListModelsCmd, "%s should not have ListModelsCmd", id)
-		assert.Nil(t, specs[id].ParseModels, "%s should not have ParseModels", id)
-		assert.Nil(t, specs[id].DiscoverModelsFunc, "%s should not have DiscoverModelsFunc", id)
-	}
+	// gemini should have model discovery via DiscoverModelsFunc (JS bundle scanning)
+	assert.NotNil(t, specs["gemini"].DiscoverModelsFunc, "gemini should have DiscoverModelsFunc")
+
+	// codex should have model discovery via DiscoverModelsFunc (binary strings scanning)
+	assert.NotNil(t, specs["codex"].DiscoverModelsFunc, "codex should have DiscoverModelsFunc")
+
+	// qoder should have model discovery via DiscoverModelsFunc (dynamic-texts.json parsing)
+	assert.NotNil(t, specs["qoder"].DiscoverModelsFunc, "qoder should have DiscoverModelsFunc")
+
+	// vecli should have model discovery via DiscoverModelsFunc (bundle MODEL_REGISTRY parsing)
+	assert.NotNil(t, specs["vecli"].DiscoverModelsFunc, "vecli should have DiscoverModelsFunc")
+
+	// qoder and vecli should NOT have ListModelsCmd (they use DiscoverModelsFunc instead)
+	assert.Empty(t, specs["qoder"].ListModelsCmd, "qoder should not have ListModelsCmd")
+	assert.Empty(t, specs["vecli"].ListModelsCmd, "vecli should not have ListModelsCmd")
 }
 
 // --- Test 7: DiscoverModels ---
@@ -906,6 +915,127 @@ func TestSyncDiscoverModels_CoversClaudeDiscoverModelsFunc(t *testing.T) {
 	t.Logf("claude cache file created with models")
 }
 
+// --- Test 13b: Gemini/Codex/Qoder/VeCLI model discovery integration ---
+
+func TestDiscoverGeminiModels_WithRealCLI(t *testing.T) {
+	if !model.CheckCLIExists("gemini") {
+		t.Skip("gemini not installed, skipping integration test")
+	}
+
+	models := model.DiscoverGeminiModels()
+	if len(models) == 0 {
+		t.Skip("gemini model discovery returned no models")
+	}
+
+	// All models should have gemini- prefixed IDs
+	for _, m := range models {
+		assert.True(t, strings.HasPrefix(m.ID, "gemini-"), "model ID should start with gemini-, got: %s", m.ID)
+		assert.NotEmpty(t, m.Name, "model should have a name")
+	}
+
+	// First model should be default
+	assert.True(t, models[0].Default, "first model should be default")
+
+	// Should not contain aliases
+	for _, m := range models {
+		assert.NotContains(t, m.ID, "auto-gemini-", "should not contain auto-gemini aliases")
+	}
+
+	t.Logf("Discovered %d Gemini models:", len(models))
+	for _, m := range models {
+		t.Logf("  %s (%s) default=%v", m.ID, m.Name, m.Default)
+	}
+}
+
+func TestDiscoverCodexModels_WithRealCLI(t *testing.T) {
+	if !model.CheckCLIExists("codex") {
+		t.Skip("codex not installed, skipping integration test")
+	}
+
+	models := model.DiscoverCodexModels()
+	if len(models) == 0 {
+		t.Skip("codex model discovery returned no models (strings may not be available or Rust binary not found)")
+	}
+
+	// All models should have valid IDs
+	for _, m := range models {
+		assert.NotEmpty(t, m.ID, "model should have an ID")
+		assert.NotEmpty(t, m.Name, "model should have a name")
+	}
+
+	// First model should be default
+	assert.True(t, models[0].Default, "first model should be default")
+
+	t.Logf("Discovered %d Codex models:", len(models))
+	for _, m := range models {
+		t.Logf("  %s (%s) default=%v", m.ID, m.Name, m.Default)
+	}
+}
+
+func TestDiscoverQoderModels_WithRealCLI(t *testing.T) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("cannot determine home directory")
+	}
+	qoderJSON := filepath.Join(homeDir, ".qoder", ".auth", "dynamic-texts.json")
+	if _, err := os.Stat(qoderJSON); err != nil {
+		t.Skip("qoder dynamic-texts.json not found, skipping integration test")
+	}
+
+	models := model.DiscoverQoderModels()
+	if len(models) == 0 {
+		t.Skip("qoder model discovery returned no models")
+	}
+
+	// All models should have valid IDs and names
+	for _, m := range models {
+		assert.NotEmpty(t, m.ID, "model should have an ID")
+		assert.NotEmpty(t, m.Name, "model should have a name")
+	}
+
+	// Should not contain tier aliases
+	for _, m := range models {
+		assert.NotEqual(t, "auto", m.ID, "should not contain 'auto' alias")
+		assert.NotEqual(t, "ultimate", m.ID, "should not contain 'ultimate' tier")
+		assert.NotEqual(t, "performance", m.ID, "should not contain 'performance' tier")
+		assert.NotEqual(t, "efficient", m.ID, "should not contain 'efficient' tier")
+		assert.NotEqual(t, "lite", m.ID, "should not contain 'lite' tier")
+	}
+
+	// First model should be default
+	assert.True(t, models[0].Default, "first model should be default")
+
+	t.Logf("Discovered %d Qoder models:", len(models))
+	for _, m := range models {
+		t.Logf("  %s (%s) default=%v", m.ID, m.Name, m.Default)
+	}
+}
+
+func TestDiscoverVeCLIModels_WithRealCLI(t *testing.T) {
+	if !model.CheckCLIExists("vecli") {
+		t.Skip("vecli not installed, skipping integration test")
+	}
+
+	models := model.DiscoverVeCLIModels()
+	if len(models) == 0 {
+		t.Skip("vecli model discovery returned no models")
+	}
+
+	// All models should have valid IDs and names
+	for _, m := range models {
+		assert.NotEmpty(t, m.ID, "model should have an ID")
+		assert.NotEmpty(t, m.Name, "model should have a name")
+	}
+
+	// First model should be default
+	assert.True(t, models[0].Default, "first model should be default")
+
+	t.Logf("Discovered %d VeCLI models:", len(models))
+	for _, m := range models {
+		t.Logf("  %s (%s) default=%v", m.ID, m.Name, m.Default)
+	}
+}
+
 // --- Test 14: AsyncRefreshModelCache ---
 // AsyncRefreshModelCache is a fire-and-forget goroutine that iterates over
 // BackendRegistry, discovers models, and updates in-memory agents.
@@ -1203,8 +1333,8 @@ backend: gemini
 	cacheDir := filepath.Join(t.TempDir(), "model-cache")
 	model.MergeDiscoveredData(cacheDir)
 
-	// gemini has no model discovery, so CanRefreshModels should be false
-	assert.False(t, agent.CanRefreshModels, "gemini agent should have CanRefreshModels=false")
+	// gemini now has model discovery via DiscoverModelsFunc, so CanRefreshModels should be true
+	assert.True(t, agent.CanRefreshModels, "gemini agent should have CanRefreshModels=true")
 }
 
 // --- Test 15: ParseCodebuddyModels edge cases ---
