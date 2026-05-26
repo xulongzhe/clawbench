@@ -87,8 +87,11 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 			os.WriteFile(autoPasswordFile, []byte(cfg.Password), 0600)
 		}
 		autoPassword = cfg.Password
+	} else if IsSHA256Password(cfg.Password) {
+		// SHA-256 hashed password from config (set via settings API) — treat as explicitly set
+		os.Remove(autoPasswordFile)
 	} else {
-		// User explicitly set a password — remove stale auto-password file if any
+		// User explicitly set a plaintext password — remove stale auto-password file if any
 		os.Remove(autoPasswordFile)
 	}
 

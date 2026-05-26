@@ -18,6 +18,12 @@
       @edit-toggle="(open: boolean) => handleEditToggle(item.key, open)"
       @discard="handleDiscard"
     />
+    <!-- Password change dialog -->
+    <PasswordChangeDialog
+      v-if="showPasswordDialog"
+      @close="showPasswordDialog = false"
+      @changed="handlePasswordChanged"
+    />
   </div>
 </template>
 
@@ -25,6 +31,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import SettingsItem from './SettingsItem.vue'
+import PasswordChangeDialog from './PasswordChangeDialog.vue'
 import { useSettingsConfig } from '@/composables/useSettingsConfig'
 import { useAgents } from '@/composables/useAgents'
 import { useToast } from '@/composables/useToast'
@@ -49,6 +56,7 @@ const { isAppMode } = useAppMode()
 const { pushRegistered } = useGlobalEvents()
 
 const openEditorKey = ref<string | null>(null)
+const showPasswordDialog = ref(false)
 
 // Load agents when this category is shown
 watch(() => props.categoryId, (id) => {
@@ -263,6 +271,17 @@ function handleClick(item: any) {
     try {
       ;(window as any).AndroidNative?.showServerDialog?.()
     } catch { /* not in app mode */ }
+  }
+  if (item.key === 'changePassword') {
+    showPasswordDialog.value = true
+  }
+}
+
+function handlePasswordChanged(needsRestart: boolean) {
+  showPasswordDialog.value = false
+  toast.show(t('settings.passwordChanged'), { icon: '✓', type: 'success', duration: 3000 })
+  if (needsRestart) {
+    emit('restartNeeded', ['password'])
   }
 }
 
