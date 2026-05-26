@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -953,6 +954,12 @@ func TestCheckCLIExistsErr_EmptyCommand(t *testing.T) {
 // --- Test 16: DiscoverCodebuddyModels with mock product JSON ---
 
 func TestDiscoverCodebuddyModels_ProductJSON(t *testing.T) {
+	// These tests modify PATH and create fake CLI scripts which don't work on Windows.
+	// The core JSON parsing logic is also covered by the internal unit tests.
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
 	// Create directory structure: .../bin/fake-codebuddy and .../product.cloudhosted.json
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
@@ -1001,6 +1008,10 @@ func TestDiscoverCodebuddyModels_ProductJSON(t *testing.T) {
 }
 
 func TestDiscoverCodebuddyModels_ProductJSON_EmptyModels(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1021,6 +1032,10 @@ func TestDiscoverCodebuddyModels_ProductJSON_EmptyModels(t *testing.T) {
 }
 
 func TestDiscoverCodebuddyModels_ProductJSON_InvalidJSON(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1040,6 +1055,10 @@ func TestDiscoverCodebuddyModels_ProductJSON_InvalidJSON(t *testing.T) {
 }
 
 func TestDiscoverCodebuddyModels_ProductJSON_NoFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1069,6 +1088,10 @@ func TestDiscoverCodebuddyModels_NotOnPATH(t *testing.T) {
 
 func TestDiscoverCodebuddyModels_ProductJSON_NameFallback(t *testing.T) {
 	// Test the name fallback: when a model has no name, use its ID as name
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
@@ -1097,6 +1120,10 @@ func TestDiscoverCodebuddyModels_ProductJSON_NameFallback(t *testing.T) {
 
 func TestDiscoverCodebuddyModels_ProductJSON_NoDefault(t *testing.T) {
 	// Test when no model is marked isDefault — first non-skipped model should get Default=true
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
 	require.NoError(t, os.MkdirAll(binDir, 0755))
