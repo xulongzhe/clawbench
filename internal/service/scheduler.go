@@ -671,11 +671,14 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 
 	schedule, err := cron.ParseStandard(task.CronExpr)
 	if err != nil {
-		slog.Error("failed to parse cron expression for next run calculation",
+		slog.Error("failed to parse cron expression for next run calculation, pausing task",
 			slog.Int64("task_id", task.ID),
 			slog.String("cron_expr", task.CronExpr),
 			slog.String("error", err.Error()))
-		// Fall through: nextRunAt remains nil, task stays active but no next_run_at
+		// Pause the task to prevent zombie cron entries (ISS-200).
+		// Without this, the original cron entry keeps firing on the old schedule
+		// while the DB shows no next_run_at, creating an inconsistent state.
+		newStatus = "paused"
 	}
 	var nextRunAt *time.Time
 	if newStatus == "active" && schedule != nil {

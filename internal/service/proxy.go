@@ -76,7 +76,7 @@ var ProxyService *ProxyRegistry
 // The caller (main.go) decides whether to create this based on port_forward.enabled.
 func NewProxyRegistry(selfPort int) *ProxyRegistry {
 	ctx, cancel := context.WithCancel(context.Background())
-	allowedPorts := "" // default: allow all ports (1-65535)
+	allowedPorts := "1024-65535" // default: non-privileged ports only (ISS-186 — was empty=allow-all)
 	r := &ProxyRegistry{
 		ports:    make(map[int]*model.ForwardedPort),
 		proxies:  make(map[int]*proxy.ReverseProxy),
@@ -310,7 +310,10 @@ func (r *ProxyRegistry) ListPorts() []model.ForwardedPort {
 }
 
 // IsPortAllowed checks whether a port falls within the configured allowed range.
+// RLock ensures concurrent reads of cfg.AllowedPorts are synchronized with SetAllowedPorts writes (ISS-185).
 func (r *ProxyRegistry) IsPortAllowed(port int) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return isPortInRange(port, r.cfg.AllowedPorts)
 }
 
