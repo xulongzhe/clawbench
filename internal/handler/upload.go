@@ -52,19 +52,14 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Validate file extension — reject only hidden files and dangerous extensions
+	// Validate file extension — all file types are allowed.
+	// This is intentional: users upload code, configs, binaries, and arbitrary
+	// project files. We only require a non-empty extension so the file can be
+	// identified and served correctly. Content safety is enforced by the
+	// downstream consumer (AI agent / file viewer), not the upload endpoint.
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 	if ext == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "FileMustHaveExtension")
-		return
-	}
-	dangerousExts := map[string]bool{
-		".exe": true, ".bat": true, ".cmd": true, ".com": true,
-		".msi": true, ".scr": true, ".vbs": true, ".js": true,
-		".wsf": true, ".ps1": true,
-	}
-	if dangerousExts[ext] {
-		writeLocalizedErrorf(w, r, http.StatusBadRequest, "FileTypeNotAllowed", map[string]any{"Ext": ext})
 		return
 	}
 

@@ -93,15 +93,21 @@ func TestUploadFile_DefaultDir(t *testing.T) {
 		assertStatus(t, w, http.StatusBadRequest)
 	})
 
-	t.Run("DangerousExtension_Returns400", func(t *testing.T) {
+	t.Run("DangerousExtension_Allowed", func(t *testing.T) {
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
+		// All file types are allowed — users may upload binaries, scripts, etc.
 		req := createMultipartUploadRequest(t, "evil.exe", "MZ", "")
 		withProjectCookie(req, env.ProjectDir)
 
 		w := callHandler(UploadFile, req)
-		assertStatus(t, w, http.StatusBadRequest)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		json.Unmarshal(w.Body.Bytes(), &result)
+		pathStr := result["path"].(string)
+		assert.Contains(t, filepath.ToSlash(pathStr), ".clawbench/uploads/evil.exe")
 	})
 
 	t.Run("DuplicateFilename_AppendsNumber", func(t *testing.T) {
