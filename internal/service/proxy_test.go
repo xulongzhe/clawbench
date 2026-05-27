@@ -410,13 +410,12 @@ func TestProxyRegistry_PortPersistence_SkipsOutOfAllowedRange(t *testing.T) {
 	DBRead = DB
 	defer func() { DB = origDB; DBRead = origDBRead }()
 
-	// Insert a port directly into DB that is outside the restricted allowed range
+	// Insert a port directly into DB that is outside the default allowed range (1024-65535)
 	_, err := DB.Exec("INSERT INTO forwarded_ports (local_port, port, host, name, protocol) VALUES (80, 80, '', 'system', 'http')")
 	assert.NoError(t, err)
 
-	// Create registry and restrict to high ports only — port 80 should be skipped
+	// Create registry — port 80 should be skipped by default (ISS-186)
 	r := NewProxyRegistry(0)
-	r.SetAllowedPorts("1024-65535")
 	defer r.Stop()
 
 	assert.False(t, isPortRegistered(r, 80))
@@ -530,9 +529,9 @@ func TestProxyRegistry_SetAllowedPorts_OverridesDefault(t *testing.T) {
 	r := newTestRegistry(t)
 	defer r.Stop()
 
-	// Default allows all ports
+	// Default allows 1024-65535 (ISS-186)
 	assert.True(t, r.IsPortAllowed(8080))
-	assert.True(t, r.IsPortAllowed(80))
+	assert.False(t, r.IsPortAllowed(80))
 
 	// Override to restricted range
 	r.SetAllowedPorts("5000-5010")
@@ -817,36 +816,37 @@ func TestProxyRegistry_PortPersistence_DifferentHostsSamePort(t *testing.T) {
 
 // ---------- Default allowed ports: all ports allowed ----------
 
-func TestProxyRegistry_DefaultAllowsAllPorts(t *testing.T) {
+func TestProxyRegistry_DefaultAllowsNonPrivilegedPorts(t *testing.T) {
 	r := newTestRegistry(t)
 	defer r.Stop()
 
-	// Default should allow ALL ports, including privileged ones
-	assert.True(t, r.IsPortAllowed(80), "port 80 should be allowed by default")
-	assert.True(t, r.IsPortAllowed(443), "port 443 should be allowed by default")
-	assert.True(t, r.IsPortAllowed(22), "port 22 should be allowed by default")
+	// Default should allow non-privileged ports only (1024-65535) (ISS-186)
+	assert.False(t, r.IsPortAllowed(80), "port 80 should NOT be allowed by default")
+	assert.False(t, r.IsPortAllowed(443), "port 443 should NOT be allowed by default")
+	assert.False(t, r.IsPortAllowed(22), "port 22 should NOT be allowed by default")
 	assert.True(t, r.IsPortAllowed(8080), "port 8080 should be allowed by default")
-	assert.True(t, r.IsPortAllowed(1), "port 1 should be allowed by default")
+	assert.True(t, r.IsPortAllowed(1024), "port 1024 should be allowed by default")
+	assert.False(t, r.IsPortAllowed(1), "port 1 should NOT be allowed by default")
 }
 
 func TestProxyRegistry_RegisterPort_PrivilegedPort(t *testing.T) {
 	r := newTestRegistry(t)
 	defer r.Stop()
 
-	// Port 80 should be registerable by default
+	// Port 80 should be blocked by default (ISS-186 — default is now 1024-65535)
 	_, err := r.RegisterPort(80, "", "http-server", "http")
-	assert.NoError(t, err)
-	assert.True(t, isPortRegistered(r, 80))
+	assert.Error(t, err, "port 80 should be blocked by default")
+	assert.Contains(t, err.Error(), "not in the allowed range")
 }
 
 func TestProxyRegistry_RegisterPort_Port443(t *testing.T) {
 	r := newTestRegistry(t)
 	defer r.Stop()
 
-	// Port 443 should be registerable by default
+	// Port 443 should be blocked by default (ISS-186 — default is now 1024-65535)
 	_, err := r.RegisterPort(443, "", "https-server", "https")
-	assert.NoError(t, err)
-	assert.True(t, isPortRegistered(r, 443))
+	assert.Error(t, err, "port 443 should be blocked by default")
+	assert.Contains(t, err.Error(), "not in the allowed range")
 }
 
 // ---------- RegisterPort returns localPort ----------
@@ -879,6 +879,9 @@ func TestProxyRegistry_RegisterPort_ReturnsAutoAssignedLocalPort(t *testing.T) {
 func TestProxyRegistry_RegisterPort_PrivilegedPort_ReturnsLocalPort(t *testing.T) {
 	r := newTestRegistry(t)
 	defer r.Stop()
+
+	// Allow privileged ports for this test (default now blocks them per ISS-186)
+	r.SetAllowedPorts("1-65535")
 
 	// Port 80 is a privileged port — it must be remapped to a non-privileged localPort
 	localPort, err := r.RegisterPort(80, "", "http-server", "http")
@@ -1026,6 +1029,9 @@ func TestProxyRegistry_AllocateLocalPort_PrivilegedPortScansUpward(t *testing.T)
 	r := newTestRegistry(t)
 	defer r.Stop()
 
+	// Allow privileged ports for this test (default now blocks them per ISS-186)
+	r.SetAllowedPorts("1-65535")
+
 	// Port 22 (SSH) should be remapped to >=1024
 	localPort, err := r.RegisterPort(22, "", "ssh", "http")
 	assert.NoError(t, err)
@@ -1102,6 +1108,58 @@ func TestProxyRegistry_StartReverseProxy_FailsOnUsedPort(t *testing.T) {
 	err = r.startReverseProxy(localPort, 9090, "192.168.1.200", "http")
 	assert.Error(t, err, "starting reverse proxy on already-used port should fail")
 	assert.Contains(t, err.Error(), "failed to create reverse proxy")
+}
+
+// ---------- ISS-185: IsPortAllowed synchronization ----------
+
+func TestProxyRegistry_IsPortAllowed_ConcurrentWithSetAllowedPorts(t *testing.T) {
+	r := newTestRegistry(t)
+	defer r.Stop()
+
+	// Verify IsPortAllowed reads under RLock by running concurrent SetAllowedPorts + IsPortAllowed
+	done := make(chan struct{})
+
+	// Writer: rapidly changes allowed ports
+	go func() {
+		defer close(done)
+		for i := 0; i < 100; i++ {
+			r.SetAllowedPorts("1024-65535")
+			r.SetAllowedPorts("1-65535")
+		}
+	}()
+
+	// Reader: checks IsPortAllowed concurrently (should not panic due to data race)
+	for i := 0; i < 1000; i++ {
+		_ = r.IsPortAllowed(8080)
+	}
+	<-done
+}
+
+// ---------- ISS-186: Default AllowedPorts is 1024-65535 ----------
+
+func TestProxyRegistry_DefaultAllowedPorts_NonPrivilegedOnly(t *testing.T) {
+	r := newTestRegistry(t)
+	defer r.Stop()
+
+	// Default should be "1024-65535" — privileged ports blocked (ISS-186)
+	assert.False(t, r.IsPortAllowed(80), "port 80 (HTTP) should be blocked by default")
+	assert.False(t, r.IsPortAllowed(443), "port 443 (HTTPS) should be blocked by default")
+	assert.False(t, r.IsPortAllowed(22), "port 22 (SSH) should be blocked by default")
+	assert.True(t, r.IsPortAllowed(1024), "port 1024 should be allowed by default")
+	assert.True(t, r.IsPortAllowed(3306), "port 3306 (MySQL) should be allowed by default (non-privileged)")
+	assert.True(t, r.IsPortAllowed(8080), "port 8080 should be allowed by default")
+	assert.True(t, r.IsPortAllowed(65535), "port 65535 should be allowed by default")
+}
+
+func TestProxyRegistry_DefaultAllowedPorts_CanBeOverriddenToAllowAll(t *testing.T) {
+	r := newTestRegistry(t)
+	defer r.Stop()
+
+	// Override to allow all ports (backward compatibility)
+	r.SetAllowedPorts("1-65535")
+	assert.True(t, r.IsPortAllowed(80), "port 80 should be allowed after override")
+	assert.True(t, r.IsPortAllowed(22), "port 22 should be allowed after override")
+	assert.True(t, r.IsPortAllowed(8080), "port 8080 should be allowed after override")
 }
 
 func TestProxyRegistry_LoadPortsFromDB_NonLocalhostReverseProxyStarts(t *testing.T) {

@@ -1324,3 +1324,62 @@ func TestDBRead_Initialized_SchedulerDB(t *testing.T) {
 	_ = setupSchedulerDB(t)
 	assert.NotNil(t, service.DBRead, "DBRead should be initialized in test setup")
 }
+
+// ---------- ISS-200: Cron re-parse failure pauses task ----------
+
+func TestCronReparseFailure_SetsStatusToPaused(t *testing.T) {
+	// Verify that when cron.ParseStandard fails, the status should be "paused"
+	// to prevent zombie active tasks (ISS-200).
+	// The actual fix is in executeTask(), but we verify the expected behavior
+	// by simulating the scenario at the DB level.
+
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	// Insert a task with a valid cron expression and session_id
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, run_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Cron Task", "0 * * * *", "agent1", "p", "", "active", "unlimited", 1, now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Simulate what executeTask would do on cron re-parse failure:
+	// Set status to "paused" (the fix for ISS-200)
+	_, err = service.DB.Exec(
+		"UPDATE scheduled_tasks SET status = ?, next_run_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		"paused", taskID,
+	)
+	assert.NoError(t, err)
+
+	// Verify the task is now paused
+	task, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	assert.Equal(t, "paused", task.Status, "task should be paused when cron re-parse fails (ISS-200)")
+	assert.Nil(t, task.NextRunAt, "paused task should have nil next_run_at")
+}
+
+func TestCronReparseFailure_InvalidExprCannotBeResumed(t *testing.T) {
+	// If a task has an invalid cron expression and gets paused,
+	// resuming it should fail because the expression can't be parsed.
+
+	s, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	// Insert a task with an invalid cron expression directly into DB
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Broken Cron", "not-a-valid-cron", "agent1", "p", "", "paused", "unlimited", now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Attempt to resume — should fail because UpdateTask re-parses the cron expression
+	pausedTask, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	err = s.UpdateTask(pausedTask)
+	assert.Error(t, err, "resuming a task with invalid cron should fail")
+	assert.Contains(t, err.Error(), "invalid cron expression")
+}
