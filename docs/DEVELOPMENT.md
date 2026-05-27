@@ -18,7 +18,7 @@ cd clawbench
 ./server.sh
 ```
 
-> 首次启动会自动生成随机密码并保存到 `.clawbench/auto-password`，启动脚本会自动显示。如需自定义配置，可复制 `config/config.example.yaml` 为 `config/config.yaml` 并修改。
+> 首次启动会自动生成8位随机密码并保存到 `.clawbench/auto-password`，启动时以字符框突出打印。如需自定义配置，可复制 `config/config.example.yaml` 为 `config/config.yaml` 并修改。
 
 发布包内容（Linux）：
 
@@ -108,7 +108,7 @@ cd clawbench
 |--------|--------|------|
 | `port` | 20000 | 服务端口 |
 | `watch_dir` | 用户家目录 | Linux: `/home/用户名`, Windows: `C:\Users\用户名` |
-| `password` | 自动生成 UUID | 首次生成后保存到 `.clawbench/auto-password`，重启复用 |
+| `password` | 自动生成 8 位 hex | 首次生成后保存到 `.clawbench/auto-password`，重启复用 |
 | `log_dir` | `<BinDir>/.clawbench/logs` | 二进制同级目录下 |
 | `log_max_days` | 7 | 日志保留天数 |
 | `upload.max_size_mb` | 100 | 上传大小上限 MB |
@@ -135,7 +135,7 @@ cd clawbench
 | `summarize.api` | (空) | API 子配置（backend 为 api 时使用），含 base_url/key/format |
 | `summarize.chat_summary` | true | 会话完成后自动生成最后助手消息摘要（`*bool`，nil=true） |
 
-**自动密码机制**：未配置 `password` 时，系统自动生成随机 UUID 作为密码，保存到 `.clawbench/auto-password`（权限 0600）。重启时复用已保存的密码，不会重新生成。配置 `password` 后自动删除该文件。启动脚本会从文件读取并显示密码。
+**自动密码机制**：未配置 `password` 时，系统自动生成 8 位十六进制随机密码，保存到 `.clawbench/auto-password`（权限 0600）。重启时复用已保存的密码，不会重新生成。配置 `password` 后自动删除该文件。启动时以字符框突出打印密码，方便查看。
 
 **示例配置**：
 
@@ -144,7 +144,7 @@ cd clawbench
 # port: 20000
 # watch_dir: "/home/user"       # Linux/macOS 默认为用户家目录
 # watch_dir: "C:\\Users\\user"  # Windows 默认为用户家目录
-# password: "your_password"     # 不配置则自动生成
+# password: "your_password"     # 不配置则自动生成8位hex密码
 # default_agent: "assistant"   # 默认智能体，留空则使用第一个智能体
 ```
 
@@ -283,6 +283,24 @@ ClawBench 支持 TTS 语音合成，自动将 AI 回复总结后朗读。支持 
      key_file: "/etc/letsencrypt/live/your-domain.com/privkey.pem"
    ```
 3. **重启服务**：`./server.sh --restart`
+
+### 多实例部署
+
+ClawBench 支持在同一台服务器上运行多个实例（不同端口），各实例数据完全隔离：
+
+```bash
+# 实例 1：默认端口 20000
+./server.sh
+
+# 实例 2：指定不同端口
+./server.sh --port 20300
+```
+
+浏览器不区分端口的 Cookie，因此多实例部署时 Cookie 会按端口自动添加前缀（如 `cb20300_`），防止同域名不同端口的实例间 Cookie 冲突。默认端口 20000 不添加前缀，保持向后兼容。
+
+### Linux 静态链接
+
+GitHub Release 中的 Linux 二进制为纯静态链接（`-extldflags '-static'`），无 glibc/libstdc++ 运行时依赖，可直接在 Rocky Linux 9 等 glibc 版本较旧的系统上运行。
 
 ### 数据存储
 

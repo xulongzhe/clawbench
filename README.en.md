@@ -130,7 +130,7 @@ cd clawbench
 
 That's it — on every startup, ClawBench automatically scans for installed AI CLI tools, generates minimal agent configs for each detected backend, and auto-discovers available models and thinking effort levels. No manual configuration needed.
 
-> A random password is auto-generated on first startup and printed to the console. Save it securely.
+> A random 8-character hex password is auto-generated on first startup and printed to the console in a bordered box. Save it securely.
 
 Once deployed, access `http://server-ip:20000` from your phone app or mobile browser:
 
@@ -164,7 +164,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Image Thumbnails**: Backend generates square thumbnails with dominant-color padding for quick preview
 - Context menu: rename, delete, copy, cut, paste, new file/folder, download, open as project
 - **Multi-Select Operations**: Toggle multi-select mode from toolbar, batch copy/cut/delete; mobile long-press triggers context menu
-- File upload (image support, configurable size and count)
+- File upload (all file types supported, configurable size and count)
 - Toggle hidden file visibility
 - **Drill-down Browsing + Edge Swipe Back**: Tap folders to drill down, swipe from right edge to go back — intuitive mobile navigation
 
@@ -284,9 +284,10 @@ Each `.yaml.example` file contains complete configuration fields and description
 
 ### 🔒 Security
 - Optional password protection (SHA-256 salted hash storage, password change available in settings panel)
+- Multi-instance cookie isolation (cookies auto-prefixed by port, no collisions on same domain)
 - Path traversal protection, all operations restricted to project directory
 - Git parameter injection protection (SHA/branch name/tag name validation, `--` separator)
-- Configurable file upload size and count (default 10MB / 20 files)
+- Configurable file upload size and count (default 100MB / 20 files), all file types supported
 - XSS protection (DOMPurify sanitization)
 - TLS support (manual certificate configuration required)
 
