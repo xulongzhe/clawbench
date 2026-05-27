@@ -1345,7 +1345,7 @@ func TestUploadFile_NoExtension(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestUploadFilePost_DangerousExtensions(t *testing.T) {
+func TestUploadFilePost_AllExtensionsAllowed(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
 
@@ -1366,14 +1366,14 @@ func TestUploadFilePost_DangerousExtensions(t *testing.T) {
 			writer := multipart.NewWriter(&buf)
 			part, createErr := writer.CreateFormFile("file", tt.ext)
 			require.NoError(t, createErr)
-			fmt.Fprint(part, "dangerous")
+			fmt.Fprint(part, "content")
 			writer.Close()
 
 			req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 			req.Header.Set("Content-Type", writer.FormDataContentType())
 			withProjectCookie(req, env.ProjectDir)
 			w := callHandler(UploadFile, req)
-			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Equal(t, http.StatusOK, w.Code)
 		})
 	}
 }

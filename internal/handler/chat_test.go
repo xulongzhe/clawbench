@@ -876,7 +876,7 @@ func TestUploadFile_WrongMethod(t *testing.T) {
 	assertStatus(t, w, http.StatusMethodNotAllowed)
 }
 
-func TestUploadFile_DangerousExtension(t *testing.T) {
+func TestUploadFile_ExeExtension_Allowed(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
 
@@ -892,10 +892,10 @@ func TestUploadFile_DangerousExtension(t *testing.T) {
 	withProjectCookie(req, env.ProjectDir)
 
 	w := callHandler(UploadFile, req)
-	assertStatus(t, w, http.StatusBadRequest)
+	assertOK(t, w)
 }
 
-func TestUploadFile_DangerousBatExtension(t *testing.T) {
+func TestUploadFile_BatExtension_Allowed(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
 
@@ -910,7 +910,7 @@ func TestUploadFile_DangerousBatExtension(t *testing.T) {
 	withProjectCookie(req, env.ProjectDir)
 
 	w := callHandler(UploadFile, req)
-	assertStatus(t, w, http.StatusBadRequest)
+	assertOK(t, w)
 }
 
 func TestAccumulateBlock_ErrorEvent(t *testing.T) {
