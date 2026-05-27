@@ -7,7 +7,6 @@ import { type Locator, type Page, expect } from '@playwright/test'
  * - .chat-textarea       → message input textarea
  * - .chat-send-btn        → send button (hidden during loading)
  * - .chat-stop-btn        → stop/cancel button (visible during loading)
- * - .quick-send-hint      → hint text shown when input is empty
  * - .quick-send-title     → quick-send popup title
  * - .model-chip           → model selector chip
  * - .thinking-effort-chip → thinking effort selector chip
@@ -21,7 +20,6 @@ export class ChatPage {
   readonly textarea: Locator
   readonly sendButton: Locator
   readonly stopButton: Locator
-  readonly quickSendHint: Locator
   readonly messagesContainer: Locator
   readonly modelChip: Locator
 
@@ -30,7 +28,6 @@ export class ChatPage {
     this.textarea = page.locator('.chat-textarea')
     this.sendButton = page.locator('.chat-send-btn')
     this.stopButton = page.locator('.chat-stop-btn')
-    this.quickSendHint = page.locator('.quick-send-hint')
     this.messagesContainer = page.locator('.chat-messages')
     this.modelChip = page.locator('.model-chip')
   }

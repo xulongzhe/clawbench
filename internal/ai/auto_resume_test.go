@@ -507,3 +507,27 @@ func TestAutoResume_FirstStreamClosedWithoutDone(t *testing.T) {
 	assert.Equal(t, "content", events[0].Type)
 	assert.Equal(t, "done", events[1].Type, "synthetic 'done' should be emitted when first stream closes without done")
 }
+
+// --- forwardEvent tests ---
+
+func TestForwardEvent_ChannelFull(t *testing.T) {
+	// Create a channel with buffer size 1 and fill it
+	ch := make(chan StreamEvent, 1)
+	ch <- StreamEvent{Type: "content", Content: "first"}
+
+	// ForwardEvent should not block when channel is full (drops the event)
+	forwardEvent(ch, StreamEvent{Type: "content", Content: "dropped"})
+
+	assert.Equal(t, 1, len(ch))
+	ev := <-ch
+	assert.Equal(t, "first", ev.Content)
+}
+
+func TestForwardEvent_ChannelEmpty(t *testing.T) {
+	ch := make(chan StreamEvent, 1)
+	forwardEvent(ch, StreamEvent{Type: "content", Content: "hello"})
+
+	assert.Equal(t, 1, len(ch))
+	ev := <-ch
+	assert.Equal(t, "hello", ev.Content)
+}

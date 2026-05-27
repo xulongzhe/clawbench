@@ -12,15 +12,15 @@ const COVERAGE_DIR = '.nyc_output'
  * 2. After test: stop coverage, convert V8 → Istanbul via v8-to-istanbul
  * 3. Write per-test Istanbul JSON to .nyc_output/ directory
  *
- * Only runs on the 'chromium-coverage' project (browserName === 'chromium').
- * Firefox and WebKit tests run without coverage collection.
+ * Only runs on the 'chromium-coverage' project (projectName === 'chromium-coverage').
+ * Other Chromium-based projects, Firefox, and WebKit tests run without coverage collection.
  *
  * After all tests complete, run `npx nyc report` to generate the combined report.
  */
 export const test = base.extend({
-  coverageCollector: [async ({ page, browserName }, use, testInfo) => {
-    // Only collect coverage on Chromium
-    if (browserName !== 'chromium') {
+  coverageCollector: [async ({ page, projectName }, use, testInfo) => {
+    // Only collect coverage on the chromium-coverage project
+    if (projectName !== 'chromium-coverage') {
       await use(null)
       return
     }
