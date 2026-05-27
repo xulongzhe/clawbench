@@ -18,9 +18,9 @@ const COVERAGE_DIR = '.nyc_output'
  * After all tests complete, run `npx nyc report` to generate the combined report.
  */
 export const test = base.extend({
-  coverageCollector: [async ({ page, projectName }, use, testInfo) => {
+  coverageCollector: [async ({ page }, use, testInfo) => {
     // Only collect coverage on the chromium-coverage project
-    if (projectName !== 'chromium-coverage') {
+    if (testInfo.project.name !== 'chromium-coverage') {
       await use(null)
       return
     }
