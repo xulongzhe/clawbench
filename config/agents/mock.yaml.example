@@ -1,0 +1,7 @@
+backend: mock
+icon: "\U0001F9EA"
+id: mock
+name: Mock Agent
+specialty: E2E Testing
+system_prompt: |
+    You are a mock assistant for E2E testing.

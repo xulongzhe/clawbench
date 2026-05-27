@@ -63,3 +63,9 @@ clawbench-release
 .playwright-cli/
 config/config.yaml
 .dev-build/
+
+# Playwright E2E test artifacts
+test-results/
+playwright-report/
+.nyc_output/
+coverage/e2e/

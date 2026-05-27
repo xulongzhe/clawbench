@@ -25,6 +25,7 @@ type BackendSpec struct {
 	ID                   string                    // agent id, e.g. "claude"
 	Backend              string                    // backend type, e.g. "claude"
 	DefaultCmd           string                    // command to detect on PATH, e.g. "claude"
+	NoCLI                bool                      // if true, this backend has no CLI (e.g. mock); always considered "present"
 	Name                 string                    // display name, e.g. "Claude"
 	Icon                 string                    // emoji icon, e.g. "🤖"
 	Specialty            string                    // short description, e.g. "代码编写与推理"
@@ -62,6 +63,7 @@ var BackendRegistry = []BackendSpec{
 	{ID: "pi", Backend: "pi", DefaultCmd: "pi", Name: "Pi", Icon: "🥧", Specialty: "极简编程智能体",
 		DiscoverModelsFunc: DiscoverPiModels,
 		ThinkingEffortLevels: []string{"off", "minimal", "low", "medium", "high", "xhigh"}},
+	{ID: "mock", Backend: "mock", NoCLI: true, Name: "Mock Agent", Icon: "🧪", Specialty: "E2E Testing"},
 }
 
 // CheckCLIExists checks whether a CLI command is available on the system.
@@ -208,7 +210,8 @@ func DiscoverAgents(dir string) error {
 		wg.Add(1)
 		go func(i int, spec BackendSpec) {
 			defer wg.Done()
-			results[i] = result{spec: spec, exists: CheckCLIExists(spec.DefaultCmd)}
+			exists := spec.NoCLI || CheckCLIExists(spec.DefaultCmd)
+			results[i] = result{spec: spec, exists: exists}
 		}(i, spec)
 	}
 	wg.Wait()
@@ -267,7 +270,8 @@ func SyncDiscoverAgents(dir string) map[string]bool {
 		wg.Add(1)
 		go func(i int, spec BackendSpec) {
 			defer wg.Done()
-			results[i] = result{spec: spec, exists: CheckCLIExists(spec.DefaultCmd)}
+			exists := spec.NoCLI || CheckCLIExists(spec.DefaultCmd)
+			results[i] = result{spec: spec, exists: exists}
 		}(i, spec)
 	}
 	wg.Wait()
