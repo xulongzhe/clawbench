@@ -98,8 +98,8 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 - **AutoResumeBackend:** ExitPlanMode → cancel → resume "继续". Emits `resume_split` for DB finalization.
 - **Thinking effort:** Per-agent via YAML. Levels auto-populated from `BackendRegistry`. CLI flags: `--effort`, `--thinking`, etc. Priority: frontend selection > YAML default > auto.
 - **Cancel reason:** `"user"` (explicit) vs `"disconnect"` (SSE gone). `ForceCancelSession` kills zombie CLI processes.
-- **Green portable deployment:** All runtime data under `.clawbench/`. Delete = clean uninstall. Copy binary dir for multi-instance.
-- **Zero-config startup:** `config/config.yaml` optional. `model.ApplyDefaults()` fills defaults. Auto-password persisted to `.clawbench/auto-password`.
+- **Green portable deployment:** All runtime data under `.clawbench/`. Delete = clean uninstall. Copy binary dir for multi-instance. Multiple instances on different ports coexist — cookies are auto-scoped by port prefix (e.g. `cb20300_`) via `ScopedCookieName()`, preventing collisions on the same domain.
+- **Zero-config startup:** `config/config.yaml` optional. `model.ApplyDefaults()` fills defaults. Auto-password (8-char hex) persisted to `.clawbench/auto-password`, printed to console in a bordered box for visibility.
 - **Model auto-discovery:** `SyncDiscoverAgents` detects CLIs → generates minimal YAMLs. `SyncDiscoverModels` (sync first run) + `AsyncRefreshModelCache` (background). CodeBuddy: `product.cloudhosted.json` parsing (21+ models). Gemini: API-based discovery. Codex: binary strings/state DB scanning. Qoder: `dynamic-texts.json` parsing. VeCLI: `MODEL_REGISTRY` parsing. All backends now support `DiscoverModelsFunc`; `CanRefreshModels` flag controls which agents expose runtime model refresh. `CheckCLIExistsErr` classifies CLI-not-found vs discovery-not-supported errors for user-facing messages.
 - **Android integration:** HTML login (static `login.html` + `AndroidNative` JS bridge). `BackgroundService` manages SSH port forwarding + native WebSocket event channel for background notifications. JPush AppKey from `/api/push/config` (runtime, not in APK). Push-aware: `pushAvailable=true` → disconnect WS on background (JPush delivers); `false` → keep WS alive. Registration ID via `POST /api/push/register` (login-level lifecycle, survives WS reconnects).
 - **SPA hot project switch:** Switching projects uses in-place state reset + Vue `:key` rebuild (0.15s fade transition) instead of `window.location.reload()`. `hotSwitchProject()` resets store singletons (agents, identity, project state), rebuilds component tree, reloads data — no page flicker.
@@ -119,7 +119,7 @@ cd android && JAVA_HOME=/usr/lib/jvm/jdk-17.0.12 ./gradlew assembleRelease  # Re
 
 | Section | Key options |
 |---------|------------|
-| Server | `port` (20000), `host`, `log_level` ("info"), `watch_dir`, `password` (auto-UUID, SHA-256 salted hash storage), `default_agent`, `dev_port` (0=auto, Port+2 when TLS) |
+| Server | `port` (20000), `host`, `log_level` ("info"), `watch_dir`, `password` (auto-8-char-hex, SHA-256 salted hash storage), `default_agent`, `dev_port` (0=auto, Port+2 when TLS) |
 | Upload | `upload.max_size_mb`, `upload.max_files` |
 | Chat UI | `chat.initial_messages`, `chat.page_size`, `chat.collapsed_height`, `chat.system_prompt_interval` (10) |
 | Session | `session.max_count` |

@@ -18,7 +18,7 @@ cd clawbench
 ./server.sh
 ```
 
-> On first startup, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it automatically. To customize configuration, copy `config/config.example.yaml` to `config/config.yaml` and modify as needed.
+> On first startup, a random 8-character hex password is auto-generated and saved to `.clawbench/auto-password`; it's printed to the console in a bordered box for visibility. To customize configuration, copy `config/config.example.yaml` to `config/config.yaml` and modify as needed.
 
 Release package contents (Linux):
 
@@ -108,7 +108,7 @@ cd clawbench
 |-------------|---------|-------------|
 | `port` | 20000 | Server port |
 | `watch_dir` | User home directory | Linux: `/home/username`, Windows: `C:\Users\username` |
-| `password` | Auto-generated UUID | Generated on first run, saved to `.clawbench/auto-password`, reused on restart |
+| `password` | Auto-generated 8-char hex | Generated on first run, saved to `.clawbench/auto-password`, reused on restart |
 | `log_dir` | `<BinDir>/.clawbench/logs` | Under the binary's directory |
 | `log_max_days` | 7 | Log retention days |
 | `upload.max_size_mb` | 100 | Upload size limit in MB |
@@ -135,7 +135,7 @@ cd clawbench
 | `summarize.api` | (empty) | API sub-config (used when backend is "api"), includes base_url/key/format |
 | `summarize.chat_summary` | true | Auto-generate summary of last assistant message on session complete (`*bool`, nil=true) |
 
-**Auto-password mechanism**: When `password` is not configured, the system auto-generates a random UUID as password, saved to `.clawbench/auto-password` (permissions 0600). On restart, the saved password is reused and not regenerated. Once `password` is configured, the file is auto-deleted. The startup script reads and displays the password from the file.
+**Auto-password mechanism**: When `password` is not configured, the system auto-generates a random 8-character hex password, saved to `.clawbench/auto-password` (permissions 0600). On restart, the saved password is reused and not regenerated. Once `password` is configured, the file is auto-deleted. On startup, the password is printed to the console in a bordered box for easy visibility.
 
 **Example configuration:**
 
@@ -144,7 +144,7 @@ cd clawbench
 # port: 20000
 # watch_dir: "/home/user"       # Linux/macOS defaults to user home directory
 # watch_dir: "C:\\Users\\user"  # Windows defaults to user home directory
-# password: "your_password"     # Auto-generated if not configured
+# password: "your_password"     # Auto-generates 8-char hex if not configured
 # default_agent: "assistant"   # Default agent; uses first agent if empty
 ```
 
@@ -283,6 +283,24 @@ Enabling HTTPS is recommended for production environments:
      key_file: "/etc/letsencrypt/live/your-domain.com/privkey.pem"
    ```
 3. **Restart server**: `./server.sh --restart`
+
+### Multi-Instance Deployment
+
+ClawBench supports running multiple instances on the same server (different ports), with fully isolated data:
+
+```bash
+# Instance 1: default port 20000
+./server.sh
+
+# Instance 2: custom port
+./server.sh --port 20300
+```
+
+Browsers don't distinguish cookies by port, so cookies are automatically prefixed by port (e.g. `cb20300_`) to prevent collisions between instances on the same domain. The default port 20000 uses unprefixed cookie names for backward compatibility.
+
+### Linux Static Linking
+
+The Linux binary in GitHub Releases is statically linked (`-extldflags '-static'`) with no glibc/libstdc++ runtime dependencies. It runs directly on systems with older glibc versions such as Rocky Linux 9.
 
 ### Data Storage
 
