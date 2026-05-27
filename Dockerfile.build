@@ -1,8 +1,10 @@
-# Ubuntu 22.04 builder — produces GLIBC 2.35 compatible binary
-# (Ubuntu apt mirrors are fast in China; Rocky Linux dnf is very slow)
+# Ubuntu 22.04 builder — produces statically linked Linux binary
+# (no glibc/libstdc++ runtime dependency, compatible with any Linux distro)
 # Usage:
 #   docker build -t clawbench-builder -f Dockerfile.build .
 #   docker run --rm -v $(pwd):/src -w /src clawbench-builder ./build.sh --linux
+#
+# For CI release builds, static linking is configured in .github/workflows/release.yml
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
