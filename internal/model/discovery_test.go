@@ -275,9 +275,11 @@ func TestParseDeepSeekModels_RealOutput(t *testing.T) {
 	models := model.ParseDeepSeekModels(output)
 	require.Len(t, models, 2, "should only include deepseek provider models, not third-party")
 
-	assert.Equal(t, "deepseek-v4-flash", models[0].ID)
+	assert.Equal(t, "deepseek/deepseek-v4-flash", models[0].ID)
+	assert.Equal(t, "deepseek/deepseek-v4-flash", models[0].Name)
 	assert.False(t, models[0].Default, "flash is not the default")
-	assert.Equal(t, "deepseek-v4-pro", models[1].ID)
+	assert.Equal(t, "deepseek/deepseek-v4-pro", models[1].ID)
+	assert.Equal(t, "deepseek/deepseek-v4-pro", models[1].Name)
 	assert.True(t, models[1].Default, "pro is the default (marked with *)")
 }
 
@@ -308,6 +310,35 @@ func TestParseDeepSeekModels_DefaultFromHeader(t *testing.T) {
 	require.Len(t, models, 2)
 	assert.False(t, models[0].Default)
 	assert.True(t, models[1].Default, "should match default from header")
+}
+
+func TestParseDeepSeekModels_ProviderPrefixInIDAndName(t *testing.T) {
+	// Verify that provider prefix is included in both ID and Name
+	output := `Available models (default: deepseek-v4-pro)
+* deepseek-v4-pro (deepseek)
+  deepseek-v4-flash (deepseek)
+`
+	models := model.ParseDeepSeekModels(output)
+	require.Len(t, models, 2)
+
+	assert.Equal(t, "deepseek/deepseek-v4-pro", models[0].ID)
+	assert.Equal(t, "deepseek/deepseek-v4-pro", models[0].Name)
+	assert.True(t, models[0].Default)
+
+	assert.Equal(t, "deepseek/deepseek-v4-flash", models[1].ID)
+	assert.Equal(t, "deepseek/deepseek-v4-flash", models[1].Name)
+}
+
+func TestParseDeepSeekModels_ThirdPartyProviderFiltered(t *testing.T) {
+	// Non-deepseek providers should be filtered out
+	output := `Available models (default: deepseek-v4-pro)
+  deepseek-v4-pro (deepseek)
+  deepseek-v4-pro (nvidia-nim)
+  gpt-4.1 (openai)
+`
+	models := model.ParseDeepSeekModels(output)
+	require.Len(t, models, 1)
+	assert.Equal(t, "deepseek/deepseek-v4-pro", models[0].ID)
 }
 
 func TestParseOpenCodeModels_RealOutput(t *testing.T) {
@@ -379,9 +410,9 @@ func TestBackendRegistry_ModelDiscoveryConfig(t *testing.T) {
 	assert.NotEmpty(t, specs["deepseek"].ListModelsCmd, "deepseek should have ListModelsCmd")
 	assert.NotNil(t, specs["deepseek"].ParseModels, "deepseek should have ParseModels")
 
-	// pi should have model discovery
-	assert.NotEmpty(t, specs["pi"].ListModelsCmd, "pi should have ListModelsCmd")
-	assert.NotNil(t, specs["pi"].ParseModels, "pi should have ParseModels")
+	// pi should have model discovery via DiscoverModelsFunc (outputs to stderr, not stdout)
+	assert.NotNil(t, specs["pi"].DiscoverModelsFunc, "pi should have DiscoverModelsFunc")
+	assert.Empty(t, specs["pi"].ListModelsCmd, "pi should not have ListModelsCmd")
 
 	// claude should have model discovery via DiscoverModelsFunc (binary strings scanning)
 	assert.NotNil(t, specs["claude"].DiscoverModelsFunc, "claude should have DiscoverModelsFunc")
@@ -485,10 +516,10 @@ minimax         MiniMax-M2.7                204.8K   131.1K   yes       no`
 	models := model.ParsePiModels(output)
 	require.Len(t, models, 4)
 	assert.Equal(t, "anthropic/claude-sonnet-4-6", models[0].ID)
-	assert.Equal(t, "claude-sonnet-4-6", models[0].Name)
+	assert.Equal(t, "anthropic/claude-sonnet-4-6", models[0].Name)
 	assert.True(t, models[0].Default, "first model should be default")
 	assert.Equal(t, "minimax/MiniMax-M2.7", models[3].ID)
-	assert.Equal(t, "MiniMax-M2.7", models[3].Name)
+	assert.Equal(t, "minimax/MiniMax-M2.7", models[3].Name)
 }
 
 func TestParsePiModels_EmptyOutput(t *testing.T) {
@@ -1529,6 +1560,146 @@ models: []
 	data, err := os.ReadFile(filepath.Join(agentsDir, "test-existing.yaml"))
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "Test Existing")
+}
+
+// --- Test 18: DiscoverPiModels with fake CLI ---
+
+func TestDiscoverPiModels_FakeCLI_Success(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	// Create a fake "pi" script that outputs model table to stderr (like real Pi)
+	fakeCLI := filepath.Join(binDir, "pi")
+	script := `#!/bin/sh
+cat >&2 <<'EOF'
+provider        model                       context  max-out  thinking  images
+anthropic       claude-sonnet-4-6           1M       64K      yes       yes
+minimax         MiniMax-M2.7                204.8K   131.1K   yes       no
+minimax-cn      MiniMax-M2.7                204.8K   131.1K   yes       no
+EOF
+`
+	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0755))
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverPiModels()
+	require.Len(t, models, 3)
+	assert.Equal(t, "anthropic/claude-sonnet-4-6", models[0].ID)
+	assert.Equal(t, "anthropic/claude-sonnet-4-6", models[0].Name)
+	assert.True(t, models[0].Default)
+	assert.Equal(t, "minimax/MiniMax-M2.7", models[1].ID)
+	assert.Equal(t, "minimax/MiniMax-M2.7", models[1].Name)
+	assert.Equal(t, "minimax-cn/MiniMax-M2.7", models[2].ID)
+	assert.Equal(t, "minimax-cn/MiniMax-M2.7", models[2].Name)
+}
+
+func TestDiscoverPiModels_FakeCLI_EmptyOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	// Create a fake "pi" script that outputs only the header (no model data)
+	fakeCLI := filepath.Join(binDir, "pi")
+	script := `#!/bin/sh
+cat >&2 <<'EOF'
+provider        model                       context  max-out  thinking  images
+EOF
+`
+	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0755))
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverPiModels()
+	assert.Nil(t, models, "should return nil when no models parsed from output")
+}
+
+func TestDiscoverPiModels_FakeCLI_CommandFails(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	// Create a fake "pi" script that exits with non-zero code
+	fakeCLI := filepath.Join(binDir, "pi")
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\nexit 1\n"), 0755))
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverPiModels()
+	assert.Nil(t, models, "should return nil when pi command fails")
+}
+
+func TestDiscoverPiModels_NotOnPATH(t *testing.T) {
+	// Ensure PATH doesn't contain a "pi" binary
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", t.TempDir()))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	models := model.DiscoverPiModels()
+	assert.Nil(t, models, "should return nil when pi is not on PATH")
+}
+
+func TestDiscoverPiModels_FakeCLI_OutputToStdout(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows — fake CLI scripts not executable")
+	}
+
+	tmpDir := t.TempDir()
+	binDir := filepath.Join(tmpDir, "bin")
+	require.NoError(t, os.MkdirAll(binDir, 0755))
+
+	// Create a fake "pi" script that outputs to stdout (like the old behavior)
+	fakeCLI := filepath.Join(binDir, "pi")
+	script := `#!/bin/sh
+cat <<'EOF'
+provider        model                       context  max-out  thinking  images
+anthropic       claude-sonnet-4-6           1M       64K      yes       yes
+EOF
+`
+	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0755))
+
+	origPath := os.Getenv("PATH")
+	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
+	t.Cleanup(func() { os.Setenv("PATH", origPath) })
+
+	// CombinedOutput captures both stdout and stderr, so stdout output works too
+	models := model.DiscoverPiModels()
+	require.Len(t, models, 1)
+	assert.Equal(t, "anthropic/claude-sonnet-4-6", models[0].ID)
+}
+
+// --- Test 19: ParsePiModels additional edge cases ---
+
+func TestParsePiModels_DuplicateModelName(t *testing.T) {
+	// When two providers have the same model name, they should be distinguishable
+	output := `provider        model                       context  max-out  thinking  images
+minimax         MiniMax-M2.7                204.8K   131.1K   yes       no
+minimax-cn      MiniMax-M2.7                204.8K   131.1K   yes       no
+`
+	models := model.ParsePiModels(output)
+	require.Len(t, models, 2)
+	assert.Equal(t, "minimax/MiniMax-M2.7", models[0].ID)
+	assert.Equal(t, "minimax/MiniMax-M2.7", models[0].Name)
+	assert.Equal(t, "minimax-cn/MiniMax-M2.7", models[1].ID)
+	assert.Equal(t, "minimax-cn/MiniMax-M2.7", models[1].Name)
 }
 
 // --- Test 15: ParseCodebuddyModels edge cases ---

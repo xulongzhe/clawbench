@@ -247,6 +247,61 @@ func TestBuildDeepSeekStreamArgsWithModel(t *testing.T) {
 	}
 }
 
+func TestBuildDeepSeekStreamArgsWithProviderModel(t *testing.T) {
+	// When model ID includes provider prefix (e.g. "deepseek/deepseek-v4-pro"),
+	// the provider prefix should be stripped before passing to the CLI.
+	req := ChatRequest{
+		Prompt: "hello",
+		Model:  "deepseek/deepseek-v4-pro",
+	}
+	args := buildDeepSeekStreamArgs(req)
+
+	found := false
+	for i, arg := range args {
+		if arg == "--model" && i+1 < len(args) && args[i+1] == "deepseek-v4-pro" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected --model deepseek-v4-pro (stripped provider) in args: %v", args)
+	}
+}
+
+func TestBuildDeepSeekStreamArgsWithProviderModel_NestedSlashes(t *testing.T) {
+	// Edge case: model ID with multiple slashes — should strip up to the last slash
+	req := ChatRequest{
+		Prompt: "hello",
+		Model:  "a/b/deepseek-v4-flash",
+	}
+	args := buildDeepSeekStreamArgs(req)
+
+	found := false
+	for i, arg := range args {
+		if arg == "--model" && i+1 < len(args) && args[i+1] == "deepseek-v4-flash" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected --model deepseek-v4-flash (stripped all provider prefixes) in args: %v", args)
+	}
+}
+
+func TestBuildDeepSeekStreamArgsWithNoModel(t *testing.T) {
+	// When no model is specified, --model flag should not appear
+	req := ChatRequest{
+		Prompt: "hello",
+	}
+	args := buildDeepSeekStreamArgs(req)
+
+	for i, arg := range args {
+		if arg == "--model" {
+			t.Errorf("unexpected --model flag in args when no model specified: %v", args[i:])
+		}
+	}
+}
+
 func TestBuildDeepSeekStreamArgsWithResume(t *testing.T) {
 	req := ChatRequest{
 		Prompt:   "continue",
