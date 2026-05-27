@@ -1,5 +1,7 @@
 package ai
 
+import "strings"
+
 // deepseekBackend is the CLIBackend instance for DeepSeek TUI CLI.
 var deepseekBackend = &CLIBackend{
 	name:           "deepseek",
@@ -41,9 +43,15 @@ func buildDeepSeekStreamArgs(req ChatRequest) []string {
 		args = append(args, "--system-prompt", req.SystemPrompt)
 	}
 
-	// Model override
+	// Model override — DeepSeek CLI expects a plain model ID (e.g. "deepseek-v4-pro"),
+	// but ClawBench stores model IDs as "provider/model" (e.g. "deepseek/deepseek-v4-pro").
+	// Strip the provider prefix before passing to the CLI.
 	if req.Model != "" {
-		args = append(args, "--model", req.Model)
+		if idx := strings.LastIndex(req.Model, "/"); idx >= 0 {
+			args = append(args, "--model", req.Model[idx+1:])
+		} else {
+			args = append(args, "--model", req.Model)
+		}
 	}
 
 	// Prompt is the last positional argument

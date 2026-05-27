@@ -60,7 +60,7 @@ var BackendRegistry = []BackendSpec{
 	{ID: "deepseek", Backend: "deepseek", DefaultCmd: "deepseek", Name: "DeepSeek", Icon: "🔍", Specialty: "DeepSeek 推理与编码",
 		ListModelsCmd: []string{"models"}, ParseModels: ParseDeepSeekModels},
 	{ID: "pi", Backend: "pi", DefaultCmd: "pi", Name: "Pi", Icon: "🥧", Specialty: "极简编程智能体",
-		ListModelsCmd: []string{"--list-models"}, ParseModels: ParsePiModels,
+		DiscoverModelsFunc: DiscoverPiModels,
 		ThinkingEffortLevels: []string{"off", "minimal", "low", "medium", "high", "xhigh"}},
 }
 
@@ -679,7 +679,8 @@ var deepseekDefaultRe = regexp.MustCompile(`Available models \(default:\s*(\S+)\
 //	  deepseek-v4-flash (deepseek)
 //	* deepseek-v4-pro (deepseek)
 //
-// Only models from the "deepseek" provider are included (other providers are third-party replicas).
+// The Name field includes the provider prefix for disambiguation (e.g., "deepseek/deepseek-v4-pro"),
+// consistent with Pi and OpenCode model naming.
 func ParseDeepSeekModels(output string) []AgentModel {
 	// Extract default model name from header
 	var defaultModel string
@@ -702,9 +703,10 @@ func ParseDeepSeekModels(output string) []AgentModel {
 			continue
 		}
 
+		fullID := provider + "/" + modelID
 		models = append(models, AgentModel{
-			ID:      modelID,
-			Name:    modelID,
+			ID:      fullID,
+			Name:    fullID,
 			Default: isDefault,
 		})
 	}
@@ -775,10 +777,34 @@ func ParsePiModels(output string) []AgentModel {
 		fullID := provider + "/" + modelID
 		models = append(models, AgentModel{
 			ID:      fullID,
-			Name:    modelID,
+			Name:    fullID,
 			Default: len(models) == 0,
 		})
 	}
+	return models
+}
+
+// DiscoverPiModels discovers Pi model IDs by running `pi --list-models` and parsing the output.
+// Pi outputs the model table to stderr (not stdout), so we must capture both streams.
+func DiscoverPiModels() []AgentModel {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pi", "--list-models")
+	// Pi outputs the model table to stderr; use CombinedOutput to capture both.
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		slog.Debug("pi model discovery: command failed", "error", err)
+		return nil
+	}
+
+	models := ParsePiModels(string(out))
+	if len(models) == 0 {
+		slog.Debug("pi model discovery: no models parsed")
+		return nil
+	}
+
+	slog.Info("pi model discovery succeeded", "models", len(models))
 	return models
 }
 
