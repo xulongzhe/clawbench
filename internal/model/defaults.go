@@ -74,14 +74,14 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 		if err == nil && len(saved) > 0 {
 			cfg.Password = string(saved)
 		} else {
-			// Generate new random password
-			b := make([]byte, 16)
+			// Generate new random password (8 hex chars = 4 bytes)
+			b := make([]byte, 4)
 			if _, err := rand.Read(b); err != nil {
 				// Random generation failure is fatal — password would be predictable
 				fmt.Fprintf(os.Stderr, "FATAL: crypto/rand.Read failed: %v\n", err)
 				os.Exit(1)
 			}
-			cfg.Password = fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+			cfg.Password = fmt.Sprintf("%x", b)
 			// Persist for reuse across restarts
 			os.MkdirAll(filepath.Dir(autoPasswordFile), 0755)
 			os.WriteFile(autoPasswordFile, []byte(cfg.Password), 0600)

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -434,7 +435,15 @@ func main() {
 			slog.String("file", filepath.Join(model.BinDir, ".clawbench", "auto-password")),
 		)
 		// Print to stdout for foreground mode and shell scripts to capture
-		fmt.Printf("Auto-generated password: %s\n", autoPassword)
+		pwdLine := "  Password: " + autoPassword + "  "
+		top := " ┌" + strings.Repeat("─", len(pwdLine)-2) + "┐"
+		mid := " │" + pwdLine + "│"
+		bot := " └" + strings.Repeat("─", len(pwdLine)-2) + "┘"
+		fmt.Println()
+		fmt.Println(top)
+		fmt.Println(mid)
+		fmt.Println(bot)
+		fmt.Println()
 	}
 
 	// Initialize password verification state
