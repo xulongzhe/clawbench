@@ -256,7 +256,7 @@ func loadRules(agentsDir string) string {
 
 	// Note: {{PROJECT_PATH}} is NOT replaced here — it is replaced per-request
 	// in buildChatRequest() and scheduler executeTask() with the actual project
-	// path from the cookie/database, not the static WatchDir.
+	// path from the cookie/database, not a static root path.
 
 	return content
 }

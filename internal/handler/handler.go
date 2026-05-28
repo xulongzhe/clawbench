@@ -14,6 +14,7 @@ import (
 	i18npkg "clawbench/internal/i18n"
 	"clawbench/internal/middleware"
 	"clawbench/internal/model"
+	"clawbench/internal/platform"
 	"clawbench/internal/ws"
 )
 
@@ -105,26 +106,20 @@ func validateAndResolvePath(w http.ResponseWriter, r *http.Request, basePath, re
 	return absPath, true
 }
 
-// resolveAbsPath resolves a path string to an absolute path under WatchDir.
+// resolveAbsPath resolves a path string to an absolute path under any root path.
 // Absolute paths are validated directly; relative paths are resolved against
 // the project path from cookie then validated. This unifies path handling for
 // all file mutation endpoints so callers don't need to worry about base-path
 // bookkeeping. Writes error on failure. Returns (absPath, true) on success.
 func resolveAbsPath(w http.ResponseWriter, r *http.Request, pathStr string) (string, bool) {
-	watchAbs, err := filepath.Abs(model.WatchDir)
-	if err != nil {
-		model.WriteError(w, model.Internal(fmt.Errorf("invalid watchDir: %w", err)))
-		return "", false
-	}
-
 	if filepath.IsAbs(pathStr) {
-		// Absolute path — validate it's under WatchDir directly
+		// Absolute path — validate it's under any root path
 		absPath, err := filepath.Abs(pathStr)
 		if err != nil {
 			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 			return "", false
 		}
-		if !isPathUnderBase(absPath, watchAbs) {
+		if !isPathUnderAnyRoot(absPath) {
 			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 			return "", false
 		}
@@ -145,12 +140,19 @@ func resolveAbsPath(w http.ResponseWriter, r *http.Request, pathStr string) (str
 	if !ok {
 		return "", false
 	}
-	// Double-check the resolved path is under WatchDir
-	if !isPathUnderBase(absPath, watchAbs) {
+	// Double-check the resolved path is under any root
+	if !isPathUnderAnyRoot(absPath) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return "", false
 	}
 	return absPath, true
+}
+
+// isPathUnderAnyRoot checks that absPath is under at least one of the
+// configured root paths. Uses the platform's IsPathUnderAnyRoot for
+// symlink-safe validation.
+func isPathUnderAnyRoot(absPath string) bool {
+	return platform.IsPathUnderAnyRoot(absPath, model.RootPaths)
 }
 
 // isPathUnderBase checks that absPath is under basePath by resolving symlinks
@@ -218,7 +220,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/login", ServeLogin)
 	register("/dialog/project", middleware.Auth(ServeProjectDialog))
 	register("/api/me", ServeAuthCheck)
-	register("/api/watch-dir", middleware.Auth(ServeWatchDir))
+	register("/api/roots", middleware.Auth(ServeRoots))
 	register("/api/config", middleware.Auth(ServeConfig))
 	register("/api/config/restart", middleware.Auth(ServeConfigRestart))
 	register("/api/config/password", middleware.Auth(ServeConfigPassword))

@@ -32,7 +32,7 @@ interface AppState {
     // Project
     projectRoot: string
     projectName: string
-    watchDir: string
+    rootPaths: string[]
     homeDir: string
 
     // Upload config
@@ -89,7 +89,7 @@ const state = reactive<AppState>({
     // Project
     projectRoot: '',
     projectName: '',
-    watchDir: '',
+    rootPaths: [],
     homeDir: '',
 
     // Upload config
@@ -135,8 +135,8 @@ const state = reactive<AppState>({
 async function loadProject(): Promise<void> {
     try {
         try {
-            const wd = await apiGet<{ watchDir: string; uploadMaxSizeMB: number; uploadMaxFiles: number; chatInitialMessages?: number; chatPageSize?: number; chatSessionPageSize?: number; chatCollapsedHeight?: number; sessionMaxCount?: number; recentProjectsMaxCount?: number }>('/api/watch-dir')
-            state.watchDir = wd.watchDir || ''
+            const wd = await apiGet<{ roots: string[]; uploadMaxSizeMB: number; uploadMaxFiles: number; chatInitialMessages?: number; chatPageSize?: number; chatSessionPageSize?: number; chatCollapsedHeight?: number; sessionMaxCount?: number; recentProjectsMaxCount?: number }>('/api/roots')
+            state.rootPaths = wd.roots || []
             if (wd.uploadMaxSizeMB > 0) state.uploadMaxSizeMB = wd.uploadMaxSizeMB
             if (wd.uploadMaxFiles > 0) state.uploadMaxFiles = wd.uploadMaxFiles
             if (wd.chatInitialMessages > 0) state.chatInitialMessages = wd.chatInitialMessages
@@ -146,7 +146,7 @@ async function loadProject(): Promise<void> {
             if (wd.sessionMaxCount > 0) state.sessionMaxCount = wd.sessionMaxCount
             if (wd.recentProjectsMaxCount > 0) state.recentProjectsMaxCount = wd.recentProjectsMaxCount
         } catch (error) {
-            console.error('[loadProject] watchDir failed:', error)
+            console.error('[loadProject] roots failed:', error)
         }
         const data = await apiGet<{ path: string; homeDir?: string }>('/api/project')
         if (!data.path) return
@@ -171,7 +171,7 @@ function resetProjectState(): void {
     // Project
     state.projectRoot = ''
     state.projectName = ''
-    state.watchDir = ''
+    state.rootPaths = []
     state.homeDir = ''
     // File browser
     state.currentDir = ''

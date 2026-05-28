@@ -798,23 +798,23 @@ func TestServeAISession_NoProjectCookie(t *testing.T) {
 	assertStatus(t, w, http.StatusForbidden)
 }
 
-// --- ServeWatchDir ---
+// --- ServeRoots ---
 
-func TestServeWatchDir(t *testing.T) {
+func TestServeRoots(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	req := newRequest(t, http.MethodGet, "/api/watch-dir", nil)
+	req := newRequest(t, http.MethodGet, "/api/roots", nil)
 
-	w := callHandler(ServeWatchDir, req)
+	w := callHandler(ServeRoots, req)
 	assertOK(t, w)
 
 	var result map[string]interface{}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	assert.Contains(t, result, "watchDir")
-	watchDir, ok := result["watchDir"].(string)
+	assert.Contains(t, result, "roots")
+	roots, ok := result["roots"].([]interface{})
 	assert.True(t, ok)
-	assert.NotEmpty(t, watchDir)
+	assert.NotEmpty(t, roots)
 }
 
 // --- UploadFile ---

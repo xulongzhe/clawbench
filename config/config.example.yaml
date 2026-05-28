@@ -9,8 +9,8 @@
 # 无配置文件启动时：
 #   - Password: auto-generated UUID, printed to console at startup
 #     密码自动生成为 UUID，启动时打印到控制台
-#   - Watch directory: user home directory
-#     监控目录默认为用户家目录
+#   - File access: entire filesystem (Linux/macOS: /, Windows: all drives)
+#     文件访问范围：整个文件系统（Linux/macOS: /, Windows: 所有盘符）
 #   - Port: 20000, Proxy & SSH: enabled
 #     端口: 20000，端口转发与 SSH 隧道: 默认启用
 #
@@ -41,13 +41,6 @@
 # Log level: "debug", "info", "warn", "error" (default: "info")
 # 日志级别：debug / info / warn / error（默认: info）
 # log_level: "info"
-
-# Project root directory — the base path that AI agents can access for file operations.
-# 项目监控目录（AI 可访问的文件根路径）
-# Default: user home directory (Linux: /home/username, macOS: /Users/username, Windows: C:\Users\username)
-# 默认值：用户家目录（Linux: /home/用户名, macOS: /Users/用户名, Windows: C:\Users\用户名）
-# Uncomment to override / 取消注释以覆盖默认值
-# watch_dir: "/home/your-username"
 
 # Access password (default: auto-generated UUID, printed to console at startup).
 # 访问密码（默认：自动生成 UUID，启动时打印到控制台）

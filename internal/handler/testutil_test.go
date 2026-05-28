@@ -28,7 +28,7 @@ type testEnv struct {
 	WatchDir        string
 	OrigToken       string
 	OrigCookieToken string
-	OrigWatch       string
+	OrigRootPaths    []string
 	OrigDB          *sql.DB
 }
 
@@ -45,7 +45,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	// Save original globals
 	origToken := model.SessionToken
 	origCookieToken := model.CookieToken
-	origWatch := model.WatchDir
+	origRootPaths := model.RootPaths
 	origDB := service.DB
 	origDBRead := service.DBRead
 	origAgents := model.Agents
@@ -54,7 +54,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	// Set test globals
 	model.SessionToken = ""
 	model.CookieToken = ""
-	model.WatchDir = watchDir
+	model.RootPaths = []string{watchDir}
 
 	// Init in-memory SQLite
 	db, err := sql.Open("sqlite", ":memory:")
@@ -196,14 +196,14 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		WatchDir:        watchDir,
 		OrigToken:       origToken,
 		OrigCookieToken: origCookieToken,
-		OrigWatch:       origWatch,
+		OrigRootPaths:    origRootPaths,
 		OrigDB:          origDB,
 	}
 
 	teardown := func() {
 		model.SessionToken = origToken
 		model.CookieToken = origCookieToken
-		model.WatchDir = origWatch
+		model.RootPaths = origRootPaths
 		model.Agents = origAgents
 		model.AgentList = origAgentList
 		service.DB = origDB

@@ -11,6 +11,7 @@
       <AppHeader
         :hidden="terminalActive"
         :project-root="projectRoot"
+        :home-dir="homeDir"
         @open-project-dialog="handleOpenProjectDialog"
       />
 
@@ -635,6 +636,7 @@ const currentFileIsMarkdown = computed(() => {
     return ft?.isMarkdown || ft?.isHtml || false
 })
 const projectRoot = computed(() => store.state.projectRoot)
+const homeDir = computed(() => store.state.homeDir)
 
 const tocFile = computed(() => {
     const f = currentFile.value

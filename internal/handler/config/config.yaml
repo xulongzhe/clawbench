@@ -82,4 +82,3 @@ tts:
 upload:
     max_files: 0
     max_size_mb: 50
-watch_dir: ""

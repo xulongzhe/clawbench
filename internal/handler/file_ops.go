@@ -42,9 +42,8 @@ func ServeFileRename(w http.ResponseWriter, r *http.Request) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
-	// Validate new path is still under WatchDir
-	watchAbs, _ := filepath.Abs(model.WatchDir)
-	if !isPathUnderBase(absNew, watchAbs) {
+	// Validate new path is still under a root path
+	if !isPathUnderAnyRoot(absNew) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
@@ -141,8 +140,7 @@ func ServeFileDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if info.IsDir() {
-		watchAbs, _ := filepath.Abs(model.WatchDir)
-		if err := safeRemoveAll(absPath, watchAbs); err != nil {
+		if err := safeRemoveAll(absPath); err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("delete failed: %w", err)))
 			return
 		}
@@ -173,7 +171,6 @@ func ServeFileBatchDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	watchAbs, _ := filepath.Abs(model.WatchDir)
 	deleted := 0
 	var errs []string
 	for _, p := range req.Paths {
@@ -181,7 +178,7 @@ func ServeFileBatchDelete(w http.ResponseWriter, r *http.Request) {
 		var absPath string
 		if filepath.IsAbs(p) {
 			ap, err := filepath.Abs(p)
-			if err != nil || !isPathUnderBase(ap, watchAbs) {
+			if err != nil || !isPathUnderAnyRoot(ap) {
 				errs = append(errs, p+": access denied")
 				continue
 			}
@@ -198,7 +195,7 @@ func ServeFileBatchDelete(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			ap, ok := model.ValidatePath(baseAbs, p)
-			if !ok || !isPathUnderBase(ap, watchAbs) {
+			if !ok || !isPathUnderAnyRoot(ap) {
 				errs = append(errs, p+": access denied")
 				continue
 			}
@@ -211,7 +208,7 @@ func ServeFileBatchDelete(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if info.IsDir() {
-			if err := safeRemoveAll(absPath, watchAbs); err != nil {
+			if err := safeRemoveAll(absPath); err != nil {
 				errs = append(errs, p+": delete failed: "+err.Error())
 				continue
 			}
@@ -299,7 +296,7 @@ func ServeDirCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateCreatePath validates the path for file/directory creation operations.
-// dirPath can be absolute (validated against WatchDir) or relative (resolved against projectPath).
+// dirPath can be absolute (validated against root paths) or relative (resolved against projectPath).
 // Returns the absolute path of the item to create, or empty string on error (response already written).
 func validateCreatePath(w http.ResponseWriter, r *http.Request, dirPath, name string) string {
 	var absDir string
@@ -316,9 +313,8 @@ func validateCreatePath(w http.ResponseWriter, r *http.Request, dirPath, name st
 			return ""
 		}
 	} else if filepath.IsAbs(dirPath) {
-		// Absolute directory path — validate against WatchDir
-		watchAbs, err := filepath.Abs(model.WatchDir)
-		if err != nil || !isPathUnderBase(dirPath, watchAbs) {
+		// Absolute directory path — validate against root paths
+		if !isPathUnderAnyRoot(dirPath) {
 			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 			return ""
 		}
@@ -348,9 +344,8 @@ func validateCreatePath(w http.ResponseWriter, r *http.Request, dirPath, name st
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return ""
 	}
-	// Ensure the final path is under WatchDir
-	watchAbs, _ := filepath.Abs(model.WatchDir)
-	if !isPathUnderBase(absPath, watchAbs) {
+	// Ensure the final path is under a root path
+	if !isPathUnderAnyRoot(absPath) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return ""
 	}
@@ -441,8 +436,7 @@ func ServeFileCopy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if srcInfo.IsDir() {
-		watchAbs, _ := filepath.Abs(model.WatchDir)
-		err = copyDir(srcAbsPath, destAbsPath, watchAbs)
+		err = copyDir(srcAbsPath, destAbsPath)
 	} else {
 		err = copyFile(srcAbsPath, destAbsPath)
 	}
@@ -474,8 +468,8 @@ func copyFile(src, dst string) error {
 }
 
 // copyDir copies a directory recursively from src to dst.
-// Symlinks whose targets escape watchBase are skipped to prevent data exfiltration.
-func copyDir(src, dst, watchBase string) error {
+// Symlinks whose targets escape root paths are skipped to prevent data exfiltration.
+func copyDir(src, dst string) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return err
@@ -494,20 +488,20 @@ func copyDir(src, dst, watchBase string) error {
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
 
-		// Skip symlinks that escape watchBase (prevent data exfiltration via symlink)
+		// Skip symlinks that escape root paths (prevent data exfiltration via symlink)
 		if entry.Type()&os.ModeSymlink != 0 {
 			target, linkErr := filepath.EvalSymlinks(srcPath)
-			if linkErr != nil || !isPathUnderBase(target, watchBase) {
-				slog.Warn("copyDir: skip symlink escaping watchDir", "path", srcPath)
+			if linkErr != nil || !isPathUnderAnyRoot(target) {
+				slog.Warn("copyDir: skip symlink escaping root paths", "path", srcPath)
 				continue
 			}
-			// Symlink target is within watchDir — copy the actual file/directory it points to
+			// Symlink target is within root paths — copy the actual file/directory it points to
 			targetInfo, statErr := os.Stat(srcPath)
 			if statErr != nil {
 				continue
 			}
 			if targetInfo.IsDir() {
-				if err := copyDir(srcPath, dstPath, watchBase); err != nil {
+				if err := copyDir(srcPath, dstPath); err != nil {
 					return err
 				}
 			} else {
@@ -519,7 +513,7 @@ func copyDir(src, dst, watchBase string) error {
 		}
 
 		if entry.IsDir() {
-			if err := copyDir(srcPath, dstPath, watchBase); err != nil {
+			if err := copyDir(srcPath, dstPath); err != nil {
 				return err
 			}
 		} else {
@@ -532,9 +526,9 @@ func copyDir(src, dst, watchBase string) error {
 }
 
 // safeRemoveAll removes a directory tree without following symlinks that point
-// outside watchBase. This prevents os.RemoveAll from traversing symlinks and
+// outside root paths. This prevents os.RemoveAll from traversing symlinks and
 // deleting files outside the project directory (ISS-048).
-func safeRemoveAll(dir, watchBase string) error {
+func safeRemoveAll(dir string) error {
 	// Walk the tree and remove entries bottom-up, skipping symlink targets
 	// that escape watchBase. We use a two-pass approach:
 	// 1. Walk to collect paths and check symlinks
@@ -549,12 +543,12 @@ func safeRemoveAll(dir, watchBase string) error {
 			return err
 		}
 
-		// Check if this entry is a symlink pointing outside watchBase
+		// Check if this entry is a symlink pointing outside root paths
 		if info.Mode()&os.ModeSymlink != 0 {
 			target, linkErr := filepath.EvalSymlinks(path)
-			if linkErr == nil && !isPathUnderBase(target, watchBase) {
-				// Symlink escapes watchDir — remove just the symlink, don't follow it
-				slog.Warn("safeRemoveAll: symlink escapes watchDir, removing symlink only", "path", path, "target", target)
+			if linkErr == nil && !isPathUnderAnyRoot(target) {
+				// Symlink escapes root paths — remove just the symlink, don't follow it
+				slog.Warn("safeRemoveAll: symlink escapes root paths, removing symlink only", "path", path, "target", target)
 				os.Remove(path)
 				if info.IsDir() {
 					return filepath.SkipDir

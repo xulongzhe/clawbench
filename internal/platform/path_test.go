@@ -159,6 +159,79 @@ func TestExpandTilde(t *testing.T) {
 	}
 }
 
+func TestListRootPaths(t *testing.T) {
+	// Reset cache
+	cachedRootPaths = nil
+
+	roots := ListRootPaths()
+	if len(roots) == 0 {
+		t.Error("ListRootPaths() returned empty slice")
+	}
+
+	if runtime.GOOS != "windows" {
+		// On Unix, should return ["/"]
+		if len(roots) != 1 || roots[0] != "/" {
+			t.Errorf("ListRootPaths() on Unix = %v, want [\"/\"]", roots)
+		}
+	} else {
+		// On Windows, should return at least one drive
+		for _, r := range roots {
+			if len(r) < 3 || r[1] != ':' || r[2] != '\\' {
+				t.Errorf("ListRootPaths() on Windows returned invalid drive %q", r)
+			}
+		}
+	}
+
+	// Verify caching: second call returns same slice
+	roots2 := ListRootPaths()
+	if len(roots) != len(roots2) {
+		t.Errorf("ListRootPaths() returned different lengths on second call: %d vs %d", len(roots), len(roots2))
+	}
+}
+
+func TestIsPathUnderAnyRoot(t *testing.T) {
+	tests := []struct {
+		name     string
+		absPath  string
+		roots    []string
+		expected bool
+	}{
+		{
+			name:     "path under root",
+			absPath:  "/home/user/project",
+			roots:    []string{"/"},
+			expected: true,
+		},
+		{
+			name:     "path equals root",
+			absPath:  "/",
+			roots:    []string{"/"},
+			expected: true,
+		},
+		{
+			name:     "real existing path under root",
+			absPath:  "/tmp",
+			roots:    []string{"/"},
+			expected: true,
+		},
+		{
+			name:     "empty roots",
+			absPath:  "/home/user",
+			roots:    []string{},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsPathUnderAnyRoot(tt.absPath, tt.roots)
+			if result != tt.expected {
+				t.Errorf("IsPathUnderAnyRoot(%q, %v) = %v, want %v", tt.absPath, tt.roots, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestClaudeProjectDir(t *testing.T) {
 	dir := ClaudeProjectDir("/home/user/project")
 	if dir == "" {

@@ -83,15 +83,6 @@ func buildLogHandlers(textHandler, fileHandler slog.Handler) []slog.Handler {
 	return handlers
 }
 
-// ensureWatchDir creates the watch directory if it doesn't exist.
-// Logs a warning on failure instead of exiting, since the server can still
-// function without file watching.
-func ensureWatchDir(dir string) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		slog.Warn("failed to create watch directory", slog.String("dir", dir), slog.String("err", err.Error()))
-	}
-}
-
 // generateBcryptHash creates a bcrypt hash of the given password.
 // If bcrypt generation fails (e.g., password too long), it logs a warning
 // and returns nil, causing the auth system to fall back to SHA256.
@@ -202,7 +193,7 @@ func main() {
 	model.ConfigInstance = cfg
 
 	// Set global variables from config
-	model.WatchDir = cfg.WatchDir
+	model.RootPaths = platform.ListRootPaths()
 	model.UploadMaxSizeMB = cfg.Upload.MaxSizeMB
 	model.UploadMaxFiles = cfg.Upload.MaxFiles
 	model.ChatInitialMessages = cfg.Chat.InitialMessages
@@ -478,9 +469,6 @@ func main() {
 		}
 	}
 
-	// Ensure the watch directory exists
-	ensureWatchDir(model.WatchDir)
-
 	// Initialize SQLite database (runFromServer=true: clean up orphaned streaming messages)
 	if err := service.InitDB(true); err != nil {
 		slog.Error("failed to initialize database", slog.String("err", err.Error()))
@@ -618,7 +606,7 @@ func main() {
 	addr := fmt.Sprintf("%s:%d", host, port)
 	slog.Info("server ready",
 		slog.String("addr", addr),
-		slog.String("watch_dir", model.WatchDir),
+		slog.String("roots", strings.Join(model.RootPaths, ", ")),
 		slog.Bool("auth_enabled", model.SessionToken != ""),
 	)
 	if cfg.DevPort > 0 {

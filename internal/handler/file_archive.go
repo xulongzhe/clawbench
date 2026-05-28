@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"clawbench/internal/model"
 )
 
 // maxArchivePaths limits the number of paths in a single archive request.
@@ -82,9 +80,6 @@ func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, safeName))
 	w.Header().Set("Cache-Control", "no-store")
 
-	// Get watchAbs for symlink validation inside the walk
-	watchAbs, _ := filepath.Abs(model.WatchDir)
-
 	// Stream zip directly to response writer
 	zw := zip.NewWriter(w)
 	defer zw.Close()
@@ -103,10 +98,10 @@ func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
 					return err
 				}
 
-				// Skip symlinks that escape the watchDir (prevent traversal & infinite loops)
+				// Skip symlinks that escape root paths (prevent traversal & infinite loops)
 				if fi.Mode()&os.ModeSymlink != 0 {
 					target, linkErr := filepath.EvalSymlinks(path)
-					if linkErr != nil || !isPathUnderBase(target, watchAbs) {
+					if linkErr != nil || !isPathUnderAnyRoot(target) {
 						slog.Warn("archive: skip symlink escaping watchDir", "path", path)
 						if fi.IsDir() {
 							return filepath.SkipDir

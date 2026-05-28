@@ -44,13 +44,13 @@ describe('store', () => {
         it('clears project fields', () => {
             store.state.projectRoot = '/some/project'
             store.state.projectName = 'project'
-            store.state.watchDir = '/watch'
+            store.state.rootPaths = ['/']
 
             store.resetProjectState()
 
             expect(store.state.projectRoot).toBe('')
             expect(store.state.projectName).toBe('')
-            expect(store.state.watchDir).toBe('')
+            expect(store.state.rootPaths).toEqual([])
         })
 
         it('clears file browser state', () => {
@@ -123,10 +123,10 @@ describe('store', () => {
     // ── loadProject ──
 
     describe('loadProject', () => {
-        it('reads recentProjectsMaxCount from watch-dir API', async () => {
+        it('reads recentProjectsMaxCount from roots API', async () => {
             mockApiGet.mockImplementation((url: string) => {
-                if (url === '/api/watch-dir') {
-                    return { watchDir: '/watch', recentProjectsMaxCount: 5 }
+                if (url === '/api/roots') {
+                    return { roots: ['/'], recentProjectsMaxCount: 5 }
                 }
                 if (url === '/api/project') {
                     return { path: '/home/user/project' }
@@ -144,8 +144,8 @@ describe('store', () => {
             store.state.recentProjectsMaxCount = 10
 
             mockApiGet.mockImplementation((url: string) => {
-                if (url === '/api/watch-dir') {
-                    return { watchDir: '/watch', recentProjectsMaxCount: 0 }
+                if (url === '/api/roots') {
+                    return { roots: ['/'], recentProjectsMaxCount: 0 }
                 }
                 if (url === '/api/project') {
                     return { path: '/home/user/project' }
@@ -162,7 +162,7 @@ describe('store', () => {
 
         it('sets projectRoot and projectName from /api/project', async () => {
             mockApiGet.mockImplementation((url: string) => {
-                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/roots') return { roots: ['/'] }
                 if (url === '/api/project') return { path: '/home/user/myproject' }
                 return {}
             })
@@ -176,7 +176,7 @@ describe('store', () => {
 
         it('saves project path to localStorage', async () => {
             mockApiGet.mockImplementation((url: string) => {
-                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/roots') return { roots: ['/'] }
                 if (url === '/api/project') return { path: '/home/user/myproject' }
                 return {}
             })
@@ -189,7 +189,7 @@ describe('store', () => {
 
         it('posts project path to recent-projects API', async () => {
             mockApiGet.mockImplementation((url: string) => {
-                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/roots') return { roots: ['/'] }
                 if (url === '/api/project') return { path: '/home/user/myproject' }
                 return {}
             })
@@ -204,7 +204,7 @@ describe('store', () => {
             store.state.projectRoot = '/previous'
 
             mockApiGet.mockImplementation((url: string) => {
-                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/roots') return { roots: ['/'] }
                 if (url === '/api/project') return { path: '' }
                 return {}
             })
@@ -214,9 +214,9 @@ describe('store', () => {
             expect(store.state.projectRoot).toBe('/previous')
         })
 
-        it('tolerates /api/watch-dir failure and still loads project', async () => {
+        it('tolerates /api/roots failure and still loads project', async () => {
             mockApiGet.mockImplementation((url: string) => {
-                if (url === '/api/watch-dir') throw new Error('network error')
+                if (url === '/api/roots') throw new Error('network error')
                 if (url === '/api/project') return { path: '/home/user/myproject' }
                 return {}
             })
@@ -232,7 +232,7 @@ describe('store', () => {
             store.state.projectRoot = '/previous'
 
             mockApiGet.mockImplementation((url: string) => {
-                if (url === '/api/watch-dir') return { watchDir: '/watch' }
+                if (url === '/api/roots') return { roots: ['/'] }
                 if (url === '/api/project') throw new Error('network error')
                 return {}
             })
@@ -244,7 +244,7 @@ describe('store', () => {
             expect(store.state.projectRoot).toBe('/previous')
         })
 
-        it('tolerates both /api/watch-dir and /api/project failing', async () => {
+        it('tolerates both /api/roots and /api/project failing', async () => {
             store.state.projectRoot = '/previous'
 
             mockApiGet.mockImplementation(() => { throw new Error('network error') })
