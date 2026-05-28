@@ -45,14 +45,10 @@ test.describe('Chat', () => {
     await expect(chat.textarea).toBeVisible()
   })
 
-  test('should show model selector chip', async ({ page }) => {
-    // The model chip should be visible (agents have models)
-    // Check if model chip exists and is visible
-    if (await chat.modelChip.isVisible().catch(() => false)) {
-      // Model chip is present — good
-      await expect(chat.modelChip).toBeVisible()
-    }
-    // If not visible, it's because no models are configured for the mock agent — that's OK
+  // Mock agent has no models configured, so model chip is not rendered.
+  // Skip until a backend with models is available for E2E.
+  test.skip('should show model selector chip', async ({ page }) => {
+    await expect(chat.modelChip).toBeVisible()
   })
 
   test('should show stop button during AI response', async ({ page }) => {

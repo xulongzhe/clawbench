@@ -21,22 +21,14 @@ test.describe('File Manager', () => {
 
   test('should navigate into a directory on click', async ({ page }) => {
     const dirItem = page.locator('.file-item.dir-item').first()
-    if (await dirItem.isVisible()) {
-      await dirItem.click()
-      // After clicking a directory, file list should update
-      await expect(page.locator('.file-item').first()).toBeVisible({ timeout: 5000 })
-    }
+    await expect(dirItem).toBeVisible({ timeout: 10000 })
+    await dirItem.click()
+    // After clicking a directory, file list should update
+    await expect(page.locator('.file-item').first()).toBeVisible({ timeout: 5000 })
   })
 
   test('should show file list container', async ({ page }) => {
-    // The file list container should exist (in list view mode)
-    const fileList = page.locator('.file-list')
-    if (await fileList.isVisible()) {
-      // List mode is active — good
-      await expect(fileList).toBeVisible()
-    } else {
-      // May be in grid view — file items should still be visible
-      await expect(page.locator('.file-item').first()).toBeVisible()
-    }
+    // Either list view (.file-list) or grid view must render file items
+    await expect(page.locator('.file-item').first()).toBeVisible({ timeout: 10000 })
   })
 })

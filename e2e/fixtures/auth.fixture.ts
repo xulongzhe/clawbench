@@ -12,6 +12,12 @@ const E2E_PASSWORD = process.env.E2E_PASSWORD || 'e2e-test-password'
  *
  * The session cookie (clawbench_session) persists across navigations within
  * the same browser context, so subsequent tests reuse the same session.
+ *
+ * NOTE: In current E2E setup, the Go server's auth middleware automatically
+ * bypasses authentication for localhost requests. Therefore `needsLogin` is
+ * always false and the login code path (lines 29-42) is unreachable. This
+ * code is kept for future use when localhost bypass may be disabled for
+ * proper auth E2E testing. See auth.spec.ts for details.
  */
 export const test = base.extend({
   page: async ({ page }, use) => {
