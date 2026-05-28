@@ -6,6 +6,22 @@ import { clearCommitHashCache } from '@/composables/useCommitHashAnnotation.ts'
 import { clearWorktreeCache } from '@/composables/useWorktreeAnnotation.ts'
 
 /**
+ * Try to decode a percent-encoded URI component.
+ * Browsers/DOMPurify may encode non-ASCII chars (e.g. 中文 → %E4%B8%AD%E6%96%87)
+ * in href attributes when HTML is inserted via innerHTML/v-html.
+ * This ensures file paths with Chinese characters are decoded back to their
+ * original form before being used as filesystem paths.
+ */
+function tryDecodeUri(uri: string): string {
+    try {
+        if (!uri.includes('%')) return uri
+        return decodeURIComponent(uri)
+    } catch {
+        return uri
+    }
+}
+
+/**
  * Resolve a file path to a project-relative path usable by store.selectFile().
  * Returns null if the path is not within the current project.
  * When projectRoot is empty, relative paths are returned as-is (best-effort).
@@ -156,7 +172,10 @@ export function annotateFilePaths(
 
     // ── Step 1: <a> tags with local-file hrefs ──
     for (const a of doc.querySelectorAll('a[href]')) {
-        const href = a.getAttribute('href')!
+        const rawHref = a.getAttribute('href')!
+        // Decode percent-encoded href (e.g. %E4%B8%AD%E6%96%87 → 中文)
+        // Browsers/DOMPurify may encode non-ASCII chars when inserting HTML
+        const href = tryDecodeUri(rawHref)
         // Skip external links, anchors, mailto, tel
         if (/^(https?:|\/\/|mailto:|tel:|#)/i.test(href)) continue
         const resolved = baseDir

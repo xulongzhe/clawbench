@@ -559,6 +559,51 @@ describe('annotateFilePaths', () => {
     expect(result.detectedPaths).toContain('src/components/App.vue')
   })
 
+  // ── Chinese path encoding (percent-encoded href decoding) ──
+
+  describe('percent-encoded href decoding for Chinese paths', () => {
+    it('decodes percent-encoded Chinese href in <a> tags', () => {
+      // Browsers/DOMPurify may encode 中文 → %E4%B8%AD%E6%96%87 in href attributes
+      const input = '<a href="%E4%B8%AD%E6%96%87/%E6%96%87%E4%BB%B6.md">链接</a>'
+      const result = annotateFilePaths(input, { projectRoot, baseDir: '' })
+      expect(result.detectedPaths).toContain('中文/文件.md')
+    })
+
+    it('decodes percent-encoded Chinese href with baseDir resolution', () => {
+      const input = '<a href="%E6%96%87%E6%A1%A3/%E8%AF%B4%E6%98%8E.md">说明</a>'
+      const result = annotateFilePaths(input, { projectRoot, baseDir: 'docs' })
+      expect(result.detectedPaths).toContain('docs/文档/说明.md')
+    })
+
+    it('handles mixed ASCII and percent-encoded Chinese segments in href', () => {
+      const input = '<a href="src/%E5%B7%A5%E5%85%B7/utils.ts">工具</a>'
+      const result = annotateFilePaths(input, { projectRoot, baseDir: '' })
+      expect(result.detectedPaths).toContain('src/工具/utils.ts')
+    })
+
+    it('does not double-decode already decoded Chinese href', () => {
+      // If the href is already decoded (中文 instead of %E4%B8%AD%E6%96%87),
+      // it should work correctly without double-decoding
+      const input = '<a href="中文/文件.md">链接</a>'
+      const result = annotateFilePaths(input, { projectRoot, baseDir: '' })
+      expect(result.detectedPaths).toContain('中文/文件.md')
+    })
+
+    it('handles malformed percent encoding gracefully', () => {
+      // %ZZ is not a valid percent encoding — should be returned as-is
+      const input = '<a href="path/%ZZfile.md">bad</a>'
+      const result = annotateFilePaths(input, { projectRoot, baseDir: '' })
+      // Should still detect a path (even if the encoding is malformed)
+      expect(result.detectedPaths.length).toBeGreaterThanOrEqual(1)
+    })
+
+    it('skips percent-encoded external links (https://)', () => {
+      const input = '<a href="https://example.com/%E4%B8%AD%E6%96%87">link</a>'
+      const result = annotateFilePaths(input, { projectRoot })
+      expect(result.detectedPaths).toHaveLength(0)
+    })
+  })
+
   it('does not partially match directory prefix followed by more path segments (worktree-like)', () => {
     // Regression: /home/user/project/.worktrees/gitgraph-fix
     // The FILE_PATH_RE would match /home/user/project/.worktrees (treating .worktrees as extension)

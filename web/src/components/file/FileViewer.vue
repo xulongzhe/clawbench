@@ -28,8 +28,9 @@
       </div>
 
       <!-- Error -->
-      <div v-else-if="file.error" class="error-message">
-        <strong>Error loading file:</strong> {{ file.error }}
+      <div v-else-if="file.error" class="error-bubble">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>{{ file.error }}</span>
       </div>
 
       <!-- PDF -->
@@ -450,13 +451,19 @@ defineExpose({
     padding: 40px;
 }
 
-.error-message {
-    background: #fef2f2;
-    border: 1px solid #fecaca;
-    color: #991b1b;
-    padding: 16px;
-    border-radius: var(--radius-md);
-    margin: 20px 0;
+.error-bubble {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error-color, #dc2626);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    margin: 24px auto;
+    max-width: 90%;
+    line-height: 1.4;
+    align-self: center;
 }
 
 .html-preview-iframe {
@@ -469,9 +476,8 @@ defineExpose({
 </style>
 
 <style>
-[data-theme="dark"] .error-message {
-    background: #450a0a;
-    border-color: #7f1d1d;
+[data-theme="dark"] .error-bubble {
+    background: rgba(239, 68, 68, 0.15);
     color: #fca5a5;
 }
 </style>
