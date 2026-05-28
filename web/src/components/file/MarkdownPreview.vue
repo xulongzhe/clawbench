@@ -97,7 +97,12 @@ function fixLocalImagePaths(html) {
         if (!srcMatch) return match
         const src = srcMatch[1]
         if (/^(https?:|\/\/|^\/)/i.test(src)) return match
+        // Decode percent-encoded src first (marked may encode Chinese chars),
+        // then re-encode each segment properly for the URL
         let resolved = currentDir ? currentDir + '/' + src : src
+        try {
+            resolved = decodeURIComponent(resolved)
+        } catch { /* malformed encoding, use as-is */ }
         const parts = splitPath(resolved)
         const normalized = []
         for (const part of parts) {
