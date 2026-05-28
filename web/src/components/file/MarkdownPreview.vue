@@ -103,7 +103,7 @@ function fixLocalImagePaths(html) {
         for (const part of parts) {
             if (part === '.' || part === '') continue
             if (part === '..') { normalized.pop(); continue }
-            normalized.push(part)
+            normalized.push(encodeURIComponent(part))
         }
         return match.replace(`src="${src}"`, `src="/api/local-file/${normalized.join('/')}?t=${imageTimestamp.value}"`)
     })

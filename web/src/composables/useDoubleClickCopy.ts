@@ -5,6 +5,24 @@ import { isExternalLink, isAnchorLink, slugifyForHeading, stripLeadingNumbering 
 
 const BLOCK_SELECTORS = 'p, h1, h2, h3, h4, h5, h6, li, pre, blockquote, table, .mermaid'
 
+/**
+ * Try to decode a percent-encoded href.
+ * Browsers may encode non-ASCII chars (e.g. 中文 → %E4%B8%AD%E6%96%87) in href
+ * attributes when HTML is inserted via innerHTML/v-html. This ensures file paths
+ * with Chinese characters are decoded back to their original form before being
+ * used as filesystem paths.
+ */
+function tryDecodeHref(href: string): string {
+    try {
+        // Only decode if the href contains percent-encoded sequences
+        if (!href.includes('%')) return href
+        return decodeURIComponent(href)
+    } catch {
+        // If decoding fails (e.g. malformed percent encoding), return as-is
+        return href
+    }
+}
+
 interface ToastShow {
     show: (msg: string, opts?: { icon?: string; duration?: number }) => void
 }
@@ -86,10 +104,14 @@ export function useDoubleClickCopy(options?: DoubleClickCopyOptions) {
             return handleHashLink(event, href, anchor)
         }
 
+        // Decode percent-encoded href (e.g. %E4%B8%AD%E6%96%87 → 中文)
+        // Browsers may encode non-ASCII chars in href attributes when inserting via innerHTML/v-html
+        const decodedHref = tryDecodeHref(href)
+
         // 处理相对路径链接 (非 http/https 链接)
-        if (!isExternalLink(href) && onOpenFile) {
+        if (!isExternalLink(decodedHref) && onOpenFile) {
             event.preventDefault()
-            onOpenFile(href)
+            onOpenFile(decodedHref)
             return true
         }
 
