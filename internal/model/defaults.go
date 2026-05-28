@@ -60,12 +60,6 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 		cfg.LogLevel = "info"
 	}
 
-	// --- WatchDir ---
-	if cfg.WatchDir == "" {
-		cfg.WatchDir = platform.UserHomeDir()
-	}
-	cfg.WatchDir = platform.ExpandTilde(cfg.WatchDir)
-
 	// --- Password ---
 	autoPasswordFile := filepath.Join(BinDir, ".clawbench", "auto-password")
 	if cfg.Password == "" {

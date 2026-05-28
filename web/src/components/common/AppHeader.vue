@@ -62,7 +62,7 @@ import { Projector, ChevronDown, Search, GitBranch } from 'lucide-vue-next'
 import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useGlobalEvents } from '@/composables/useGlobalEvents'
-import { baseName, toRelativePath } from '@/utils/path.ts'
+import { baseName } from '@/utils/path.ts'
 import { store } from '@/stores/app.ts'
 import { setPendingManageNavigation } from '@/composables/useCommitNavigation.ts'
 import PopupMenu from '@/components/common/PopupMenu.vue'
@@ -73,6 +73,7 @@ const switchTab = inject('switchTab')
 
 const props = defineProps({
     projectRoot: String,
+    homeDir: String,
     hidden: Boolean,
 })
 const emit = defineEmits(['openProjectDialog'])
@@ -142,12 +143,6 @@ function updateDropdownPosition() {
     }
 }
 
-let watchBase = ''
-
-function toRelative(absPath) {
-    return toRelativePath(absPath, watchBase)
-}
-
 function toggleDropdown() {
     if (dropdownOpen.value) {
         dropdownOpen.value = false
@@ -161,17 +156,16 @@ function toggleDropdown() {
 async function loadRecentProjects() {
     loadingRecent.value = true
     try {
-        const wdResp = await fetch('/api/watch-dir')
-        if (wdResp.ok) {
-            const wd = await wdResp.json()
-            watchBase = wd.watchDir || ''
-        }
         const resp = await fetch('/api/recent-projects')
         const paths = await resp.json()
         recentItems.value = paths.map(p => {
-            const rel = toRelative(p)
-            const name = baseName(rel)
-            return { name, path: p, displayPath: rel }
+            const name = baseName(p)
+            // Display relative to home directory for cleaner paths
+            const homeDir = props.homeDir || ''
+            const displayPath = (homeDir && p.startsWith(homeDir + '/'))
+                ? p.slice(homeDir.length + 1)
+                : p
+            return { name, path: p, displayPath }
         })
     } catch (_) {
         recentItems.value = []

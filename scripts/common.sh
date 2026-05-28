@@ -4,13 +4,6 @@
 # 所有脚本通过 source 此文件来复用公共逻辑
 #
 
-# get_watch_dir reads the watch_dir value from the given config file.
-# Returns empty string if not found or on error.
-get_watch_dir() {
-    local config="$1"
-    grep "^watch_dir:" "$config" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo ""
-}
-
 # show_auto_password prints the auto-generated password from the given file,
 # if it exists.
 show_auto_password() {

@@ -27,7 +27,7 @@ defineEmits(['navigate'])
 
 const parts = computed(() => {
   if (!props.path || props.path === '.') return []
-  return splitPath(props.path)
+  return splitPath(props.path).filter(p => p !== '')
 })
 </script>
 

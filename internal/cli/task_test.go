@@ -69,8 +69,7 @@ func TestCreateTask_ServerNotReachable(t *testing.T) {
 	tmpDir := t.TempDir()
 	model.BinDir = tmpDir
 	model.ConfigInstance = model.Config{
-		WatchDir: tmpDir,
-		Port:     59999,
+		Port: 59999,
 	}
 
 	exitCode := RunTaskCommand([]string{

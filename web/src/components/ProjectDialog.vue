@@ -82,14 +82,7 @@ const showHidden = ref(false)
 // Browse state
 const browsePath = ref('/')
 const browseItems = ref([])
-let watchBase = ''
 let currentBrowseAbs = ''
-
-function toRelative(absPath) {
-    if (!watchBase) return absPath
-    const rel = absPath.slice(watchBase.length).replace(/^\//, '')
-    return rel || '/'
-}
 
 // Reload data when dialog opens (only first time)
 let initialized = false
@@ -104,7 +97,14 @@ watch(() => props.open, (isOpen) => {
 })
 
 function onBreadcrumbNavigate(path) {
-  browseNavigate(path ? '/' + path : '/')
+  if (!path) {
+    // Navigate to root
+    browseNavigate('')
+  } else {
+    // path is a relative segment like "home" or "home/user"
+    // Reconstruct absolute path by prepending "/"
+    browseNavigate('/' + path)
+  }
 }
 
 const displayItems = computed(() => {
@@ -113,7 +113,9 @@ const displayItems = computed(() => {
     if (!showHidden.value) dirs = dirs.filter(d => !d.name.startsWith('.'))
     return dirs.map(d => {
         const name = d.name
-        const path = browsePath.value === '/' ? name : browsePath.value + '/' + name
+        // Build absolute path for the directory entry
+        const absBase = currentBrowseAbs || ''
+        const path = absBase ? absBase.replace(/\/$/, '') + '/' + name : name
         return { name, path }
     })
 })
@@ -134,11 +136,9 @@ async function loadBrowse() {
     try {
         const resp = await fetch('/api/projects?path=' + encodeURIComponent(browsePath.value === '/' ? '' : browsePath.value))
         const data = await resp.json()
-        if (!watchBase) {
-            watchBase = data.path || browsePath.value
-        }
         currentBrowseAbs = data.path || browsePath.value
-        browsePath.value = toRelative(currentBrowseAbs)
+        // For breadcrumb, compute the relative path from first root
+        browsePath.value = currentBrowseAbs || '/'
         browseItems.value = (data.items || []).filter(i => i.type === 'dir')
     } catch (_) {
         browseItems.value = []
@@ -200,8 +200,8 @@ async function doDelete(item) {
 
 async function confirm() {
     let path = selectedPath.value
-    if (!path && watchBase) {
-        path = watchBase
+    if (!path && currentBrowseAbs) {
+        path = currentBrowseAbs
     }
     if (!path) return
     try {

@@ -290,13 +290,6 @@ func ServeLocalFile(w http.ResponseWriter, r *http.Request) {
 
 // ServeProjects handles GET (list directory) and POST (create directory) for projects.
 func ServeProjects(w http.ResponseWriter, r *http.Request) {
-	basePath, err := filepath.Abs(model.WatchDir)
-	if err != nil {
-		slog.Error("failed to resolve base path", slog.String("path", model.WatchDir), slog.String("err", err.Error()))
-		model.WriteError(w, model.Internal(err))
-		return
-	}
-
 	switch r.Method {
 	case http.MethodPost:
 		serveProjectsCreate(w, r)
@@ -310,34 +303,43 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 
 	rawPath := r.URL.Query().Get("path")
 
-	var absPath string
+	// Root-level browsing: when path is empty, show root entries
 	if rawPath == "" || rawPath == "/" {
-		absPath = basePath
-	} else if filepath.IsAbs(rawPath) {
-		absPath = rawPath
-		if !isPathUnderBase(absPath, basePath) {
-			// Not under watchDir — treat leading "/" as part of a relative path
-			relPath := strings.TrimPrefix(rawPath, "/")
-			var absErr error
-			absPath, absErr = filepath.Abs(filepath.Join(basePath, relPath))
-			if absErr != nil {
-				slog.Warn("failed to resolve path", slog.String("path", rawPath), slog.String("err", absErr.Error()))
+		if platform.IsWindows() && len(model.RootPaths) > 1 {
+			// Windows: return synthetic drive entries
+			items := make([]DirEntry, 0, len(model.RootPaths))
+			for _, drive := range model.RootPaths {
+				items = append(items, DirEntry{Name: drive, Type: "dir"})
 			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"path":   "",
+				"parent": nil,
+				"items":  items,
+			})
+			return
 		}
-	} else {
-		relPath := strings.TrimPrefix(rawPath, "/")
-		if relPath == "" {
-			absPath = basePath
-		} else {
-			var absErr error
-			absPath, absErr = filepath.Abs(filepath.Join(basePath, relPath))
-			if absErr != nil {
-				slog.Warn("failed to resolve path", slog.String("path", rawPath), slog.String("err", absErr.Error()))
-			}
+		// Unix or single-drive Windows: list the first root directory
+		if len(model.RootPaths) > 0 {
+			rawPath = model.RootPaths[0]
 		}
 	}
 
-	if !isPathUnderBase(absPath, basePath) {
+	var absPath string
+	if filepath.IsAbs(rawPath) {
+		absPath = rawPath
+	} else {
+		// Relative path — resolve from first root
+		if len(model.RootPaths) > 0 {
+			absPath, _ = filepath.Abs(filepath.Join(model.RootPaths[0], rawPath))
+		}
+	}
+
+	if absPath == "" {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidPath")
+		return
+	}
+
+	if !isPathUnderAnyRoot(absPath) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
@@ -356,10 +358,19 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 
 	items := buildDirEntries(entries)
 
+	// Compute parent — stop at root level (no parent above root/drives)
 	var parent *string
-	if absPath != basePath {
-		parent = new(string)
-		*parent = filepath.Dir(absPath)
+	isAtRoot := false
+	for _, root := range model.RootPaths {
+		cleanRoot := filepath.Clean(root)
+		if filepath.Clean(absPath) == cleanRoot {
+			isAtRoot = true
+			break
+		}
+	}
+	if !isAtRoot {
+		p := filepath.Dir(absPath)
+		parent = &p
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -555,15 +566,8 @@ func fileInfoWithTimeout(entry os.DirEntry) (os.FileInfo, error) {
 	}
 }
 
-// serveProjectsCreate handles POST /api/projects (create directory under watchDir).
+// serveProjectsCreate handles POST /api/projects (create directory under any root path).
 func serveProjectsCreate(w http.ResponseWriter, r *http.Request) {
-	basePath, err := filepath.Abs(model.WatchDir)
-	if err != nil {
-		slog.Error("failed to resolve base path", slog.String("path", model.WatchDir), slog.String("err", err.Error()))
-		model.WriteError(w, model.Internal(err))
-		return
-	}
-
 	var req struct {
 		Path string `json:"path"`
 		Name string `json:"name"`
@@ -577,29 +581,34 @@ func serveProjectsCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	var absPath string
 	if req.Path == "" || req.Path == "/" {
-		absPath = basePath
+		if len(model.RootPaths) > 0 {
+			absPath = model.RootPaths[0]
+		}
 	} else if filepath.IsAbs(req.Path) {
 		absPath = req.Path
 	} else {
 		rel := strings.TrimPrefix(req.Path, "/")
-		absPath, err = filepath.Abs(filepath.Join(basePath, rel))
-		if err != nil {
-			slog.Warn("failed to resolve path", slog.String("path", req.Path), slog.String("err", err.Error()))
+		if len(model.RootPaths) > 0 {
+			var err error
+			absPath, err = filepath.Abs(filepath.Join(model.RootPaths[0], rel))
+			if err != nil {
+				slog.Warn("failed to resolve path", slog.String("path", req.Path), slog.String("err", err.Error()))
+			}
 		}
 	}
-	if !isPathUnderBase(absPath, basePath) {
+	if !isPathUnderAnyRoot(absPath) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 	newDir := filepath.Join(absPath, req.Name)
-	// Validate that the resolved new directory stays under WatchDir
+	// Validate that the resolved new directory stays under a root path
 	// (req.Name could contain ".." path traversal components)
 	newDirAbs, err := filepath.Abs(newDir)
 	if err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("resolve path failed: %w", err)))
 		return
 	}
-	if !isPathUnderBase(newDirAbs, basePath) {
+	if !isPathUnderAnyRoot(newDirAbs) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}

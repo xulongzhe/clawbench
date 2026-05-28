@@ -33,7 +33,7 @@ func FindConfigPath(binDir string) string {
 // It is safe to call multiple times — subsequent calls are no-ops
 // once model.ConfigInstance is populated.
 func loadConfig() {
-	if model.ConfigInstance.WatchDir != "" {
+	if model.ConfigInstance.Port != 0 {
 		return // already loaded
 	}
 

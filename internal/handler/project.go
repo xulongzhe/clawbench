@@ -32,7 +32,7 @@ func ServeRecentProjects(w http.ResponseWriter, r *http.Request) {
 			Path string `json:"path"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 			return
 		}
 		if err := service.AddRecentProject(req.Path); err != nil {
@@ -47,7 +47,7 @@ func ServeRecentProjects(w http.ResponseWriter, r *http.Request) {
 			Path string `json:"path"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 			return
 		}
 		if err := service.RemoveRecentProject(req.Path); err != nil {
@@ -79,10 +79,10 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 			recents, _ := service.GetRecentProjects()
 			if len(recents) > 0 {
 				projectPath = recents[0]
-			} else {
-				projectPath, _ = filepath.Abs(model.WatchDir)
+			} else if len(model.RootPaths) > 0 {
+				projectPath = model.RootPaths[0]
 			}
-		http.SetCookie(w, &http.Cookie{
+			http.SetCookie(w, &http.Cookie{
 				Name:     "clawbench_project",
 				Value:    url.QueryEscape(projectPath),
 				Path:     "/",
@@ -100,32 +100,33 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 			Path string `json:"path"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 			return
 		}
 
-		// Resolve path relative to watchDir (same logic as serveProjects)
-		basePath, _ := filepath.Abs(model.WatchDir)
+		// Resolve path and validate against root paths
 		rawPath := req.Path
 		var absPath string
 		if rawPath == "" || rawPath == "/" {
-			absPath = basePath
+			if len(model.RootPaths) > 0 {
+				absPath = model.RootPaths[0]
+			}
 		} else if filepath.IsAbs(rawPath) {
-			// Looks absolute but might be under watchDir — check bounds first
 			absPath = rawPath
-			if !isPathUnderBase(absPath, basePath) {
-				// Not under watchDir — treat leading "/" as part of a relative path
-				relPath := strings.TrimPrefix(rawPath, "/")
-				absPath, _ = filepath.Abs(filepath.Join(basePath, relPath))
+			if !isPathUnderAnyRoot(absPath) {
+				writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+				return
 			}
 		} else {
-			// Relative path — resolve from watchDir
-			relPath := strings.TrimPrefix(rawPath, "/")
-			absPath, _ = filepath.Abs(filepath.Join(basePath, relPath))
-		}
-		if !isPathUnderBase(absPath, basePath) {
-			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
-			return
+			// Relative path — resolve from first root
+			if len(model.RootPaths) > 0 {
+				relPath := strings.TrimPrefix(rawPath, "/")
+				absPath, _ = filepath.Abs(filepath.Join(model.RootPaths[0], relPath))
+			}
+			if !isPathUnderAnyRoot(absPath) {
+				writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+				return
+			}
 		}
 
 		info, err := os.Stat(absPath)
@@ -161,23 +162,24 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ServeWatchDir returns the configured watchDir and upload limits as JSON.
-func ServeWatchDir(w http.ResponseWriter, r *http.Request) {
-	absWatchDir, err := filepath.Abs(model.WatchDir)
-	if err != nil {
-		slog.Warn("failed to resolve watch dir", slog.String("path", model.WatchDir), slog.String("err", err.Error()))
-		absWatchDir = model.WatchDir
+// ServeRoots returns the filesystem root paths and configuration limits as JSON.
+// On Linux/macOS, roots is ["/"]. On Windows, roots is the list of available drives.
+func ServeRoots(w http.ResponseWriter, r *http.Request) {
+	roots := model.RootPaths
+	if len(roots) == 0 {
+		slog.Warn("no root paths configured")
+		roots = []string{platform.UserHomeDir()}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"watchDir":              absWatchDir,
-		"uploadMaxSizeMB":       model.UploadMaxSizeMB,
-		"uploadMaxFiles":        model.UploadMaxFiles,
-		"chatInitialMessages":   model.ChatInitialMessages,
-		"chatPageSize":          model.ChatPageSize,
-		"chatSessionPageSize":   model.ChatSessionPageSize,
-		"chatCollapsedHeight":   model.ChatCollapsedHeight,
-		"sessionMaxCount":       model.SessionMaxCount,
+		"roots":                  roots,
+		"uploadMaxSizeMB":        model.UploadMaxSizeMB,
+		"uploadMaxFiles":         model.UploadMaxFiles,
+		"chatInitialMessages":    model.ChatInitialMessages,
+		"chatPageSize":           model.ChatPageSize,
+		"chatSessionPageSize":    model.ChatSessionPageSize,
+		"chatCollapsedHeight":    model.ChatCollapsedHeight,
+		"sessionMaxCount":        model.SessionMaxCount,
 		"recentProjectsMaxCount": model.RecentProjectsMaxCount,
 	})
 }

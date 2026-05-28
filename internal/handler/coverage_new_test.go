@@ -999,7 +999,7 @@ func TestCopyDir_DeepNesting(t *testing.T) {
 	srcDir := filepath.Join(env.ProjectDir, "src")
 	dstDir := filepath.Join(env.ProjectDir, "dst")
 
-	err := copyDir(srcDir, dstDir, env.WatchDir)
+	err := copyDir(srcDir, dstDir)
 	require.NoError(t, err)
 
 	// Verify deep copy
@@ -1019,7 +1019,7 @@ func TestCopyDir_EmptySubdirectory(t *testing.T) {
 	srcDir := filepath.Join(env.ProjectDir, "src")
 	dstDir := filepath.Join(env.ProjectDir, "dst")
 
-	err := copyDir(srcDir, dstDir, env.WatchDir)
+	err := copyDir(srcDir, dstDir)
 	require.NoError(t, err)
 
 	info, err := os.Stat(filepath.Join(dstDir, "emptydir"))
@@ -1043,7 +1043,7 @@ func TestSafeRemoveAll_UnderWatchDir(t *testing.T) {
 	require.NoError(t, os.MkdirAll(targetDir, 0755))
 	createTestFile(t, targetDir, "file.txt", "data")
 
-	err := safeRemoveAll(targetDir, env.WatchDir)
+	err := safeRemoveAll(targetDir)
 	assert.NoError(t, err)
 	_, statErr := os.Stat(targetDir)
 	assert.True(t, os.IsNotExist(statErr))
@@ -1053,7 +1053,7 @@ func TestSafeRemoveAll_NonExistentDir(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
 
-	err := safeRemoveAll(filepath.Join(env.ProjectDir, "nonexistent"), env.WatchDir)
+	err := safeRemoveAll(filepath.Join(env.ProjectDir, "nonexistent"))
 	assert.NoError(t, err) // Walk on nonexistent dir returns no error
 }
 
@@ -1071,7 +1071,7 @@ func TestSafeRemoveAll_SymlinkEscaping(t *testing.T) {
 	defer os.RemoveAll(escapeTarget)
 	require.NoError(t, os.Symlink(escapeTarget, filepath.Join(targetDir, "escape-link")))
 
-	err := safeRemoveAll(targetDir, env.WatchDir)
+	err := safeRemoveAll(targetDir)
 	assert.NoError(t, err)
 	// The directory itself should be removed
 	_, statErr := os.Stat(targetDir)
@@ -1213,7 +1213,7 @@ func TestCopyDir_SymlinkWithinWatchDir(t *testing.T) {
 	require.NoError(t, os.Symlink(filepath.Join(env.ProjectDir, "realdir"), filepath.Join(env.ProjectDir, "srcdir", "link-to-real")))
 
 	dstDir := filepath.Join(env.ProjectDir, "dstdir")
-	err := copyDir(filepath.Join(env.ProjectDir, "srcdir"), dstDir, env.WatchDir)
+	err := copyDir(filepath.Join(env.ProjectDir, "srcdir"), dstDir)
 	require.NoError(t, err)
 
 	// The symlink target is within watchDir, so the actual file should be copied
@@ -1234,7 +1234,7 @@ func TestCopyDir_SymlinkEscapingWatchDir_Skipped(t *testing.T) {
 	require.NoError(t, os.Symlink(escapeTarget, filepath.Join(env.ProjectDir, "srcdir", "escape-link")))
 
 	dstDir := filepath.Join(env.ProjectDir, "dstdir")
-	err := copyDir(filepath.Join(env.ProjectDir, "srcdir"), dstDir, env.WatchDir)
+	err := copyDir(filepath.Join(env.ProjectDir, "srcdir"), dstDir)
 	require.NoError(t, err)
 
 	// The escaping symlink should be skipped — dst dir should exist but be empty
@@ -1252,7 +1252,7 @@ func TestCopyDir_SymlinkEvalFails_Skipped(t *testing.T) {
 	require.NoError(t, os.Symlink("/nonexistent/path/xyz", filepath.Join(env.ProjectDir, "srcdir", "dangling")))
 
 	dstDir := filepath.Join(env.ProjectDir, "dstdir")
-	err := copyDir(filepath.Join(env.ProjectDir, "srcdir"), dstDir, env.WatchDir)
+	err := copyDir(filepath.Join(env.ProjectDir, "srcdir"), dstDir)
 	require.NoError(t, err)
 
 	// Dangling symlink should be skipped
@@ -1262,7 +1262,7 @@ func TestCopyDir_SymlinkEvalFails_Skipped(t *testing.T) {
 }
 
 func TestCopyDir_SrcNotExists_ReturnsError(t *testing.T) {
-	err := copyDir("/nonexistent/src", "/tmp/dst", "/tmp")
+	err := copyDir("/nonexistent/src", "/tmp/dst")
 	assert.Error(t, err)
 }
 
@@ -1276,7 +1276,7 @@ func TestCopyDir_SymlinkToDir_WithinWatchDir(t *testing.T) {
 	require.NoError(t, os.Symlink(filepath.Join(env.ProjectDir, "realdir"), filepath.Join(env.ProjectDir, "srcdir", "link-dir")))
 
 	dstDir := filepath.Join(env.ProjectDir, "dstdir")
-	err := copyDir(filepath.Join(env.ProjectDir, "srcdir"), dstDir, env.WatchDir)
+	err := copyDir(filepath.Join(env.ProjectDir, "srcdir"), dstDir)
 	require.NoError(t, err)
 
 	// Symlink to directory within watchDir should be recursively copied
@@ -1658,24 +1658,24 @@ func TestTerminalWebSocket_NoProjectCookie(t *testing.T) {
 }
 
 // ============================================================================
-// ServeWatchDir — additional paths (66.7% → 80%+)
+// ServeRoots — additional paths (66.7% → 80%+)
 // ============================================================================
 
-func TestServeWatchDir_WithConfig(t *testing.T) {
+func TestServeRoots_WithConfig(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
 
-	req := newRequest(t, http.MethodGet, "/api/watch-dir", nil)
+	req := newRequest(t, http.MethodGet, "/api/roots", nil)
 	withProjectCookie(req, env.ProjectDir)
-	w := callHandler(ServeWatchDir, req)
+	w := callHandler(ServeRoots, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var result map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	// watchDir field contains the absolute path of the watch directory
-	watchDir, ok := result["watchDir"].(string)
+	// roots field contains the filesystem root paths
+	roots, ok := result["roots"].([]interface{})
 	require.True(t, ok)
-	assert.Contains(t, watchDir, env.WatchDir)
+	assert.NotEmpty(t, roots)
 }
 
 // ============================================================================

@@ -359,7 +359,7 @@ func TestAuth_WatchDir_RequiresAuth(t *testing.T) {
 	model.SessionToken = hashPassword("secret")
 
 	req := newRequest(t, http.MethodGet, "/api/watch-dir", nil)
-	w := callHandlerWithAuth(ServeWatchDir, req)
+	w := callHandlerWithAuth(ServeRoots, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -373,7 +373,7 @@ func TestAuth_WatchDir_PassWithValidCookie(t *testing.T) {
 	req := newRequest(t, http.MethodGet, "/api/watch-dir", nil)
 	withAuthCookie(req, model.SessionToken)
 
-	w := callHandlerWithAuth(ServeWatchDir, req)
+	w := callHandlerWithAuth(ServeRoots, req)
 
 	// Should not be 401 — may be 200 or 403 depending on project cookie, but NOT 401
 	assert.NotEqual(t, http.StatusUnauthorized, w.Code)

@@ -32,7 +32,6 @@ type Config struct {
 	Port         int    `yaml:"port"`
 	Host         string `yaml:"host"`          // Bind address (empty = 0.0.0.0, "localhost" = 127.0.0.1 only)
 	LogLevel     string `yaml:"log_level"`     // Log level: "debug", "info", "warn", "error" (default: "info")
-	WatchDir     string `yaml:"watch_dir"`
 	Password     string `yaml:"password"`
 	DefaultAgent string `yaml:"default_agent"`
 	LogDir       string `yaml:"log_dir"`
@@ -173,9 +172,9 @@ var ConfigInstance Config
 
 // Global application state
 var (
-	BinDir         string // Directory of the running binary
-	WatchDir       string
-	SessionToken   string // Legacy: stores the password-derived token for "has password" check; NOT used for cookie validation when CookieToken is set
+	BinDir         string   // Directory of the running binary
+	RootPaths      []string // Filesystem root paths (Linux/macOS: ["/"], Windows: drive list)
+	SessionToken   string   // Legacy: stores the password-derived token for "has password" check; NOT used for cookie validation when CookieToken is set
 	CookieToken    string // Cryptographically random session token for cookie validation (ISS-117, ISS-131, ISS-183)
 	PasswordHash   []byte // bcrypt hash for password verification (ISS-003a)
 	PasswordIsSHA256 bool  // true when config.yaml stores password as sha256:<hex>
