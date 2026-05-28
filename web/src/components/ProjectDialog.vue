@@ -84,6 +84,18 @@ const browsePath = ref('/')
 const browseItems = ref([])
 let currentBrowseAbs = ''
 
+// Detect the separator used by the current base path (backslash on Windows, forward slash on Unix)
+function pathSep(base) {
+    return base && base.includes('\\') ? '\\' : '/'
+}
+
+// Join a base path and a name using the same separator as the base
+function pathJoin(base, name) {
+    if (!base) return name
+    const sep = pathSep(base)
+    return base.replace(/[/\\]$/, '') + sep + name
+}
+
 // Reload data when dialog opens (only first time)
 let initialized = false
 watch(() => props.open, (isOpen) => {
@@ -100,9 +112,11 @@ function onBreadcrumbNavigate(path) {
   if (!path) {
     // Navigate to root
     browseNavigate('')
+  } else if (/^[A-Za-z]:/.test(path)) {
+    // Windows path from breadcrumb — normalize forward slashes to backslashes
+    browseNavigate(path.replace(/\//g, '\\'))
   } else {
-    // path is a relative segment like "home" or "home/user"
-    // Reconstruct absolute path by prepending "/"
+    // Unix: reconstruct absolute path by prepending "/"
     browseNavigate('/' + path)
   }
 }
@@ -113,9 +127,9 @@ const displayItems = computed(() => {
     if (!showHidden.value) dirs = dirs.filter(d => !d.name.startsWith('.'))
     return dirs.map(d => {
         const name = d.name
-        // Build absolute path for the directory entry
+        // Build absolute path for the directory entry using correct separator
         const absBase = currentBrowseAbs || ''
-        const path = absBase ? absBase.replace(/\/$/, '') + '/' + name : name
+        const path = absBase ? pathJoin(absBase, name) : name
         return { name, path }
     })
 })
@@ -170,7 +184,7 @@ async function doRename(item) {
         const resp = await fetch('/api/file/rename', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: currentBrowseAbs + '/' + item.name, name: newName })
+            body: JSON.stringify({ path: pathJoin(currentBrowseAbs, item.name), name: newName })
         })
         if (resp.ok) await loadBrowse()
         else {
@@ -186,7 +200,7 @@ async function doDelete(item) {
         const resp = await fetch('/api/file/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: currentBrowseAbs + '/' + item.name })
+            body: JSON.stringify({ path: pathJoin(currentBrowseAbs, item.name) })
         })
         if (resp.ok) {
             selectedPath.value = ''

@@ -161,8 +161,11 @@ async function loadRecentProjects() {
         recentItems.value = paths.map(p => {
             const name = baseName(p)
             // Display relative to home directory for cleaner paths
+            // Normalize separators for comparison (Windows uses backslashes)
             const homeDir = props.homeDir || ''
-            const displayPath = (homeDir && p.startsWith(homeDir + '/'))
+            const normHome = homeDir.replace(/\\/g, '/')
+            const normP = p.replace(/\\/g, '/')
+            const displayPath = (normHome && normP.startsWith(normHome + '/'))
                 ? p.slice(homeDir.length + 1)
                 : p
             return { name, path: p, displayPath }

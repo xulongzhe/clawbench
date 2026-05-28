@@ -33,10 +33,14 @@ export function dirName(path: string): string {
  * Convert an absolute path to a relative path based on a base path.
  * Returns the original path if base is empty or absPath does not start with basePath.
  * Returns '/' if the result would be empty (i.e., the path equals the base).
+ * Handles mixed separators (forward/backslash) for cross-platform compatibility.
  */
 export function toRelativePath(absPath: string, basePath: string): string {
     if (!basePath) return absPath
-    if (!absPath.startsWith(basePath)) return absPath
-    const rel = absPath.slice(basePath.length).replace(/^\//, '')
+    // Normalize separators for comparison (Windows paths may mix / and \)
+    const normAbs = absPath.replace(/\\/g, '/')
+    const normBase = basePath.replace(/\\/g, '/')
+    if (!normAbs.startsWith(normBase)) return absPath
+    const rel = normAbs.slice(normBase.length).replace(/^\//, '')
     return rel || '/'
 }
