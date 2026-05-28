@@ -63,7 +63,6 @@ var BackendRegistry = []BackendSpec{
 	{ID: "pi", Backend: "pi", DefaultCmd: "pi", Name: "Pi", Icon: "🥧", Specialty: "极简编程智能体",
 		DiscoverModelsFunc: DiscoverPiModels,
 		ThinkingEffortLevels: []string{"off", "minimal", "low", "medium", "high", "xhigh"}},
-	{ID: "mock", Backend: "mock", NoCLI: true, Name: "Mock Agent", Icon: "🧪", Specialty: "E2E Testing"},
 }
 
 // CheckCLIExists checks whether a CLI command is available on the system.
