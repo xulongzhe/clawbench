@@ -1709,6 +1709,17 @@ func serveGitDeleteWorktree(w http.ResponseWriter, r *http.Request) {
 		deletePath = resolved
 	}
 
+	// ISS-208: Validate that the worktree path is under a root path.
+	// Without this check, body.Path is passed directly to git worktree remove,
+	// allowing deletion of directories outside the project.
+	if !isPathUnderAnyRoot(deletePath) {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"success": false,
+			"error":   "path_not_allowed",
+		})
+		return
+	}
+
 	// Check if it's the current worktree
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
 	cmd.Dir = projectPath
@@ -1724,14 +1735,15 @@ func serveGitDeleteWorktree(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Remove worktree
-	cmd = exec.Command("git", "worktree", "remove", body.Path)
+	// Remove worktree — use resolved deletePath instead of raw body.Path
+	// to prevent command injection via path traversal (ISS-208).
+	cmd = exec.Command("git", "worktree", "remove", deletePath)
 	cmd.Dir = projectPath
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		errMsg := strings.TrimSpace(string(out))
 		if strings.Contains(errMsg, "dirty") || strings.Contains(errMsg, "modified") || strings.Contains(errMsg, "uncommitted") {
-			cmd = exec.Command("git", "worktree", "remove", "--force", body.Path)
+			cmd = exec.Command("git", "worktree", "remove", "--force", deletePath)
 			cmd.Dir = projectPath
 			out, err = cmd.CombinedOutput()
 		}
