@@ -111,10 +111,10 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// For custom dir: validate the final destination path is under a root path
+	// Validate the final destination path is under a root path
 	// (defense-in-depth: resolveAbsPath already validated dir, but filepath.Join
 	// could theoretically produce unexpected results)
-	if customDir && !isPathUnderAnyRoot(dstPath) {
+	if !isPathUnderAnyRoot(dstPath) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}

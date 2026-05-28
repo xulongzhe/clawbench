@@ -81,7 +81,7 @@ func ListRootPaths() []string {
 	if cachedRootPaths != nil {
 		return cachedRootPaths
 	}
-	if runtime.GOOS == "windows" {
+	if IsWindows() {
 		cachedRootPaths = listWindowsDrives()
 	} else {
 		cachedRootPaths = []string{"/"}
@@ -90,23 +90,6 @@ func ListRootPaths() []string {
 }
 
 var cachedRootPaths []string
-
-// listWindowsDrives enumerates available Windows drive letters by checking
-// whether the root directory of each letter exists (A:\ through Z:\).
-func listWindowsDrives() []string {
-	var drives []string
-	for _, letter := range "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
-		root := string(letter) + ":\\"
-		if _, err := os.Stat(root); err == nil {
-			drives = append(drives, root)
-		}
-	}
-	if len(drives) == 0 {
-		// Fallback: at least return C:\
-		drives = []string{"C:\\"}
-	}
-	return drives
-}
 
 // IsPathUnderAnyRoot checks whether absPath is under at least one of the
 // given root paths. On Unix this is effectively "is it an absolute path";
@@ -159,6 +142,7 @@ func isPathUnderRoot(absPath, root string) bool {
 
 // resolveExistingPath walks up from absPath until it finds an existing
 // directory, then resolves from there. Returns empty string if resolution fails.
+// root should be the eval'd (symlink-resolved) root path.
 func resolveExistingPath(absPath, root string) string {
 	dir := absPath
 	for {
@@ -167,8 +151,24 @@ func resolveExistingPath(absPath, root string) string {
 			return evalDir
 		}
 		parent := filepath.Dir(dir)
-		if parent == dir || !strings.HasPrefix(parent, root) {
+		if parent == dir {
 			return ""
+		}
+		// Check whether parent is still under root.  On macOS /var is a
+		// symlink to /private/var, so a lexical prefix check fails; resolve
+		// the parent's symlinks before comparing against the eval'd root.
+		evalParent, pErr := filepath.EvalSymlinks(parent)
+		if pErr != nil {
+			// Parent doesn't exist either — fall back to lexical check
+			cleanParent := filepath.Clean(parent)
+			if !strings.HasPrefix(cleanParent, root) && cleanParent != root {
+				return ""
+			}
+		} else {
+			cleanParent := filepath.Clean(evalParent)
+			if !strings.HasPrefix(cleanParent, root) && cleanParent != root {
+				return ""
+			}
 		}
 		dir = parent
 	}

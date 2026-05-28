@@ -234,6 +234,10 @@ func TestIsPathUnderAnyRoot(t *testing.T) {
 
 func TestIsPathUnderRoot(t *testing.T) {
 	tmpDir := t.TempDir()
+	// Resolve symlinks so tests work on macOS where /var → /private/var
+	if resolved, err := filepath.EvalSymlinks(tmpDir); err == nil {
+		tmpDir = resolved
+	}
 
 	t.Run("existing path under existing root", func(t *testing.T) {
 		result := isPathUnderRoot(filepath.Join(tmpDir, "subdir"), tmpDir)
@@ -295,6 +299,10 @@ func TestIsPathUnderRoot(t *testing.T) {
 
 func TestResolveExistingPath(t *testing.T) {
 	tmpDir := t.TempDir()
+	// Resolve symlinks for macOS compatibility
+	if resolved, err := filepath.EvalSymlinks(tmpDir); err == nil {
+		tmpDir = resolved
+	}
 
 	t.Run("existing path returns itself", func(t *testing.T) {
 		result := resolveExistingPath(tmpDir, "/")
