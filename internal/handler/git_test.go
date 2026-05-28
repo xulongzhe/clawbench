@@ -2457,6 +2457,28 @@ func TestServeGitDeleteWorktree_NotGitRepo(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 }
 
+// ISS-208: Path traversal in worktree delete must be rejected.
+func TestServeGitDeleteWorktree_PathTraversalRejected(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	initGitRepo(t, env.ProjectDir)
+
+	// Request to delete a path outside the root paths
+	req := newRequest(t, http.MethodDelete, "/api/git/worktrees", map[string]interface{}{
+		"path": "/tmp",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeGitWorktrees, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+
+	var resp map[string]interface{}
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, false, resp["success"])
+	assert.Equal(t, "path_not_allowed", resp["error"])
+}
+
 // --- serveGitDeleteTag ---
 
 func TestServeGitDeleteTag_Success(t *testing.T) {

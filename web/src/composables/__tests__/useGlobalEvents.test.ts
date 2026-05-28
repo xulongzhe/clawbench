@@ -58,6 +58,7 @@ describe('useGlobalEvents', () => {
     let originalWebSocket: typeof WebSocket
     let originalFetch: typeof globalThis.fetch
     let events: ReturnType<typeof useGlobalEvents>
+    let events2: ReturnType<typeof useGlobalEvents>
 
     beforeEach(() => {
         mockWsInstances = []
@@ -70,16 +71,25 @@ describe('useGlobalEvents', () => {
             json: () => Promise.resolve({ jpush_enabled: false, jpush_app_key: '' }),
         })
         events = useGlobalEvents()
+        events2 = undefined as any
     })
 
     afterEach(() => {
         events.destroy()
+        events2?.destroy()
         globalThis.WebSocket = originalWebSocket
         globalThis.fetch = originalFetch
     })
 
     function connectAndGetWs(): MockWebSocket {
         events.connect()
+        const ws = getLatestWs()
+        ws.simulateOpen()
+        return ws
+    }
+
+    function connectAndGetWs2(ev: ReturnType<typeof useGlobalEvents>): MockWebSocket {
+        ev.connect()
         const ws = getLatestWs()
         ws.simulateOpen()
         return ws
@@ -253,6 +263,58 @@ describe('useGlobalEvents', () => {
             const ws = connectAndGetWs()
             events.disconnect()
             expect(ws.readyState).toBe(MockWebSocket.CLOSED)
+        })
+    })
+
+    // ISS-192: destroy() must clear handlers and state to prevent stale closures
+    // from firing after SPA hot project switch.
+    describe('destroy clears state', () => {
+        it('should clear handlers on destroy so they do not fire on reconnect', () => {
+            const handler = vi.fn()
+            events.onEvent(handler)
+            events.destroy()
+
+            // After destroy, re-init and connect
+            events2 = useGlobalEvents()
+            const ws = connectAndGetWs2(events2)
+
+            // The old handler should NOT fire for new events
+            ws.receive({ type: 'event', id: nextId(), event: 'session_update', data: {} })
+            expect(handler).not.toHaveBeenCalled()
+
+            events2.destroy()
+        })
+
+        it('should clear processedEventIds on destroy', () => {
+            const handler = vi.fn()
+            events.onEvent(handler)
+            const ws = connectAndGetWs()
+
+            const id = nextId()
+            ws.receive({ type: 'event', id, event: 'session_update', data: {} })
+            expect(handler).toHaveBeenCalledTimes(1)
+
+            events.destroy()
+
+            // After destroy + re-init, same event ID should not be deduped
+            events2 = useGlobalEvents()
+            const handler2 = vi.fn()
+            events2.onEvent(handler2)
+            const ws2 = connectAndGetWs2(events2)
+            ws2.receive({ type: 'event', id, event: 'session_update', data: {} })
+            expect(handler2).toHaveBeenCalledTimes(1)
+
+            events2.destroy()
+        })
+
+        it('should reset pushAvailable and pushRegistered on destroy', () => {
+            events.pushAvailable.value = true
+            events.pushRegistered.value = true
+
+            events.destroy()
+
+            expect(events.pushAvailable.value).toBe(false)
+            expect(events.pushRegistered.value).toBe(false)
         })
     })
 

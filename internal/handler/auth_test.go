@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -197,6 +199,23 @@ func TestServeLogin(t *testing.T) {
 
 		assert.Equal(t, http.StatusUnauthorized, w.Code)
 		assertJSONField(t, w, "ok", false)
+	})
+
+	// ISS-146: Malformed JSON must return 400, not silently fall through
+	// to bcrypt comparison with an empty password.
+	t.Run("POST_MalformedJSON_Returns400", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		model.SessionToken = hashPassword("testpass")
+		bcryptHash, _ := bcrypt.GenerateFromPassword([]byte("testpass"), bcrypt.MinCost)
+		model.PasswordHash = bcryptHash
+
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("{invalid json"))
+		req.Header.Set("Content-Type", "application/json")
+		w := callHandler(ServeLogin, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 
 	t.Run("POST_NoPasswordRequired_Returns200", func(t *testing.T) {
