@@ -107,7 +107,6 @@ cd clawbench
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `port` | 20000 | 服务端口 |
-| `watch_dir` | 用户家目录 | Linux: `/home/用户名`, Windows: `C:\Users\用户名` |
 | `password` | 自动生成 8 位 hex | 首次生成后保存到 `.clawbench/auto-password`，重启复用 |
 | `log_dir` | `<BinDir>/.clawbench/logs` | 二进制同级目录下 |
 | `log_max_days` | 7 | 日志保留天数 |
@@ -142,8 +141,6 @@ cd clawbench
 ```yaml
 # 以下均为默认值，仅在需要覆盖时才需配置
 # port: 20000
-# watch_dir: "/home/user"       # Linux/macOS 默认为用户家目录
-# watch_dir: "C:\\Users\\user"  # Windows 默认为用户家目录
 # password: "your_password"     # 不配置则自动生成8位hex密码
 # default_agent: "assistant"   # 默认智能体，留空则使用第一个智能体
 ```
@@ -191,7 +188,6 @@ cd clawbench
 
 ```yaml
 # port: 20000                        # 发布版服务端口（默认 20000）
-# watch_dir: "/home/user"            # 项目监控目录（默认用户家目录）
 # password: "your_password"          # 访问密码（不配置则自动生成 UUID 并保存）
 
 # 默认智能体（可选）
@@ -387,7 +383,12 @@ clawbench/
 │   │   ├── terminal.go          # 终端 + 快捷命令 CRUD + 多会话管理
 │   │   └── static.go            # 静态文件
 │   ├── middleware/              # 中间件（认证/日志/恢复/请求ID）
-│   ├── platform/                # 平台适配（Windows 路径等）
+│   ├── platform/                # 平台适配（跨平台路径）
+│   │   ├── path.go              # ListRootPaths, IsPathUnderAnyRoot, ManglePath, ExpandTilde
+│   │   ├── path_unix.go         # Unix: root = "/"
+│   │   ├── path_windows.go      # Windows: 枚举可用驱动器根路径
+│   │   ├── shell.go             # Shell 检测
+│   │   └── path_test.go / shell_test.go
 │   ├── service/                 # 业务逻辑
 │   │   ├── database.go          # SQLite 初始化
 │   │   ├── chat.go              # 聊天历史管理
