@@ -1709,30 +1709,34 @@ func serveGitDeleteWorktree(w http.ResponseWriter, r *http.Request) {
 		deletePath = resolved
 	}
 
-	// ISS-208: Validate that the worktree path is under a root path.
-	// Without this check, body.Path is passed directly to git worktree remove,
-	// allowing deletion of directories outside the project.
-	if !isPathUnderAnyRoot(deletePath) {
+	// ISS-208: List worktrees and verify deletePath matches a known worktree.
+	// This prevents passing arbitrary paths to "git worktree remove" — only
+	// paths that git itself reports as worktrees can be deleted.
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = projectPath
+	output, _ := cmd.CombinedOutput()
+	trees := parseWorktreePorcelain(string(output), projectPath)
+
+	matchedWorktree := false
+	for _, wt := range trees {
+		if wt.Path == deletePath {
+			if wt.IsCurrent {
+				writeJSON(w, http.StatusOK, map[string]interface{}{
+					"success": false,
+					"error":   "cannot_delete_current",
+				})
+				return
+			}
+			matchedWorktree = true
+			break
+		}
+	}
+	if !matchedWorktree {
 		writeJSON(w, http.StatusForbidden, map[string]interface{}{
 			"success": false,
 			"error":   "path_not_allowed",
 		})
 		return
-	}
-
-	// Check if it's the current worktree
-	cmd := exec.Command("git", "worktree", "list", "--porcelain")
-	cmd.Dir = projectPath
-	output, _ := cmd.CombinedOutput()
-	trees := parseWorktreePorcelain(string(output), projectPath)
-	for _, wt := range trees {
-		if wt.Path == deletePath && wt.IsCurrent {
-			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"success": false,
-				"error":   "cannot_delete_current",
-			})
-			return
-		}
 	}
 
 	// Remove worktree — use resolved deletePath instead of raw body.Path

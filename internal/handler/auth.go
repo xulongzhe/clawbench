@@ -172,7 +172,7 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// ISS-146: Check Decode error explicitly — malformed JSON must return 400
 		// rather than silently falling through to bcrypt with an empty password.
 		if err := json.NewDecoder(limitedReader).Decode(&body); err != nil {
-			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidJSON")
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 			return
 		}
 
