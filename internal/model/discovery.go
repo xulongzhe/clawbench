@@ -305,6 +305,22 @@ func SyncDiscoverAgents(dir string) map[string]bool {
 		slog.Info("auto-generated agent config", "backend", r.spec.ID, "path", yamlPath)
 	}
 
+	// Include backends that have existing YAML configs but are not in BackendRegistry
+	// (e.g., mock backend configured explicitly for E2E testing).
+	// This ensures MergeDiscoveredData doesn't soft-remove them.
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+				continue
+			}
+			backend := strings.TrimSuffix(entry.Name(), ".yaml")
+			if !present[backend] {
+				present[backend] = true
+			}
+		}
+	}
+
 	return present
 }
 
