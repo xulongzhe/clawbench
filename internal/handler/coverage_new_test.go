@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1706,4 +1707,94 @@ func TestBuildChatRequestFromQueue_FilePathsAndFiles(t *testing.T) {
 	assert.Equal(t, sessionID, req.SessionID)
 	// Verify file annotations are injected into the prompt
 	assert.Contains(t, req.Prompt, "main.go", "prompt should contain file path annotation")
+}
+
+// ============================================================================
+// ServeFileArchive — symlink isPathUnderAnyRoot coverage
+// ============================================================================
+
+func TestServeFileArchive_SymlinkEscapingRootPaths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping symlink test on Windows")
+	}
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a directory with a symlink pointing outside root paths
+	archiveDir := filepath.Join(env.ProjectDir, "archivedir")
+	require.NoError(t, os.MkdirAll(archiveDir, 0755))
+	createTestFile(t, archiveDir, "real.txt", "real content")
+
+	escapeTarget := filepath.Join(os.TempDir(), "clawbench-archive-escape")
+	require.NoError(t, os.MkdirAll(escapeTarget, 0755))
+	defer os.RemoveAll(escapeTarget)
+	os.WriteFile(filepath.Join(escapeTarget, "secret.txt"), []byte("secret"), 0644)
+	require.NoError(t, os.Symlink(escapeTarget, filepath.Join(archiveDir, "escape-link")))
+
+	req := newRequest(t, http.MethodPost, "/api/file/archive", map[string]any{
+		"paths": []string{"archivedir"},
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeFileArchive, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify zip contents — should contain real.txt but NOT the escape symlink
+	reader, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
+	require.NoError(t, err)
+	names := []string{}
+	for _, f := range reader.File {
+		names = append(names, f.Name)
+	}
+	assert.Contains(t, names, "archivedir/real.txt")
+	// escape-link should be skipped (target outside root paths)
+	for _, n := range names {
+		assert.NotContains(t, n, "escape-link", "symlink escaping root paths should be skipped in archive")
+	}
+}
+
+// ============================================================================
+// UploadFile — isPathUnderAnyRoot(dstPath) defense-in-depth check
+// ============================================================================
+
+func TestUploadFile_CustomDir_DstPathUnderRoot_Succeeds(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	subDir := filepath.Join(env.ProjectDir, "customupload")
+	require.NoError(t, os.MkdirAll(subDir, 0755))
+
+	req := createMultipartUploadRequest(t, "test.txt", "custom content", subDir)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(UploadFile, req)
+	assertOK(t, w)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	assert.Equal(t, true, result["ok"])
+	pathStr, ok := result["path"].(string)
+	assert.True(t, ok)
+	assert.Contains(t, filepath.ToSlash(pathStr), "customupload/test.txt")
+}
+
+// ============================================================================
+// ServeRoots — empty root paths fallback
+// ============================================================================
+
+func TestServeRoots_EmptyRootPaths_FallsBackToHomeDir(t *testing.T) {
+	origRootPaths := model.RootPaths
+	model.RootPaths = []string{}
+	defer func() { model.RootPaths = origRootPaths }()
+
+	req := newRequest(t, http.MethodGet, "/api/roots", nil)
+	w := callHandler(ServeRoots, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	roots, ok := result["roots"].([]interface{})
+	assert.True(t, ok)
+	assert.NotEmpty(t, roots, "should fall back to homeDir when RootPaths is empty")
 }

@@ -801,20 +801,26 @@ func TestServeAISession_NoProjectCookie(t *testing.T) {
 // --- ServeRoots ---
 
 func TestServeRoots(t *testing.T) {
-	_, teardown := setupTestEnv(t)
-	defer teardown()
+	t.Run("ReturnsRootPathsAndConfig", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
 
-	req := newRequest(t, http.MethodGet, "/api/roots", nil)
+		req := newRequest(t, http.MethodGet, "/api/roots", nil)
 
-	w := callHandler(ServeRoots, req)
-	assertOK(t, w)
+		w := callHandler(ServeRoots, req)
+		assertOK(t, w)
 
-	var result map[string]interface{}
-	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	assert.Contains(t, result, "roots")
-	roots, ok := result["roots"].([]interface{})
-	assert.True(t, ok)
-	assert.NotEmpty(t, roots)
+		var result map[string]interface{}
+		assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+		assert.Contains(t, result, "roots")
+		roots, ok := result["roots"].([]interface{})
+		assert.True(t, ok)
+		assert.NotEmpty(t, roots)
+		assert.Contains(t, roots, env.WatchDir)
+		// Check config fields exist
+		assert.NotNil(t, result["uploadMaxSizeMB"])
+		assert.NotNil(t, result["uploadMaxFiles"])
+	})
 }
 
 // --- UploadFile ---

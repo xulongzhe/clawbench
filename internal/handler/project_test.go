@@ -151,6 +151,56 @@ func TestServeProjectSet(t *testing.T) {
 
 		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
 	})
+
+	t.Run("POST_RelativePath_ResolvesFromRootPaths", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a directory under WatchDir with a relative name
+		subDir := filepath.Join(env.WatchDir, "myproject")
+		os.MkdirAll(subDir, 0755)
+
+		req := newRequest(t, http.MethodPost, "/api/project", map[string]string{
+			"path": "myproject",
+		})
+
+		w := callHandler(ServeProjectSet, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assertJSONField(t, w, "ok", "true")
+		// Verify the path was resolved from RootPaths[0]
+		assertJSONField(t, w, "path", subDir)
+	})
+
+	t.Run("POST_EmptyPath_SetsFirstRootPath", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/project", map[string]string{
+			"path": "",
+		})
+
+		w := callHandler(ServeProjectSet, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assertJSONField(t, w, "ok", "true")
+		assertJSONField(t, w, "path", env.WatchDir)
+	})
+
+	t.Run("POST_RootSlashPath_SetsFirstRootPath", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/project", map[string]string{
+			"path": "/",
+		})
+
+		w := callHandler(ServeProjectSet, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assertJSONField(t, w, "ok", "true")
+		assertJSONField(t, w, "path", env.WatchDir)
+	})
 }
 
 func TestServeRecentProjects(t *testing.T) {

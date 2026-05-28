@@ -232,6 +232,93 @@ func TestIsPathUnderAnyRoot(t *testing.T) {
 	}
 }
 
+func TestIsPathUnderRoot(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	t.Run("existing path under existing root", func(t *testing.T) {
+		result := isPathUnderRoot(filepath.Join(tmpDir, "subdir"), tmpDir)
+		if !result {
+			t.Error("expected path under root to return true")
+		}
+	})
+
+	t.Run("path equals root", func(t *testing.T) {
+		result := isPathUnderRoot(tmpDir, tmpDir)
+		if !result {
+			t.Error("expected path equal to root to return true")
+		}
+	})
+
+	t.Run("path outside root", func(t *testing.T) {
+		result := isPathUnderRoot("/etc/passwd", tmpDir)
+		if result {
+			t.Error("expected path outside root to return false")
+		}
+	})
+
+	t.Run("non-existent path under existing root", func(t *testing.T) {
+		result := isPathUnderRoot(filepath.Join(tmpDir, "nonexistent", "deep", "path"), tmpDir)
+		if !result {
+			t.Error("expected non-existent path under root to return true (resolved via parent)")
+		}
+	})
+
+	t.Run("non-existent root falls back to lexical", func(t *testing.T) {
+		result := isPathUnderRoot("/fake/root/sub", "/fake/root")
+		if !result {
+			t.Error("expected lexical match for non-existent root")
+		}
+	})
+
+	t.Run("root path / matches subpaths", func(t *testing.T) {
+		result := isPathUnderRoot("/home/user", "/")
+		if !result {
+			t.Error("expected / to match /home/user")
+		}
+	})
+
+	t.Run("root path / matches itself", func(t *testing.T) {
+		result := isPathUnderRoot("/", "/")
+		if !result {
+			t.Error("expected / to match /")
+		}
+	})
+
+	t.Run("different temp dir roots", func(t *testing.T) {
+		tmpDir2 := t.TempDir()
+		result := isPathUnderRoot(tmpDir2, tmpDir)
+		if result {
+			t.Error("expected different temp dirs to not match")
+		}
+	})
+}
+
+func TestResolveExistingPath(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	t.Run("existing path returns itself", func(t *testing.T) {
+		result := resolveExistingPath(tmpDir, "/")
+		if result == "" {
+			t.Error("expected non-empty result for existing path")
+		}
+	})
+
+	t.Run("non-existent path resolves via parent", func(t *testing.T) {
+		nonExistent := filepath.Join(tmpDir, "a", "b", "c")
+		result := resolveExistingPath(nonExistent, tmpDir)
+		if result == "" {
+			t.Error("expected parent resolution for non-existent path under root")
+		}
+	})
+
+	t.Run("path outside root returns empty", func(t *testing.T) {
+		result := resolveExistingPath("/fake/outside/path", "/real")
+		if result != "" {
+			t.Errorf("expected empty result for path outside root, got %q", result)
+		}
+	})
+}
+
 func TestClaudeProjectDir(t *testing.T) {
 	dir := ClaudeProjectDir("/home/user/project")
 	if dir == "" {
