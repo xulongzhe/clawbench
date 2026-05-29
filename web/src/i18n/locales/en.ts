@@ -195,6 +195,8 @@ export default {
       deleteFailed: 'Failed to delete session',
       completed: 'Session completed',
       clickToViewDetails: 'Click to view details',
+      continueFailed: 'Failed to continue conversation',
+      sessionLimitReached: 'Maximum session limit reached',
     },
     messageList: {
       loadingMore: 'Loading...',
@@ -389,6 +391,8 @@ export default {
       completed: 'Execution completed',
       tabOriginal: 'Original',
       tabSummary: 'Summary',
+      continueConversation: 'Continue',
+      continueConversationLoading: 'Continuing...',
     },
   },
   file: {

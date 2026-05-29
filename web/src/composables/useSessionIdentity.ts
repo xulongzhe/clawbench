@@ -44,6 +44,8 @@ export function resetIdentity(): void {
   _deleteSession = null
   _sendMessage = null
   _openChatPanel = null
+  _continueFromExecution = null
+  _checkContinueSession = null
   _sessionDrawerRef = null
 }
 
@@ -96,6 +98,8 @@ let _createSession: ((agentId?: string) => Promise<void>) | null = null
 let _deleteSession: ((sessionId: string, backend?: string) => Promise<void>) | null = null
 let _sendMessage: ((text: string, filePaths?: string[]) => Promise<void>) | null = null
 let _openChatPanel: (() => void) | null = null
+let _continueFromExecution: ((taskId: number, execId: number, switchTabFn: (tab: string) => void) => Promise<boolean>) | null = null
+let _checkContinueSession: ((taskId: number, execId: number) => Promise<{ exists: boolean; sessionId: string }>) | null = null
 // SessionDrawer component ref — set by App.vue. Allows any component to
 // trigger openAgentSelector() on the global drawer without coupling.
 let _sessionDrawerRef: any = null
@@ -106,6 +110,8 @@ export interface SessionActions {
   deleteSession: (sessionId: string, backend?: string) => Promise<void>
   sendMessage: (text: string, filePaths?: string[]) => Promise<void>
   openChatPanel: () => void
+  continueFromExecution: (taskId: number, execId: number, switchTabFn: (tab: string) => void) => Promise<boolean>
+  checkContinueSession: (taskId: number, execId: number) => Promise<{ exists: boolean; sessionId: string }>
 }
 
 /**
@@ -118,6 +124,8 @@ export function registerSessionActions(actions: SessionActions) {
   _deleteSession = actions.deleteSession
   _sendMessage = actions.sendMessage
   _openChatPanel = actions.openChatPanel
+  _continueFromExecution = actions.continueFromExecution
+  _checkContinueSession = actions.checkContinueSession
 }
 
 /** Register the SessionDrawer component ref so openAgentSelector() works. */
@@ -312,6 +320,28 @@ export function useSessionIdentity() {
     }
   }
 
+  /**
+   * Continue a task execution as a new chat session.
+   * Delegates to ChatPanel's implementation if registered.
+   */
+  async function continueFromExecution(taskId: number, execId: number, switchTabFn: (tab: string) => void): Promise<boolean> {
+    if (_continueFromExecution) {
+      return await _continueFromExecution(taskId, execId, switchTabFn)
+    }
+    return false
+  }
+
+  /**
+   * Check whether a continued session already exists for a task execution.
+   * Delegates to ChatPanel's implementation if registered.
+   */
+  async function checkContinueSession(taskId: number, execId: number): Promise<{ exists: boolean; sessionId: string }> {
+    if (_checkContinueSession) {
+      return await _checkContinueSession(taskId, execId)
+    }
+    return { exists: false, sessionId: '' }
+  }
+
   /** Open the global session drawer (sets sessionDrawerOpen = true). */
   function openSessionTab() {
     sessionDrawerOpen.value = true
@@ -344,6 +374,8 @@ export function useSessionIdentity() {
     openChatPanel,
     openSessionTab,
     openAgentSelector,
+    continueFromExecution,
+    checkContinueSession,
     // Registration (for ChatPanel)
     registerSessionActions,
     // Init (for App.vue)
