@@ -114,6 +114,9 @@ system_prompt: |
     cwd: tempDir,
     env: {
       ...process.env,
+      // Prepend tempDir to PATH so that any child process invoking "clawbench"
+      // uses our copied binary instead of a potentially different version in
+      // the system PATH. This ensures test isolation.
       PATH: `${tempDir}:${process.env.PATH}`,
     },
     stdio: ['pipe', 'pipe', 'pipe'],

@@ -47,24 +47,24 @@ func (m *MockAIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-c
 		response := "Hello! I am a mock assistant. How can I help you today?"
 		words := strings.Fields(response)
 
-	for i, word := range words {
-		sep := " "
-		if i == 0 {
-			sep = ""
-		}
+		for i, word := range words {
+			sep := " "
+			if i == 0 {
+				sep = ""
+			}
 
-		// Use select to block on both the delay and context cancellation,
-		// enabling instant cancellation (like real backends using cmd.Process.Kill).
-		select {
-		case <-ctx.Done():
-			ch <- StreamEvent{Type: "warning", Content: "mock stream cancelled", Reason: ReasonContextCancel}
-			return
-		case <-time.After(50 * time.Millisecond):
-			// Simulate streaming pace with instant cancel detection
-		}
+			// Use select to block on both the delay and context cancellation,
+			// enabling instant cancellation (like real backends using cmd.Process.Kill).
+			select {
+			case <-ctx.Done():
+				ch <- StreamEvent{Type: "warning", Content: "mock stream cancelled", Reason: ReasonContextCancel}
+				return
+			case <-time.After(50 * time.Millisecond):
+				// Simulate streaming pace with instant cancel detection
+			}
 
-		ch <- StreamEvent{Type: "content", Content: sep + word}
-	}
+			ch <- StreamEvent{Type: "content", Content: sep + word}
+		}
 
 		// Send metadata
 		ch <- StreamEvent{

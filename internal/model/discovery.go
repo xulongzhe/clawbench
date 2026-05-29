@@ -308,15 +308,25 @@ func SyncDiscoverAgents(dir string) map[string]bool {
 	// Include backends that have existing YAML configs but are not in BackendRegistry
 	// (e.g., mock backend configured explicitly for E2E testing).
 	// This ensures MergeDiscoveredData doesn't soft-remove them.
+	// We read the "backend" field from each YAML file (same as LoadAgents),
+	// rather than using the filename, so the key matches what MergeDiscoveredData
+	// checks (agent.Backend) and what BackendRegistry entries produce (r.spec.Backend).
 	entries, err := os.ReadDir(dir)
 	if err == nil {
 		for _, entry := range entries {
 			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
 				continue
 			}
-			backend := strings.TrimSuffix(entry.Name(), ".yaml")
-			if !present[backend] {
-				present[backend] = true
+			data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+			if err != nil {
+				continue
+			}
+			var agent Agent
+			if err := yaml.Unmarshal(data, &agent); err != nil || agent.Backend == "" {
+				continue
+			}
+			if !present[agent.Backend] {
+				present[agent.Backend] = true
 			}
 		}
 	}

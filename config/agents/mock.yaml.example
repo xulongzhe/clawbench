@@ -1,3 +1,6 @@
+# WARNING: This is a mock agent for E2E testing ONLY.
+# Do NOT copy this file to mock.yaml in production.
+# It will expose a fake AI agent that returns canned responses.
 backend: mock
 icon: "\U0001F9EA"
 id: mock
