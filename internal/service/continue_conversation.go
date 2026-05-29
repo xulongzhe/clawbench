@@ -123,9 +123,11 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 
 	// 8. Create new chat session
 	newSessionID := generateSessionID()
+	// Prefix title with [定时任务] to mark it as originating from a scheduled task
+	displayTitle := "[定时任务] " + taskName
 	_, err = DB.Exec(
-		"INSERT INTO chat_sessions (id, project_path, backend, title, agent_id, agent_source, model, session_type, source_session_id, thinking_effort) VALUES (?, ?, ?, ?, ?, ?, ?, 'chat', ?, ?)",
-		newSessionID, sessProjectPath, backend, taskName, agentID, agentSource, modelName, sourceSessionID, thinkingEffort,
+		"INSERT INTO chat_sessions (id, project_path, backend, title, agent_id, agent_source, model, session_type, source_session_id, thinking_effort, last_read_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'chat', ?, ?, CURRENT_TIMESTAMP)",
+		newSessionID, sessProjectPath, backend, displayTitle, agentID, agentSource, modelName, sourceSessionID, thinkingEffort,
 	)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to create continued session: %w", err)

@@ -526,9 +526,14 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
       }
 
-      // Step 3: Navigate — switchTab first, then switchSession
-      switchTabFn('chat')
+      // Step 3: Navigate — switchSession first (which sets currentSessionId and loads history),
+      // then switchTab to make the chat panel visible.
+      // Order matters: if we switchTab first, the chat panel re-renders and may call
+      // loadHistory() with the OLD sessionId from cookie, overwriting our switchSession.
+      // By switching the session first, the cookie and state are already correct when
+      // the chat panel becomes visible.
       await switchSession(sessionId)
+      switchTabFn('chat')
       return true
     } catch (err) {
       console.error('Failed to continue from execution:', err)

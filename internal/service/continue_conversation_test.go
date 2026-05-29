@@ -68,10 +68,10 @@ func TestContinueFromExecution_NormalFlow(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "chat", sessionType)
 
-	// New session should have the task name as title
+	// New session should have the task name with [定时任务] prefix as title
 	title, err := service.GetSessionTitle(newSessID)
 	assert.NoError(t, err)
-	assert.Equal(t, "Daily Code Review", title)
+	assert.Equal(t, "[定时任务] Daily Code Review", title)
 
 	// New session should inherit agent/model/thinking
 	info, err := service.GetSessionInfo(newSessID)
