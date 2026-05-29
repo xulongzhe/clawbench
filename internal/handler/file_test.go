@@ -8,6 +8,8 @@ import (
 	"sort"
 	"testing"
 
+	"clawbench/internal/model"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -364,6 +366,136 @@ func TestServeProjects(t *testing.T) {
 		entry := items[0].(map[string]interface{})
 		assert.Equal(t, "src", entry["name"])
 		assert.Equal(t, "dir", entry["type"])
+	})
+
+	t.Run("GET_RootPath_ListsFirstRootDir", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create some entries in WatchDir
+		os.MkdirAll(filepath.Join(env.WatchDir, "rootdir"), 0755)
+		createTestFile(t, env.WatchDir, "rootfile.txt", "root content")
+
+		// Empty path triggers root-level browsing (Unix: lists first RootPath)
+		req := newRequest(t, http.MethodGet, "/api/projects", nil)
+		w := callHandler(ServeProjects, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		// Should list contents of RootPaths[0]
+		items, ok := result["items"].([]interface{})
+		assert.True(t, ok)
+		assert.True(t, len(items) >= 2, "should have at least 2 entries (rootdir + rootfile.txt)")
+	})
+
+	t.Run("GET_AbsolutePathUnderRoot_ListsDir", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a subdirectory under WatchDir
+		subDir := filepath.Join(env.WatchDir, "abspathdir")
+		os.MkdirAll(subDir, 0755)
+		createTestFile(t, subDir, "inner.txt", "inner content")
+
+		req := newRequest(t, http.MethodGet, "/api/projects?path="+subDir, nil)
+		w := callHandler(ServeProjects, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+
+		items, ok := result["items"].([]interface{})
+		assert.True(t, ok)
+		assert.Len(t, items, 1)
+	})
+
+	t.Run("GET_AbsolutePathOutsideRoot_Returns403", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Use os.TempDir() which is always an absolute path outside the test's WatchDir.
+		// Do NOT use "/etc" — on Windows, forward-slash paths without a drive letter
+		// are not considered absolute by filepath.IsAbs, causing the path to be
+		// treated as relative and resolved differently.
+		outsidePath := os.TempDir()
+		req := newRequest(t, http.MethodGet, "/api/projects?path="+outsidePath, nil)
+		w := callHandler(ServeProjects, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+
+	t.Run("POST_CreateWithTraversalName_Returns403", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/projects", map[string]string{
+			"path": env.WatchDir,
+			"name": "../../../etc",
+		})
+		w := callHandler(ServeProjects, req)
+		assertStatus(t, w, http.StatusForbidden)
+	})
+
+	t.Run("GET_AtRootLevel_ParentIsNil", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Browse exactly at RootPaths[0] — should have nil parent
+		req := newRequest(t, http.MethodGet, "/api/projects?path="+env.WatchDir, nil)
+		w := callHandler(ServeProjects, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+		assert.Nil(t, result["parent"], "parent should be nil when browsing at root level")
+	})
+
+	t.Run("GET_SubdirectoryOfRoot_ParentIsSet", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		subDir := filepath.Join(env.WatchDir, "sublevel")
+		os.MkdirAll(subDir, 0755)
+
+		req := newRequest(t, http.MethodGet, "/api/projects?path="+subDir, nil)
+		w := callHandler(ServeProjects, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		err := json.Unmarshal(w.Body.Bytes(), &result)
+		assert.NoError(t, err)
+		assert.NotNil(t, result["parent"], "parent should be set when browsing subdirectory of root")
+	})
+
+	t.Run("GET_EmptyRootPaths_Returns400", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Set RootPaths to empty so absPath stays empty
+		origRootPaths := model.RootPaths
+		model.RootPaths = []string{}
+		defer func() { model.RootPaths = origRootPaths }()
+
+		req := newRequest(t, http.MethodGet, "/api/projects?path=relative", nil)
+		w := callHandler(ServeProjects, req)
+		assertStatus(t, w, http.StatusBadRequest)
+	})
+
+	t.Run("GET_NotADirectory_Returns400", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a file, then try to browse it as a directory
+		filePath := filepath.Join(env.WatchDir, "notadir.txt")
+		createTestFile(t, env.WatchDir, "notadir.txt", "content")
+
+		req := newRequest(t, http.MethodGet, "/api/projects?path="+filePath, nil)
+		w := callHandler(ServeProjects, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 

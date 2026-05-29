@@ -1709,29 +1709,45 @@ func serveGitDeleteWorktree(w http.ResponseWriter, r *http.Request) {
 		deletePath = resolved
 	}
 
-	// Check if it's the current worktree
+	// ISS-208: List worktrees and verify deletePath matches a known worktree.
+	// This prevents passing arbitrary paths to "git worktree remove" — only
+	// paths that git itself reports as worktrees can be deleted.
 	cmd := exec.Command("git", "worktree", "list", "--porcelain")
 	cmd.Dir = projectPath
 	output, _ := cmd.CombinedOutput()
 	trees := parseWorktreePorcelain(string(output), projectPath)
+
+	matchedWorktree := false
 	for _, wt := range trees {
-		if wt.Path == deletePath && wt.IsCurrent {
-			writeJSON(w, http.StatusOK, map[string]interface{}{
-				"success": false,
-				"error":   "cannot_delete_current",
-			})
-			return
+		if wt.Path == deletePath {
+			if wt.IsCurrent {
+				writeJSON(w, http.StatusOK, map[string]interface{}{
+					"success": false,
+					"error":   "cannot_delete_current",
+				})
+				return
+			}
+			matchedWorktree = true
+			break
 		}
 	}
+	if !matchedWorktree {
+		writeJSON(w, http.StatusForbidden, map[string]interface{}{
+			"success": false,
+			"error":   "path_not_allowed",
+		})
+		return
+	}
 
-	// Remove worktree
-	cmd = exec.Command("git", "worktree", "remove", body.Path)
+	// Remove worktree — use resolved deletePath instead of raw body.Path
+	// to prevent command injection via path traversal (ISS-208).
+	cmd = exec.Command("git", "worktree", "remove", deletePath)
 	cmd.Dir = projectPath
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		errMsg := strings.TrimSpace(string(out))
 		if strings.Contains(errMsg, "dirty") || strings.Contains(errMsg, "modified") || strings.Contains(errMsg, "uncommitted") {
-			cmd = exec.Command("git", "worktree", "remove", "--force", body.Path)
+			cmd = exec.Command("git", "worktree", "remove", "--force", deletePath)
 			cmd.Dir = projectPath
 			out, err = cmd.CombinedOutput()
 		}

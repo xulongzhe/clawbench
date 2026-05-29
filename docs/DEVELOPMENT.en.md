@@ -107,7 +107,6 @@ cd clawbench
 | Config Item | Default | Description |
 |-------------|---------|-------------|
 | `port` | 20000 | Server port |
-| `watch_dir` | User home directory | Linux: `/home/username`, Windows: `C:\Users\username` |
 | `password` | Auto-generated 8-char hex | Generated on first run, saved to `.clawbench/auto-password`, reused on restart |
 | `log_dir` | `<BinDir>/.clawbench/logs` | Under the binary's directory |
 | `log_max_days` | 7 | Log retention days |
@@ -142,8 +141,6 @@ cd clawbench
 ```yaml
 # All values below are defaults; only configure when you need to override
 # port: 20000
-# watch_dir: "/home/user"       # Linux/macOS defaults to user home directory
-# watch_dir: "C:\\Users\\user"  # Windows defaults to user home directory
 # password: "your_password"     # Auto-generates 8-char hex if not configured
 # default_agent: "assistant"   # Default agent; uses first agent if empty
 ```
@@ -191,7 +188,6 @@ For full configuration reference, see `config/config.example.yaml`. All items ar
 
 ```yaml
 # port: 20000                        # Production server port (default 20000)
-# watch_dir: "/home/user"            # Project watch directory (default: user home directory)
 # password: "your_password"          # Access password (auto-generates UUID and saves if not configured)
 
 # Default agent (optional)
@@ -387,7 +383,12 @@ clawbench/
 │   │   ├── terminal.go          # Terminal + quick commands CRUD + multi-session
 │   │   └── static.go            # Static files
 │   ├── middleware/              # Middleware (auth/log/recovery/request ID)
-│   ├── platform/                # Platform adaptation (Windows paths, etc.)
+│   ├── platform/                # Platform adaptation (cross-platform paths)
+│   │   ├── path.go              # ListRootPaths, IsPathUnderAnyRoot, ManglePath, ExpandTilde
+│   │   ├── path_unix.go         # Unix: root = "/"
+│   │   ├── path_windows.go      # Windows: enumerate available drive roots
+│   │   ├── shell.go             # Shell detection
+│   │   └── path_test.go / shell_test.go
 │   ├── service/                 # Business logic
 │   │   ├── database.go          # SQLite initialization
 │   │   ├── chat.go              # Chat history management

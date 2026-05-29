@@ -313,6 +313,13 @@ export function useGlobalEvents() {
         document.removeEventListener('visibilitychange', handleVisibilityChange)
         window.removeEventListener('clawbench-push-registered', handlePushRegistered)
         disconnect()
+        // ISS-192: Clear handlers and state on destroy to prevent stale closures
+        // from firing after SPA hot project switch.
+        handlers.length = 0
+        processedEventIds.clear()
+        missedPongs = 0
+        pushAvailable.value = false
+        pushRegistered.value = false
     }
 
     return {

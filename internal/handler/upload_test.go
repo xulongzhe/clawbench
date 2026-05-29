@@ -452,4 +452,30 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		assert.True(t, w.Code == http.StatusForbidden || w.Code == http.StatusBadRequest,
 			"expected 403 or 400, got %d", w.Code)
 	})
+
+	t.Run("CustomDir_DstPathUnderRoot_Succeeds", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a subdirectory to upload into using absolute path
+		subDir := filepath.Join(env.ProjectDir, "customdir")
+		os.MkdirAll(subDir, 0755)
+
+		req := createMultipartUploadRequest(t, "dstcheck.txt", "dst path under root", subDir)
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(UploadFile, req)
+		assertOK(t, w)
+
+		var result map[string]interface{}
+		json.Unmarshal(w.Body.Bytes(), &result)
+		assert.Equal(t, true, result["ok"])
+
+		// Verify file exists on disk
+		pathStr := result["path"].(string)
+		fullPath := filepath.Join(env.ProjectDir, pathStr)
+		data, err := os.ReadFile(fullPath)
+		assert.NoError(t, err)
+		assert.Equal(t, "dst path under root", string(data))
+	})
 }

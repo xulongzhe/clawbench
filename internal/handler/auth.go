@@ -169,7 +169,12 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 		// ISS-118: Limit request body to 4KB to prevent memory exhaustion DoS.
 		// A password never needs more than a few hundred bytes.
 		limitedReader := io.LimitReader(r.Body, 4*1024)
-		json.NewDecoder(limitedReader).Decode(&body)
+		// ISS-146: Check Decode error explicitly — malformed JSON must return 400
+		// rather than silently falling through to bcrypt with an empty password.
+		if err := json.NewDecoder(limitedReader).Decode(&body); err != nil {
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
+			return
+		}
 
 		// Password verification (ISS-003a)
 		var authenticated bool

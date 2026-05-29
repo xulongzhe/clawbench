@@ -50,6 +50,7 @@ const props = defineProps({
   active: { type: Boolean, default: false },
   tunnelDisconnected: { type: Boolean, default: false },
   reconnecting: { type: Boolean, default: false },
+  connecting: { type: Boolean, default: false },
 })
 
 defineEmits(['open', 'openExternal', 'reconnect', 'edit', 'remove'])
@@ -59,12 +60,14 @@ const hasDetail = computed(() => {
 })
 
 const statusClass = computed(() => {
+  if (props.connecting) return 'connecting'
   if (props.active) return 'active'
   if (props.tunnelDisconnected) return 'tunnel-down'
   return 'inactive'
 })
 
 const statusTitle = computed(() => {
+  if (props.connecting) return t('proxy.portItem.connecting')
   if (props.active) return t('proxy.portItem.active')
   if (props.tunnelDisconnected) return t('proxy.portItem.tunnelDown')
   return t('proxy.portItem.inactive')
@@ -138,6 +141,12 @@ const statusTitle = computed(() => {
   box-shadow: 0 0 4px rgba(34, 197, 94, 0.4);
 }
 
+.port-status.connecting {
+  background: #f59e0b;
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+  animation: pulse-yellow 1.5s ease-in-out infinite;
+}
+
 .port-status.inactive {
   background: #9ca3af;
 }
@@ -154,6 +163,17 @@ const statusTitle = computed(() => {
   }
   50% {
     box-shadow: 0 0 8px rgba(239, 68, 68, 0.7);
+  }
+}
+
+@keyframes pulse-yellow {
+  0%, 100% {
+    opacity: 0.5;
+    box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(245, 158, 11, 0.7);
   }
 }
 

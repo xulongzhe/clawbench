@@ -22,12 +22,6 @@ LOG_FILE=".clawbench/server.log"
 
 # --- Inline utility functions (from scripts/common.sh) ---
 
-# Read watch_dir from config file; returns empty string if not found.
-get_watch_dir() {
-    local config="$1"
-    grep "^watch_dir:" "$config" 2>/dev/null | awk '{print $2}' | tr -d '"' || echo ""
-}
-
 # Print auto-generated password if the file exists.
 show_auto_password() {
     local auto_pw_file="$1"
@@ -166,13 +160,10 @@ start_release() {
     # Ensure .clawbench directory exists
     mkdir -p .clawbench
 
-    local WATCH_DIR
-    WATCH_DIR=$(get_watch_dir "$CONFIG")
     echo "=== Starting $NAME (release) ==="
     echo "  Binary:   $BIN"
     echo "  Config:   $CONFIG"
     echo "  Port:     $EFFECTIVE_PORT"
-    echo "  Watch:    ${WATCH_DIR:-default}"
     echo "  PIDFile:  $PID_FILE"
     echo "  Log:      $LOG_FILE"
     show_auto_password "$AUTO_PW_FILE"

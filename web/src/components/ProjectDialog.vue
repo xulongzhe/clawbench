@@ -82,13 +82,18 @@ const showHidden = ref(false)
 // Browse state
 const browsePath = ref('/')
 const browseItems = ref([])
-let watchBase = ''
 let currentBrowseAbs = ''
 
-function toRelative(absPath) {
-    if (!watchBase) return absPath
-    const rel = absPath.slice(watchBase.length).replace(/^\//, '')
-    return rel || '/'
+// Detect the separator used by the current base path (backslash on Windows, forward slash on Unix)
+function pathSep(base) {
+    return base && base.includes('\\') ? '\\' : '/'
+}
+
+// Join a base path and a name using the same separator as the base
+function pathJoin(base, name) {
+    if (!base) return name
+    const sep = pathSep(base)
+    return base.replace(/[/\\]$/, '') + sep + name
 }
 
 // Reload data when dialog opens (only first time)
@@ -104,7 +109,16 @@ watch(() => props.open, (isOpen) => {
 })
 
 function onBreadcrumbNavigate(path) {
-  browseNavigate(path ? '/' + path : '/')
+  if (!path) {
+    // Navigate to root
+    browseNavigate('')
+  } else if (/^[A-Za-z]:/.test(path)) {
+    // Windows path from breadcrumb — normalize forward slashes to backslashes
+    browseNavigate(path.replace(/\//g, '\\'))
+  } else {
+    // Unix: reconstruct absolute path by prepending "/"
+    browseNavigate('/' + path)
+  }
 }
 
 const displayItems = computed(() => {
@@ -113,7 +127,9 @@ const displayItems = computed(() => {
     if (!showHidden.value) dirs = dirs.filter(d => !d.name.startsWith('.'))
     return dirs.map(d => {
         const name = d.name
-        const path = browsePath.value === '/' ? name : browsePath.value + '/' + name
+        // Build absolute path for the directory entry using correct separator
+        const absBase = currentBrowseAbs || ''
+        const path = absBase ? pathJoin(absBase, name) : name
         return { name, path }
     })
 })
@@ -134,11 +150,9 @@ async function loadBrowse() {
     try {
         const resp = await fetch('/api/projects?path=' + encodeURIComponent(browsePath.value === '/' ? '' : browsePath.value))
         const data = await resp.json()
-        if (!watchBase) {
-            watchBase = data.path || browsePath.value
-        }
         currentBrowseAbs = data.path || browsePath.value
-        browsePath.value = toRelative(currentBrowseAbs)
+        // For breadcrumb, compute the relative path from first root
+        browsePath.value = currentBrowseAbs || '/'
         browseItems.value = (data.items || []).filter(i => i.type === 'dir')
     } catch (_) {
         browseItems.value = []
@@ -170,7 +184,7 @@ async function doRename(item) {
         const resp = await fetch('/api/file/rename', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: currentBrowseAbs + '/' + item.name, name: newName })
+            body: JSON.stringify({ path: pathJoin(currentBrowseAbs, item.name), name: newName })
         })
         if (resp.ok) await loadBrowse()
         else {
@@ -186,7 +200,7 @@ async function doDelete(item) {
         const resp = await fetch('/api/file/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: currentBrowseAbs + '/' + item.name })
+            body: JSON.stringify({ path: pathJoin(currentBrowseAbs, item.name) })
         })
         if (resp.ok) {
             selectedPath.value = ''
@@ -200,8 +214,8 @@ async function doDelete(item) {
 
 async function confirm() {
     let path = selectedPath.value
-    if (!path && watchBase) {
-        path = watchBase
+    if (!path && currentBrowseAbs) {
+        path = currentBrowseAbs
     }
     if (!path) return
     try {

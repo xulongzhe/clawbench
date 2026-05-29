@@ -223,4 +223,100 @@ describe('AppHeader', () => {
     expect(wrapper.find('.dropdown-scroll-area').exists()).toBe(false)
     expect(wrapper.find('.dropdown-empty').exists()).toBe(true)
   })
+
+  // ── loadRecentProjects: homeDir & path normalization (5) ──
+  // loadRecentProjects() normalizes \ to / before comparing with homeDir,
+  // then slices from the original path. We test by calling the internal
+  // loadRecentProjects directly (fetch is not mocked; we construct items
+  // by calling the function logic). Since fetch mocking is complex with
+  // the recursive-update limitation, we test the normalization logic
+  // by exercising loadRecentProjects with a mocked fetch.
+
+  it('loadRecentProjects shows relative path when homeDir matches (Unix)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve(['/home/user/proj-a', '/home/user/proj-b']),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountAndTrack({ homeDir: '/home/user' })
+    await (wrapper.vm as any).loadRecentProjects()
+    try { await wrapper.vm.$nextTick() } catch {}
+
+    const items = wrapper.vm.recentItems
+    expect(items[0].displayPath).toBe('proj-a')
+    expect(items[1].displayPath).toBe('proj-b')
+    // Full path preserved in path field
+    expect(items[0].path).toBe('/home/user/proj-a')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('loadRecentProjects shows relative path when homeDir matches (Windows backslashes)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve(['C:\\Users\\x\\proj', 'C:\\Users\\x\\other']),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountAndTrack({ homeDir: 'C:\\Users\\x' })
+    await (wrapper.vm as any).loadRecentProjects()
+    try { await wrapper.vm.$nextTick() } catch {}
+
+    const items = wrapper.vm.recentItems
+    // After normalizing both to /, C:/Users/x matches C:/Users/x/proj
+    // Then slices from original path: p.slice(homeDir.length + 1)
+    // 'C:\Users\x\proj'.slice('C:\Users\x'.length + 1) = 'proj'
+    expect(items[0].displayPath).toBe('proj')
+    expect(items[1].displayPath).toBe('other')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('loadRecentProjects shows full path when homeDir does not match', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve(['/other/path/proj']),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountAndTrack({ homeDir: '/home/user' })
+    await (wrapper.vm as any).loadRecentProjects()
+    try { await wrapper.vm.$nextTick() } catch {}
+
+    const items = wrapper.vm.recentItems
+    expect(items[0].displayPath).toBe('/other/path/proj')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('loadRecentProjects shows full path when homeDir is empty', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve(['/home/user/proj']),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountAndTrack({ homeDir: '' })
+    await (wrapper.vm as any).loadRecentProjects()
+    try { await wrapper.vm.$nextTick() } catch {}
+
+    const items = wrapper.vm.recentItems
+    // Empty homeDir => normHome='' => condition fails (empty string is falsy)
+    expect(items[0].displayPath).toBe('/home/user/proj')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('loadRecentProjects shows full path when homeDir is not provided', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve(['/home/user/proj']),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mountAndTrack({ homeDir: undefined })
+    await (wrapper.vm as any).loadRecentProjects()
+    try { await wrapper.vm.$nextTick() } catch {}
+
+    const items = wrapper.vm.recentItems
+    expect(items[0].displayPath).toBe('/home/user/proj')
+
+    vi.unstubAllGlobals()
+  })
 })

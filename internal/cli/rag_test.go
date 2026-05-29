@@ -27,7 +27,7 @@ func TestRunRAGCommand_ShortHelpFlag(t *testing.T) {
 func TestRunRAGCommand_UnknownSubcommand(t *testing.T) {
 	tmpDir := t.TempDir()
 	model.BinDir = tmpDir
-	model.ConfigInstance = model.Config{WatchDir: tmpDir}
+	model.ConfigInstance = model.Config{Port: 30000}
 
 	exitCode := RunRAGCommand([]string{"foo"})
 	assert.Equal(t, 1, exitCode)
@@ -57,8 +57,7 @@ func TestRAGSearch_ServerNotReachable(t *testing.T) {
 	tmpDir := t.TempDir()
 	model.BinDir = tmpDir
 	model.ConfigInstance = model.Config{
-		WatchDir: tmpDir,
-		Port:     59999,
+		Port: 59999,
 	}
 
 	exitCode := RunRAGCommand([]string{"search", "-q", "test query"})
@@ -69,8 +68,7 @@ func TestRAGMessage_ServerNotReachable(t *testing.T) {
 	tmpDir := t.TempDir()
 	model.BinDir = tmpDir
 	model.ConfigInstance = model.Config{
-		WatchDir: tmpDir,
-		Port:     59999,
+		Port: 59999,
 	}
 
 	exitCode := RunRAGCommand([]string{"message", "--id", "42"})
@@ -81,8 +79,7 @@ func TestRAGSession_ServerNotReachable(t *testing.T) {
 	tmpDir := t.TempDir()
 	model.BinDir = tmpDir
 	model.ConfigInstance = model.Config{
-		WatchDir: tmpDir,
-		Port:     59999,
+		Port: 59999,
 	}
 
 	exitCode := RunRAGCommand([]string{"session", "--id", "test-session-id"})

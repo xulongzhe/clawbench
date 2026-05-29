@@ -28,7 +28,7 @@ type testEnv struct {
 	WatchDir        string
 	OrigToken       string
 	OrigCookieToken string
-	OrigWatch       string
+	OrigRootPaths    []string
 	OrigDB          *sql.DB
 }
 
@@ -39,13 +39,19 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 
 	// Create temp directories — project must be under WatchDir to match production
 	watchDir := t.TempDir()
+	// Note: We intentionally do NOT resolve symlinks here.
+	// On macOS, /var/folders → /private/var/folders, but we want model.RootPaths
+	// to match what production code uses (ListRootPaths returns "/" on Unix,
+	// which doesn't need resolution). The isPathUnderAnyRoot function handles
+	// symlink resolution internally, so RootPaths and path arguments can use
+	// either resolved or unresolved forms.
 	projectDir := filepath.Join(watchDir, "project")
 	os.MkdirAll(projectDir, 0755)
 
 	// Save original globals
 	origToken := model.SessionToken
 	origCookieToken := model.CookieToken
-	origWatch := model.WatchDir
+	origRootPaths := model.RootPaths
 	origDB := service.DB
 	origDBRead := service.DBRead
 	origAgents := model.Agents
@@ -54,7 +60,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	// Set test globals
 	model.SessionToken = ""
 	model.CookieToken = ""
-	model.WatchDir = watchDir
+	model.RootPaths = []string{watchDir}
 
 	// Init in-memory SQLite
 	db, err := sql.Open("sqlite", ":memory:")
@@ -196,14 +202,14 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		WatchDir:        watchDir,
 		OrigToken:       origToken,
 		OrigCookieToken: origCookieToken,
-		OrigWatch:       origWatch,
+		OrigRootPaths:    origRootPaths,
 		OrigDB:          origDB,
 	}
 
 	teardown := func() {
 		model.SessionToken = origToken
 		model.CookieToken = origCookieToken
-		model.WatchDir = origWatch
+		model.RootPaths = origRootPaths
 		model.Agents = origAgents
 		model.AgentList = origAgentList
 		service.DB = origDB

@@ -73,6 +73,107 @@ func ExpandTilde(path string) string {
 	return path
 }
 
+// ListRootPaths returns the filesystem root paths accessible to this application.
+// On Linux/macOS: returns ["/"].
+// On Windows: returns list of available drive roots (e.g. ["C:\\", "D:\\"]).
+// The result is cached after the first call.
+func ListRootPaths() []string {
+	if cachedRootPaths != nil {
+		return cachedRootPaths
+	}
+	if IsWindows() {
+		cachedRootPaths = listWindowsDrives()
+	} else {
+		cachedRootPaths = []string{"/"}
+	}
+	return cachedRootPaths
+}
+
+var cachedRootPaths []string
+
+// IsPathUnderAnyRoot checks whether absPath is under at least one of the
+// given root paths. On Unix this is effectively "is it an absolute path";
+// on Windows it ensures the path is under an available drive.
+// Both absPath and each root must be absolute paths.
+func IsPathUnderAnyRoot(absPath string, roots []string) bool {
+	for _, root := range roots {
+		if isPathUnderRoot(absPath, root) {
+			return true
+		}
+	}
+	return false
+}
+
+// isPathUnderRoot checks that absPath is under root by resolving symlinks
+// on both sides before comparing, preventing symlink traversal attacks.
+func isPathUnderRoot(absPath, root string) bool {
+	evalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		// Root doesn't exist — fall back to lexical comparison
+		evalRoot = filepath.Clean(root)
+	} else {
+		evalRoot = filepath.Clean(evalRoot)
+	}
+
+	// Ensure root ends with separator for prefix matching (unless root is "/" itself)
+	prefix := evalRoot
+	if !strings.HasSuffix(evalRoot, string(filepath.Separator)) {
+		prefix = evalRoot + string(filepath.Separator)
+	}
+
+	evalPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			// Some other error (permission, etc.) — fall back to lexical check
+			cleanPath := filepath.Clean(absPath)
+			return strings.HasPrefix(cleanPath, prefix) || cleanPath == evalRoot
+		}
+		// Target doesn't exist — resolve parent directory step by step
+		evalPath = resolveExistingPath(absPath, evalRoot)
+		if evalPath == "" {
+			// Can't resolve — fall back to lexical comparison
+			cleanPath := filepath.Clean(absPath)
+			return strings.HasPrefix(cleanPath, prefix) || cleanPath == evalRoot
+		}
+	}
+	evalPath = filepath.Clean(evalPath)
+	return strings.HasPrefix(evalPath, prefix) || evalPath == evalRoot
+}
+
+// resolveExistingPath walks up from absPath until it finds an existing
+// directory, then resolves from there. Returns empty string if resolution fails.
+// root should be the eval'd (symlink-resolved) root path.
+func resolveExistingPath(absPath, root string) string {
+	dir := absPath
+	for {
+		evalDir, err := filepath.EvalSymlinks(dir)
+		if err == nil {
+			return evalDir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		// Check whether parent is still under root.  On macOS /var is a
+		// symlink to /private/var, so a lexical prefix check fails; resolve
+		// the parent's symlinks before comparing against the eval'd root.
+		evalParent, pErr := filepath.EvalSymlinks(parent)
+		if pErr != nil {
+			// Parent doesn't exist either — fall back to lexical check
+			cleanParent := filepath.Clean(parent)
+			if !strings.HasPrefix(cleanParent, root) && cleanParent != root {
+				return ""
+			}
+		} else {
+			cleanParent := filepath.Clean(evalParent)
+			if !strings.HasPrefix(cleanParent, root) && cleanParent != root {
+				return ""
+			}
+		}
+		dir = parent
+	}
+}
+
 // ManglePath converts an absolute path into Claude's mangled directory name.
 // All path separators (/ and \) are replaced with "-".
 // Drive letters on Windows (e.g. "C:") become "C-" in the result.

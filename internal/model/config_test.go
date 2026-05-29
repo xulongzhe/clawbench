@@ -79,7 +79,7 @@ func TestApplyDefaults_SHA256PasswordRemovesAutoPasswordFile(t *testing.T) {
 	hash := sha256.Sum256([]byte("test-password" + "clawbench-salt"))
 	sha256Password := "sha256:" + hex.EncodeToString(hash[:])
 
-	cfg := &Config{Password: sha256Password, WatchDir: tmpDir}
+	cfg := &Config{Password: sha256Password, Port: 30000}
 	ApplyDefaults(cfg, nil)
 
 	// Auto-password file should be removed for SHA-256 stored password

@@ -54,8 +54,35 @@ const tunnelChecking = ref(false)
 const tunnelError = ref('')
 const tunnelErrorType = ref<TunnelErrorType>('')
 
+// Ports that are newly registered and waiting for SSH tunnel to become reachable.
+// These show a yellow blinking dot instead of green/grey.
+const connectingPorts = ref(new Set<number>())
+
 // Auto-refresh interval when tunnel is unhealthy
 let tunnelPollTimer: ReturnType<typeof setInterval> | null = null
+
+// Callback set by usePortForward() to handle port-forward-result events.
+// We need this indirection because loadPorts() is defined inside usePortForward(),
+// but the event listener is set up at module level.
+let onPortForwardResult: ((localPort: number, success: boolean) => void) | null = null
+
+// Module-level listener for port forward result callbacks from Android native layer.
+// The native BackgroundService calls notifyPortForwardResult() which dispatches
+// a 'clawbench-port-forward-result' CustomEvent after each addPortForward completes.
+// This replaces the old polling-based startPortConnectCheck approach.
+let portForwardListenerInitialized = false
+
+function ensurePortForwardListener() {
+  if (portForwardListenerInitialized) return
+  portForwardListenerInitialized = true
+
+  window.addEventListener('clawbench-port-forward-result', ((e: CustomEvent) => {
+    if (onPortForwardResult) {
+      const { localPort, success } = e.detail
+      onPortForwardResult(localPort, success)
+    }
+  }) as EventListener)
+}
 
 /** Returns true if any registered port has an active backend */
 function hasActivePorts(): boolean {
@@ -76,11 +103,47 @@ function tunnelStatusFromPorts(hasPorts: boolean): 'ok' | 'degraded' {
 export function usePortForward() {
   const { isAppMode } = useAppMode()
 
+  // Set up the callback for native port-forward-result events.
+  // This needs to be inside usePortForward() because it calls loadPorts()
+  // which is defined here. The module-level event listener dispatches to this callback.
+  if (!onPortForwardResult) {
+    onPortForwardResult = (localPort: number, success: boolean) => {
+      connectingPorts.value.delete(localPort)
+      connectingPorts.value = new Set(connectingPorts.value)
+      // Refresh port list to pick up the new active state from backend
+      loadPorts(true)
+      if (!success) {
+        const toast = useToast()
+        toast.show(gt('portForward.portUnreachable'), { type: 'error' })
+      }
+    }
+  }
+
   async function loadPorts(silent = false) {
     if (!silent) loading.value = true
     try {
       const data = await apiGet<{ ports: ForwardedPort[] }>('/api/proxy/ports')
       ports.value = data.ports || []
+      // Clear connectingPorts when backend reports a port as active.
+      // In web mode this is the ONLY path (no native callback).
+      // In app mode this is a safety net: the native clawbench-port-forward-result
+      // callback may arrive BEFORE connectingPorts.add() runs (the await in
+      // registerPort yields to the event loop, allowing the CustomEvent to fire
+      // while connectingPorts is still empty), so the delete is a no-op and the
+      // port gets stuck yellow forever. Checking here on every loadPorts() ensures
+      // the yellow dot always clears once the backend confirms the port is active.
+      if (connectingPorts.value.size > 0) {
+        let changed = false
+        for (const p of ports.value) {
+          if (p.active && connectingPorts.value.has(p.localPort)) {
+            connectingPorts.value.delete(p.localPort)
+            changed = true
+          }
+        }
+        if (changed) {
+          connectingPorts.value = new Set(connectingPorts.value)
+        }
+      }
     } finally {
       if (!silent) loading.value = false
     }
@@ -88,7 +151,19 @@ export function usePortForward() {
 
   async function registerPort(port: number, name?: string, protocol?: string, host?: string) {
     const result = await apiPost<{ localPort: number }>('/api/proxy/ports', { port, host: host || '', name: name || '', protocol: protocol || 'http' })
+    // PRIVILEGED PORT POLICY: localPort may differ from port when the target port is
+    // privileged (< 1024) — the backend remaps it to >= 1024 for Android/non-root.
+    // Do NOT change this to assume localPort === port.
     const localPort = result?.localPort ?? port
+    // Mark as "connecting" BEFORE calling native or awaiting anything.
+    // The native clawbench-port-forward-result callback can fire at any time
+    // after addForwardedPort (it runs on a background thread and dispatches
+    // via runOnUiThread + evaluateJavascript). If we add to connectingPorts
+    // AFTER the callback arrives, the delete in onPortForwardResult is a
+    // no-op and the port gets stuck yellow forever.
+    ensurePortForwardListener()
+    connectingPorts.value.add(localPort)
+    connectingPorts.value = new Set(connectingPorts.value)
     // Register with Android native layer: pass localPort, targetPort, host
     if (isAppMode.value) {
       console.log('[PortForward] registerPort: localPort=' + localPort + ', targetPort=' + port + ', host=' + (host || ''))
@@ -350,7 +425,8 @@ export function usePortForward() {
   }
 
   /** Open a forwarded port — in app mode opens sandbox browser, otherwise window.open.
-   *  In app mode: first tests if the port is reachable, auto-reconnects SSH tunnel if not.
+   *  In app mode: tests if the port is reachable, waits briefly if not,
+   *  then attempts SSH tunnel reconnect if still unreachable.
    *  Shows toast on success or failure after reconnection attempt. */
   async function openPort(localPort: number, protocol?: string, host?: string) {
     console.log('[PortForward] openPort: localPort=' + localPort + ', protocol=' + protocol + ', host=' + (host || ''))
@@ -359,28 +435,28 @@ export function usePortForward() {
       const native = (window as any).AndroidNative
       const hostArg = host || ''
 
-      // Pre-check: test if the local port is reachable
       if (native?.testPortReachable) {
+        // Test if the local port is reachable
         const reachable = native.testPortReachable(localPort)
+        console.log('[PortForward] openPort: testPortReachable(' + localPort + ') = ' + reachable)
         if (reachable) {
-          // Port is reachable — open immediately
           doOpen(native, localPort, protocol, hostArg)
           return
         }
 
-        // Port unreachable — yield UI then reconnect tunnel
+        // Port unreachable — attempt SSH tunnel reconnect.
         console.log('[PortForward] openPort: port ' + localPort + ' unreachable, attempting tunnel reconnect')
-        await new Promise(r => setTimeout(r, 50))
-
         let reconnected = false
         if (native?.reconnectTunnel) {
           reconnected = native.reconnectTunnel()
+          console.log('[PortForward] openPort: reconnectTunnel() = ' + reconnected)
         }
 
         const toast = useToast()
         if (reconnected) {
-          // Re-test after reconnect
+          // reconnectTunnel is blocking — after it returns, try once more
           const reachableAfter = native.testPortReachable(localPort)
+          console.log('[PortForward] openPort: after reconnect, testPortReachable(' + localPort + ') = ' + reachableAfter)
           if (reachableAfter) {
             toast.show(gt('portForward.tunnelReconnected'), { type: 'success' })
             doOpen(native, localPort, protocol, hostArg)
@@ -403,7 +479,7 @@ export function usePortForward() {
   /** Reconnect a specific forwarded port: test reachability, reconnect tunnel if needed.
    *  Used by the per-port reconnect button in the port forwarding panel.
    *  The caller tracks which ports are reconnecting and shows a spinning icon.
-   *  Shows toast on success or failure, not during checking. */
+   *  Shows toast on success or failure. */
   async function reconnectPort(localPort: number) {
     const native = (window as any).AndroidNative
     const toast = useToast()
@@ -484,6 +560,7 @@ export function usePortForward() {
     tunnelChecking,
     tunnelError,
     tunnelErrorType,
+    connectingPorts,
     loadPorts,
     registerPort,
     updatePort,

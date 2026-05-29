@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -199,6 +201,23 @@ func TestServeLogin(t *testing.T) {
 		assertJSONField(t, w, "ok", false)
 	})
 
+	// ISS-146: Malformed JSON must return 400, not silently fall through
+	// to bcrypt comparison with an empty password.
+	t.Run("POST_MalformedJSON_Returns400", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		model.SessionToken = hashPassword("testpass")
+		bcryptHash, _ := bcrypt.GenerateFromPassword([]byte("testpass"), bcrypt.MinCost)
+		model.PasswordHash = bcryptHash
+
+		req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("{invalid json"))
+		req.Header.Set("Content-Type", "application/json")
+		w := callHandler(ServeLogin, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
 	t.Run("POST_NoPasswordRequired_Returns200", func(t *testing.T) {
 		_, teardown := setupTestEnv(t)
 		defer teardown()
@@ -340,7 +359,7 @@ func TestAuth_WatchDir_RequiresAuth(t *testing.T) {
 	model.SessionToken = hashPassword("secret")
 
 	req := newRequest(t, http.MethodGet, "/api/watch-dir", nil)
-	w := callHandlerWithAuth(ServeWatchDir, req)
+	w := callHandlerWithAuth(ServeRoots, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
@@ -354,7 +373,7 @@ func TestAuth_WatchDir_PassWithValidCookie(t *testing.T) {
 	req := newRequest(t, http.MethodGet, "/api/watch-dir", nil)
 	withAuthCookie(req, model.SessionToken)
 
-	w := callHandlerWithAuth(ServeWatchDir, req)
+	w := callHandlerWithAuth(ServeRoots, req)
 
 	// Should not be 401 — may be 200 or 403 depending on project cookie, but NOT 401
 	assert.NotEqual(t, http.StatusUnauthorized, w.Code)

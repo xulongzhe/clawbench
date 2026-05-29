@@ -36,24 +36,6 @@ $DEV_PID_FILE = Join-Path $env:TEMP "$NAME-dev.pid"
 $DEV_BACKEND_PID_FILE = Join-Path $env:TEMP "$NAME-dev-backend.pid"
 $AUTO_PW_FILE = ".\.clawbench\auto-password"
 
-# Read watch_dir from config/config.yaml
-function Get-WatchDir {
-    if (Test-Path $CONFIG) {
-        $line = Get-Content $CONFIG | Where-Object { $_ -match '^watch_dir:' } | Select-Object -First 1
-        if ($line) {
-            $value = ($line -split ':', 2)[1].Trim().Trim('"').Trim("'")
-            # Expand ~ to user home
-            if ($value -eq '~') {
-                $value = $env:USERPROFILE
-            } elseif ($value.StartsWith('~\') -or $value.StartsWith('~/')) {
-                $value = Join-Path $env:USERPROFILE $value.Substring(2)
-            }
-            return $value
-        }
-    }
-    return ""
-}
-
 function Show-AutoPassword {
     if (Test-Path $AUTO_PW_FILE) {
         $pw = Get-Content $AUTO_PW_FILE -Raw
@@ -178,11 +160,9 @@ function Start-Server {
     Kill-ByPort
     Check-Binary
 
-    $WATCH_DIR = Get-WatchDir
     Write-Host "=== Starting $NAME ==="
     Write-Host "  Binary:   $BIN"
     Write-Host "  Config:   $CONFIG"
-    Write-Host "  Watch:    $(if ($WATCH_DIR) { $WATCH_DIR } else { 'default' })"
     Show-AutoPassword
 
     if ($Port -gt 0) {

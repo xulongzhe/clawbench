@@ -11,6 +11,7 @@
       <AppHeader
         :hidden="terminalActive"
         :project-root="projectRoot"
+        :home-dir="homeDir"
         @open-project-dialog="handleOpenProjectDialog"
       />
 
@@ -635,6 +636,7 @@ const currentFileIsMarkdown = computed(() => {
     return ft?.isMarkdown || ft?.isHtml || false
 })
 const projectRoot = computed(() => store.state.projectRoot)
+const homeDir = computed(() => store.state.homeDir)
 
 const tocFile = computed(() => {
     const f = currentFile.value
@@ -955,6 +957,10 @@ onMounted(async () => {
     // The old code only set chatUnread=true and never corrected a stale true.
     loadSessionsOnce()
     if (isAppMode.value) syncToNative().catch(() => {})
+    // Resume Android log capture if previously enabled
+    if (isAppMode.value && localConfig.androidLogCapture) {
+      try { if (window.AndroidNative?.startLogCapture) window.AndroidNative.startLogCapture() } catch {}
+    }
     loadSSHInfo().catch(() => {})
     loadTerminalStatus().catch(() => {})
     try { await store.loadFiles('') } catch (_) {

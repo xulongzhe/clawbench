@@ -174,10 +174,10 @@ func TestLoadConfig_Idempotent(t *testing.T) {
 	origCfg := model.ConfigInstance
 	t.Cleanup(func() { model.ConfigInstance = origCfg })
 
-	// Set a non-empty WatchDir to trigger the "already loaded" path
-	model.ConfigInstance = model.Config{WatchDir: "/test"}
+	// Set a non-zero Port to trigger the "already loaded" path
+	model.ConfigInstance = model.Config{Port: 30000}
 	loadConfig() // should be no-op
-	assert.Equal(t, "/test", model.ConfigInstance.WatchDir)
+	assert.NotEqual(t, 0, model.ConfigInstance.Port)
 }
 
 // ---------- httpDoWithProject ----------

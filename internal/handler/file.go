@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"clawbench/internal/model"
@@ -68,10 +70,10 @@ func ListDir(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-		writeLocalizedError(w, r, model.NotFound(nil, "DirectoryNotFound"))
-		} else if isNotDirError(err) {
+		if isNotDirError(err) {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "NotADirectory")
+		} else if os.IsNotExist(err) {
+			writeLocalizedError(w, r, model.NotFound(nil, "DirectoryNotFound"))
 		} else {
 			model.WriteError(w, model.Internal(fmt.Errorf("cannot read directory")))
 		}
@@ -290,13 +292,6 @@ func ServeLocalFile(w http.ResponseWriter, r *http.Request) {
 
 // ServeProjects handles GET (list directory) and POST (create directory) for projects.
 func ServeProjects(w http.ResponseWriter, r *http.Request) {
-	basePath, err := filepath.Abs(model.WatchDir)
-	if err != nil {
-		slog.Error("failed to resolve base path", slog.String("path", model.WatchDir), slog.String("err", err.Error()))
-		model.WriteError(w, model.Internal(err))
-		return
-	}
-
 	switch r.Method {
 	case http.MethodPost:
 		serveProjectsCreate(w, r)
@@ -310,44 +305,53 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 
 	rawPath := r.URL.Query().Get("path")
 
-	var absPath string
+	// Root-level browsing: when path is empty, show root entries
 	if rawPath == "" || rawPath == "/" {
-		absPath = basePath
-	} else if filepath.IsAbs(rawPath) {
-		absPath = rawPath
-		if !isPathUnderBase(absPath, basePath) {
-			// Not under watchDir — treat leading "/" as part of a relative path
-			relPath := strings.TrimPrefix(rawPath, "/")
-			var absErr error
-			absPath, absErr = filepath.Abs(filepath.Join(basePath, relPath))
-			if absErr != nil {
-				slog.Warn("failed to resolve path", slog.String("path", rawPath), slog.String("err", absErr.Error()))
+		if platform.IsWindows() && len(model.RootPaths) > 1 {
+			// Windows: return synthetic drive entries
+			items := make([]DirEntry, 0, len(model.RootPaths))
+			for _, drive := range model.RootPaths {
+				items = append(items, DirEntry{Name: drive, Type: "dir"})
 			}
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"path":   "",
+				"parent": nil,
+				"items":  items,
+			})
+			return
 		}
-	} else {
-		relPath := strings.TrimPrefix(rawPath, "/")
-		if relPath == "" {
-			absPath = basePath
-		} else {
-			var absErr error
-			absPath, absErr = filepath.Abs(filepath.Join(basePath, relPath))
-			if absErr != nil {
-				slog.Warn("failed to resolve path", slog.String("path", rawPath), slog.String("err", absErr.Error()))
-			}
+		// Unix or single-drive Windows: list the first root directory
+		if len(model.RootPaths) > 0 {
+			rawPath = model.RootPaths[0]
 		}
 	}
 
-	if !isPathUnderBase(absPath, basePath) {
+	var absPath string
+	if filepath.IsAbs(rawPath) {
+		absPath = rawPath
+	} else {
+		// Relative path — resolve from first root
+		if len(model.RootPaths) > 0 {
+			absPath, _ = filepath.Abs(filepath.Join(model.RootPaths[0], rawPath))
+		}
+	}
+
+	if absPath == "" {
+		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidPath")
+		return
+	}
+
+	if !isPathUnderAnyRoot(absPath) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			writeLocalizedError(w, r, model.NotFound(nil, "DirectoryNotFound"))
-		} else if isNotDirError(err) {
+		if isNotDirError(err) {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "NotADirectory")
+		} else if os.IsNotExist(err) {
+			writeLocalizedError(w, r, model.NotFound(nil, "DirectoryNotFound"))
 		} else {
 			model.WriteError(w, model.Internal(fmt.Errorf("cannot read directory")))
 		}
@@ -356,10 +360,19 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 
 	items := buildDirEntries(entries)
 
+	// Compute parent — stop at root level (no parent above root/drives)
 	var parent *string
-	if absPath != basePath {
-		parent = new(string)
-		*parent = filepath.Dir(absPath)
+	isAtRoot := false
+	for _, root := range model.RootPaths {
+		cleanRoot := filepath.Clean(root)
+		if filepath.Clean(absPath) == cleanRoot {
+			isAtRoot = true
+			break
+		}
+	}
+	if !isAtRoot {
+		p := filepath.Dir(absPath)
+		parent = &p
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
@@ -472,10 +485,19 @@ type FileContent struct {
 
 // buildDirEntries builds a sorted list of directory entries
 // isNotDirError returns true if the error indicates the path is not a directory
-// (e.g. it is a file). This handles syscall.ENOTDIR across platforms.
+// (e.g. it is a file). This handles syscall.ENOTDIR on Unix and
+// ERROR_DIRECTORY (0x267) on Windows, which ReadDir returns when called on a file.
 func isNotDirError(err error) bool {
+	if errors.Is(err, syscall.ENOTDIR) {
+		return true
+	}
+	// Windows: ReadDir on a file returns ERROR_DIRECTORY (0x267) wrapped in PathError.
+	// We check the errno value directly because syscall.ERROR_DIRECTORY is not
+	// available on non-Windows builds.
 	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err.Error() == "not a directory"
+		if errno, ok := pe.Err.(syscall.Errno); ok && errno == 0x267 {
+			return true
+		}
 	}
 	return false
 }
@@ -555,15 +577,8 @@ func fileInfoWithTimeout(entry os.DirEntry) (os.FileInfo, error) {
 	}
 }
 
-// serveProjectsCreate handles POST /api/projects (create directory under watchDir).
+// serveProjectsCreate handles POST /api/projects (create directory under any root path).
 func serveProjectsCreate(w http.ResponseWriter, r *http.Request) {
-	basePath, err := filepath.Abs(model.WatchDir)
-	if err != nil {
-		slog.Error("failed to resolve base path", slog.String("path", model.WatchDir), slog.String("err", err.Error()))
-		model.WriteError(w, model.Internal(err))
-		return
-	}
-
 	var req struct {
 		Path string `json:"path"`
 		Name string `json:"name"`
@@ -577,29 +592,34 @@ func serveProjectsCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	var absPath string
 	if req.Path == "" || req.Path == "/" {
-		absPath = basePath
+		if len(model.RootPaths) > 0 {
+			absPath = model.RootPaths[0]
+		}
 	} else if filepath.IsAbs(req.Path) {
 		absPath = req.Path
 	} else {
 		rel := strings.TrimPrefix(req.Path, "/")
-		absPath, err = filepath.Abs(filepath.Join(basePath, rel))
-		if err != nil {
-			slog.Warn("failed to resolve path", slog.String("path", req.Path), slog.String("err", err.Error()))
+		if len(model.RootPaths) > 0 {
+			var err error
+			absPath, err = filepath.Abs(filepath.Join(model.RootPaths[0], rel))
+			if err != nil {
+				slog.Warn("failed to resolve path", slog.String("path", req.Path), slog.String("err", err.Error()))
+			}
 		}
 	}
-	if !isPathUnderBase(absPath, basePath) {
+	if !isPathUnderAnyRoot(absPath) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
 	newDir := filepath.Join(absPath, req.Name)
-	// Validate that the resolved new directory stays under WatchDir
+	// Validate that the resolved new directory stays under a root path
 	// (req.Name could contain ".." path traversal components)
 	newDirAbs, err := filepath.Abs(newDir)
 	if err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("resolve path failed: %w", err)))
 		return
 	}
-	if !isPathUnderBase(newDirAbs, basePath) {
+	if !isPathUnderAnyRoot(newDirAbs) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}

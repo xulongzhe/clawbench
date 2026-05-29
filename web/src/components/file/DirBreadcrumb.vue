@@ -8,7 +8,7 @@
       <span
         class="crumb"
         :class="{ current: i === parts.length - 1 }"
-        @click="i < parts.length - 1 && $emit('navigate', parts.slice(0, i + 1).join('/'))"
+        @click="i < parts.length - 1 && $emit('navigate', reconstructPath(parts.slice(0, i + 1)))"
       >{{ part }}</span>
     </template>
   </div>
@@ -25,9 +25,27 @@ const props = defineProps({
 
 defineEmits(['navigate'])
 
+// Reconstruct an absolute path from breadcrumb segments,
+// using the appropriate separator for the platform.
+function reconstructPath(segments) {
+  if (segments.length === 0) return ''
+  // Windows: first segment like "C:\" already includes the root separator
+  if (/^[A-Za-z]:\\$/.test(segments[0])) {
+    return segments[0] + segments.slice(1).join('\\')
+  }
+  // Unix: prepend "/" and join with "/"
+  return '/' + segments.join('/')
+}
+
 const parts = computed(() => {
   if (!props.path || props.path === '.') return []
-  return splitPath(props.path)
+  const segments = splitPath(props.path).filter(p => p !== '')
+  // On Windows, merge bare drive letter "C:" into "C:\"
+  // so it displays as a single root crumb, not a broken segment
+  if (segments.length > 0 && /^[A-Za-z]:$/.test(segments[0])) {
+    segments[0] = segments[0] + '\\'
+  }
+  return segments
 })
 </script>
 

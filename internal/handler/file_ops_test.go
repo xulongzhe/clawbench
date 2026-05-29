@@ -141,6 +141,24 @@ func TestServeFileRename(t *testing.T) {
 		_, err := os.Stat(filepath.Join(env.ProjectDir, "renamed.txt"))
 		assert.NoError(t, err)
 	})
+
+	t.Run("NewNameEscapesRoot_Returns403", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		createTestFile(t, env.ProjectDir, "file.txt", "data")
+
+		// Try to rename to a path that resolves outside root paths
+		// Using ../../ to escape from project dir up past WatchDir
+		req := newRequest(t, http.MethodPost, "/api/file/rename", map[string]string{
+			"path": "file.txt",
+			"name": "../../escaped.txt",
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileRename, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
 }
 
 func TestServeFileEditLine(t *testing.T) {
@@ -534,6 +552,47 @@ func TestServeFileBatchDelete(t *testing.T) {
 		_, err = os.Stat(filepath.Join(env.ProjectDir, "y.txt"))
 		assert.True(t, os.IsNotExist(err))
 	})
+
+	t.Run("AbsolutePath_UnderRoot_Succeeds", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create files in a subdirectory under WatchDir (not under ProjectDir)
+		subDir := filepath.Join(env.WatchDir, "batchdel")
+		os.MkdirAll(subDir, 0755)
+		createTestFile(t, subDir, "absdel.txt", "abs delete me")
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-delete", map[string]interface{}{
+			"paths": []string{filepath.Join(subDir, "absdel.txt")},
+		})
+
+		w := callHandler(ServeFileBatchDelete, req)
+		assertOK(t, w)
+		assertJSONField(t, w, "deleted", float64(1))
+
+		_, err := os.Stat(filepath.Join(subDir, "absdel.txt"))
+		assert.True(t, os.IsNotExist(err))
+	})
+
+	t.Run("AbsolutePath_OutsideRoot_SkipsPath", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		createTestFile(t, env.ProjectDir, "safe.txt", "safe")
+
+		req := newRequest(t, http.MethodPost, "/api/file/batch-delete", map[string]interface{}{
+			"paths": []string{"/etc/passwd", "safe.txt"},
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileBatchDelete, req)
+		assertOK(t, w)
+		assertJSONField(t, w, "deleted", float64(1))
+
+		// safe.txt should be deleted, /etc/passwd should be skipped
+		_, err := os.Stat(filepath.Join(env.ProjectDir, "safe.txt"))
+		assert.True(t, os.IsNotExist(err))
+	})
 }
 
 func TestServeFileCreate(t *testing.T) {
@@ -582,6 +641,41 @@ func TestServeFileCreate(t *testing.T) {
 		w := callHandler(ServeFileCreate, req)
 		assertStatus(t, w, http.StatusBadRequest)
 	})
+
+	t.Run("AbsoluteDirPath_Succeeds", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a subdirectory under WatchDir
+		subDir := filepath.Join(env.WatchDir, "abscreatedir")
+		os.MkdirAll(subDir, 0755)
+
+		req := newRequest(t, http.MethodPost, "/api/file/create", map[string]string{
+			"path": subDir,
+			"name": "absfile.txt",
+		})
+
+		w := callHandler(ServeFileCreate, req)
+		assertOK(t, w)
+		assertJSONField(t, w, "ok", true)
+
+		info, err := os.Stat(filepath.Join(subDir, "absfile.txt"))
+		assert.NoError(t, err)
+		assert.Equal(t, int64(0), info.Size())
+	})
+
+	t.Run("AbsoluteDirPathOutsideRoot_Returns403", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/file/create", map[string]string{
+			"path": "/tmp/escaped",
+			"name": "evil.txt",
+		})
+
+		w := callHandler(ServeFileCreate, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
 }
 
 func TestServeDirCreate(t *testing.T) {
@@ -614,6 +708,63 @@ func TestServeDirCreate(t *testing.T) {
 
 		w := callHandler(ServeDirCreate, req)
 		assertStatus(t, w, http.StatusBadRequest)
+	})
+
+	t.Run("AbsoluteDirPath_Succeeds", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a subdirectory under WatchDir
+		subDir := filepath.Join(env.WatchDir, "absdircreate")
+		os.MkdirAll(subDir, 0755)
+
+		req := newRequest(t, http.MethodPost, "/api/dir/create", map[string]string{
+			"path": subDir,
+			"name": "newsubdir",
+		})
+
+		w := callHandler(ServeDirCreate, req)
+		assertOK(t, w)
+		assertJSONField(t, w, "ok", true)
+
+		info, err := os.Stat(filepath.Join(subDir, "newsubdir"))
+		assert.NoError(t, err)
+		assert.True(t, info.IsDir())
+	})
+
+	t.Run("RelativePath_ResolvesFromProjectCookie", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a directory under ProjectDir to resolve relative path against
+		os.MkdirAll(filepath.Join(env.ProjectDir, "relativedir"), 0755)
+
+		req := newRequest(t, http.MethodPost, "/api/dir/create", map[string]string{
+			"path": "relativedir",
+			"name": "newsubdir",
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeDirCreate, req)
+		assertOK(t, w)
+		assertJSONField(t, w, "ok", true)
+
+		info, err := os.Stat(filepath.Join(env.ProjectDir, "relativedir", "newsubdir"))
+		assert.NoError(t, err)
+		assert.True(t, info.IsDir())
+	})
+
+	t.Run("AbsolutePathOutsideRoot_Returns403", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/dir/create", map[string]string{
+			"path": os.TempDir(),
+			"name": "newsubdir",
+		})
+
+		w := callHandler(ServeDirCreate, req)
+		assertStatus(t, w, http.StatusForbidden)
 	})
 }
 

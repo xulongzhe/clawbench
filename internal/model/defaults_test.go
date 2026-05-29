@@ -113,9 +113,6 @@ func TestApplyDefaultsEmptyConfig(t *testing.T) {
 	if cfg.Port != 20000 {
 		t.Errorf("Port = %d, want 20000", cfg.Port)
 	}
-	if cfg.WatchDir == "" {
-		t.Error("WatchDir should not be empty")
-	}
 	if cfg.LogDir == "" {
 		t.Error("LogDir should not be empty")
 	}
