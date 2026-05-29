@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -270,4 +271,61 @@ func TestScheduler_CronSkip_DifferentTaskIndependent(t *testing.T) {
 
 	s.runningExecutions.Delete("exec-1")
 	assert.False(t, s.HasRunningExecutions(1), "task 1 can proceed after completion")
+}
+
+// ── ISS-187: taskRunning atomic check-and-set prevents duplicate executions ──
+
+func TestScheduler_TaskRunning_AtomicCheckAndSet(t *testing.T) {
+	s := NewScheduler()
+
+	// First LoadOrStore should succeed (not loaded)
+	_, loaded := s.taskRunning.LoadOrStore(int64(1), struct{}{})
+	assert.False(t, loaded, "first claim should succeed")
+
+	// Second LoadOrStore for same task should indicate already loaded
+	_, loaded = s.taskRunning.LoadOrStore(int64(1), struct{}{})
+	assert.True(t, loaded, "second claim should detect already running")
+
+	// Different task should succeed
+	_, loaded = s.taskRunning.LoadOrStore(int64(2), struct{}{})
+	assert.False(t, loaded, "different task should succeed")
+
+	// After delete, should be claimable again
+	s.taskRunning.Delete(int64(1))
+	_, loaded = s.taskRunning.LoadOrStore(int64(1), struct{}{})
+	assert.False(t, loaded, "should be claimable after completion")
+
+	// Cleanup
+	s.taskRunning.Delete(int64(1))
+	s.taskRunning.Delete(int64(2))
+}
+
+func TestScheduler_TaskRunning_ConcurrentNoDuplicate(t *testing.T) {
+	s := NewScheduler()
+	const taskID int64 = 1
+	const goroutines = 20
+
+	claimed := make(chan int, goroutines)
+	var wg sync.WaitGroup
+
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, loaded := s.taskRunning.LoadOrStore(taskID, struct{}{}); !loaded {
+				claimed <- 1
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(claimed)
+
+	claimCount := 0
+	for range claimed {
+		claimCount++
+	}
+
+	assert.Equal(t, 1, claimCount, "only one goroutine should successfully claim the task")
+	s.taskRunning.Delete(taskID)
 }

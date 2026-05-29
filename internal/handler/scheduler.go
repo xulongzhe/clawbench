@@ -201,13 +201,13 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if req.Action == "trigger" {
-			// Reject if task already has a running execution
-			if service.GlobalScheduler.HasRunningExecutions(taskID) {
-				writeLocalizedErrorf(w, r, http.StatusConflict, "TaskAlreadyRunning")
-				return
-			}
 			if err := service.GlobalScheduler.TriggerTask(taskID); err != nil {
-				writeLocalizedError(w, r, model.NotFound(err, "TaskNotFound"))
+				// TriggerTask now returns error if task already running (ISS-187)
+				if strings.Contains(err.Error(), "already has a running execution") {
+					writeLocalizedErrorf(w, r, http.StatusConflict, "TaskAlreadyRunning")
+				} else {
+					writeLocalizedError(w, r, model.NotFound(err, "TaskNotFound"))
+				}
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true})

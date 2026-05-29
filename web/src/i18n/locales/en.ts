@@ -31,6 +31,7 @@ export default {
     refresh: 'Refresh',
     more: 'More',
     settings: 'Settings',
+    fileViewer: 'File Viewer',
   },
   toast: {
     portForwardAppOnly: 'Port forwarding is only available in the mobile app',

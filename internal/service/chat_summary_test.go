@@ -3,6 +3,7 @@ package service
 import (
 	"database/sql"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -170,23 +171,53 @@ func TestTriggerChatSummarization_Disabled(t *testing.T) {
 	_, teardown := setupTestDBForChatSummary(t)
 	defer teardown()
 
-	origEnabled := chatSummaryEnabled
-	defer func() { chatSummaryEnabled = origEnabled }()
+	origEnabled := chatSummaryEnabled.Load()
+	defer func() { chatSummaryEnabled.Store(origEnabled) }()
 
-	chatSummaryEnabled = false
+	chatSummaryEnabled.Store(false)
 	// Should return immediately without error
 	triggerChatSummarization("nonexistent-session")
 }
 
 func TestSetChatSummaryEnabled(t *testing.T) {
-	origEnabled := chatSummaryEnabled
-	defer func() { chatSummaryEnabled = origEnabled }()
+	origEnabled := chatSummaryEnabled.Load()
+	defer func() { chatSummaryEnabled.Store(origEnabled) }()
 
 	SetChatSummaryEnabled(false)
-	assert.False(t, chatSummaryEnabled)
+	assert.False(t, chatSummaryEnabled.Load())
 
 	SetChatSummaryEnabled(true)
-	assert.True(t, chatSummaryEnabled)
+	assert.True(t, chatSummaryEnabled.Load())
+}
+
+func TestSetChatSummaryEnabled_ConcurrentSafe(t *testing.T) {
+	// ISS-181: chatSummaryEnabled uses atomic.Bool for safe concurrent access
+	origEnabled := chatSummaryEnabled.Load()
+	defer func() { chatSummaryEnabled.Store(origEnabled) }()
+
+	var wg sync.WaitGroup
+	const goroutines = 20
+
+	// Concurrent writers
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func(val bool) {
+			defer wg.Done()
+			SetChatSummaryEnabled(val)
+		}(i%2 == 0)
+	}
+
+	// Concurrent readers
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = chatSummaryEnabled.Load()
+		}()
+	}
+
+	wg.Wait()
+	// No panic = test passed (data race would be caught by race detector)
 }
 
 func TestSetTaskSummarizerInstance(t *testing.T) {
