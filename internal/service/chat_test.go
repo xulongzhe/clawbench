@@ -28,7 +28,6 @@ CREATE TABLE IF NOT EXISTS chat_history (
 	backend TEXT NOT NULL DEFAULT 'claude',
 	streaming INTEGER NOT NULL DEFAULT 0,
 	indexed INTEGER NOT NULL DEFAULT 0,
-	deleted INTEGER NOT NULL DEFAULT 0,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -347,20 +346,17 @@ func TestDeleteSession(t *testing.T) {
 	_, err = service.GetSessionTitle(sid)
 	assert.Error(t, err) // deleted sessions filtered by deleted=0
 
+	// Messages are still physically present (no message-level soft-delete,
+	// session-level soft-delete controls visibility)
 	msgs, err := service.GetChatHistory("/project", "claude", sid)
 	assert.NoError(t, err)
-	assert.Empty(t, msgs) // deleted messages filtered by deleted=0
+	assert.Len(t, msgs, 1) // messages still exist in DB
 
-	// But data is still physically present (soft delete, not hard delete)
+	// But the session is soft-deleted
 	var deleted int
 	err = service.DB.QueryRow("SELECT deleted FROM chat_sessions WHERE id = ?", sid).Scan(&deleted)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, deleted)
-
-	var msgDeleted int
-	err = service.DB.QueryRow("SELECT deleted FROM chat_history WHERE session_id = ?", sid).Scan(&msgDeleted)
-	assert.NoError(t, err)
-	assert.Equal(t, 1, msgDeleted)
 
 	// updated_at should have been set to the deletion timestamp
 	var updatedAt string
@@ -942,12 +938,12 @@ func TestGetMessageIDBeforeTime(t *testing.T) {
 	sid := helperCreateSession(t, "/project", "claude", "BeforeTime")
 
 	// Insert messages with known timestamps
-	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"/project", "claude", sid, "user", "msg1", "2025-01-01 10:00:00", 0)
-	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"/project", "claude", sid, "assistant", "msg2", "2025-01-01 10:00:01", 0)
-	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at, deleted) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		"/project", "claude", sid, "user", "msg3", "2025-01-01 10:00:02", 0)
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "user", "msg1", "2025-01-01 10:00:00")
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "assistant", "msg2", "2025-01-01 10:00:01")
+	service.DB.Exec("INSERT INTO chat_history (project_path, backend, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+		"/project", "claude", sid, "user", "msg3", "2025-01-01 10:00:02")
 
 	// Query for messages before 10:00:02 — should return max ID of messages before that time
 	id, err := service.GetMessageIDBeforeTime("/project", "claude", sid, "2025-01-01 10:00:02")
@@ -1197,10 +1193,10 @@ func TestUpdateAndGetExternalSessionID(t *testing.T) {
 
 	sid := helperCreateSession(t, "/project", "opencode", "Test")
 
-	// Initially empty
-	assert.Equal(t, "", service.GetExternalSessionID(sid))
+	// Initially set to ClawBench UUID (id) by CreateSession
+	assert.Equal(t, sid, service.GetExternalSessionID(sid))
 
-	// Set external ID
+	// Set external ID (overwrites the default ClawBench UUID)
 	err := service.UpdateExternalSessionID(sid, "ext-session-123")
 	assert.NoError(t, err)
 
@@ -2060,24 +2056,6 @@ func TestGetSessions_UnreadCount_MultipleSessions(t *testing.T) {
 	}
 	assert.Equal(t, 3, sessionMap[sid1])
 	assert.Equal(t, 1, sessionMap[sid2])
-}
-
-func TestGetSessions_UnreadCount_DeletedMessagesExcluded(t *testing.T) {
-	setupDB(t)
-
-	sid := helperCreateSession(t, "/project", "claude", "Deleted Messages")
-
-	_, _ = service.AddChatMessage("/project", "claude", sid, "assistant", "kept", nil, false, "")
-	msgID2, _ := service.AddChatMessage("/project", "claude", sid, "assistant", "deleted", nil, false, "")
-
-	// Soft-delete one message
-	_, err := service.DB.Exec("UPDATE chat_history SET deleted = 1 WHERE id = ?", msgID2)
-	assert.NoError(t, err)
-
-	sessions, err := service.GetSessions("/project", "")
-	assert.NoError(t, err)
-	assert.Len(t, sessions, 1)
-	assert.Equal(t, 1, sessions[0].UnreadCount, "deleted messages should not count as unread")
 }
 
 func TestGetSessions_UnreadCountScopedToProject(t *testing.T) {

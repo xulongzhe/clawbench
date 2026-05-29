@@ -464,7 +464,6 @@ func setupChatTestDB(t *testing.T) *sql.DB {
 		backend TEXT NOT NULL DEFAULT 'claude',
 		streaming INTEGER NOT NULL DEFAULT 0,
 		indexed INTEGER NOT NULL DEFAULT 0,
-		deleted INTEGER NOT NULL DEFAULT 0,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
 	if err != nil {
@@ -937,7 +936,7 @@ func TestEmitSessionEvent_CompletedWithPreview(t *testing.T) {
 	insertTestMessage(t, db, "session-emit-1", "assistant", string(contentJSON))
 
 	// Insert a session row so GetSessionProjectPath can look it up
-	_, err := db.Exec("CREATE TABLE IF NOT EXISTS chat_sessions (id TEXT PRIMARY KEY, project_path TEXT, backend TEXT, title TEXT)")
+	_, err := db.Exec("CREATE TABLE IF NOT EXISTS chat_sessions (id TEXT PRIMARY KEY, project_path TEXT, backend TEXT, title TEXT, external_session_id TEXT DEFAULT '')")
 	require.NoError(t, err)
 	_, err = db.Exec("INSERT INTO chat_sessions (id, project_path, backend, title) VALUES (?, ?, ?, ?)",
 		"session-emit-1", "/home/user/test-project", "codebuddy", "Test Session")
@@ -1166,7 +1165,6 @@ CREATE TABLE IF NOT EXISTS chat_history (
 	backend TEXT NOT NULL DEFAULT 'claude',
 	streaming INTEGER NOT NULL DEFAULT 0,
 	indexed INTEGER NOT NULL DEFAULT 0,
-	deleted INTEGER NOT NULL DEFAULT 0,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -1178,6 +1176,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 	agent_source TEXT DEFAULT 'default',
 	model TEXT DEFAULT '',
 	session_type TEXT NOT NULL DEFAULT 'chat',
+	external_session_id TEXT DEFAULT '',
 	deleted INTEGER NOT NULL DEFAULT 0,
 	last_read_at DATETIME,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

@@ -1625,6 +1625,11 @@ func TestBuildChatRequest_PiResumeWithoutExternalSessionID(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "pi", "test-pi-noext", "", "", "default", "chat")
 	assert.NoError(t, err)
 
+	// CreateSession pre-fills external_session_id = sessionID; clear it to simulate
+	// the "no external session ID captured" scenario (e.g. session_capture event was missed)
+	err = service.UpdateExternalSessionID(sessionID, "")
+	assert.NoError(t, err)
+
 	// Add an assistant message so SessionHasAssistant returns true
 	// (simulates a successful first message where session_capture was missed)
 	_, err = service.AddChatMessage(env.ProjectDir, "pi", sessionID, "assistant", `{"blocks":[{"type":"text","text":"hello"}]}`, nil, false, "")
@@ -1709,8 +1714,8 @@ func TestPiSessionCapture_PersistedToDB(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "pi", "test-capture", "", "", "default", "chat")
 	assert.NoError(t, err)
 
-	// Verify no external ID yet
-	assert.Equal(t, "", service.GetExternalSessionID(sessionID))
+	// Verify external ID is pre-filled by CreateSession (same as sessionID)
+	assert.Equal(t, sessionID, service.GetExternalSessionID(sessionID))
 
 	// Simulate what the handler does on session_capture event for Pi:
 	// The handler checks `backendName == "pi"` && event.Content != ""
@@ -1725,8 +1730,9 @@ func TestPiSessionCapture_PersistedToDB(t *testing.T) {
 }
 
 // TestPiSessionCapture_NotOverwritten verifies that if an external session ID
-// is already saved, a subsequent session_capture event does not overwrite it.
-// This matches the handler logic: `if existingExtID == "" { ... }`.
+// is already saved (and different from the ClawBench UUID default), a subsequent
+// session_capture event does not overwrite it.
+// This matches the handler logic: `if existingExtID == "" || existingExtID == sessionID { ... }`.
 func TestPiSessionCapture_NotOverwritten(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
@@ -1738,12 +1744,13 @@ func TestPiSessionCapture_NotOverwritten(t *testing.T) {
 	err = service.UpdateExternalSessionID(sessionID, "pi-sess-first")
 	assert.NoError(t, err)
 
-	// Attempt to overwrite (handler skips this because existingExtID != "")
+	// Attempt to overwrite (handler skips this because existingExtID != "" && existingExtID != sessionID)
 	// Simulate by checking the condition the handler uses
 	existingExtID := service.GetExternalSessionID(sessionID)
 	assert.Equal(t, "pi-sess-first", existingExtID)
 	// The handler would NOT call UpdateExternalSessionID again — the condition
-	// `if existingExtID == ""` prevents it. We verify the current value is intact.
+	// `if existingExtID == "" || existingExtID == sessionID` is false.
+	// We verify the current value is intact.
 	assert.Equal(t, "pi-sess-first", service.GetExternalSessionID(sessionID))
 }
 
@@ -1757,7 +1764,8 @@ func TestPiMetadataSessionID_PersistedToDB(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "pi", "test-metadata", "", "", "default", "chat")
 	assert.NoError(t, err)
 
-	assert.Equal(t, "", service.GetExternalSessionID(sessionID))
+	// CreateSession pre-fills external_session_id with sessionID
+	assert.Equal(t, sessionID, service.GetExternalSessionID(sessionID))
 
 	// Simulate what the handler does on metadata event for Pi:
 	// The handler checks `backendName == "pi"` && event.Meta.SessionID != ""
@@ -1862,6 +1870,11 @@ func TestBuildChatRequest_CodexResumeWithoutExternalSessionID(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "codex", "test-codex-noext", "", "", "default", "chat")
 	assert.NoError(t, err)
 
+	// CreateSession pre-fills external_session_id = sessionID; clear it to simulate
+	// the "no external session ID captured" scenario
+	err = service.UpdateExternalSessionID(sessionID, "")
+	assert.NoError(t, err)
+
 	_, err = service.AddChatMessage(env.ProjectDir, "codex", sessionID, "assistant",
 		`{"blocks":[{"type":"text","text":"hello"}]}`, nil, false, "")
 	assert.NoError(t, err)
@@ -1881,7 +1894,8 @@ func TestCodexSessionCapture_PersistedToDB(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "codex", "test-codex-capture", "", "", "default", "chat")
 	assert.NoError(t, err)
 
-	assert.Equal(t, "", service.GetExternalSessionID(sessionID))
+	// CreateSession pre-fills external_session_id with sessionID
+	assert.Equal(t, sessionID, service.GetExternalSessionID(sessionID))
 
 	threadID := "thread_xyz789"
 	err = service.UpdateExternalSessionID(sessionID, threadID)
@@ -1927,6 +1941,11 @@ func TestBuildChatRequest_DeepSeekResumeWithoutExternalSessionID(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "deepseek", "test-deepseek-noext", "", "", "default", "chat")
 	assert.NoError(t, err)
 
+	// CreateSession pre-fills external_session_id = sessionID; clear it to simulate
+	// the "no external session ID captured" scenario
+	err = service.UpdateExternalSessionID(sessionID, "")
+	assert.NoError(t, err)
+
 	_, err = service.AddChatMessage(env.ProjectDir, "deepseek", sessionID, "assistant",
 		`{"blocks":[{"type":"text","text":"hello"}]}`, nil, false, "")
 	assert.NoError(t, err)
@@ -1946,7 +1965,8 @@ func TestDeepSeekSessionCapture_PersistedToDB(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "deepseek", "test-deepseek-capture", "", "", "default", "chat")
 	assert.NoError(t, err)
 
-	assert.Equal(t, "", service.GetExternalSessionID(sessionID))
+	// CreateSession pre-fills external_session_id with sessionID
+	assert.Equal(t, sessionID, service.GetExternalSessionID(sessionID))
 
 	dsSessionID := "ds-captured-abc"
 	err = service.UpdateExternalSessionID(sessionID, dsSessionID)
@@ -1969,6 +1989,11 @@ func TestBuildChatRequest_OpenCodeResumeWithoutExternalSessionID(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "opencode", "test-oc-noext", "", "", "default", "chat")
 	assert.NoError(t, err)
 
+	// CreateSession pre-fills external_session_id = sessionID; clear it to simulate
+	// the "no external session ID captured" scenario
+	err = service.UpdateExternalSessionID(sessionID, "")
+	assert.NoError(t, err)
+
 	// No external session ID set
 	_, err = service.AddChatMessage(env.ProjectDir, "opencode", sessionID, "assistant",
 		`{"blocks":[{"type":"text","text":"hello"}]}`, nil, false, "")
@@ -1989,7 +2014,8 @@ func TestOpenCodeSessionCapture_PersistedToDB(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "opencode", "test-oc-capture", "", "", "default", "chat")
 	assert.NoError(t, err)
 
-	assert.Equal(t, "", service.GetExternalSessionID(sessionID))
+	// CreateSession pre-fills external_session_id with sessionID
+	assert.Equal(t, sessionID, service.GetExternalSessionID(sessionID))
 
 	sesID := "ses_oc_abc123"
 	err = service.UpdateExternalSessionID(sessionID, sesID)

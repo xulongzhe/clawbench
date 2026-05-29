@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS chat_history (
 	backend TEXT NOT NULL DEFAULT 'claude',
 	streaming INTEGER NOT NULL DEFAULT 0,
 	indexed INTEGER NOT NULL DEFAULT 0,
-	deleted INTEGER NOT NULL DEFAULT 0,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -39,6 +38,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 	agent_source TEXT DEFAULT 'default',
 	model TEXT DEFAULT '',
 	session_type TEXT NOT NULL DEFAULT 'chat',
+	external_session_id TEXT DEFAULT '',
 	deleted INTEGER NOT NULL DEFAULT 0,
 	last_read_at DATETIME,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

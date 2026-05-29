@@ -387,10 +387,10 @@ onUnmounted(() => {
   font-size: 9px;
   padding: 1px 4px;
   border-radius: 3px;
-  font-weight: 600;
+  font-weight: 500;
   flex-shrink: 0;
-  background: rgba(139, 92, 246, 0.12);
-  color: #7c3aed;
+  background: rgba(0, 102, 204, 0.08);
+  color: var(--text-secondary, #5a6270);
 }
 
 .session-item-agent {

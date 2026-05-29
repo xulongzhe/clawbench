@@ -54,7 +54,6 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 			backend TEXT NOT NULL DEFAULT 'claude',
 			streaming INTEGER NOT NULL DEFAULT 0,
 			indexed INTEGER NOT NULL DEFAULT 0,
-			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -1036,6 +1035,7 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 			backend TEXT NOT NULL,
 			title TEXT NOT NULL,
 			session_type TEXT NOT NULL DEFAULT 'chat',
+			external_session_id TEXT DEFAULT '',
 			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1049,7 +1049,6 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 			session_id TEXT,
 			backend TEXT NOT NULL DEFAULT 'claude',
 			streaming INTEGER NOT NULL DEFAULT 0,
-			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE IF NOT EXISTS scheduled_tasks (

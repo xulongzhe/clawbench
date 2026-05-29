@@ -61,7 +61,6 @@ func InitDB(runFromServer ...bool) error {
 			backend TEXT NOT NULL DEFAULT 'claude',
 			streaming INTEGER NOT NULL DEFAULT 0,
 			indexed INTEGER NOT NULL DEFAULT 0,
-			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -133,7 +132,7 @@ func InitDB(runFromServer ...bool) error {
 
 		-- Covering index for session-based queries (GetChatMessageCount, GetAssistantMessageCount,
 		-- unread subquery, GetChatHistoryPaged) — avoids full table scan through large content rows.
-		CREATE INDEX IF NOT EXISTS idx_history_session_id ON chat_history(session_id, deleted, role, streaming, created_at);
+		CREATE INDEX IF NOT EXISTS idx_history_session_id ON chat_history(session_id, role, streaming, created_at);
 		-- Index for task listing by project
 		CREATE INDEX IF NOT EXISTS idx_tasks_project ON scheduled_tasks(project_path, created_at DESC);
 
@@ -212,6 +211,19 @@ func InitDB(runFromServer ...bool) error {
 		}
 	}
 
+	// Migrate: backfill external_session_id for sessions where it's empty.
+	// All backends now store their CLI-identifiable session ID in external_session_id.
+	// For codebuddy/claude/qoder, the ClawBench UUID (id column) IS the CLI session ID.
+	// For opencode/codex/deepseek/pi, external_session_id was already set by stream capture.
+	// This migration fills in the missing values for existing sessions.
+	result, err := DB.Exec("UPDATE chat_sessions SET external_session_id = id WHERE (external_session_id = '' OR external_session_id IS NULL) AND id != ''")
+	if err != nil {
+		return fmt.Errorf("failed to backfill external_session_id: %w", err)
+	}
+	if rowsAffected, _ := result.RowsAffected(); rowsAffected > 0 {
+		slog.Info("backfilled external_session_id for existing sessions", slog.Int64("rows", rowsAffected))
+	}
+
 	// Migrate: add thinking_effort column for per-session thinking effort selection
 	var hasThinkingEffort int
 	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_sessions') WHERE name='thinking_effort'").Scan(&hasThinkingEffort)
@@ -242,6 +254,23 @@ func InitDB(runFromServer ...bool) error {
 		if _, err := DB.Exec("UPDATE forwarded_ports SET local_port = port WHERE local_port IS NULL"); err != nil {
 			return fmt.Errorf("failed to backfill local_port in forwarded_ports: %w", err)
 		}
+	}
+
+	// Migrate: drop deleted column from chat_history.
+	// Soft-delete is handled at the session level (chat_sessions.deleted),
+	// so chat_history.deleted is redundant. Removing it simplifies queries
+	// and eliminates the need to restore messages when restoring a session.
+	var hasHistoryDeleted int
+	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_history') WHERE name='deleted'").Scan(&hasHistoryDeleted)
+	if hasHistoryDeleted > 0 {
+		// SQLite DROP COLUMN fails if any index references the column.
+		// Drop and recreate idx_history_session_id to avoid the error.
+		DB.Exec("DROP INDEX IF EXISTS idx_history_session_id")
+		if _, err := DB.Exec("ALTER TABLE chat_history DROP COLUMN deleted"); err != nil {
+			return fmt.Errorf("failed to drop deleted column from chat_history: %w", err)
+		}
+		DB.Exec("CREATE INDEX IF NOT EXISTS idx_history_session_id ON chat_history(session_id, role, streaming, created_at)")
+		slog.Info("dropped redundant deleted column from chat_history")
 	}
 
 	// Clean up orphaned streaming messages from previous crashes/restarts.

@@ -4,10 +4,28 @@ import (
 	"clawbench/internal/model"
 	"database/sql"
 	"fmt"
+	"time"
 )
 
+// restoreDeletedSession restores a soft-deleted session by setting deleted=0.
+// Messages in chat_history are not affected — only the session record needs restoring
+// since session-level soft-delete controls visibility.
+func restoreDeletedSession(sessionID string) error {
+	_, err := DB.Exec(
+		"UPDATE chat_sessions SET deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		sessionID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to restore deleted session %s: %w", sessionID, err)
+	}
+	return nil
+}
+
 // CheckContinueSession checks whether a continued chat session already exists
-// for the given task execution. Returns (exists, sessionID, error).
+// for the given task execution (including soft-deleted ones that can be restored).
+// If a soft-deleted continued session is found, it is automatically restored
+// (both the session record and its messages).
+// Returns (exists, sessionID, error).
 func CheckContinueSession(execID int64) (bool, string, error) {
 	var sourceSessionID string
 	err := DBRead.QueryRow("SELECT session_id FROM task_executions WHERE id = ?", execID).Scan(&sourceSessionID)
@@ -19,16 +37,25 @@ func CheckContinueSession(execID int64) (bool, string, error) {
 	}
 
 	var existingID string
+	var existingDeleted int
 	err = DBRead.QueryRow(
-		"SELECT id FROM chat_sessions WHERE source_session_id = ? AND session_type = 'chat' AND deleted = 0",
+		"SELECT id, deleted FROM chat_sessions WHERE source_session_id = ? AND session_type = 'chat' ORDER BY deleted ASC, updated_at DESC LIMIT 1",
 		sourceSessionID,
-	).Scan(&existingID)
+	).Scan(&existingID, &existingDeleted)
 	if err == sql.ErrNoRows {
 		return false, "", nil
 	}
 	if err != nil {
 		return false, "", err
 	}
+
+	// Auto-restore soft-deleted session so subsequent GET requests can find it
+	if existingDeleted == 1 {
+		if err := restoreDeletedSession(existingID); err != nil {
+			return false, "", err
+		}
+	}
+
 	return true, existingID, nil
 }
 
@@ -45,10 +72,11 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 	var sourceSessionID string
 	var taskID int64
 	var execStatus string
+	var execCreatedAt time.Time
 	err = DB.QueryRow(
-		"SELECT session_id, task_id, status FROM task_executions WHERE id = ?",
+		"SELECT session_id, task_id, status, created_at FROM task_executions WHERE id = ?",
 		execID,
-	).Scan(&sourceSessionID, &taskID, &execStatus)
+	).Scan(&sourceSessionID, &taskID, &execStatus, &execCreatedAt)
 	if err == sql.ErrNoRows {
 		return "", false, fmt.Errorf("execution %d not found", execID)
 	}
@@ -81,11 +109,11 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 	}
 
 	// 5. Get source session metadata (without deleted=0 — soft-deleted sessions still have valid metadata)
-	var backend, agentID, agentSource, modelName, thinkingEffort, sessProjectPath string
+	var backend, agentID, agentSource, modelName, thinkingEffort, sessProjectPath, externalSessionID string
 	err = DB.QueryRow(
-		"SELECT backend, agent_id, agent_source, model, thinking_effort, project_path FROM chat_sessions WHERE id = ?",
+		"SELECT backend, agent_id, agent_source, model, thinking_effort, project_path, external_session_id FROM chat_sessions WHERE id = ?",
 		sourceSessionID,
-	).Scan(&backend, &agentID, &agentSource, &modelName, &thinkingEffort, &sessProjectPath)
+	).Scan(&backend, &agentID, &agentSource, &modelName, &thinkingEffort, &sessProjectPath, &externalSessionID)
 	if err == sql.ErrNoRows {
 		return "", false, fmt.Errorf("source session %s not found", sourceSessionID)
 	}
@@ -93,13 +121,20 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 		return "", false, err
 	}
 
-	// 6. Dedup check — if a continued session already exists, return it
+	// 6. Dedup check — if a continued session already exists (even soft-deleted), restore it
 	var existingID string
+	var existingDeleted int
 	err = DB.QueryRow(
-		"SELECT id FROM chat_sessions WHERE source_session_id = ? AND session_type = 'chat' AND deleted = 0",
+		"SELECT id, deleted FROM chat_sessions WHERE source_session_id = ? AND session_type = 'chat' ORDER BY deleted ASC, updated_at DESC LIMIT 1",
 		sourceSessionID,
-	).Scan(&existingID)
+	).Scan(&existingID, &existingDeleted)
 	if err == nil {
+		if existingDeleted == 1 {
+			// Restore soft-deleted session and its messages
+			if err := restoreDeletedSession(existingID); err != nil {
+				return "", false, err
+			}
+		}
 		return existingID, true, nil
 	}
 	if err != sql.ErrNoRows {
@@ -123,17 +158,21 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 
 	// 8. Create new chat session
 	newSessionID := generateSessionID()
-	// Prefix title with [定时任务] to mark it as originating from a scheduled task
-	displayTitle := "[定时任务] " + taskName
+	// Prefix title with execution date+time (no year) to identify which run this came from
+	execTime := execCreatedAt.Format("01-02 15:04")
+	displayTitle := "[" + execTime + "] " + taskName
+	// Copy external_session_id from the source session so that --resume works correctly.
+	// The continued session inherits the CLI backend's session context, allowing the
+	// same resume flow as a normal session (no special-casing needed).
 	_, err = DB.Exec(
-		"INSERT INTO chat_sessions (id, project_path, backend, title, agent_id, agent_source, model, session_type, source_session_id, thinking_effort, last_read_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'chat', ?, ?, CURRENT_TIMESTAMP)",
-		newSessionID, sessProjectPath, backend, displayTitle, agentID, agentSource, modelName, sourceSessionID, thinkingEffort,
+		"INSERT INTO chat_sessions (id, project_path, backend, title, agent_id, agent_source, model, session_type, source_session_id, thinking_effort, external_session_id, last_read_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'chat', ?, ?, ?, CURRENT_TIMESTAMP)",
+		newSessionID, sessProjectPath, backend, displayTitle, agentID, agentSource, modelName, sourceSessionID, thinkingEffort, externalSessionID,
 	)
 	if err != nil {
 		return "", false, fmt.Errorf("failed to create continued session: %w", err)
 	}
 
-	// 9. Copy chat_history (only deleted=0 AND streaming=0)
+	// 9. Copy chat_history (only streaming=0)
 	// NOTE: We intentionally do NOT copy created_at. The Go SQLite driver (modernc.org/sqlite)
 	// converts DATETIME columns to ISO 8601 UTC format (e.g. "2026-05-29T01:59:53Z") when reading,
 	// but CURRENT_TIMESTAMP produces "YYYY-MM-DD HH:MM:SS" local format. Writing the ISO format
@@ -141,7 +180,7 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 	// h.created_at > s2.last_read_at). Instead, we let the database assign CURRENT_TIMESTAMP,
 	// which guarantees format consistency. Message ordering relies on auto-increment id, not created_at.
 	rows, err := DB.Query(
-		"SELECT id, project_path, role, content, files, backend FROM chat_history WHERE session_id = ? AND deleted = 0 AND streaming = 0 ORDER BY id",
+		"SELECT id, project_path, role, content, files, backend FROM chat_history WHERE session_id = ? AND streaming = 0 ORDER BY id",
 		sourceSessionID,
 	)
 	if err != nil {
@@ -171,7 +210,7 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 	idMap := make(map[int64]int64)
 	for _, m := range messages {
 		result, err := DB.Exec(
-			"INSERT INTO chat_history (project_path, role, content, files, session_id, backend, streaming, deleted) VALUES (?, ?, ?, ?, ?, ?, 0, 0)",
+			"INSERT INTO chat_history (project_path, role, content, files, session_id, backend, streaming) VALUES (?, ?, ?, ?, ?, ?, 0)",
 			m.projectPath, m.role, m.content, m.files, newSessionID, m.backend,
 		)
 		if err != nil {
@@ -202,6 +241,43 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 			return "", false, fmt.Errorf("failed to copy summary for message %d: %w", oldID, err)
 		}
 	}
+
+
+	// 10b. Copy task_execution type summary as chat_message type
+	// Scheduled sessions store their summary as target_type='task_execution', target_id=execID.
+	// When continuing, we convert it to a chat_message summary attached to the last assistant message,
+	// but ONLY if that message doesn't already have a chat_message summary (10a takes priority).
+	var taskExecSummary string
+	err = DB.QueryRow(
+		"SELECT summary FROM summaries WHERE target_type = 'task_execution' AND target_id = ?",
+		execID,
+	).Scan(&taskExecSummary)
+	if err == nil && taskExecSummary != "" {
+		// Find the last assistant message in the new session
+		var lastAssistantID int64
+		err = DB.QueryRow(
+			"SELECT id FROM chat_history WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+			newSessionID,
+		).Scan(&lastAssistantID)
+		if err == nil {
+			// Only insert if this assistant message doesn't already have a chat_message summary
+			var existingCount int
+			err = DB.QueryRow(
+				"SELECT COUNT(*) FROM summaries WHERE target_type = 'chat_message' AND target_id = ?",
+				lastAssistantID,
+			).Scan(&existingCount)
+			if err == nil && existingCount == 0 {
+				_, err = DB.Exec(
+					"INSERT OR REPLACE INTO summaries (target_type, target_id, summary, created_at) VALUES ('chat_message', ?, ?, CURRENT_TIMESTAMP)",
+					lastAssistantID, taskExecSummary,
+				)
+				if err != nil {
+					return "", false, fmt.Errorf("failed to copy task_execution summary: %w", err)
+				}
+			}
+		}
+	}
+
 
 	return newSessionID, false, nil
 }

@@ -83,7 +83,6 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 			backend TEXT NOT NULL DEFAULT 'claude',
 			streaming INTEGER NOT NULL DEFAULT 0,
 			indexed INTEGER NOT NULL DEFAULT 0,
-			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE IF NOT EXISTS chat_sessions (

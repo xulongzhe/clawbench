@@ -34,7 +34,6 @@ func setupCleanupDB(t *testing.T) *sql.DB {
 			backend TEXT NOT NULL DEFAULT 'claude',
 			streaming INTEGER NOT NULL DEFAULT 0,
 			indexed INTEGER NOT NULL DEFAULT 0,
-			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -45,6 +44,7 @@ func setupCleanupDB(t *testing.T) *sql.DB {
 			agent_id TEXT DEFAULT '',
 			agent_source TEXT DEFAULT 'default',
 			model TEXT DEFAULT '',
+			external_session_id TEXT DEFAULT '',
 			session_type TEXT NOT NULL DEFAULT 'chat',
 			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

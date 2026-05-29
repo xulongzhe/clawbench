@@ -549,13 +549,14 @@ func executeStreamRun(
 				rawOutput = event.RawOutput
 				continue
 			}
-			// Early capture of external session ID (OpenCode/Codex).
+			// Early capture of external session ID.
 			// Persist immediately so that if the stream is cancelled before
 			// step_finish/turn.completed, the ID is already saved for resumption.
+			// All backends store their CLI-identifiable session ID in external_session_id.
 			if event.Type == "session_capture" {
-				if (backendName == "opencode" || backendName == "codex" || backendName == "deepseek" || backendName == "pi") && event.Content != "" {
+				if event.Content != "" {
 					existingExtID := service.GetExternalSessionID(sessionID)
-					if existingExtID == "" {
+					if existingExtID == "" || existingExtID == sessionID {
 						if err := service.UpdateExternalSessionID(sessionID, event.Content); err != nil {
 							slog.Error("failed to save external session ID (early capture)",
 								slog.String("session", sessionID),
@@ -622,10 +623,13 @@ func executeStreamRun(
 
 			if event.Type == "metadata" && event.Meta != nil {
 				responseMetadata = event.Meta
-				// Capture external session ID on first response (OpenCode/Codex)
-				if (backendName == "opencode" || backendName == "codex" || backendName == "deepseek" || backendName == "pi") && event.Meta.SessionID != "" {
+				// Capture external session ID from metadata.
+				// All backends store their CLI-identifiable session ID in external_session_id.
+				// Only update if the current value is the default (ClawBench UUID) or empty,
+				// preserving CLI-assigned IDs that were already captured via session_capture.
+				if event.Meta.SessionID != "" {
 					existingExtID := service.GetExternalSessionID(sessionID)
-					if existingExtID == "" {
+					if existingExtID == "" || existingExtID == sessionID {
 						if err := service.UpdateExternalSessionID(sessionID, event.Meta.SessionID); err != nil {
 							slog.Error("failed to save external session ID",
 								slog.String("session", sessionID),
@@ -837,20 +841,20 @@ func buildChatRequest(prompt, sessionID, projectPath, backendName, agentID, mode
 		}
 	}
 
-	// For backends that use their own session ID format (not ClawBench UUID),
-	// resolve external session ID when resuming.
+	// Resolve effective session ID for CLI.
+	// All backends now store their CLI-identifiable session ID in external_session_id:
+	//   - codebuddy/claude/qoder: ClawBench UUID (same as session id)
+	//   - opencode/codex/deepseek/pi: CLI-assigned ID (captured from stream events)
+	// When resuming, we always use external_session_id so the CLI can find its session context.
 	effectiveSessionID := sessionID
 	resume := service.SessionHasAssistant(sessionID)
-	if (backendName == "opencode" || backendName == "codex" || backendName == "deepseek" || backendName == "pi") && resume {
+	if resume {
 		extID := service.GetExternalSessionID(sessionID)
 		if extID != "" {
 			effectiveSessionID = extID
 		} else {
-			// No external session ID available — don't pass the invalid ClawBench UUID
-			// to these CLIs. They don't recognize it and would fail
-			// (stdout empty or error), resulting in "AI returned no content" or
-			// "could not load session" errors.
-			// Let them start a fresh session instead.
+			// No external session ID available — the CLI cannot resume a session
+			// it has never seen. Start a fresh session instead.
 			effectiveSessionID = ""
 		}
 	}

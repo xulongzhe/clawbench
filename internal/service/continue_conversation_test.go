@@ -50,10 +50,13 @@ func TestContinueFromExecution_NormalFlow(t *testing.T) {
 
 	taskID := helperCreateScheduledTask(t, "/project", "Daily Code Review", "claude")
 	sessID := helperCreateScheduledSessionWithDetails(t, "/project", "claude", "Daily Code Review", "claude-agent", "claude-sonnet-4-6", "high")
+	// Set external session ID on the source session (simulates CLI having assigned one)
+	err := service.UpdateExternalSessionID(sessID, "ext-session-123")
+	assert.NoError(t, err)
 	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
 
 	// Add messages to the scheduled session
-	_, err := service.AddChatMessage("/project", "claude", sessID, "user", "Review the code", nil, false, "")
+	_, err = service.AddChatMessage("/project", "claude", sessID, "user", "Review the code", nil, false, "")
 	assert.NoError(t, err)
 	_, err = service.AddChatMessage("/project", "claude", sessID, "assistant", "Code looks good", nil, false, "")
 	assert.NoError(t, err)
@@ -68,10 +71,11 @@ func TestContinueFromExecution_NormalFlow(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "chat", sessionType)
 
-	// New session should have the task name with [定时任务] prefix as title
+	// New session should have the task name with [MM-DD HH:MM] prefix as title
 	title, err := service.GetSessionTitle(newSessID)
 	assert.NoError(t, err)
-	assert.Equal(t, "[定时任务] Daily Code Review", title)
+	assert.Contains(t, title, "Daily Code Review")
+	assert.Regexp(t, `^\[\d{2}-\d{2} \d{2}:\d{2}\] Daily Code Review$`, title)
 
 	// New session should inherit agent/model/thinking
 	info, err := service.GetSessionInfo(newSessID)
@@ -88,8 +92,8 @@ func TestContinueFromExecution_NormalFlow(t *testing.T) {
 	assert.NotNil(t, sourceSessID)
 	assert.Equal(t, sessID, *sourceSessID)
 
-	// External session ID should be empty
-	assert.Equal(t, "", service.GetExternalSessionID(newSessID))
+	// External session ID should be inherited from source session
+	assert.Equal(t, "ext-session-123", service.GetExternalSessionID(newSessID))
 
 	// Messages should be copied
 	msgs, err := service.GetChatHistory("/project", "claude", newSessID)
@@ -121,7 +125,7 @@ func TestContinueFromExecution_AlreadyContinued(t *testing.T) {
 	assert.True(t, alreadyExists2)
 }
 
-// ---------- ContinueFromExecution: delete then re-continue ----------
+// ---------- ContinueFromExecution: delete then re-continue (restores) ----------
 
 func TestContinueFromExecution_DeletedThenRecontinue(t *testing.T) {
 	setupDB(t)
@@ -130,17 +134,25 @@ func TestContinueFromExecution_DeletedThenRecontinue(t *testing.T) {
 	sessID := helperCreateScheduledSession(t, "/project", "claude", "Task")
 	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
 
-	newSessID1, _, err := service.ContinueFromExecution(execID, "/project")
+	newSessID1, alreadyExists1, err := service.ContinueFromExecution(execID, "/project")
 	assert.NoError(t, err)
+	assert.False(t, alreadyExists1)
 
 	// Delete the continued session
 	err = service.DeleteSession("/project", "claude", newSessID1)
 	assert.NoError(t, err)
 
-	// Should be able to continue again
-	newSessID2, _, err := service.ContinueFromExecution(execID, "/project")
+	// Should restore the deleted session, not create a new one
+	newSessID2, alreadyExists2, err := service.ContinueFromExecution(execID, "/project")
 	assert.NoError(t, err)
-	assert.NotEqual(t, newSessID1, newSessID2) // Different session ID
+	assert.Equal(t, newSessID1, newSessID2) // Same session ID (restored)
+	assert.True(t, alreadyExists2)
+
+	// Session should no longer be deleted
+	var deleted int
+	err = service.DB.QueryRow("SELECT deleted FROM chat_sessions WHERE id = ?", newSessID2).Scan(&deleted)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, deleted)
 }
 
 // ---------- ContinueFromExecution: session count limit ----------
@@ -205,32 +217,6 @@ func TestContinueFromExecution_SkipsStreamingMessages(t *testing.T) {
 	assert.Equal(t, "user", msgs[0].Role)
 	assert.Equal(t, "assistant", msgs[1].Role)
 	assert.Equal(t, "final", msgs[1].Content)
-}
-
-func TestContinueFromExecution_SkipsDeletedMessages(t *testing.T) {
-	setupDB(t)
-
-	taskID := helperCreateScheduledTask(t, "/project", "Task", "claude")
-	sessID := helperCreateScheduledSession(t, "/project", "claude", "Task")
-	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
-
-	// Add a message then soft-delete it
-	msgID, err := service.AddChatMessage("/project", "claude", sessID, "user", "deleted msg", nil, false, "")
-	assert.NoError(t, err)
-	_, err = service.DB.Exec("UPDATE chat_history SET deleted = 1 WHERE id = ?", msgID)
-	assert.NoError(t, err)
-
-	// Add an active message
-	_, err = service.AddChatMessage("/project", "claude", sessID, "user", "active msg", nil, false, "")
-	assert.NoError(t, err)
-
-	newSessID, _, err := service.ContinueFromExecution(execID, "/project")
-	assert.NoError(t, err)
-
-	msgs, err := service.GetChatHistory("/project", "claude", newSessID)
-	assert.NoError(t, err)
-	assert.Len(t, msgs, 1)
-	assert.Equal(t, "active msg", msgs[0].Content)
 }
 
 // ---------- ContinueFromExecution: summaries copy ----------
@@ -332,6 +318,7 @@ func TestContinueFromExecution_FieldInheritance(t *testing.T) {
 
 	taskID := helperCreateScheduledTask(t, "/project", "Task", "codebuddy")
 	sessID := helperCreateScheduledSessionWithDetails(t, "/project", "codebuddy", "Task", "cb-agent", "gpt-4o", "medium")
+	// Set external session ID (codebuddy uses ClawBench UUID directly, so external_session_id stays empty)
 	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
 
 	newSessID, _, err := service.ContinueFromExecution(execID, "/project")
@@ -349,6 +336,10 @@ func TestContinueFromExecution_FieldInheritance(t *testing.T) {
 	err = service.DB.QueryRow("SELECT project_path FROM chat_sessions WHERE id = ?", newSessID).Scan(&projPath)
 	assert.NoError(t, err)
 	assert.Equal(t, "/project", projPath)
+
+	// External session ID should be inherited from source session
+	// (codebuddy now stores its ClawBench UUID as external_session_id)
+	assert.Equal(t, sessID, service.GetExternalSessionID(newSessID))
 }
 
 // ---------- ContinueFromExecution: original session unaffected ----------
@@ -525,7 +516,7 @@ func TestContinueFromExecution_CreatedAtFormatConsistent(t *testing.T) {
 			FROM chat_history h
 			JOIN chat_sessions s2 ON s2.id = h.session_id
 			WHERE h.project_path = ?
-			  AND h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
+			  AND h.role = 'assistant' AND h.streaming = 0
 			  AND (s2.last_read_at IS NULL OR h.created_at > s2.last_read_at)
 			GROUP BY h.session_id
 		) unread ON unread.session_id = s.id
