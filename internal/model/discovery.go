@@ -25,6 +25,7 @@ type BackendSpec struct {
 	ID                   string                    // agent id, e.g. "claude"
 	Backend              string                    // backend type, e.g. "claude"
 	DefaultCmd           string                    // command to detect on PATH, e.g. "claude"
+	NoCLI                bool                      // if true, this backend has no CLI (e.g. mock); always considered "present"
 	Name                 string                    // display name, e.g. "Claude"
 	Icon                 string                    // emoji icon, e.g. "🤖"
 	Specialty            string                    // short description, e.g. "代码编写与推理"
@@ -208,7 +209,8 @@ func DiscoverAgents(dir string) error {
 		wg.Add(1)
 		go func(i int, spec BackendSpec) {
 			defer wg.Done()
-			results[i] = result{spec: spec, exists: CheckCLIExists(spec.DefaultCmd)}
+			exists := spec.NoCLI || CheckCLIExists(spec.DefaultCmd)
+			results[i] = result{spec: spec, exists: exists}
 		}(i, spec)
 	}
 	wg.Wait()
@@ -267,7 +269,8 @@ func SyncDiscoverAgents(dir string) map[string]bool {
 		wg.Add(1)
 		go func(i int, spec BackendSpec) {
 			defer wg.Done()
-			results[i] = result{spec: spec, exists: CheckCLIExists(spec.DefaultCmd)}
+			exists := spec.NoCLI || CheckCLIExists(spec.DefaultCmd)
+			results[i] = result{spec: spec, exists: exists}
 		}(i, spec)
 	}
 	wg.Wait()
@@ -300,6 +303,32 @@ func SyncDiscoverAgents(dir string) map[string]bool {
 			continue
 		}
 		slog.Info("auto-generated agent config", "backend", r.spec.ID, "path", yamlPath)
+	}
+
+	// Include backends that have existing YAML configs but are not in BackendRegistry
+	// (e.g., mock backend configured explicitly for E2E testing).
+	// This ensures MergeDiscoveredData doesn't soft-remove them.
+	// We read the "backend" field from each YAML file (same as LoadAgents),
+	// rather than using the filename, so the key matches what MergeDiscoveredData
+	// checks (agent.Backend) and what BackendRegistry entries produce (r.spec.Backend).
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+			if err != nil {
+				continue
+			}
+			var agent Agent
+			if err := yaml.Unmarshal(data, &agent); err != nil || agent.Backend == "" {
+				continue
+			}
+			if !present[agent.Backend] {
+				present[agent.Backend] = true
+			}
+		}
 	}
 
 	return present

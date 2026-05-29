@@ -9,26 +9,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// MockBackend implements AIBackend for testing.
-// Each call to ExecuteStream returns events from the next MockStream entry.
-type MockBackend struct {
+// TestMockBackend implements AIBackend for testing.
+// Each call to ExecuteStream returns events from the next TestMockStream entry.
+type TestMockBackend struct {
 	name      string
-	streams   []MockStream
+	streams   []TestMockStream
 	callCount int
 	mu        sync.Mutex
 }
 
-// MockStream defines the events and optional error for a single ExecuteStream call.
-type MockStream struct {
+// TestMockStream defines the events and optional error for a single ExecuteStream call.
+type TestMockStream struct {
 	events []StreamEvent
 	err    error
 }
 
-func (m *MockBackend) Name() string {
+func (m *TestMockBackend) Name() string {
 	return m.name
 }
 
-func (m *MockBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
+func (m *TestMockBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
 	m.mu.Lock()
 	idx := m.callCount
 	m.callCount++
@@ -57,9 +57,9 @@ func (m *MockBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-cha
 // --- Tests ---
 
 func TestAutoResume_TransparentPassThrough(t *testing.T) {
-	mock := &MockBackend{
+	mock := &TestMockBackend{
 		name: "test",
-		streams: []MockStream{
+		streams: []TestMockStream{
 			{
 				events: []StreamEvent{
 					{Type: "content", Content: "hello "},
@@ -90,9 +90,9 @@ func TestAutoResume_TransparentPassThrough(t *testing.T) {
 }
 
 func TestAutoResume_ExitPlanModeDetection(t *testing.T) {
-	mock := &MockBackend{
+	mock := &TestMockBackend{
 		name: "test",
-		streams: []MockStream{
+		streams: []TestMockStream{
 			// First stream: contains ExitPlanMode
 			{
 				events: []StreamEvent{
@@ -217,9 +217,9 @@ func TestAutoResume_OuterCancelDuringResume(t *testing.T) {
 }
 
 func TestAutoResume_ResumeStreamFailure(t *testing.T) {
-	mock := &MockBackend{
+	mock := &TestMockBackend{
 		name: "test",
-		streams: []MockStream{
+		streams: []TestMockStream{
 			// First stream: ExitPlanMode
 			{
 				events: []StreamEvent{
@@ -252,9 +252,9 @@ func TestAutoResume_ResumeStreamFailure(t *testing.T) {
 }
 
 func TestAutoResume_RawOutputHandling(t *testing.T) {
-	mock := &MockBackend{
+	mock := &TestMockBackend{
 		name: "test",
-		streams: []MockStream{
+		streams: []TestMockStream{
 			// First stream: ExitPlanMode with raw_output
 			{
 				events: []StreamEvent{
@@ -303,9 +303,9 @@ func TestAutoResume_RawOutputHandling(t *testing.T) {
 }
 
 func TestAutoResume_NoNestedExitPlanMode(t *testing.T) {
-	mock := &MockBackend{
+	mock := &TestMockBackend{
 		name: "test",
-		streams: []MockStream{
+		streams: []TestMockStream{
 			// First stream: ExitPlanMode
 			{
 				events: []StreamEvent{
@@ -421,9 +421,9 @@ func (b *twoPhaseBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<
 func TestAutoResume_FirstCallError(t *testing.T) {
 	// When the first ExecuteStream call returns an error, the wrapper
 	// should propagate the error and close the outer channel.
-	mock := &MockBackend{
+	mock := &TestMockBackend{
 		name: "test",
-		streams: []MockStream{
+		streams: []TestMockStream{
 			{err: context.DeadlineExceeded},
 		},
 	}
@@ -439,9 +439,9 @@ func TestAutoResume_FirstCallError(t *testing.T) {
 func TestAutoResume_ResumeChannelClosedWithoutDone(t *testing.T) {
 	// When the resume stream closes without emitting a "done" event,
 	// the wrapper should emit a synthetic "done" so downstream can finalize.
-	mock := &MockBackend{
+	mock := &TestMockBackend{
 		name: "test",
-		streams: []MockStream{
+		streams: []TestMockStream{
 			// First stream: ExitPlanMode
 			{
 				events: []StreamEvent{
@@ -479,9 +479,9 @@ func TestAutoResume_ResumeChannelClosedWithoutDone(t *testing.T) {
 func TestAutoResume_FirstStreamClosedWithoutDone(t *testing.T) {
 	// When the first stream closes normally (no ExitPlanMode, no "done"),
 	// the wrapper should emit a synthetic "done" event.
-	mock := &MockBackend{
+	mock := &TestMockBackend{
 		name: "test",
-		streams: []MockStream{
+		streams: []TestMockStream{
 			// First stream: just content, no "done"
 			{
 				events: []StreamEvent{
@@ -506,4 +506,28 @@ func TestAutoResume_FirstStreamClosedWithoutDone(t *testing.T) {
 	assert.Equal(t, 2, len(events))
 	assert.Equal(t, "content", events[0].Type)
 	assert.Equal(t, "done", events[1].Type, "synthetic 'done' should be emitted when first stream closes without done")
+}
+
+// --- forwardEvent tests ---
+
+func TestForwardEvent_ChannelFull(t *testing.T) {
+	// Create a channel with buffer size 1 and fill it
+	ch := make(chan StreamEvent, 1)
+	ch <- StreamEvent{Type: "content", Content: "first"}
+
+	// ForwardEvent should not block when channel is full (drops the event)
+	forwardEvent(ch, StreamEvent{Type: "content", Content: "dropped"})
+
+	assert.Equal(t, 1, len(ch))
+	ev := <-ch
+	assert.Equal(t, "first", ev.Content)
+}
+
+func TestForwardEvent_ChannelEmpty(t *testing.T) {
+	ch := make(chan StreamEvent, 1)
+	forwardEvent(ch, StreamEvent{Type: "content", Content: "hello"})
+
+	assert.Equal(t, 1, len(ch))
+	ev := <-ch
+	assert.Equal(t, "hello", ev.Content)
 }

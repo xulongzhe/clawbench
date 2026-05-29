@@ -33,6 +33,7 @@ export default defineConfig({
       '**/node_modules/**',
       '**/dist/**',
       '**/cypress/**',
+      '**/e2e/**',
       '**/.{idea,git,cache,output,temp}/**',
     ],
     coverage: {
