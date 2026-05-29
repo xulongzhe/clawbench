@@ -196,6 +196,7 @@ export default {
       completed: '会话已完成',
       clickToViewDetails: '点击查看详情',
       continueFailed: '继续对话失败',
+      continued: '已继续对话 ({count}/{max})',
       sessionLimitReached: '已达到最大会话数',
     },
     messageList: {

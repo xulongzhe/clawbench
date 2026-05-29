@@ -494,9 +494,10 @@ export function useChatSession(options: UseChatSessionOptions) {
       // Step 1: Pre-check
       const check = await checkContinueSession(taskId, execId)
       let sessionId = ''
+      let isNewlyCreated = false
 
       if (check.exists && check.sessionId) {
-        // Already continued — navigate to existing session
+        // Already continued — navigate to existing session (no toast)
         sessionId = check.sessionId
       } else {
         // Step 2: POST create
@@ -517,6 +518,12 @@ export function useChatSession(options: UseChatSessionOptions) {
           return false
         }
         sessionId = data.sessionId
+        isNewlyCreated = !data.alreadyExists
+        // Toast: only when a new session is actually created (not when restoring a deleted one)
+        if (isNewlyCreated) {
+          const maxCount = store.state.sessionMaxCount
+          toast.show(gt('chat.session.continued', { count: data.sessionCount ?? '', max: maxCount }), { icon: '💬', type: 'success', duration: 1500 })
+        }
       }
 
       // Step 3: Navigate — switchTab first, then switchSession
