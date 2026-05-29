@@ -3,6 +3,34 @@ plugins {
     id 'jacoco'
 }
 
+/**
+ * Auto-generate versionName when not provided via -PversionName.
+ * Format: dev.<branch>.<buildTime>.<gitShortHash>
+ * Example: dev.main.20250729-143000.g830bb6c
+ */
+def autoVersionName() {
+    if (project.hasProperty('versionName')) return project.property('versionName')
+    try {
+        def branch = 'git rev-parse --abbrev-ref HEAD'.execute([], rootDir).text.trim()
+        def hash = 'git rev-parse --short HEAD'.execute([], rootDir).text.trim()
+        def time = new Date().format('yyyyMMdd-HHmmss')
+        // Sanitize branch name: replace non-alphanumeric chars with dash
+        branch = branch.replaceAll('[^a-zA-Z0-9._-]', '-')
+        return "dev.${branch}.${time}.${hash}"
+    } catch (Exception e) {
+        return "dev"
+    }
+}
+
+def autoVersionCode() {
+    if (project.hasProperty('versionCode')) return project.property('versionCode').toInteger()
+    try {
+        return 'git rev-list --count HEAD'.execute([], rootDir).text.trim().toInteger()
+    } catch (Exception e) {
+        return 1
+    }
+}
+
 android {
     namespace 'com.clawbench.app'
     compileSdk 34
@@ -11,8 +39,8 @@ android {
         applicationId "com.clawbench.app"
         minSdk 24
         targetSdk 34
-        versionCode (project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 1)
-        versionName (project.hasProperty('versionName') ? project.property('versionName') : "dev")
+        versionCode autoVersionCode()
+        versionName autoVersionName()
 
         // JPush manifest placeholders (AppKey set at runtime via JPushConfig)
         manifestPlaceholders = [
