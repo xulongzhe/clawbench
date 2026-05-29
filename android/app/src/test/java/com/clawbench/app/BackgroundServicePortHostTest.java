@@ -328,7 +328,7 @@ public class BackgroundServicePortHostTest {
     }
 
     @Test
-    public void testAddPortForward_alreadyInSet_sessionAlive_returnsEarly() throws Exception {
+    public void testAddPortForward_alreadyInSet_sessionAlive_reachable_returnsEarly() throws Exception {
         com.jcraft.jsch.Session mockSession = mock(com.jcraft.jsch.Session.class);
         when(mockSession.isConnected()).thenReturn(true);
 
@@ -341,11 +341,49 @@ public class BackgroundServicePortHostTest {
         Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
         ports.put(20000, new BackgroundService.PortInfo(20000, "10.0.0.1"));
 
-        // Call addPortForward — should return early since already in set and session alive
-        invokeMethod(service, "addPortForward", 20000, 20000, "10.0.0.1");
+        // When the port is already in set, session is alive, AND testLocalPort
+        // returns true, addPortForward should return early without calling setPortForwardingL.
+        // We simulate a reachable port by starting a local ServerSocket on the port.
+        java.net.ServerSocket ss = new java.net.ServerSocket(0);
+        int testPort = ss.getLocalPort();
+        ports.put(testPort, new BackgroundService.PortInfo(testPort, "10.0.0.1"));
 
-        // Verify setPortForwardingL was NOT called (already forwarded)
-        verify(mockSession, never()).setPortForwardingL(anyString(), anyInt(), anyString(), anyInt());
+        try {
+            invokeMethod(service, "addPortForward", testPort, testPort, "10.0.0.1");
+            // Verify setPortForwardingL was NOT called (already forwarded and reachable)
+            verify(mockSession, never()).setPortForwardingL(anyString(), anyInt(), anyString(), anyInt());
+        } finally {
+            ss.close();
+        }
+    }
+
+    @Test
+    public void testAddPortForward_alreadyInSet_sessionAlive_notReachable_reRegisters() throws Exception {
+        com.jcraft.jsch.Session mockSession = mock(com.jcraft.jsch.Session.class);
+        when(mockSession.isConnected()).thenReturn(true);
+        doNothing().when(mockSession).delPortForwardingL(anyInt());
+        // setPortForwardingL returns int — use doReturn with int
+        doReturn(0).when(mockSession).setPortForwardingL(anyString(), anyInt(), anyString(), anyInt());
+
+        Field sshField = BackgroundService.class.getDeclaredField("sshSession");
+        sshField.setAccessible(true);
+        sshField.set(service, mockSession);
+
+        // Use a high-numbered port (59999) that is very unlikely to have a listener,
+        // so testLocalPort returns false.
+        int testPort = 59999;
+        @SuppressWarnings("unchecked")
+        Map<Integer, BackgroundService.PortInfo> ports = (Map<Integer, BackgroundService.PortInfo>) getField(service, "forwardedPorts");
+        ports.put(testPort, new BackgroundService.PortInfo(testPort, "10.0.0.1"));
+
+        // addPortForward should detect the port is not reachable, delete old forwarding,
+        // then re-register with setPortForwardingL
+        invokeMethod(service, "addPortForward", testPort, testPort, "10.0.0.1");
+
+        // Verify delPortForwardingL was called to remove stale forwarding
+        verify(mockSession).delPortForwardingL(testPort);
+        // Verify setPortForwardingL was called to re-register
+        verify(mockSession).setPortForwardingL(eq("127.0.0.1"), eq(testPort), eq("10.0.0.1"), eq(testPort));
     }
 
     // =====================================================
