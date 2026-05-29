@@ -70,10 +70,10 @@ func ListDir(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-		writeLocalizedError(w, r, model.NotFound(nil, "DirectoryNotFound"))
-		} else if isNotDirError(err) {
+		if isNotDirError(err) {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "NotADirectory")
+		} else if os.IsNotExist(err) {
+			writeLocalizedError(w, r, model.NotFound(nil, "DirectoryNotFound"))
 		} else {
 			model.WriteError(w, model.Internal(fmt.Errorf("cannot read directory")))
 		}
@@ -348,10 +348,10 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			writeLocalizedError(w, r, model.NotFound(nil, "DirectoryNotFound"))
-		} else if isNotDirError(err) {
+		if isNotDirError(err) {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "NotADirectory")
+		} else if os.IsNotExist(err) {
+			writeLocalizedError(w, r, model.NotFound(nil, "DirectoryNotFound"))
 		} else {
 			model.WriteError(w, model.Internal(fmt.Errorf("cannot read directory")))
 		}
