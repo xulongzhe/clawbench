@@ -22,15 +22,6 @@ def autoVersionName() {
     }
 }
 
-def autoVersionCode() {
-    if (project.hasProperty('versionCode')) return project.property('versionCode').toInteger()
-    try {
-        return 'git rev-list --count HEAD'.execute([], rootDir).text.trim().toInteger()
-    } catch (Exception e) {
-        return 1
-    }
-}
-
 android {
     namespace 'com.clawbench.app'
     compileSdk 34
@@ -39,7 +30,7 @@ android {
         applicationId "com.clawbench.app"
         minSdk 24
         targetSdk 34
-        versionCode autoVersionCode()
+        versionCode (project.hasProperty('versionCode') ? project.property('versionCode').toInteger() : 1)
         versionName autoVersionName()
 
         // JPush manifest placeholders (AppKey set at runtime via JPushConfig)
