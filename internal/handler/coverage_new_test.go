@@ -2017,3 +2017,57 @@ func TestCopyDir_SymlinkEscapingRootPaths_Skipped(t *testing.T) {
 	_, err = os.Lstat(filepath.Join(dstDir, "escape-link"))
 	assert.True(t, os.IsNotExist(err), "escaping symlink should not be copied")
 }
+
+// ============================================================================
+// ListDir — not a directory error coverage
+// ============================================================================
+
+func TestListDir_NotADirectory_Returns400(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a file, then try to list it as a directory
+	createTestFile(t, env.ProjectDir, "notadir.txt", "content")
+
+	req := newRequest(t, http.MethodGet, "/api/dir?path=notadir.txt", nil)
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ListDir, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// ============================================================================
+// ServeProjects — additional edge cases
+// ============================================================================
+
+func TestServeProjects_EmptyRootPaths_NoFirstRoot_Returns400(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Set RootPaths to empty and try to browse with a relative path
+	origRootPaths := model.RootPaths
+	model.RootPaths = []string{}
+	defer func() { model.RootPaths = origRootPaths }()
+
+	req := newRequest(t, http.MethodGet, "/api/projects?path=relative", nil)
+	w := callHandler(ServeProjects, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeProjects_EmptyPathWithRoots_ListsFirstRoot(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create entries in the WatchDir
+	createTestFile(t, env.WatchDir, "rootfile.txt", "hello")
+
+	req := newRequest(t, http.MethodGet, "/api/projects?path=", nil)
+	w := callHandler(ServeProjects, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	items, ok := result["items"].([]interface{})
+	assert.True(t, ok)
+	assert.NotEmpty(t, items, "should list entries in first root")
+}
