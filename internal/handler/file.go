@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"clawbench/internal/model"
@@ -483,13 +485,19 @@ type FileContent struct {
 
 // buildDirEntries builds a sorted list of directory entries
 // isNotDirError returns true if the error indicates the path is not a directory
-// (e.g. it is a file). This handles syscall.ENOTDIR across platforms.
-// On Windows, ReadDir on a file returns ERROR_DIRECTORY (0x267) which maps to
-// "The directory name is invalid" rather than "not a directory".
+// (e.g. it is a file). This handles syscall.ENOTDIR on Unix and
+// ERROR_DIRECTORY (0x267) on Windows, which ReadDir returns when called on a file.
 func isNotDirError(err error) bool {
+	if errors.Is(err, syscall.ENOTDIR) {
+		return true
+	}
+	// Windows: ReadDir on a file returns ERROR_DIRECTORY (0x267) wrapped in PathError.
+	// We check the errno value directly because syscall.ERROR_DIRECTORY is not
+	// available on non-Windows builds.
 	if pe, ok := err.(*os.PathError); ok {
-		msg := pe.Err.Error()
-		return msg == "not a directory" || msg == "The directory name is invalid."
+		if errno, ok := pe.Err.(syscall.Errno); ok && errno == 0x267 {
+			return true
+		}
 	}
 	return false
 }

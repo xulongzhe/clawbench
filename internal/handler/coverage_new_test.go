@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -377,13 +378,13 @@ func TestIsNotDirError(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "PathErrorWithENOTDIR",
-			err:  &os.PathError{Err: errors.New("not a directory"), Path: "/foo"},
+			name: "SyscallENOTDIR",
+			err:  &os.PathError{Err: syscall.ENOTDIR, Path: "/foo"},
 			want: true,
 		},
 		{
-			name: "PathErrorWithWindowsError",
-			err:  &os.PathError{Err: errors.New("The directory name is invalid."), Path: "C:\\foo"},
+			name: "WindowsErrorDirectory",
+			err:  &os.PathError{Err: syscall.Errno(0x267), Path: "C:\\foo"},
 			want: true,
 		},
 		{
