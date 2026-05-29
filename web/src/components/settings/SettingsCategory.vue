@@ -174,6 +174,16 @@ async function handleUpdate(item: any, value: any) {
   }
   if (item.source === 'local') {
     setLocalConfig(item.key, value)
+    // Bridge androidLogCapture switch to Android native AppLog
+    if (item.key === 'androidLogCapture') {
+      try {
+        if (value) {
+          ;(window as any).AndroidNative?.startLogCapture?.()
+        } else {
+          ;(window as any).AndroidNative?.stopLogCapture?.()
+        }
+      } catch { /* not in app mode */ }
+    }
     return
   }
   // Server config: auto-save immediately

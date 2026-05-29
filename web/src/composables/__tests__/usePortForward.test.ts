@@ -121,6 +121,25 @@ describe('usePortForward', () => {
             await loadPorts(true)
             expect(loading.value).toBe(false)
         })
+
+        it('clears connectingPorts for active ports in web mode', async () => {
+            mockApiGet.mockResolvedValue({
+                ports: [{ port: 3000, localPort: 3000, host: '', name: 'App', protocol: 'http', autoDetect: false, active: true }],
+            })
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { loadPorts, connectingPorts } = usePortForward()
+
+            // Simulate port in connecting state
+            connectingPorts.value.add(3000)
+            connectingPorts.value = new Set(connectingPorts.value)
+            expect(connectingPorts.value.has(3000)).toBe(true)
+
+            await loadPorts(true)
+
+            // Should be cleared since backend reports active=true
+            expect(connectingPorts.value.has(3000)).toBe(false)
+        })
     })
 
     describe('checkTunnelHealth', () => {
@@ -245,11 +264,36 @@ describe('usePortForward', () => {
             expect(mockOpenInSandbox).toHaveBeenCalledWith(3000, 'http', '')
         })
 
-        it('reconnects and opens when port unreachable then reachable', async () => {
+        it('still opens when port is reachable even if in connecting state', async () => {
             mockIsAppMode.value = true
             const mockOpenInSandbox = vi.fn()
-            // First testPortReachable returns false, second returns true
-            const mockTestPortReachable = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true)
+            const mockTestPortReachable = vi.fn().mockReturnValue(true)
+            ;(window as any).AndroidNative = { openInSandbox: mockOpenInSandbox, testPortReachable: mockTestPortReachable }
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { openPort, connectingPorts } = usePortForward()
+
+            // Simulate port in connecting state — but it's reachable, so open it
+            connectingPorts.value.add(3000)
+            connectingPorts.value = new Set(connectingPorts.value)
+
+            await openPort(3000, 'http')
+
+            // Should test reachability and open since it's reachable
+            expect(mockTestPortReachable).toHaveBeenCalledWith(3000)
+            expect(mockOpenInSandbox).toHaveBeenCalledWith(3000, 'http', '')
+
+            delete (window as any).AndroidNative
+            mockIsAppMode.value = false
+        })
+
+        it('reconnects and opens when port unreachable then reachable after reconnect', async () => {
+            mockIsAppMode.value = true
+            const mockOpenInSandbox = vi.fn()
+            // First: unreachable, then reachable after reconnect
+            const mockTestPortReachable = vi.fn()
+                .mockReturnValueOnce(false)  // initial check
+                .mockReturnValueOnce(true)   // after reconnect
             const mockReconnectTunnel = vi.fn().mockReturnValue(true)
             ;(window as any).AndroidNative = { openInSandbox: mockOpenInSandbox, testPortReachable: mockTestPortReachable, reconnectTunnel: mockReconnectTunnel }
 
@@ -265,17 +309,15 @@ describe('usePortForward', () => {
 
         it('shows error toast when port unreachable after reconnect', async () => {
             mockIsAppMode.value = true
-            const mockOpenInSandbox = vi.fn()
             const mockTestPortReachable = vi.fn().mockReturnValue(false)
             const mockReconnectTunnel = vi.fn().mockReturnValue(true)
-            ;(window as any).AndroidNative = { openInSandbox: mockOpenInSandbox, testPortReachable: mockTestPortReachable, reconnectTunnel: mockReconnectTunnel }
+            ;(window as any).AndroidNative = { testPortReachable: mockTestPortReachable, reconnectTunnel: mockReconnectTunnel }
 
             const { usePortForward } = await import('@/composables/usePortForward')
             const { openPort } = usePortForward()
 
             await openPort(3000, 'http')
 
-            expect(mockOpenInSandbox).not.toHaveBeenCalled()
             expect(mockToastShow).toHaveBeenCalledWith('portForward.portUnreachable', expect.objectContaining({ type: 'error' }))
         })
 
@@ -353,8 +395,10 @@ describe('usePortForward', () => {
 
         it('reconnects and shows success toast when port becomes reachable', async () => {
             mockIsAppMode.value = true
-            // First testPortReachable returns false (before reconnect), second returns true (after)
-            const mockTestPortReachable = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true)
+            // First: false (initial check), then true (after reconnect)
+            const mockTestPortReachable = vi.fn()
+                .mockReturnValueOnce(false)  // initial check
+                .mockReturnValueOnce(true)   // after reconnect
             const mockReconnectTunnel = vi.fn().mockReturnValue(true)
             mockApiGet.mockResolvedValue({ ports: [] })
             ;(window as any).AndroidNative = { testPortReachable: mockTestPortReachable, reconnectTunnel: mockReconnectTunnel }
@@ -464,13 +508,15 @@ describe('usePortForward', () => {
             mockApiGet.mockResolvedValue({ ports: [] })
 
             const { usePortForward } = await import('@/composables/usePortForward')
-            const { registerPort } = usePortForward()
+            const { registerPort, connectingPorts } = usePortForward()
 
             await registerPort(3000, 'App', 'http')
 
             expect(mockApiPost).toHaveBeenCalledWith('/api/proxy/ports', {
                 port: 3000, host: '', name: 'App', protocol: 'http',
             })
+            // Port should be in connecting state
+            expect(connectingPorts.value.has(3000)).toBe(true)
         })
 
         it('passes host parameter to API and native layer in app mode', async () => {
@@ -647,6 +693,125 @@ describe('usePortForward', () => {
             await syncToNative()
 
             expect(mockApiGet).not.toHaveBeenCalled()
+        })
+    })
+
+    describe('connectingPorts', () => {
+        it('adds port to connectingPorts after registerPort', async () => {
+            mockApiPost.mockResolvedValue({ localPort: 3000 })
+            mockApiGet.mockResolvedValue({ ports: [{ port: 3000, localPort: 3000, host: '', name: 'App', protocol: 'http', autoDetect: false, active: false }] })
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { registerPort, connectingPorts } = usePortForward()
+
+            await registerPort(3000, 'App', 'http')
+
+            expect(connectingPorts.value.has(3000)).toBe(true)
+        })
+
+        it('removes port from connectingPorts on native callback success', async () => {
+            mockIsAppMode.value = true
+            mockApiPost.mockResolvedValue({ localPort: 3000 })
+            // Backend initially reports inactive — port stays in connectingPorts
+            // until the native callback confirms success or backend becomes active.
+            mockApiGet.mockResolvedValue({ ports: [{ port: 3000, localPort: 3000, host: '', name: 'App', protocol: 'http', autoDetect: false, active: false }] })
+            const mockAddForwardedPort = vi.fn()
+            ;(window as any).AndroidNative = { addForwardedPort: mockAddForwardedPort }
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { registerPort, connectingPorts } = usePortForward()
+
+            await registerPort(3000, 'App', 'http')
+            expect(connectingPorts.value.has(3000)).toBe(true)
+
+            // Simulate native callback dispatching the CustomEvent
+            const event = new CustomEvent('clawbench-port-forward-result', {
+                detail: { localPort: 3000, success: true }
+            })
+            window.dispatchEvent(event)
+
+            // Port should be removed from connectingPorts
+            expect(connectingPorts.value.has(3000)).toBe(false)
+
+            delete (window as any).AndroidNative
+            mockIsAppMode.value = false
+        })
+
+        it('removes port from connectingPorts on native callback failure', async () => {
+            mockIsAppMode.value = true
+            mockApiPost.mockResolvedValue({ localPort: 3000 })
+            mockApiGet.mockResolvedValue({ ports: [{ port: 3000, localPort: 3000, host: '', name: 'App', protocol: 'http', autoDetect: false, active: false }] })
+            const mockAddForwardedPort = vi.fn()
+            ;(window as any).AndroidNative = { addForwardedPort: mockAddForwardedPort }
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { registerPort, connectingPorts } = usePortForward()
+
+            await registerPort(3000, 'App', 'http')
+            expect(connectingPorts.value.has(3000)).toBe(true)
+
+            // Simulate native callback with failure
+            const event = new CustomEvent('clawbench-port-forward-result', {
+                detail: { localPort: 3000, success: false }
+            })
+            window.dispatchEvent(event)
+
+            // Port should be removed from connectingPorts even on failure
+            expect(connectingPorts.value.has(3000)).toBe(false)
+            // Error toast should be shown
+            expect(mockToastShow).toHaveBeenCalledWith('portForward.portUnreachable', expect.objectContaining({ type: 'error' }))
+
+            delete (window as any).AndroidNative
+            mockIsAppMode.value = false
+        })
+
+        it('clears connectingPorts when backend reports active during loadPorts (app mode)', async () => {
+            mockIsAppMode.value = true
+            mockApiPost.mockResolvedValue({ localPort: 3000 })
+            // registerPort calls loadPorts(true) + loadSSHInfo(), then our explicit loadPorts(true)
+            // loadSSHInfo also calls apiGet, so we need enough mock responses
+            mockApiGet
+                .mockResolvedValueOnce({ ports: [{ port: 3000, localPort: 3000, host: '', name: 'App', protocol: 'http', autoDetect: false, active: false }] })  // loadPorts in registerPort
+                .mockResolvedValueOnce({ enabled: false, host: '', port: 0, username: '', fingerprint: '', command: '', connectionStats: null })  // loadSSHInfo in registerPort
+                .mockResolvedValueOnce({ ports: [{ port: 3000, localPort: 3000, host: '', name: 'App', protocol: 'http', autoDetect: false, active: true }] })  // explicit loadPorts
+
+            const mockAddForwardedPort = vi.fn()
+            ;(window as any).AndroidNative = { addForwardedPort: mockAddForwardedPort }
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { registerPort, connectingPorts, loadPorts } = usePortForward()
+
+            await registerPort(3000, 'App', 'http')
+            expect(connectingPorts.value.has(3000)).toBe(true)
+
+            // loadPorts with active=true should clear connectingPorts even in app mode
+            await loadPorts(true)
+
+            expect(connectingPorts.value.has(3000)).toBe(false)
+
+            delete (window as any).AndroidNative
+            mockIsAppMode.value = false
+        })
+
+        it('removes port from connectingPorts when backend reports active in web mode', async () => {
+            mockApiPost.mockResolvedValue({ localPort: 3000 })
+            // registerPort calls loadPorts(true) + loadSSHInfo(), then our explicit loadPorts(true)
+            // loadSSHInfo also calls apiGet, so we need enough mock responses
+            mockApiGet
+                .mockResolvedValueOnce({ ports: [{ port: 3000, localPort: 3000, host: '', name: 'App', protocol: 'http', autoDetect: false, active: false }] })  // loadPorts in registerPort
+                .mockResolvedValueOnce({ enabled: false, host: '', port: 0, username: '', fingerprint: '', command: '', connectionStats: null })  // loadSSHInfo in registerPort
+                .mockResolvedValueOnce({ ports: [{ port: 3000, localPort: 3000, host: '', name: 'App', protocol: 'http', autoDetect: false, active: true }] })  // explicit loadPorts
+
+            const { usePortForward } = await import('@/composables/usePortForward')
+            const { registerPort, connectingPorts, loadPorts } = usePortForward()
+
+            await registerPort(3000, 'App', 'http')
+            expect(connectingPorts.value.has(3000)).toBe(true)
+
+            // loadPorts with active=true should clear connectingPorts
+            await loadPorts(true)
+
+            expect(connectingPorts.value.has(3000)).toBe(false)
         })
     })
 

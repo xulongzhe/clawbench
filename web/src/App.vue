@@ -957,6 +957,10 @@ onMounted(async () => {
     // The old code only set chatUnread=true and never corrected a stale true.
     loadSessionsOnce()
     if (isAppMode.value) syncToNative().catch(() => {})
+    // Resume Android log capture if previously enabled
+    if (isAppMode.value && localConfig.androidLogCapture) {
+      try { if (window.AndroidNative?.startLogCapture) window.AndroidNative.startLogCapture() } catch {}
+    }
     loadSSHInfo().catch(() => {})
     loadTerminalStatus().catch(() => {})
     try { await store.loadFiles('') } catch (_) {

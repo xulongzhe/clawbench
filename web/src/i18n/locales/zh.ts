@@ -525,6 +525,7 @@ export default {
     tunnelNoSsh: 'SSH 隧道未启用，请在服务器端 config.yaml 中配置 port_forward.enabled: true',
     portItem: {
       active: '活跃',
+      connecting: '连接中',
       tunnelDown: '隧道断开',
       inactive: '离线',
     },
@@ -543,6 +544,7 @@ export default {
     tunnelDisconnected: 'SSH 隧道未连接，端口转发将无法使用',
     tunnelReconnected: 'SSH 隧道已重连',
     portUnreachable: '端口连接失败，请检查服务是否运行',
+    portConnecting: '端口正在连接中，请稍候',
   },
   pwa: {
     installTitle: '安装 ClawBench',
@@ -912,8 +914,6 @@ export default {
       portForwardPort: '端口转发端口',
       portForwardPortAuto: '自动',
       portForwardPortDesc: '端口转发服务监听的本地端口号，0 表示自动分配',
-      portForwardAllowedPorts: '允许的端口范围',
-      portForwardAllowedPortsDesc: '允许通过 SSH 隧道转发的端口号范围，如 3000-4000,8080',
       pushEnabled: '启用极光推送',
       pushEnabledDesc: '启用极光推送，在 App 后台时接收通知',
       pushStatus: '推送服务状态',

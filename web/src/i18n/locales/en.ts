@@ -525,6 +525,7 @@ export default {
     tunnelNoSsh: 'SSH tunnel is not enabled. Set port_forward.enabled: true in the server config.yaml',
     portItem: {
       active: 'Active',
+      connecting: 'Connecting',
       tunnelDown: 'Tunnel down',
       inactive: 'Offline',
     },
@@ -543,6 +544,7 @@ export default {
     tunnelDisconnected: 'SSH tunnel disconnected, port forwarding unavailable',
     tunnelReconnected: 'SSH tunnel reconnected',
     portUnreachable: 'Port unreachable, please check if the service is running',
+    portConnecting: 'Port is still connecting, please wait',
   },
   pwa: {
     installTitle: 'Install ClawBench',
@@ -912,8 +914,6 @@ export default {
       portForwardPort: 'Port Forward Port',
       portForwardPortAuto: 'Auto',
       portForwardPortDesc: 'Local port number for port forwarding service to listen on, 0 for auto-assign',
-      portForwardAllowedPorts: 'Allowed Ports Range',
-      portForwardAllowedPortsDesc: 'Port range allowed for SSH tunnel forwarding, e.g. 3000-4000,8080',
       pushEnabled: 'Enable JPush',
       pushEnabledDesc: 'Enable JPush notifications when app is in background',
       pushStatus: 'Push Service Status',

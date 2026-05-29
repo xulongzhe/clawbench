@@ -1565,18 +1565,22 @@ public class MainActivity extends AppCompatActivity {
 
         /**
          * Test whether a local forwarded port is reachable by attempting a TCP connect.
-         * Uses a short timeout (3s) since we're connecting to localhost.
+         * Uses a very short timeout (500ms) since we're connecting to localhost.
          * Returns true if the port accepts a TCP connection, false otherwise.
          * Used by the frontend to verify tunnel health before opening a port.
+         *
+         * IMPORTANT: This runs on the JavaBridge thread. A long timeout blocks ALL
+         * JS bridge calls (including subsequent testPortReachable calls), causing
+         * the frontend connecting-state polling to stall. 500ms is sufficient for
+         * localhost — if the port is listening, the connection is near-instant.
          */
         @JavascriptInterface
         public boolean testPortReachable(int port) {
             if (port <= 0 || port > 65535) return false;
             try (java.net.Socket socket = new java.net.Socket()) {
-                socket.connect(new java.net.InetSocketAddress("127.0.0.1", port), 3000);
+                socket.connect(new java.net.InetSocketAddress("127.0.0.1", port), 500);
                 return true;
             } catch (Exception e) {
-                AppLog.d(TAG, "testPortReachable: port " + port + " unreachable: " + e.getMessage());
                 return false;
             }
         }

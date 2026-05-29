@@ -308,14 +308,14 @@ public class BackgroundService extends Service {
         // Restore previously saved ports (from before Service was killed)
         restoreForwardedPorts();
 
-        // If no ports were restored and native WS is not needed, there's nothing
-        // to do — stop immediately to avoid wasting battery on an idle foreground service.
-        // When native WS is needed (JPush not available), the Service must stay alive
-        // so the background WebSocket can receive events and post local notifications.
-        if (forwardedPorts.isEmpty() && !nativeWsNeeded) {
-            AppLog.i(TAG, "SSH: no saved ports to forward and native WS not needed, stopping service");
-            stopSelf();
-        }
+        // NOTE: Do NOT call stopSelf() here even if forwardedPorts is empty!
+        // The Service may have been started by startForegroundService(ADD_PORT)
+        // and the ADD_PORT intent hasn't been delivered yet (onStartCommand comes
+        // after onCreate). Calling stopSelf() here causes onDestroy →
+        // networkExecutor.shutdownNow() which kills the addPortForward task
+        // mid-flight with InterruptedIOException.
+        // Instead, onStartCommand will stopSelf(startId) to cancel any pending
+        // stop, and addPortForward will stopSelf() if it fails with no ports left.
     }
 
     @Override
@@ -378,6 +378,19 @@ public class BackgroundService extends Service {
                     }
                 });
             }
+        }
+
+        // Decide whether to stop the idle service.
+        // CRITICAL: When ADD_PORT is received, do NOT stop — the addPortForward task
+        // has been submitted to networkExecutor but hasn't executed yet. It will put
+        // the port into forwardedPorts and set up the SSH tunnel. Stopping now would
+        // cause onDestroy → networkExecutor.shutdownNow() → InterruptedIOException.
+        // addPortForward itself will call stopSelf() if it fails with no ports left.
+        boolean hasAddPort = intent != null && "ADD_PORT".equals(intent.getAction());
+        boolean hasStartWs = intent != null && "START_NATIVE_WS".equals(intent.getAction());
+        if (!hasAddPort && !hasStartWs && forwardedPorts.isEmpty() && !nativeWsNeeded) {
+            AppLog.i(TAG, "SSH: no ports to forward and native WS not needed, stopping service");
+            stopSelf();
         }
 
         return START_STICKY;
@@ -676,8 +689,11 @@ public class BackgroundService extends Service {
      */
     private synchronized void ensureConnection() throws Exception {
         if (sshSession != null && sshSession.isConnected()) {
+            AppLog.d(TAG, "SSH: ensureConnection: session already alive, skipping");
             return;
         }
+
+        AppLog.i(TAG, "SSH: ensureConnection: session is " + (sshSession == null ? "null" : "disconnected") + ", connecting...");
 
         // Load server configuration from SharedPreferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -730,7 +746,11 @@ public class BackgroundService extends Service {
         // Acquire WakeLock to prevent CPU from sleeping (keeps SSH keep-alive working)
         acquireWakeLock();
 
-        // Re-establish any previously forwarded ports
+        // Re-establish any previously forwarded ports.
+        // JSch setPortForwardingL is NOT idempotent — calling it on a port that's
+        // already registered throws "PortForwardingL: local port ... is already registered".
+        // This can happen if addPortForward added the port before we reconnected, or
+        // if the session was briefly alive during a reconnect race. Catch and skip.
         int reEstablished = 0;
         for (Map.Entry<Integer, PortInfo> entry : forwardedPorts.entrySet()) {
             int localPort = entry.getKey();
@@ -740,6 +760,13 @@ public class BackgroundService extends Service {
                 sshSession.setPortForwardingL("127.0.0.1", localPort, targetHost, info.targetPort);
                 reEstablished++;
                 AppLog.i(TAG, "SSH: re-established port forward " + localPort + " -> " + targetHost + ":" + info.targetPort);
+            } catch (com.jcraft.jsch.JSchException e) {
+                if (e.getMessage() != null && e.getMessage().contains("already registered")) {
+                    AppLog.d(TAG, "SSH: port forward " + localPort + " already registered, skipping");
+                    reEstablished++;
+                } else {
+                    AppLog.e(TAG, "SSH: failed to re-establish port forward " + localPort, e);
+                }
             } catch (Exception e) {
                 AppLog.e(TAG, "SSH: failed to re-establish port forward " + localPort, e);
             }
@@ -754,62 +781,157 @@ public class BackgroundService extends Service {
 
     /**
      * Add a local port forward through the SSH tunnel.
-     * Creates: 127.0.0.1:{port} on device → 127.0.0.1:{port} on server
+     * Creates: 127.0.0.1:{localPort} on device → {host}:{targetPort} on server
      *
-     * If the port is already in the forwarded set but the SSH session is disconnected,
-     * this will reconnect and re-establish the port forward. This handles the case where
-     * the Go backend restarts (killing the SSH server), and the Android frontend calls
-     * syncToNative() → addForwardedPort() on page reload — the port is in the set
-     * but the tunnel is dead.
+     * Simplified flow:
+     * 1. Add to forwardedPorts map
+     * 2. Ensure SSH session is connected (reconnect if needed)
+     * 3. Call setPortForwardingL for THIS port only — if ensureConnection just
+     *    reconnected, the port was already set up in the re-establish loop, so
+     *    setPortForwardingL will throw "already registered" — catch and ignore.
+     * 4. Notify frontend via clawbench-port-forward-result CustomEvent.
+     *
+     * No more wasSessionAlive dance — just always try setPortForwardingL and
+     * treat "already registered" as success.
      *
      * MUST be called from a background thread (network I/O).
      */
     private synchronized void addPortForward(int localPort, int targetPort, String host) {
-        boolean alreadyInSet = forwardedPorts.containsKey(localPort);
-        boolean sessionAlive = sshSession != null && sshSession.isConnected();
-
-        if (alreadyInSet && sessionAlive) {
-            // Port is tracked and SSH session is alive — nothing to do.
-            AppLog.d(TAG, "SSH: port " + localPort + " already forwarded and session active");
-            return;
-        }
-
-        // Port is in the set but session is dead — need to reconnect.
-        if (alreadyInSet && !sessionAlive) {
-            AppLog.i(TAG, "SSH: port " + localPort + " in set but session disconnected, reconnecting...");
-        }
-
         String targetHost = (host == null || host.isEmpty()) ? "127.0.0.1" : host;
+        boolean alreadyInSet = forwardedPorts.containsKey(localPort);
 
+        AppLog.i(TAG, "SSH: addPortForward ENTER: localPort=" + localPort + ", targetPort=" + targetPort + ", host=" + host
+                + ", alreadyInSet=" + alreadyInSet
+                + ", sessionAlive=" + (sshSession != null && sshSession.isConnected())
+                + ", sessionNull=" + (sshSession == null)
+                + ", forwardedPorts=" + forwardedPorts.keySet());
+
+        if (alreadyInSet && sshSession != null && sshSession.isConnected()) {
+            // Port is tracked and SSH session is alive — verify the port is actually
+            // reachable before reporting success.
+            boolean reachable = testLocalPort(localPort);
+            AppLog.i(TAG, "SSH: addPortForward fast-path: port " + localPort + " alreadyInSet, sessionAlive, reachable=" + reachable);
+            if (reachable) {
+                notifyPortForwardResult(localPort, true);
+                return;
+            }
+            // Port not reachable — fall through to re-register.
+            AppLog.w(TAG, "SSH: port " + localPort + " in set and session alive but NOT reachable, re-registering");
+            try {
+                sshSession.delPortForwardingL(localPort);
+            } catch (Exception e) {
+                AppLog.d(TAG, "SSH: delPortForwardingL for " + localPort + " failed: " + e.getMessage());
+            }
+            forwardedPorts.remove(localPort);
+            alreadyInSet = false;
+        }
+
+        // Add to forwardedPorts BEFORE ensureConnection so that if ensureConnection
+        // triggers a reconnect, the port will be included in the re-establish loop.
+        if (!alreadyInSet) {
+            forwardedPorts.put(localPort, new PortInfo(targetPort, host));
+            saveForwardedPorts();
+        }
+
+        boolean success = false;
         try {
             ensureConnection();
-            // ensureConnection() rebuilds ALL ports in forwardedPorts when it reconnects.
-            // For new ports (not in set yet), we need to explicitly set up forwarding.
-            if (!alreadyInSet) {
+
+            // Always try setPortForwardingL. If ensureConnection just reconnected,
+            // the port was already set up in the re-establish loop and this will
+            // throw "already registered" — which we catch and treat as success.
+            try {
                 sshSession.setPortForwardingL("127.0.0.1", localPort, targetHost, targetPort);
-                forwardedPorts.put(localPort, new PortInfo(targetPort, host));
-                saveForwardedPorts();
+                AppLog.i(TAG, "SSH: setPortForwardingL succeeded for localhost:" + localPort + " → " + targetHost + ":" + targetPort);
+            } catch (com.jcraft.jsch.JSchException e) {
+                if (e.getMessage() != null && e.getMessage().contains("already registered")) {
+                    AppLog.d(TAG, "SSH: port " + localPort + " already registered in JSch, treating as success");
+                } else {
+                    throw e; // re-throw unexpected JSch errors
+                }
             }
-            AppLog.i(TAG, "SSH: port forward ready: localhost:" + localPort + " → " + targetHost + ":" + targetPort);
-            updateNotification(forwardedPorts.size(), null);
+
+            // Verify the port is actually reachable before reporting success.
+            boolean reachable = testLocalPort(localPort);
+            AppLog.i(TAG, "SSH: addPortForward testLocalPort(" + localPort + ") = " + reachable);
+            if (reachable) {
+                AppLog.i(TAG, "SSH: port forward ready and verified: localhost:" + localPort + " → " + targetHost + ":" + targetPort);
+                success = true;
+            } else {
+                // Port registered but not reachable yet — wait briefly and retry.
+                AppLog.w(TAG, "SSH: port " + localPort + " registered but not immediately reachable, waiting...");
+                for (int i = 0; i < 10; i++) {
+                    try { Thread.sleep(200); } catch (InterruptedException ie) { break; }
+                    if (testLocalPort(localPort)) {
+                        AppLog.i(TAG, "SSH: port forward ready after " + ((i+1)*200) + "ms: localhost:" + localPort);
+                        success = true;
+                        break;
+                    }
+                }
+                if (!success) {
+                    AppLog.e(TAG, "SSH: port " + localPort + " still not reachable after 2s, reporting failure");
+                }
+            }
+
+            if (success) {
+                updateNotification(forwardedPorts.size(), null);
+            }
         } catch (Exception e) {
             lastError = e.getMessage();
-            AppLog.e(TAG, "SSH: failed to add port forward for " + localPort + ", retrying...", e);
-            // Disconnect and retry once (password may have been updated, or session stale)
-            disconnectInternal();
-            try {
-                ensureConnection();
-                if (!alreadyInSet) {
-                    sshSession.setPortForwardingL("127.0.0.1", localPort, targetHost, targetPort);
-                    forwardedPorts.put(localPort, new PortInfo(targetPort, host));
-                    saveForwardedPorts();
+            AppLog.e(TAG, "SSH: failed to add port forward for " + localPort, e);
+            // Do NOT disconnectInternal — a single port forward failure should not
+            // tear down the entire SSH session (other ports may be working fine).
+            // Just remove this port from the map so it's not retried endlessly.
+            forwardedPorts.remove(localPort);
+            saveForwardedPorts();
+        }
+
+        AppLog.i(TAG, "SSH: addPortForward EXIT: localPort=" + localPort + ", success=" + success);
+        notifyPortForwardResult(localPort, success);
+
+        // If addPortForward failed and no ports remain, stop the service.
+        // (This replaces the eager stopSelf in onCreate which caused race conditions.)
+        if (!success && forwardedPorts.isEmpty() && !nativeWsNeeded) {
+            AppLog.i(TAG, "SSH: no ports remaining after failed addPortForward, stopping service");
+            stopSelf();
+        }
+    }
+
+    /**
+     * Test whether a local port is reachable (ServerSocket bound and accepting).
+     * Uses a short 300ms timeout — localhost connections should be near-instant.
+     */
+    private boolean testLocalPort(int port) {
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress("127.0.0.1", port), 300);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Notify the frontend that a port forward attempt has completed.
+     * Dispatches a 'clawbench-port-forward-result' CustomEvent on the WebView,
+     * following the same pattern as clawbench-open-session, clawbench-push-registered, etc.
+     */
+    private void notifyPortForwardResult(int localPort, boolean success) {
+        if (MainActivity.instance == null) return;
+        try {
+            org.json.JSONObject detail = new org.json.JSONObject();
+            detail.put("localPort", localPort);
+            detail.put("success", success);
+            final String jsArg = detail.toString();
+            MainActivity.instance.runOnUiThread(() -> {
+                if (MainActivity.instance.webView != null) {
+                    MainActivity.instance.webView.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('clawbench-port-forward-result', { detail: " + jsArg + " }))",
+                        null
+                    );
                 }
-                AppLog.i(TAG, "SSH: port forward added on retry: localhost:" + localPort + " → " + targetHost + ":" + targetPort);
-                updateNotification(forwardedPorts.size(), null);
-            } catch (Exception e2) {
-                lastError = e2.getMessage();
-                AppLog.e(TAG, "SSH: failed to add port forward for " + localPort + " on retry", e2);
-            }
+            });
+        } catch (Exception e) {
+            AppLog.e(TAG, "SSH: failed to notify port forward result", e);
         }
     }
 
