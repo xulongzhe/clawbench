@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"clawbench/internal/model"
 	"clawbench/internal/service"
@@ -395,6 +396,48 @@ func TestServeTaskByID_Resume(t *testing.T) {
 	req = withProjectCookie(req, env.ProjectDir)
 	w := callHandler(ServeTaskByID, req)
 	assertOK(t, w)
+}
+
+// ---------- ServeTaskByID Trigger (ISS-187) ----------
+
+func TestServeTaskByID_Trigger_AlreadyRunning(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{
+		"coder": {ID: "coder", Name: "Coder", Backend: "claude"},
+	}
+	defer func() { model.Agents = nil }()
+
+	s := service.NewScheduler()
+	defer s.Stop()
+	service.GlobalScheduler = s
+	defer func() { service.GlobalScheduler = nil }()
+
+	task := &model.ScheduledTask{
+		ProjectPath: env.ProjectDir,
+		Name:        "Running Task",
+		CronExpr:    "0 * * * *",
+		AgentID:     "coder",
+		Prompt:      "Test",
+		RepeatMode:  "unlimited",
+	}
+	s.AddTask(task)
+
+	// Manually trigger the task via service layer to mark it as running atomically
+	err := s.TriggerTask(task.ID)
+	assert.NoError(t, err)
+
+	// Wait briefly for the goroutine to start and claim the taskRunning slot
+	time.Sleep(100 * time.Millisecond)
+
+	// HTTP trigger should return 409 Conflict since task is already running
+	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
+		"action": "trigger",
+	})
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(ServeTaskByID, req)
+	assertStatus(t, w, http.StatusConflict)
 }
 
 func TestServeTaskByID_NotFound(t *testing.T) {
