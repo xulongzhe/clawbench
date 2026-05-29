@@ -220,6 +220,18 @@ func TestIsPathUnderAnyRoot(t *testing.T) {
 			roots:    []string{},
 			expected: false,
 		},
+		{
+			name:     "path under second root",
+			absPath:  "/home/user/project",
+			roots:    []string{"/var", "/home"},
+			expected: true,
+		},
+		{
+			name:     "path not under any of multiple roots",
+			absPath:  "/opt/something",
+			roots:    []string{"/var", "/home"},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -229,6 +241,53 @@ func TestIsPathUnderAnyRoot(t *testing.T) {
 				t.Errorf("IsPathUnderAnyRoot(%q, %v) = %v, want %v", tt.absPath, tt.roots, result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestIsPathUnderAnyRoot_MultipleRoots(t *testing.T) {
+	tmpDir1 := t.TempDir()
+	tmpDir2 := t.TempDir()
+	if r, err := filepath.EvalSymlinks(tmpDir1); err == nil {
+		tmpDir1 = r
+	}
+	if r, err := filepath.EvalSymlinks(tmpDir2); err == nil {
+		tmpDir2 = r
+	}
+
+	roots := []string{tmpDir1, tmpDir2}
+
+	t.Run("path under first root", func(t *testing.T) {
+		result := IsPathUnderAnyRoot(filepath.Join(tmpDir1, "subdir"), roots)
+		if !result {
+			t.Error("expected path under first root to return true")
+		}
+	})
+
+	t.Run("path under second root", func(t *testing.T) {
+		result := IsPathUnderAnyRoot(filepath.Join(tmpDir2, "subdir"), roots)
+		if !result {
+			t.Error("expected path under second root to return true")
+		}
+	})
+
+	t.Run("path outside all roots", func(t *testing.T) {
+		result := IsPathUnderAnyRoot("/completely/outside/path", roots)
+		if result {
+			t.Error("expected path outside all roots to return false")
+		}
+	})
+}
+
+func TestIsPathUnderRoot_DeeplyNestedNonExistent(t *testing.T) {
+	tmpDir := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(tmpDir); err == nil {
+		tmpDir = resolved
+	}
+
+	// Non-existent deeply nested path under an existing root
+	result := isPathUnderRoot(filepath.Join(tmpDir, "a", "b", "c", "d", "nonexistent"), tmpDir)
+	if !result {
+		t.Error("expected deeply nested non-existent path under root to return true")
 	}
 }
 

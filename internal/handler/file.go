@@ -484,9 +484,12 @@ type FileContent struct {
 // buildDirEntries builds a sorted list of directory entries
 // isNotDirError returns true if the error indicates the path is not a directory
 // (e.g. it is a file). This handles syscall.ENOTDIR across platforms.
+// On Windows, ReadDir on a file returns ERROR_DIRECTORY (0x267) which maps to
+// "The directory name is invalid" rather than "not a directory".
 func isNotDirError(err error) bool {
 	if pe, ok := err.(*os.PathError); ok {
-		return pe.Err.Error() == "not a directory"
+		msg := pe.Err.Error()
+		return msg == "not a directory" || msg == "The directory name is invalid."
 	}
 	return false
 }

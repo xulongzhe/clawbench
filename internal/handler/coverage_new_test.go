@@ -382,6 +382,11 @@ func TestIsNotDirError(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "PathErrorWithWindowsError",
+			err:  &os.PathError{Err: errors.New("The directory name is invalid."), Path: "C:\\foo"},
+			want: true,
+		},
+		{
 			name: "PathErrorWithOtherError",
 			err:  &os.PathError{Err: errors.New("permission denied"), Path: "/foo"},
 			want: false,
@@ -1808,4 +1813,206 @@ func TestServeRoots_EmptyRootPaths_FallsBackToHomeDir(t *testing.T) {
 	roots, ok := result["roots"].([]interface{})
 	assert.True(t, ok)
 	assert.NotEmpty(t, roots, "should fall back to homeDir when RootPaths is empty")
+}
+
+// ============================================================================
+// ServeProjects — additional coverage for DELETE method and relative paths
+// ============================================================================
+
+func TestServeProjects_DeleteMethod_Returns405(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodDelete, "/api/projects", nil)
+	w := callHandler(ServeProjects, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+}
+
+func TestServeProjects_RelativePathOutsideRoot(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Set RootPaths to a specific directory so relative paths are resolved against it
+	origRootPaths := model.RootPaths
+	tmpDir := t.TempDir()
+	model.RootPaths = []string{tmpDir}
+	defer func() { model.RootPaths = origRootPaths }()
+
+	// Create a subdirectory in the root
+	os.MkdirAll(filepath.Join(tmpDir, "subproject"), 0755)
+
+	t.Run("RelativePathUnderRoot_ReturnsOK", func(t *testing.T) {
+		req := newRequest(t, http.MethodGet, "/api/projects?path=subproject", nil)
+		w := callHandler(ServeProjects, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("RelativePathWithTraversalOutsideRoot_Returns403", func(t *testing.T) {
+		req := newRequest(t, http.MethodGet, "/api/projects?path=../../../etc", nil)
+		w := callHandler(ServeProjects, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+}
+
+func TestServeProjectsCreate_RelativePath(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Ensure subdirectory exists for create operations
+	os.MkdirAll(filepath.Join(env.WatchDir, "subproject"), 0755)
+
+	t.Run("AbsPathUnderRoot_Succeeds", func(t *testing.T) {
+		req := newRequest(t, http.MethodPost, "/api/projects", map[string]string{
+			"path": filepath.Join(env.WatchDir, "subproject"),
+			"name": "newdir",
+		})
+		w := callHandler(ServeProjects, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		info, err := os.Stat(filepath.Join(env.WatchDir, "subproject", "newdir"))
+		assert.NoError(t, err)
+		assert.True(t, info.IsDir())
+	})
+
+	t.Run("EmptyPathUsesFirstRoot", func(t *testing.T) {
+		req := newRequest(t, http.MethodPost, "/api/projects", map[string]string{
+			"path": "",
+			"name": "rootlevel",
+		})
+		w := callHandler(ServeProjects, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		info, err := os.Stat(filepath.Join(env.WatchDir, "rootlevel"))
+		assert.NoError(t, err)
+		assert.True(t, info.IsDir())
+	})
+
+	t.Run("RelativePath_ResolvesFromFirstRoot", func(t *testing.T) {
+		req := newRequest(t, http.MethodPost, "/api/projects", map[string]string{
+			"path": "subproject",
+			"name": "nested",
+		})
+		w := callHandler(ServeProjects, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+}
+
+// ============================================================================
+// UploadFile — default dir isPathUnderAnyRoot check
+// ============================================================================
+
+func TestUploadFile_DefaultDir_OutsideRoot_Returns403(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Set RootPaths to a different directory that doesn't include the project
+	// This triggers the defense-in-depth isPathUnderAnyRoot check for the default dir case
+	otherDir := t.TempDir()
+	origRootPaths := model.RootPaths
+	model.RootPaths = []string{otherDir}
+	defer func() { model.RootPaths = origRootPaths }()
+
+	// Create multipart upload request
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	part, err := writer.CreateFormFile("file", "test.txt")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("hello"))
+	require.NoError(t, err)
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(UploadFile, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+// ============================================================================
+// ValidateCreatePath — relative dirPath coverage
+// ============================================================================
+
+func TestValidateCreatePath_RelativeDirPath_UsesProjectCookie(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a subdirectory under the project
+	os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0755)
+
+	req := newRequest(t, http.MethodPost, "/api/file/create", map[string]string{
+		"path": "subdir",
+		"name": "newfile.txt",
+	})
+	withProjectCookie(req, env.ProjectDir)
+
+	w := callHandler(ServeFileCreate, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	_, err := os.Stat(filepath.Join(env.ProjectDir, "subdir", "newfile.txt"))
+	assert.NoError(t, err)
+}
+
+// ============================================================================
+// SafeRemoveAll — symlink escaping root paths
+// ============================================================================
+
+func TestSafeRemoveAll_SymlinkEscapingRootPaths_SkipsEscape(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	// Create a directory to delete
+	deleteDir := filepath.Join(env.WatchDir, "to-delete")
+	os.MkdirAll(deleteDir, 0755)
+
+	// Create a file inside
+	createTestFile(t, deleteDir, "normal.txt", "content")
+
+	// Create a symlink inside that points outside root paths
+	outsideDir := t.TempDir()
+	createTestFile(t, outsideDir, "secret.txt", "secret")
+	linkPath := filepath.Join(deleteDir, "escape-link")
+	os.Symlink(outsideDir, linkPath)
+
+	// Delete the directory using safeRemoveAll
+	err := safeRemoveAll(deleteDir)
+	require.NoError(t, err)
+
+	// The directory should be gone
+	_, err = os.Stat(deleteDir)
+	assert.True(t, os.IsNotExist(err))
+
+	// The outside file should still exist (symlink was not followed)
+	_, err = os.Stat(filepath.Join(outsideDir, "secret.txt"))
+	assert.NoError(t, err, "file outside root paths should not be deleted")
+}
+
+// ============================================================================
+// CopyDir — symlink escaping root paths via copyDir
+// ============================================================================
+
+func TestCopyDir_SymlinkEscapingRootPaths_Skipped(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	srcDir := filepath.Join(env.WatchDir, "copy-src")
+	os.MkdirAll(srcDir, 0755)
+	createTestFile(t, srcDir, "normal.txt", "content")
+
+	// Create symlink pointing outside root paths
+	outsideDir := t.TempDir()
+	os.Symlink(outsideDir, filepath.Join(srcDir, "escape-link"))
+
+	dstDir := filepath.Join(env.WatchDir, "copy-dst")
+
+	err := copyDir(srcDir, dstDir)
+	require.NoError(t, err)
+
+	// Normal file should be copied
+	_, err = os.Stat(filepath.Join(dstDir, "normal.txt"))
+	assert.NoError(t, err)
+
+	// Symlink should NOT be copied (it escapes root paths)
+	_, err = os.Lstat(filepath.Join(dstDir, "escape-link"))
+	assert.True(t, os.IsNotExist(err), "escaping symlink should not be copied")
 }

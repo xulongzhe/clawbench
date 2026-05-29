@@ -417,7 +417,12 @@ func TestServeProjects(t *testing.T) {
 		_, teardown := setupTestEnv(t)
 		defer teardown()
 
-		req := newRequest(t, http.MethodGet, "/api/projects?path=/etc", nil)
+		// Use os.TempDir() which is always an absolute path outside the test's WatchDir.
+		// Do NOT use "/etc" — on Windows, forward-slash paths without a drive letter
+		// are not considered absolute by filepath.IsAbs, causing the path to be
+		// treated as relative and resolved differently.
+		outsidePath := os.TempDir()
+		req := newRequest(t, http.MethodGet, "/api/projects?path="+outsidePath, nil)
 		w := callHandler(ServeProjects, req)
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	})
