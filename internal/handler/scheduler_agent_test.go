@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"clawbench/internal/model"
 	"clawbench/internal/service"
@@ -424,14 +423,11 @@ func TestServeTaskByID_Trigger_AlreadyRunning(t *testing.T) {
 	}
 	s.AddTask(task)
 
-	// Manually trigger the task via service layer to mark it as running atomically
-	err := s.TriggerTask(task.ID)
-	assert.NoError(t, err)
+	// Simulate a running task using the public MarkTaskRunning helper (ISS-187)
+	s.MarkTaskRunning(task.ID)
+	defer s.UnmarkTaskRunning(task.ID)
 
-	// Wait briefly for the goroutine to start and claim the taskRunning slot
-	time.Sleep(100 * time.Millisecond)
-
-	// HTTP trigger should return 409 Conflict since task is already running
+	// Trigger should return 409 Conflict since task is already running
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
 		"action": "trigger",
 	})

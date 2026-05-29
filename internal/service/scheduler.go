@@ -107,6 +107,17 @@ func (s *Scheduler) HasRunningExecutions(taskID int64) bool {
 	return found
 }
 
+// MarkTaskRunning atomically marks a task as running. Used for testing to simulate
+// a running task without actually executing the AI backend.
+func (s *Scheduler) MarkTaskRunning(taskID int64) {
+	s.taskRunning.Store(taskID, struct{}{})
+}
+
+// UnmarkTaskRunning removes the running flag for a task. Used for testing cleanup.
+func (s *Scheduler) UnmarkTaskRunning(taskID int64) {
+	s.taskRunning.Delete(taskID)
+}
+
 // CancelExecution cancels a specific running execution by its ID.
 // Returns error if the execution is not found or already finished.
 func (s *Scheduler) CancelExecution(executionID string) error {
