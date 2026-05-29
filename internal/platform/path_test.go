@@ -221,15 +221,15 @@ func TestIsPathUnderAnyRoot(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "path under second root",
-			absPath:  "/home/user/project",
-			roots:    []string{"/var", "/home"},
+			name:     "path under second root (non-existent paths, lexical match)",
+			absPath:  "/fake/root2/subdir",
+			roots:    []string{"/fake/root1", "/fake/root2"},
 			expected: true,
 		},
 		{
-			name:     "path not under any of multiple roots",
+			name:     "path not under any of multiple roots (non-existent, lexical)",
 			absPath:  "/opt/something",
-			roots:    []string{"/var", "/home"},
+			roots:    []string{"/fake/root1", "/fake/root2"},
 			expected: false,
 		},
 	}
