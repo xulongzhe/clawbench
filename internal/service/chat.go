@@ -292,7 +292,7 @@ func generateSessionID() string {
 // Only returns sessions with session_type='chat' (excludes scheduled sessions).
 func GetSessions(projectPath, backend string) ([]model.ChatSession, error) {
 	sessions := []model.ChatSession{}
-	query := `SELECT s.id, s.title, s.backend, s.agent_id, s.agent_source, s.model, s.session_type, s.created_at, s.updated_at, s.last_read_at,
+	query := `SELECT s.id, s.title, s.backend, s.agent_id, s.agent_source, s.model, s.session_type, s.source_session_id, s.created_at, s.updated_at, s.last_read_at,
 		COALESCE(unread.cnt, 0) AS unread_count
 		FROM chat_sessions s
 		LEFT JOIN (
@@ -321,11 +321,15 @@ func GetSessions(projectPath, backend string) ([]model.ChatSession, error) {
 	for rows.Next() {
 		var s model.ChatSession
 		var lastRead sql.NullTime
-		if err := rows.Scan(&s.ID, &s.Title, &s.Backend, &s.AgentID, &s.AgentSource, &s.Model, &s.SessionType, &s.CreatedAt, &s.UpdatedAt, &lastRead, &s.UnreadCount); err != nil {
+		var sourceSessionID sql.NullString
+		if err := rows.Scan(&s.ID, &s.Title, &s.Backend, &s.AgentID, &s.AgentSource, &s.Model, &s.SessionType, &sourceSessionID, &s.CreatedAt, &s.UpdatedAt, &lastRead, &s.UnreadCount); err != nil {
 			return nil, err
 		}
 		if lastRead.Valid {
 			s.LastReadAt = &lastRead.Time
+		}
+		if sourceSessionID.Valid {
+			s.SourceSessionID = sourceSessionID.String
 		}
 		sessions = append(sessions, s)
 	}
@@ -348,7 +352,7 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 	}
 
 	// Build main query with cursor and limit+1
-	query := `SELECT s.id, s.title, s.backend, s.agent_id, s.agent_source, s.model, s.session_type, s.created_at, s.updated_at, s.last_read_at,
+	query := `SELECT s.id, s.title, s.backend, s.agent_id, s.agent_source, s.model, s.session_type, s.source_session_id, s.created_at, s.updated_at, s.last_read_at,
 		COALESCE(unread.cnt, 0) AS unread_count
 		FROM chat_sessions s
 		LEFT JOIN (
@@ -383,11 +387,15 @@ func GetSessionsPaged(projectPath, backend string, limit int, cursor string, cur
 	for rows.Next() {
 		var s model.ChatSession
 		var lastRead sql.NullTime
-		if err := rows.Scan(&s.ID, &s.Title, &s.Backend, &s.AgentID, &s.AgentSource, &s.Model, &s.SessionType, &s.CreatedAt, &s.UpdatedAt, &lastRead, &s.UnreadCount); err != nil {
+		var sourceSessionID sql.NullString
+		if err := rows.Scan(&s.ID, &s.Title, &s.Backend, &s.AgentID, &s.AgentSource, &s.Model, &s.SessionType, &sourceSessionID, &s.CreatedAt, &s.UpdatedAt, &lastRead, &s.UnreadCount); err != nil {
 			return nil, false, err
 		}
 		if lastRead.Valid {
 			s.LastReadAt = &lastRead.Time
+		}
+		if sourceSessionID.Valid {
+			s.SourceSessionID = sourceSessionID.String
 		}
 		sessions = append(sessions, s)
 	}

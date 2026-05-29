@@ -132,8 +132,14 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 	}
 
 	// 9. Copy chat_history (only deleted=0 AND streaming=0)
+	// NOTE: We intentionally do NOT copy created_at. The Go SQLite driver (modernc.org/sqlite)
+	// converts DATETIME columns to ISO 8601 UTC format (e.g. "2026-05-29T01:59:53Z") when reading,
+	// but CURRENT_TIMESTAMP produces "YYYY-MM-DD HH:MM:SS" local format. Writing the ISO format
+	// back would break string-based time comparisons (e.g. unread count query uses
+	// h.created_at > s2.last_read_at). Instead, we let the database assign CURRENT_TIMESTAMP,
+	// which guarantees format consistency. Message ordering relies on auto-increment id, not created_at.
 	rows, err := DB.Query(
-		"SELECT id, project_path, role, content, files, backend, created_at FROM chat_history WHERE session_id = ? AND deleted = 0 AND streaming = 0 ORDER BY id",
+		"SELECT id, project_path, role, content, files, backend FROM chat_history WHERE session_id = ? AND deleted = 0 AND streaming = 0 ORDER BY id",
 		sourceSessionID,
 	)
 	if err != nil {
@@ -147,12 +153,11 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 		content     string
 		files       sql.NullString
 		backend     string
-		createdAt   sql.NullString
 	}
 	var messages []sourceMsg
 	for rows.Next() {
 		var m sourceMsg
-		if err := rows.Scan(&m.id, &m.projectPath, &m.role, &m.content, &m.files, &m.backend, &m.createdAt); err != nil {
+		if err := rows.Scan(&m.id, &m.projectPath, &m.role, &m.content, &m.files, &m.backend); err != nil {
 			rows.Close()
 			return "", false, fmt.Errorf("failed to scan source message: %w", err)
 		}
@@ -163,15 +168,9 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 	// Insert messages and build old ID -> new ID mapping for summaries
 	idMap := make(map[int64]int64)
 	for _, m := range messages {
-		var createdAt interface{}
-		if m.createdAt.Valid {
-			createdAt = m.createdAt.String
-		} else {
-			createdAt = nil
-		}
 		result, err := DB.Exec(
-			"INSERT INTO chat_history (project_path, role, content, files, session_id, backend, streaming, deleted, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?)",
-			m.projectPath, m.role, m.content, m.files, newSessionID, m.backend, createdAt,
+			"INSERT INTO chat_history (project_path, role, content, files, session_id, backend, streaming, deleted) VALUES (?, ?, ?, ?, ?, ?, 0, 0)",
+			m.projectPath, m.role, m.content, m.files, newSessionID, m.backend,
 		)
 		if err != nil {
 			return "", false, fmt.Errorf("failed to copy message %d: %w", m.id, err)

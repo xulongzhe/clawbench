@@ -23,18 +23,19 @@ type ChatMessage struct {
 
 // ChatSession represents a chat session
 type ChatSession struct {
-	ID          string     `json:"id"`
-	Title       string     `json:"title"`
-	Backend     string     `json:"backend"`
-	AgentID     string     `json:"agentId,omitempty"`
-	AgentSource string     `json:"agentSource,omitempty"`
-	Model       string     `json:"model,omitempty"`
-	SessionType string     `json:"sessionType,omitempty"` // "chat" | "scheduled"
-	CreatedAt   time.Time  `json:"createdAt"`
-	UpdatedAt   time.Time  `json:"updatedAt"`
-	Running     bool       `json:"running,omitempty"`
-	UnreadCount int        `json:"unreadCount,omitempty"`
-	LastReadAt  *time.Time `json:"-"`
+	ID              string     `json:"id"`
+	Title           string     `json:"title"`
+	Backend         string     `json:"backend"`
+	AgentID         string     `json:"agentId,omitempty"`
+	AgentSource     string     `json:"agentSource,omitempty"`
+	Model           string     `json:"model,omitempty"`
+	SessionType     string     `json:"sessionType,omitempty"` // "chat" | "scheduled"
+	SourceSessionID string     `json:"sourceSessionId,omitempty"` // non-empty = continued from scheduled task
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+	Running         bool       `json:"running,omitempty"`
+	UnreadCount     int        `json:"unreadCount,omitempty"`
+	LastReadAt      *time.Time `json:"-"`
 }
 
 // QueuedMessage represents a message waiting in the pending queue for a session.

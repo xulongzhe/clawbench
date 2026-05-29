@@ -3,13 +3,6 @@
     <!-- Header: breadcrumb + actions -->
     <div class="exec-detail-header">
       <TaskBreadcrumb />
-      <button v-if="showContinueBtn" class="header-btn continue-btn" :class="{ 'continue-btn-active': !continueLoading && !isRunning }" :disabled="continueLoading || isRunning" @click="onContinueConversation" :title="t('task.exec.continueConversation')">
-        <MessageSquare :size="14" />
-        <span v-if="continueLoading" class="continue-label">{{ t('task.exec.continueConversationLoading') }}</span>
-      </button>
-      <button class="header-btn refresh-btn" :class="{ spinning: refreshing }" :disabled="refreshing" @click="onRefresh" :title="t('common.refresh')">
-        <RefreshCw :size="14" />
-      </button>
     </div>
 
     <!-- Scrollable message content -->
@@ -31,6 +24,18 @@
       />
       <div v-else-if="execDetail?.status === 'cancelled'" class="exec-cancelled-notice">{{ t('task.exec.cancelledNotice') }}</div>
       <div v-else class="exec-detail-empty">{{ t('task.exec.noTextOutput') }}</div>
+    </div>
+
+    <!-- Fixed bottom action bar -->
+    <div class="exec-detail-actions">
+      <button v-if="showContinueBtn" class="action-btn accent" :disabled="continueLoading || isRunning" @click="onContinueConversation" :title="t('task.exec.continueConversation')">
+        <MessageSquare :size="14" />
+        <span class="action-text">{{ continueLoading ? t('task.exec.continueConversationLoading') : t('task.exec.continueConversation') }}</span>
+      </button>
+      <span class="actions-spacer"></span>
+      <button class="action-btn" :class="{ spinning: refreshing }" :disabled="refreshing" @click="onRefresh" :title="t('common.refresh')">
+        <RefreshCw :size="14" />
+      </button>
     </div>
 
     <!-- Tool Detail Overlay -->
@@ -347,73 +352,81 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.header-btn {
-  width: 28px;
+.exec-detail-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 8px;
+}
+
+/* Fixed bottom action bar */
+.exec-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--bg-primary, #ffffff);
+  border-top: 1px solid var(--border-color, #e5e5e5);
+  flex-shrink: 0;
+}
+
+.actions-spacer {
+  flex: 1;
+}
+
+.action-btn {
   height: 28px;
   border: none;
   border-radius: 14px;
   background: var(--bg-secondary, #f1f3f5);
   color: var(--text-secondary, #666);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.2s ease;
+  gap: 4px;
+  transition: all 0.15s ease;
 }
 
-.header-btn:disabled {
+.action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
 @media (hover: hover) {
-  .header-btn:hover:not(:disabled) {
-    background: var(--bg-tertiary, #eef1f4);
-    color: var(--accent-color, #0066cc);
+  .action-btn:hover:not(:disabled) {
+    background: var(--border-color, #e5e5e5);
+    transform: translateY(-1px);
   }
 }
 
-.header-btn:active:not(:disabled) {
-  transform: scale(0.9);
+.action-btn:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
-.header-btn.spinning svg {
-  animation: exec-spin 1s linear infinite;
-}
-
-.continue-btn {
-  width: auto;
-  padding: 0 8px;
-  gap: 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.continue-btn .continue-label {
-  white-space: nowrap;
-}
-
-.continue-btn-active {
+.action-btn.accent {
   background: var(--accent-color, #0066cc);
   color: #fff;
 }
 
 @media (hover: hover) {
-  .continue-btn-active:hover:not(:disabled) {
-    background: var(--accent-color-dark, #0055aa);
-    color: #fff;
+  .action-btn.accent:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent-color, #0066cc) 85%, black);
   }
+}
+
+.action-btn.spinning svg {
+  animation: exec-spin 1s linear infinite;
+}
+
+.action-text {
+  white-space: nowrap;
 }
 
 @keyframes exec-spin {
   100% { transform: rotate(360deg); }
-}
-
-.exec-detail-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 8px;
 }
 
 .exec-detail-empty {

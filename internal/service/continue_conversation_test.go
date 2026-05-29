@@ -448,3 +448,90 @@ func helperCreateScheduledSessionWithDetails(t *testing.T, projectPath, backend,
 	}
 	return id
 }
+
+func TestContinueFromExecution_CopiesTaskExecutionSummary(t *testing.T) {
+	setupDB(t)
+	projectPath := "/test/project"
+
+	// Create task + session + assistant message + execution
+	taskID := helperCreateScheduledTask(t, projectPath, "Summary Test", "agent1")
+	sessionID := helperCreateScheduledSessionWithDetails(t, projectPath, "claude", "Summary Test", "agent1", "", "")
+	_, err := service.DB.Exec("INSERT INTO chat_history (session_id, project_path, role, content, backend) VALUES (?, ?, 'user', 'hello', 'claude')", sessionID, projectPath)
+	assert.NoError(t, err)
+	_, err = service.DB.Exec("INSERT INTO chat_history (session_id, project_path, role, content, backend) VALUES (?, ?, 'assistant', '{\"blocks\":[{\"type\":\"text\",\"text\":\"response\"}]}', 'claude')", sessionID, projectPath)
+	assert.NoError(t, err)
+	execID := helperCreateTaskExecution(t, taskID, sessionID, "completed")
+
+	// Add task_execution type summary (this is what scheduled sessions have)
+	_, err = service.DB.Exec("INSERT INTO summaries (target_type, target_id, summary, created_at) VALUES ('task_execution', ?, 'This is the task execution summary', CURRENT_TIMESTAMP)", execID)
+	assert.NoError(t, err)
+
+	// Continue
+	newSessionID, alreadyExists, err := service.ContinueFromExecution(execID, projectPath)
+	assert.NoError(t, err)
+	assert.False(t, alreadyExists)
+	assert.NotEmpty(t, newSessionID)
+
+	// Verify: task_execution summary is copied as chat_message type to the last assistant message
+	var lastAssistantID int64
+	err = service.DB.QueryRow("SELECT id FROM chat_history WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1", newSessionID).Scan(&lastAssistantID)
+	assert.NoError(t, err)
+
+	var copiedSummary string
+	err = service.DB.QueryRow("SELECT summary FROM summaries WHERE target_type = 'chat_message' AND target_id = ?", lastAssistantID).Scan(&copiedSummary)
+	assert.NoError(t, err)
+	assert.Equal(t, "This is the task execution summary", copiedSummary)
+}
+
+// Regression test: copied messages must NOT have ISO 8601 UTC timestamps
+// (e.g. "2026-05-29T01:59:53Z") because the Go SQLite driver converts DATETIME
+// to that format when reading. When written back, the format breaks string-based
+// time comparisons with CURRENT_TIMESTAMP format ("YYYY-MM-DD HH:MM:SS"),
+// causing phantom unread badges. The fix: let the database assign CURRENT_TIMESTAMP
+// as created_at instead of copying the ISO-format value.
+func TestContinueFromExecution_CreatedAtFormatConsistent(t *testing.T) {
+	setupDB(t)
+	projectPath := "/project"
+
+	taskID := helperCreateScheduledTask(t, projectPath, "Format Test", "claude")
+	sessID := helperCreateScheduledSession(t, projectPath, "claude", "Format Test")
+	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
+
+	// Add messages (AddChatMessage uses DEFAULT CURRENT_TIMESTAMP → "YYYY-MM-DD HH:MM:SS")
+	_, err := service.AddChatMessage(projectPath, "claude", sessID, "user", "prompt", nil, false, "")
+	assert.NoError(t, err)
+	_, err = service.AddChatMessage(projectPath, "claude", sessID, "assistant", "response", nil, false, "")
+	assert.NoError(t, err)
+
+	newSessID, _, err := service.ContinueFromExecution(execID, projectPath)
+	assert.NoError(t, err)
+
+	// Verify: copied messages' created_at should NOT contain 'T' or 'Z' (ISO format markers)
+	var hasBadFormat int
+	err = service.DB.QueryRow(
+		"SELECT COUNT(*) FROM chat_history WHERE session_id = ? AND (created_at LIKE '%T%' OR created_at LIKE '%Z%')",
+		newSessID,
+	).Scan(&hasBadFormat)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, hasBadFormat, "copied messages should use CURRENT_TIMESTAMP format, not ISO 8601")
+
+	// Verify: unread count query should return 0 for the continued session
+	// (last_read_at is set at creation time, and created_at uses the same format)
+	var unreadCount int
+	err = service.DB.QueryRow(`
+		SELECT COALESCE(unread.cnt, 0) FROM chat_sessions s
+		LEFT JOIN (
+			SELECT h.session_id, COUNT(*) AS cnt
+			FROM chat_history h
+			JOIN chat_sessions s2 ON s2.id = h.session_id
+			WHERE h.project_path = ?
+			  AND h.role = 'assistant' AND h.streaming = 0 AND h.deleted = 0
+			  AND (s2.last_read_at IS NULL OR h.created_at > s2.last_read_at)
+			GROUP BY h.session_id
+		) unread ON unread.session_id = s.id
+		WHERE s.id = ?`,
+		projectPath, newSessID,
+	).Scan(&unreadCount)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, unreadCount, "continued session should have 0 unread messages after creation")
+}

@@ -292,6 +292,7 @@ export default {
     selectAgent: '选择智能体',
     noSessions: '暂无会话',
     running: '运行中',
+    fromTask: '定时',
     confirmDelete: '确定删除此会话及其所有聊天记录?',
     unnamed: '未命名会话',
     queueFailed: '加入队列失败',

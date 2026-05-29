@@ -292,6 +292,7 @@ export default {
     selectAgent: 'Select agent',
     noSessions: 'No sessions',
     running: 'Running',
+    fromTask: 'Task',
     confirmDelete: 'Delete this session and all chat history?',
     unnamed: 'Unnamed session',
     queueFailed: 'Failed to enqueue',
