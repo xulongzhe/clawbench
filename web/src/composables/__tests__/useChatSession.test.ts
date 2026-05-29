@@ -2314,3 +2314,218 @@ describe('loadMoreMessages', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 })
+
+// ───────────────────────────────────────────────────────────
+// continueFromExecution
+// ───────────────────────────────────────────────────────────
+
+describe('continueFromExecution', () => {
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    resetMockState()
+    resetAdditionalMocks()
+    originalFetch = globalThis.fetch
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('normal flow: check → POST → switchTab → switchSession', async () => {
+    // 1. GET check: { exists: false, sessionId: '' }
+    // 2. POST create: { ok: true, sessionId: 'new-s1', alreadyExists: false }
+    // 3. switchSession('new-s1') → GET /api/ai/chat?session_id=new-s1
+    // 4. loadSessionsOnce → GET /api/ai/sessions
+    const mockSwitchTab = vi.fn()
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ exists: false, sessionId: '' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, sessionId: 'new-s1', alreadyExists: false }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          sessionId: 'new-s1', messages: [], total: 0,
+          backend: 'claude', agentId: 'agent1', modelId: '', thinkingEffort: '', running: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ sessions: [] }),
+      })
+
+    const session = createSession()
+    const result = await session.continueFromExecution(1, 42, mockSwitchTab)
+
+    expect(result).toBe(true)
+    // 1. GET check
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, '/api/tasks/1/executions/42/continue')
+    // 2. POST create
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, '/api/tasks/1/executions/42/continue', expect.objectContaining({ method: 'POST' }))
+    // 3. switchTab called first, then switchSession
+    expect(mockSwitchTab).toHaveBeenCalledWith('chat')
+    // 4. switchSession called with new session ID (delegated via loadHistory fetch)
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(3, expect.stringContaining('/api/ai/chat?session_id=new-s1'))
+  })
+
+  it('already continued: skips POST, navigates to existing session', async () => {
+    // GET check: { exists: true, sessionId: 'existing-s1' }
+    const mockSwitchTab = vi.fn()
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ exists: true, sessionId: 'existing-s1' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          sessionId: 'existing-s1', messages: [], total: 0,
+          backend: 'claude', agentId: 'agent1', modelId: '', thinkingEffort: '', running: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ sessions: [] }),
+      })
+
+    const session = createSession()
+    const result = await session.continueFromExecution(1, 42, mockSwitchTab)
+
+    expect(result).toBe(true)
+    // Only GET check + switchSession fetches (no POST)
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3)
+    expect(globalThis.fetch).not.toHaveBeenCalledWith('/api/tasks/1/executions/42/continue', expect.objectContaining({ method: 'POST' }))
+    expect(mockSwitchTab).toHaveBeenCalledWith('chat')
+  })
+
+  it('POST returns 409 (session limit): shows toast error', async () => {
+    // GET check: not continued
+    // POST create: 409 error
+    const mockSwitchTab = vi.fn()
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ exists: false, sessionId: '' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ error: 'max sessions reached', msgKey: 'SessionLimitReached' }),
+      })
+
+    const session = createSession()
+    const result = await session.continueFromExecution(1, 42, mockSwitchTab)
+
+    expect(result).toBe(false)
+    expect(mockSwitchTab).not.toHaveBeenCalled()
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+  })
+
+  it('POST returns other error: shows generic toast error', async () => {
+    const mockSwitchTab = vi.fn()
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ exists: false, sessionId: '' }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ error: 'internal server error' }),
+      })
+
+    const session = createSession()
+    const result = await session.continueFromExecution(1, 42, mockSwitchTab)
+
+    expect(result).toBe(false)
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+  })
+
+  it('GET check fails: shows toast error', async () => {
+    const mockSwitchTab = vi.fn()
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        json: () => Promise.resolve({ error: 'server error' }),
+      })
+
+    const session = createSession()
+    const result = await session.continueFromExecution(1, 42, mockSwitchTab)
+
+    expect(result).toBe(false)
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+  })
+
+  it('POST returns ok but no sessionId: shows toast error', async () => {
+    const mockSwitchTab = vi.fn()
+    globalThis.fetch = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ exists: false, sessionId: '' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, sessionId: '', alreadyExists: false }),
+      })
+
+    const session = createSession()
+    const result = await session.continueFromExecution(1, 42, mockSwitchTab)
+
+    expect(result).toBe(false)
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+  })
+
+  it('network error during check: shows toast error, returns false', async () => {
+    const mockSwitchTab = vi.fn()
+    globalThis.fetch = vi.fn().mockRejectedValueOnce(new Error('Network error'))
+
+    const session = createSession()
+    const result = await session.continueFromExecution(1, 42, mockSwitchTab)
+
+    expect(result).toBe(false)
+    expect(mockToastFn).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ type: 'error' })
+    )
+  })
+
+  it('checkContinueSession: returns check result without creating', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve({ exists: true, sessionId: 'existing-s1' }),
+    })
+
+    const session = createSession()
+    const result = await session.checkContinueSession(1, 42)
+
+    expect(result).toEqual({ exists: true, sessionId: 'existing-s1' })
+    expect(globalThis.fetch).toHaveBeenCalledWith('/api/tasks/1/executions/42/continue')
+  })
+
+  it('checkContinueSession: handles fetch error gracefully', async () => {
+    globalThis.fetch = vi.fn().mockRejectedValueOnce(new Error('Network error'))
+
+    const session = createSession()
+    const result = await session.checkContinueSession(1, 42)
+
+    expect(result).toEqual({ exists: false, sessionId: '' })
+  })
+})

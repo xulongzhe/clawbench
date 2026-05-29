@@ -126,6 +126,25 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle executions/{execId}/continue sub-path
+	if strings.HasPrefix(subPath, "executions/") {
+		execParts := strings.SplitN(strings.TrimPrefix(subPath, "executions/"), "/", 2)
+		execIDStr := execParts[0]
+		execSubPath := ""
+		if len(execParts) > 1 {
+			execSubPath = execParts[1]
+		}
+		if execSubPath == "continue" && execIDStr != "" {
+			execID, err := strconv.ParseInt(execIDStr, 10, 64)
+			if err != nil {
+				writeLocalizedErrorf(w, r, http.StatusBadRequest, "ExecutionIdInvalid")
+				return
+			}
+			serveContinueConversation(w, r, taskID, execID, projectPath)
+			return
+		}
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		task, err := service.GetTaskByID(taskID)
@@ -446,4 +465,76 @@ func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID int64, p
 		result["hasMore"] = hasMore
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// serveContinueConversation handles GET (check) and POST (create) for
+// continuing a task execution as a chat session.
+// GET  /api/tasks/{id}/executions/{execId}/continue → {exists, sessionId}
+// POST /api/tasks/{id}/executions/{execId}/continue → {ok, sessionId, alreadyExists}
+func serveContinueConversation(w http.ResponseWriter, r *http.Request, taskID, execID int64, projectPath string) {
+	switch r.Method {
+	case http.MethodGet:
+		serveContinueConversationCheck(w, r, execID, projectPath)
+	case http.MethodPost:
+		serveContinueConversationCreate(w, r, taskID, execID, projectPath)
+	default:
+		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
+	}
+}
+
+func serveContinueConversationCheck(w http.ResponseWriter, r *http.Request, execID int64, projectPath string) {
+	exists, sessionID, err := service.CheckContinueSession(execID)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			writeLocalizedErrorf(w, r, http.StatusNotFound, "ExecutionNotFound")
+			return
+		}
+		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"exists":    exists,
+		"sessionId": sessionID,
+	})
+}
+
+func serveContinueConversationCreate(w http.ResponseWriter, r *http.Request, taskID, execID int64, projectPath string) {
+	// Validate task ownership first
+	task, err := service.GetTaskByID(taskID)
+	if err != nil {
+		writeLocalizedError(w, r, model.NotFound(err, "TaskNotFound"))
+		return
+	}
+	if task.ProjectPath != projectPath {
+		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+		return
+	}
+
+	sessionID, alreadyExists, err := service.ContinueFromExecution(execID, projectPath)
+	if err != nil {
+		errMsg := err.Error()
+		switch {
+		case strings.Contains(errMsg, "not found"):
+			writeLocalizedError(w, r, model.NotFound(err, "ExecutionNotFound"))
+		case strings.Contains(errMsg, "still running"):
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "ExecutionStillRunning")
+		case strings.Contains(errMsg, "session limit"):
+			writeLocalizedErrorf(w, r, http.StatusConflict, "SessionLimitReached", map[string]any{"MaxCount": model.SessionMaxCount})
+		case strings.Contains(errMsg, "does not belong"):
+			writeLocalizedError(w, r, model.Forbidden(err, "AccessDenied"))
+		default:
+			writeLocalizedError(w, r, model.Internal(err))
+		}
+		return
+	}
+
+	// Set session cookie for subsequent requests
+	setSessionID(w, sessionID)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":            true,
+		"sessionId":     sessionID,
+		"alreadyExists": alreadyExists,
+	})
 }
