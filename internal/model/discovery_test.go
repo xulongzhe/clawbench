@@ -35,7 +35,9 @@ func TestBackendRegistry_FieldsPopulated(t *testing.T) {
 	for _, spec := range model.BackendRegistry {
 		assert.NotEmpty(t, spec.ID, "ID should not be empty")
 		assert.NotEmpty(t, spec.Backend, "Backend should not be empty for %s", spec.ID)
-		assert.NotEmpty(t, spec.DefaultCmd, "DefaultCmd should not be empty for %s", spec.ID)
+		if !spec.NoCLI {
+			assert.NotEmpty(t, spec.DefaultCmd, "DefaultCmd should not be empty for %s", spec.ID)
+		}
 		assert.NotEmpty(t, spec.Name, "Name should not be empty for %s", spec.ID)
 		assert.NotEmpty(t, spec.Icon, "Icon should not be empty for %s", spec.ID)
 		assert.NotEmpty(t, spec.Specialty, "Specialty should not be empty for %s", spec.ID)
@@ -625,9 +627,11 @@ func TestSyncDiscoverAgents_ReturnsPresentMap(t *testing.T) {
 	// For each backend that's installed, present[backend] should be true
 	for _, spec := range model.BackendRegistry {
 		if present[spec.Backend] {
-			// If marked present, the CLI should actually exist
-			assert.True(t, model.CheckCLIExists(spec.DefaultCmd),
-				"SyncDiscoverAgents marked %s as present but CLI not found", spec.Backend)
+			// If marked present, the CLI should actually exist (or it's a NoCLI backend)
+			if !spec.NoCLI {
+				assert.True(t, model.CheckCLIExists(spec.DefaultCmd),
+					"SyncDiscoverAgents marked %s as present but CLI not found", spec.Backend)
+			}
 		}
 	}
 }

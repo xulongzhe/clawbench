@@ -2,6 +2,7 @@ package ai
 
 import (
 	"encoding/json"
+	"os/exec"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -217,6 +218,124 @@ func TestVeCLISessionSummary_EmptyModels(t *testing.T) {
 	assert.Equal(t, "fallback-model", meta.Model, "should use request model as fallback")
 	assert.Equal(t, 0, meta.InputTokens)
 	assert.Equal(t, 0, meta.OutputTokens)
+}
+
+// --- parseVeCLISessionSummary additional tests ---
+
+func TestParseVeCLISessionSummary_EmptyObject(t *testing.T) {
+	summary, err := parseVeCLISessionSummary([]byte("{}"))
+	require.NoError(t, err)
+	assert.NotNil(t, summary)
+	assert.Empty(t, summary.SessionMetrics.Models)
+}
+
+func TestParseVeCLISessionSummary_MultipleModels(t *testing.T) {
+	raw := `{
+		"sessionMetrics": {
+			"models": {
+				"model-a": {
+					"api": {"totalRequests": 1, "totalErrors": 0, "totalLatencyMs": 100},
+					"tokens": {"prompt": 100, "candidates": 50, "total": 150, "cached": 0, "thoughts": 0, "tool": 0}
+				},
+				"model-b": {
+					"api": {"totalRequests": 2, "totalErrors": 0, "totalLatencyMs": 200},
+					"tokens": {"prompt": 200, "candidates": 100, "total": 300, "cached": 0, "thoughts": 0, "tool": 0}
+				}
+			},
+			"tools": {"totalCalls": 0},
+			"files": {}
+		}
+	}`
+
+	summary, err := parseVeCLISessionSummary([]byte(raw))
+	require.NoError(t, err)
+	assert.Len(t, summary.SessionMetrics.Models, 2)
+}
+
+// --- extractMetadata additional tests ---
+
+func TestVeCLISessionSummary_ExtractMetadata_MatchingModel(t *testing.T) {
+	raw := `{
+		"sessionMetrics": {
+			"models": {
+				"gemini-2.5-pro": {
+					"api": {"totalRequests": 1, "totalErrors": 0, "totalLatencyMs": 500},
+					"tokens": {"prompt": 300, "candidates": 150, "total": 450, "cached": 0, "thoughts": 0, "tool": 0}
+				},
+				"other-model": {
+					"api": {"totalRequests": 2, "totalErrors": 0, "totalLatencyMs": 800},
+					"tokens": {"prompt": 500, "candidates": 250, "total": 750, "cached": 0, "thoughts": 0, "tool": 0}
+				}
+			},
+			"tools": {"totalCalls": 0},
+			"files": {}
+		}
+	}`
+
+	var summary VeCLISessionSummary
+	require.NoError(t, json.Unmarshal([]byte(raw), &summary))
+
+	meta := summary.extractMetadata("gemini-2.5-pro")
+	assert.Equal(t, "gemini-2.5-pro", meta.Model)
+	assert.Equal(t, 300, meta.InputTokens)
+	assert.Equal(t, 150, meta.OutputTokens)
+	assert.Equal(t, 500, meta.DurationMs)
+}
+
+func TestVeCLISessionSummary_ExtractMetadata_FallbackToFirst(t *testing.T) {
+	raw := `{
+		"sessionMetrics": {
+			"models": {
+				"some-model": {
+					"api": {"totalRequests": 1, "totalErrors": 0, "totalLatencyMs": 300},
+					"tokens": {"prompt": 100, "candidates": 50, "total": 150, "cached": 0, "thoughts": 0, "tool": 0}
+				}
+			},
+			"tools": {"totalCalls": 0},
+			"files": {}
+		}
+	}`
+
+	var summary VeCLISessionSummary
+	require.NoError(t, json.Unmarshal([]byte(raw), &summary))
+
+	meta := summary.extractMetadata("nonexistent-model")
+	assert.Equal(t, "some-model", meta.Model, "should fall back to first model entry")
+	assert.Equal(t, 100, meta.InputTokens)
+}
+
+func TestVeCLISessionSummary_ExtractMetadata_NoModelsNoReqModel(t *testing.T) {
+	var summary VeCLISessionSummary
+	require.NoError(t, json.Unmarshal([]byte(`{"sessionMetrics":{"models":{},"tools":{},"files":{}}}`), &summary))
+
+	meta := summary.extractMetadata("")
+	assert.Equal(t, "", meta.Model, "should be empty when no models and no request model")
+}
+
+// --- VeCLIBackend additional tests ---
+
+func TestVeCLIBackend_vecliPreStart(t *testing.T) {
+	b := NewVeCLIBackend()
+	cmd := &exec.Cmd{Args: []string{"vecli"}}
+	req := ChatRequest{SessionID: "test-session-123"}
+
+	b.vecliPreStart(cmd, req)
+
+	assert.Contains(t, cmd.Args, "--session-summary")
+	idx := indexOfArg(cmd.Args, "--session-summary")
+	require.GreaterOrEqual(t, idx, 0)
+	assert.Contains(t, cmd.Args[idx+1], "test-session-123.json", "summary filename should include session ID")
+
+	v, ok := b.summaryMap.Load("test-session-123")
+	assert.True(t, ok, "summaryMap should contain session ID")
+	assert.Contains(t, v.(string), "test-session-123.json")
+
+	b.summaryMap.LoadAndDelete("test-session-123")
+}
+
+func TestVeCLIBackend_Name(t *testing.T) {
+	b := NewVeCLIBackend()
+	assert.Equal(t, "vecli", b.Name())
 }
 
 // indexOfArg returns the index of the first occurrence of target in slice, or -1.
