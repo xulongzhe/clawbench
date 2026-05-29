@@ -220,6 +220,18 @@ func TestIsPathUnderAnyRoot(t *testing.T) {
 			roots:    []string{},
 			expected: false,
 		},
+		{
+			name:     "path under second root (non-existent paths, lexical match)",
+			absPath:  "/fake/root2/subdir",
+			roots:    []string{"/fake/root1", "/fake/root2"},
+			expected: true,
+		},
+		{
+			name:     "path not under any of multiple roots (non-existent, lexical)",
+			absPath:  "/opt/something",
+			roots:    []string{"/fake/root1", "/fake/root2"},
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -232,8 +244,59 @@ func TestIsPathUnderAnyRoot(t *testing.T) {
 	}
 }
 
+func TestIsPathUnderAnyRoot_MultipleRoots(t *testing.T) {
+	tmpDir1 := t.TempDir()
+	tmpDir2 := t.TempDir()
+	if r, err := filepath.EvalSymlinks(tmpDir1); err == nil {
+		tmpDir1 = r
+	}
+	if r, err := filepath.EvalSymlinks(tmpDir2); err == nil {
+		tmpDir2 = r
+	}
+
+	roots := []string{tmpDir1, tmpDir2}
+
+	t.Run("path under first root", func(t *testing.T) {
+		result := IsPathUnderAnyRoot(filepath.Join(tmpDir1, "subdir"), roots)
+		if !result {
+			t.Error("expected path under first root to return true")
+		}
+	})
+
+	t.Run("path under second root", func(t *testing.T) {
+		result := IsPathUnderAnyRoot(filepath.Join(tmpDir2, "subdir"), roots)
+		if !result {
+			t.Error("expected path under second root to return true")
+		}
+	})
+
+	t.Run("path outside all roots", func(t *testing.T) {
+		result := IsPathUnderAnyRoot("/completely/outside/path", roots)
+		if result {
+			t.Error("expected path outside all roots to return false")
+		}
+	})
+}
+
+func TestIsPathUnderRoot_DeeplyNestedNonExistent(t *testing.T) {
+	tmpDir := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(tmpDir); err == nil {
+		tmpDir = resolved
+	}
+
+	// Non-existent deeply nested path under an existing root
+	result := isPathUnderRoot(filepath.Join(tmpDir, "a", "b", "c", "d", "nonexistent"), tmpDir)
+	if !result {
+		t.Error("expected deeply nested non-existent path under root to return true")
+	}
+}
+
 func TestIsPathUnderRoot(t *testing.T) {
 	tmpDir := t.TempDir()
+	// Resolve symlinks so tests work on macOS where /var → /private/var
+	if resolved, err := filepath.EvalSymlinks(tmpDir); err == nil {
+		tmpDir = resolved
+	}
 
 	t.Run("existing path under existing root", func(t *testing.T) {
 		result := isPathUnderRoot(filepath.Join(tmpDir, "subdir"), tmpDir)
@@ -295,6 +358,10 @@ func TestIsPathUnderRoot(t *testing.T) {
 
 func TestResolveExistingPath(t *testing.T) {
 	tmpDir := t.TempDir()
+	// Resolve symlinks for macOS compatibility
+	if resolved, err := filepath.EvalSymlinks(tmpDir); err == nil {
+		tmpDir = resolved
+	}
 
 	t.Run("existing path returns itself", func(t *testing.T) {
 		result := resolveExistingPath(tmpDir, "/")

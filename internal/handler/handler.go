@@ -140,11 +140,6 @@ func resolveAbsPath(w http.ResponseWriter, r *http.Request, pathStr string) (str
 	if !ok {
 		return "", false
 	}
-	// Double-check the resolved path is under any root
-	if !isPathUnderAnyRoot(absPath) {
-		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
-		return "", false
-	}
 	return absPath, true
 }
 

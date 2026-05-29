@@ -141,6 +141,24 @@ func TestServeFileRename(t *testing.T) {
 		_, err := os.Stat(filepath.Join(env.ProjectDir, "renamed.txt"))
 		assert.NoError(t, err)
 	})
+
+	t.Run("NewNameEscapesRoot_Returns403", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		createTestFile(t, env.ProjectDir, "file.txt", "data")
+
+		// Try to rename to a path that resolves outside root paths
+		// Using ../../ to escape from project dir up past WatchDir
+		req := newRequest(t, http.MethodPost, "/api/file/rename", map[string]string{
+			"path": "file.txt",
+			"name": "../../escaped.txt",
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeFileRename, req)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
 }
 
 func TestServeFileEditLine(t *testing.T) {
@@ -712,6 +730,41 @@ func TestServeDirCreate(t *testing.T) {
 		info, err := os.Stat(filepath.Join(subDir, "newsubdir"))
 		assert.NoError(t, err)
 		assert.True(t, info.IsDir())
+	})
+
+	t.Run("RelativePath_ResolvesFromProjectCookie", func(t *testing.T) {
+		env, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Create a directory under ProjectDir to resolve relative path against
+		os.MkdirAll(filepath.Join(env.ProjectDir, "relativedir"), 0755)
+
+		req := newRequest(t, http.MethodPost, "/api/dir/create", map[string]string{
+			"path": "relativedir",
+			"name": "newsubdir",
+		})
+		withProjectCookie(req, env.ProjectDir)
+
+		w := callHandler(ServeDirCreate, req)
+		assertOK(t, w)
+		assertJSONField(t, w, "ok", true)
+
+		info, err := os.Stat(filepath.Join(env.ProjectDir, "relativedir", "newsubdir"))
+		assert.NoError(t, err)
+		assert.True(t, info.IsDir())
+	})
+
+	t.Run("AbsolutePathOutsideRoot_Returns403", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		req := newRequest(t, http.MethodPost, "/api/dir/create", map[string]string{
+			"path": os.TempDir(),
+			"name": "newsubdir",
+		})
+
+		w := callHandler(ServeDirCreate, req)
+		assertStatus(t, w, http.StatusForbidden)
 	})
 }
 

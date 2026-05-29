@@ -119,6 +119,20 @@ func TestServeProjectSet(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	})
 
+	t.Run("POST_AbsolutePathOutsideRoot_Returns403", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
+		defer teardown()
+
+		// Use an absolute path that is outside root paths
+		req := newRequest(t, http.MethodPost, "/api/project", map[string]string{
+			"path": os.TempDir(),
+		})
+
+		w := callHandler(ServeProjectSet, req)
+
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+
 	t.Run("POST_NonExistentDirectory_Returns400", func(t *testing.T) {
 		env, teardown := setupTestEnv(t)
 		defer teardown()

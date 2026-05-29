@@ -39,6 +39,12 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 
 	// Create temp directories — project must be under WatchDir to match production
 	watchDir := t.TempDir()
+	// Note: We intentionally do NOT resolve symlinks here.
+	// On macOS, /var/folders → /private/var/folders, but we want model.RootPaths
+	// to match what production code uses (ListRootPaths returns "/" on Unix,
+	// which doesn't need resolution). The isPathUnderAnyRoot function handles
+	// symlink resolution internally, so RootPaths and path arguments can use
+	// either resolved or unresolved forms.
 	projectDir := filepath.Join(watchDir, "project")
 	os.MkdirAll(projectDir, 0755)
 
