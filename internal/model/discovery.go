@@ -9,8 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -41,10 +41,10 @@ type BackendSpec struct {
 // For backends with ListModelsCmd+ParseModels, model lists are auto-discovered too.
 var BackendRegistry = []BackendSpec{
 	{ID: "claude", Backend: "claude", DefaultCmd: "claude", Name: "Claude", Icon: "🤖", Specialty: "代码编写与推理",
-		DiscoverModelsFunc: DiscoverClaudeModels,
+		DiscoverModelsFunc:   DiscoverClaudeModels,
 		ThinkingEffortLevels: []string{"low", "medium", "high", "xhigh", "max"}},
 	{ID: "codebuddy", Backend: "codebuddy", DefaultCmd: "codebuddy", Name: "Codebuddy", Icon: "🐛", Specialty: "全栈开发助手",
-		DiscoverModelsFunc: DiscoverCodebuddyModels,
+		DiscoverModelsFunc:   DiscoverCodebuddyModels,
 		ThinkingEffortLevels: []string{"low", "medium", "high", "xhigh"}},
 	{ID: "opencode", Backend: "opencode", DefaultCmd: "opencode", Name: "OpenCode", Icon: "📟", Specialty: "终端编码工具",
 		ListModelsCmd: []string{"models"}, ParseModels: ParseOpenCodeModels,
@@ -52,7 +52,7 @@ var BackendRegistry = []BackendSpec{
 	{ID: "gemini", Backend: "gemini", DefaultCmd: "gemini", Name: "Gemini", Icon: "💎", Specialty: "多模态推理",
 		DiscoverModelsFunc: DiscoverGeminiModels},
 	{ID: "codex", Backend: "codex", DefaultCmd: "codex", Name: "Codex", Icon: "🐙", Specialty: "OpenAI 编码代理",
-		DiscoverModelsFunc: DiscoverCodexModels,
+		DiscoverModelsFunc:   DiscoverCodexModels,
 		ThinkingEffortLevels: []string{"low", "medium", "high"}},
 	{ID: "qoder", Backend: "qoder", DefaultCmd: "qodercli", Name: "Qoder", Icon: "⚡", Specialty: "AI 编码助手",
 		DiscoverModelsFunc: DiscoverQoderModels},
@@ -61,7 +61,7 @@ var BackendRegistry = []BackendSpec{
 	{ID: "deepseek", Backend: "deepseek", DefaultCmd: "deepseek", Name: "DeepSeek", Icon: "🔍", Specialty: "DeepSeek 推理与编码",
 		ListModelsCmd: []string{"models"}, ParseModels: ParseDeepSeekModels},
 	{ID: "pi", Backend: "pi", DefaultCmd: "pi", Name: "Pi", Icon: "🥧", Specialty: "极简编程智能体",
-		DiscoverModelsFunc: DiscoverPiModels,
+		DiscoverModelsFunc:   DiscoverPiModels,
 		ThinkingEffortLevels: []string{"off", "minimal", "low", "medium", "high", "xhigh"}},
 }
 
@@ -392,10 +392,10 @@ func AsyncRefreshModelCache(cacheDir string) {
 // --- Model list parsers ---
 
 // MergeDiscoveredData fills models and thinking_effort_levels for loaded agents.
-// - Models: uses user-defined models if present; otherwise reads from model cache.
-// - ThinkingEffortLevels: always from BackendRegistry by backend type (YAML values ignored).
-// - Present map: if provided, agents whose backend is not in present are soft-removed
-//   (removed from AgentList/Agents map, but YAML file is preserved).
+//   - Models: uses user-defined models if present; otherwise reads from model cache.
+//   - ThinkingEffortLevels: always from BackendRegistry by backend type (YAML values ignored).
+//   - Present map: if provided, agents whose backend is not in present are soft-removed
+//     (removed from AgentList/Agents map, but YAML file is preserved).
 func MergeDiscoveredData(cacheDir string, present ...map[string]bool) {
 	var presentMap map[string]bool
 	if len(present) > 0 {
@@ -768,7 +768,7 @@ func ParseOpenCodeModels(output string) []AgentModel {
 		}
 
 		models = append(models, AgentModel{
-			ID:      line, // full "provider/model" as ID (opencode uses this format)
+			ID:      line,              // full "provider/model" as ID (opencode uses this format)
 			Name:    m[1] + "/" + m[2], // include provider in display name for disambiguation
 			Default: len(models) == 0,
 		})
@@ -993,8 +993,8 @@ var codexModelOrder = map[string]int{
 	"gpt-5.5":      0,
 	"gpt-5.4":      1,
 	"gpt-5.4-mini": 2,
-	"o3":            3,
-	"o4-mini":       4,
+	"o3":           3,
+	"o4-mini":      4,
 }
 
 // codexTargetTriple returns the Rust target triple for the current platform.
