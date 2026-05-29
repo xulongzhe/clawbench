@@ -197,6 +197,7 @@ export default {
       completed: 'Session completed',
       clickToViewDetails: 'Click to view details',
       continueFailed: 'Failed to continue conversation',
+      continued: 'Conversation continued ({count}/{max})',
       sessionLimitReached: 'Maximum session limit reached',
     },
     messageList: {
