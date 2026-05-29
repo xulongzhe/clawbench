@@ -474,6 +474,246 @@ func TestContinueFromExecution_CopiesTaskExecutionSummary(t *testing.T) {
 	assert.Equal(t, "This is the task execution summary", copiedSummary)
 }
 
+// ========== restoreDeletedSession (tested via DB) ==========
+
+// TestRestoreDeletedSession_NonExistent verifies that restoring a non-existent
+// session does not error (UPDATE on non-existent row is a no-op).
+func TestRestoreDeletedSession_NonExistent(t *testing.T) {
+	setupDB(t)
+
+	// Directly call the equivalent of restoreDeletedSession via DB
+	_, err := service.DB.Exec(
+		"UPDATE chat_sessions SET deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		"non-existent-session-id",
+	)
+	assert.NoError(t, err)
+}
+
+// TestRestoreDeletedSession_AlreadyRestored verifies that restoring an
+// already-active session (deleted=0) is idempotent — no error, no side effect.
+func TestRestoreDeletedSession_AlreadyRestored(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Active")
+	// Session is already active (deleted=0)
+	_, err := service.DB.Exec(
+		"UPDATE chat_sessions SET deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		sid,
+	)
+	assert.NoError(t, err)
+
+	var deleted int
+	err = service.DB.QueryRow("SELECT deleted FROM chat_sessions WHERE id = ?", sid).Scan(&deleted)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, deleted, "session should still be active")
+}
+
+// ========== CheckContinueSession: soft-deleted session auto-restore ==========
+
+// TestCheckContinueSession_AutoRestoresDeletedSession verifies that
+// CheckContinueSession finds a soft-deleted continued session and
+// auto-restores it (sets deleted=0), returning exists=true.
+func TestCheckContinueSession_AutoRestoresDeletedSession(t *testing.T) {
+	setupDB(t)
+
+	taskID := helperCreateScheduledTask(t, "/project", "Task", "claude")
+	sessID := helperCreateScheduledSession(t, "/project", "claude", "Task")
+	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
+
+	// Continue the execution to create a continued session
+	newSessID, _, err := service.ContinueFromExecution(execID, "/project")
+	assert.NoError(t, err)
+
+	// Soft-delete the continued session
+	err = service.DeleteSession("/project", "claude", newSessID)
+	assert.NoError(t, err)
+
+	// CheckContinueSession should find and auto-restore the deleted session
+	exists, foundID, err := service.CheckContinueSession(execID)
+	assert.NoError(t, err)
+	assert.True(t, exists)
+	assert.Equal(t, newSessID, foundID)
+
+	// Verify the session is restored (deleted=0)
+	var deleted int
+	err = service.DB.QueryRow("SELECT deleted FROM chat_sessions WHERE id = ?", newSessID).Scan(&deleted)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, deleted, "session should be restored (deleted=0)")
+}
+
+// ========== Dedup query: ORDER BY with both active and deleted sessions ==========
+
+// TestContinueFromExecution_DedupPrefersActiveOverDeleted verifies that
+// when both an active and a soft-deleted continued session exist for the same
+// source_session_id, the dedup query (ORDER BY deleted ASC, updated_at DESC LIMIT 1)
+// returns the active one, so no unnecessary restore happens.
+func TestContinueFromExecution_DedupPrefersActiveOverDeleted(t *testing.T) {
+	setupDB(t)
+
+	taskID := helperCreateScheduledTask(t, "/project", "Task", "claude")
+	sessID := helperCreateScheduledSession(t, "/project", "claude", "Task")
+	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
+
+	// First continuation creates session A
+	sessA, _, err := service.ContinueFromExecution(execID, "/project")
+	assert.NoError(t, err)
+
+	// Soft-delete session A
+	err = service.DeleteSession("/project", "claude", sessA)
+	assert.NoError(t, err)
+
+	// Manually create session B (simulating a second continued session)
+	// by directly inserting into the DB with a different ID
+	sessB := "manual-continued-session-b"
+	err = service.DB.QueryRow("SELECT id FROM chat_sessions WHERE id = ?", sessB).Scan(new(string))
+	// sessB shouldn't exist yet
+	_, err = service.DB.Exec(
+		"INSERT INTO chat_sessions (id, project_path, backend, title, agent_id, agent_source, model, session_type, source_session_id, external_session_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'chat', ?, ?)",
+		sessB, "/project", "claude", "Manual B", "", "default", "", sessID, sessID,
+	)
+	assert.NoError(t, err)
+
+	// Now dedup: ORDER BY deleted ASC should prefer sessB (deleted=0) over sessA (deleted=1)
+	exists, foundID, err := service.CheckContinueSession(execID)
+	assert.NoError(t, err)
+	assert.True(t, exists)
+	assert.Equal(t, sessB, foundID, "active session B should be preferred over deleted session A")
+}
+
+// ========== ContinueFromExecution with empty external_session_id ==========
+
+// TestContinueFromExecution_EmptyExternalSessionID verifies that when the source
+// session has an empty external_session_id (e.g., session_capture was missed),
+// the continued session still gets created with the empty value.
+// buildChatRequest handles this by clearing effectiveSessionID (no --resume).
+func TestContinueFromExecution_EmptyExternalSessionID(t *testing.T) {
+	setupDB(t)
+
+	taskID := helperCreateScheduledTask(t, "/project", "Task", "pi")
+	sessID := helperCreateScheduledSession(t, "/project", "pi", "Task")
+	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
+
+	// Clear external_session_id to simulate missed session_capture
+	err := service.UpdateExternalSessionID(sessID, "")
+	assert.NoError(t, err)
+
+	newSessID, _, err := service.ContinueFromExecution(execID, "/project")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, newSessID)
+
+	// Continued session should have empty external_session_id (inherited from source)
+	extID := service.GetExternalSessionID(newSessID)
+	assert.Equal(t, "", extID, "continued session should inherit empty external_session_id")
+}
+
+// ========== Restored session preserves all chat history ==========
+
+// TestContinueFromExecution_RestoredSessionPreservesHistory verifies that
+// when a continued session is deleted and then restored, all chat history
+// is still present. This was a key bug: the old code soft-deleted
+// chat_history rows, but now only the session record is soft-deleted.
+func TestContinueFromExecution_RestoredSessionPreservesHistory(t *testing.T) {
+	setupDB(t)
+
+	taskID := helperCreateScheduledTask(t, "/project", "Task", "claude")
+	sessID := helperCreateScheduledSession(t, "/project", "claude", "Task")
+	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
+
+	// Add messages to source session
+	_, err := service.AddChatMessage("/project", "claude", sessID, "user", "Review the code", nil, false, "")
+	assert.NoError(t, err)
+	_, err = service.AddChatMessage("/project", "claude", sessID, "assistant", "Code looks good", nil, false, "")
+	assert.NoError(t, err)
+
+	// Continue the execution
+	newSessID, _, err := service.ContinueFromExecution(execID, "/project")
+	assert.NoError(t, err)
+
+	// Verify the continued session has messages
+	msgs, err := service.GetChatHistory("/project", "claude", newSessID)
+	assert.NoError(t, err)
+	assert.Len(t, msgs, 2)
+
+	// Add an extra message to the continued session
+	_, err = service.AddChatMessage("/project", "claude", newSessID, "user", "Tell me more", nil, false, "")
+	assert.NoError(t, err)
+
+	// Soft-delete the continued session
+	err = service.DeleteSession("/project", "claude", newSessID)
+	assert.NoError(t, err)
+
+	// Restore via ContinueFromExecution
+	restoredID, alreadyExists, err := service.ContinueFromExecution(execID, "/project")
+	assert.NoError(t, err)
+	assert.Equal(t, newSessID, restoredID)
+	assert.True(t, alreadyExists)
+
+	// Verify chat history is intact after restore
+	// GetChatHistory works even for deleted sessions since chat_history has no deleted column
+	msgs, err = service.GetChatHistory("/project", "claude", restoredID)
+	assert.NoError(t, err)
+	assert.Len(t, msgs, 3, "restored session should have all 3 messages (2 copied + 1 added)")
+	assert.Equal(t, "user", msgs[0].Role)
+	assert.Equal(t, "Review the code", msgs[0].Content)
+	assert.Equal(t, "assistant", msgs[1].Role)
+	assert.Equal(t, "Code looks good", msgs[1].Content)
+	assert.Equal(t, "user", msgs[2].Role)
+	assert.Equal(t, "Tell me more", msgs[2].Content)
+}
+
+// ========== Soft-deleted source session external_session_id read ==========
+
+// TestContinueFromExecution_SoftDeletedSourceReadsExternalSessionID verifies
+// that ContinueFromExecution can read external_session_id from a soft-deleted
+// source session (the query does not filter by deleted=0).
+func TestContinueFromExecution_SoftDeletedSourceReadsExternalSessionID(t *testing.T) {
+	setupDB(t)
+
+	taskID := helperCreateScheduledTask(t, "/project", "Task", "opencode")
+	sessID := helperCreateScheduledSession(t, "/project", "opencode", "Task")
+	execID := helperCreateTaskExecution(t, taskID, sessID, "completed")
+
+	// Set external_session_id on the source session
+	err := service.UpdateExternalSessionID(sessID, "opencode-sess-xyz")
+	assert.NoError(t, err)
+
+	// Soft-delete the source session
+	err = service.DeleteSession("/project", "opencode", sessID)
+	assert.NoError(t, err)
+
+	// Continue should still be able to read external_session_id from the soft-deleted source
+	newSessID, _, err := service.ContinueFromExecution(execID, "/project")
+	assert.NoError(t, err)
+	assert.Equal(t, "opencode-sess-xyz", service.GetExternalSessionID(newSessID),
+		"continued session should inherit external_session_id from soft-deleted source")
+}
+
+// ========== Title format edge cases ==========
+
+// TestContinueFromExecution_TitleFormatWithExplicitTimestamp verifies the
+// [MM-DD HH:MM] title prefix with a known execution timestamp.
+func TestContinueFromExecution_TitleFormatWithExplicitTimestamp(t *testing.T) {
+	setupDB(t)
+
+	taskID := helperCreateScheduledTask(t, "/project", "Daily Review", "claude")
+	sessID := helperCreateScheduledSession(t, "/project", "claude", "Daily Review")
+
+	// Insert execution with a known created_at
+	result, err := service.DB.Exec(
+		"INSERT INTO task_executions (task_id, session_id, status, created_at) VALUES (?, ?, 'completed', '2026-03-15 08:30:00')",
+		taskID, sessID,
+	)
+	assert.NoError(t, err)
+	execID, _ := result.LastInsertId()
+
+	newSessID, _, err := service.ContinueFromExecution(execID, "/project")
+	assert.NoError(t, err)
+
+	title, err := service.GetSessionTitle(newSessID)
+	assert.NoError(t, err)
+	assert.Equal(t, "[03-15 08:30] Daily Review", title)
+}
+
 // Regression test: copied messages must NOT have ISO 8601 UTC timestamps
 // (e.g. "2026-05-29T01:59:53Z") because the Go SQLite driver converts DATETIME
 // to that format when reading. When written back, the format breaks string-based

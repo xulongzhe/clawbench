@@ -2239,3 +2239,134 @@ func TestGetRunningSessionIDs_AfterClearAll(t *testing.T) {
 	ids := service.GetRunningSessionIDs()
 	assert.Empty(t, ids)
 }
+
+// ========== CreateSession: external_session_id initialization ==========
+
+// TestCreateSession_ExternalSessionIDInitialized verifies that CreateSession
+// sets external_session_id = sessionID at creation time for all backends.
+// This is critical for --resume to work with codebuddy/claude/qoder backends
+// where the ClawBench UUID IS the CLI session ID.
+func TestCreateSession_ExternalSessionIDInitialized(t *testing.T) {
+	setupDB(t)
+
+	// Test with multiple backends
+	for _, backend := range []string{"codebuddy", "claude", "opencode", "pi"} {
+		t.Run(backend, func(t *testing.T) {
+			sid, err := service.CreateSession("/project", backend, "Test "+backend, "", "", "default", "chat")
+			assert.NoError(t, err)
+			assert.NotEmpty(t, sid)
+
+			// external_session_id should be initialized to the session ID
+			extID := service.GetExternalSessionID(sid)
+			assert.Equal(t, sid, extID, "external_session_id should be initialized to sessionID for backend %s", backend)
+		})
+	}
+}
+
+// TestCreateSession_ExternalSessionIDPersistedInDB explicitly verifies
+// that the INSERT statement in CreateSession writes external_session_id = sessionID.
+func TestCreateSession_ExternalSessionIDPersistedInDB(t *testing.T) {
+	setupDB(t)
+
+	sid, err := service.CreateSession("/project", "claude", "DB Check", "", "", "default", "chat")
+	assert.NoError(t, err)
+
+	var extID string
+	err = service.DB.QueryRow("SELECT external_session_id FROM chat_sessions WHERE id = ?", sid).Scan(&extID)
+	assert.NoError(t, err)
+	assert.Equal(t, sid, extID, "external_session_id column should equal session ID in DB")
+}
+
+// ========== DeleteSession: does NOT modify chat_history ==========
+
+// TestDeleteSession_DoesNotModifyChatHistory verifies that DeleteSession
+// only soft-deletes the session record and does NOT touch chat_history
+// at all. This is critical — the old code set chat_history.deleted=1,
+// which caused data loss when restoring sessions.
+func TestDeleteSession_DoesNotModifyChatHistory(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "To Delete")
+
+	// Add messages
+	msgID1, err := service.AddChatMessage("/project", "claude", sid, "user", "message 1", nil, false, "NewSession")
+	assert.NoError(t, err)
+	msgID2, err := service.AddChatMessage("/project", "claude", sid, "assistant", "response 1", nil, false, "")
+	assert.NoError(t, err)
+
+	// Verify messages exist before deletion
+	var countBefore int
+	err = service.DB.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = ?", sid).Scan(&countBefore)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, countBefore)
+
+	// Delete the session
+	err = service.DeleteSession("/project", "claude", sid)
+	assert.NoError(t, err)
+
+	// Verify messages are still present with identical content
+	var countAfter int
+	err = service.DB.QueryRow("SELECT COUNT(*) FROM chat_history WHERE session_id = ?", sid).Scan(&countAfter)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, countAfter, "chat_history rows should NOT be modified by DeleteSession")
+
+	// Verify individual message content is unchanged
+	msg1, err := service.GetMessageByID(msgID1)
+	assert.NoError(t, err)
+	assert.Equal(t, "message 1", msg1.Content)
+
+	msg2, err := service.GetMessageByID(msgID2)
+	assert.NoError(t, err)
+	assert.Equal(t, "response 1", msg2.Content)
+}
+
+// ========== Restoring a deleted session preserves all chat history ==========
+
+// TestRestoreDeletedSession_PreservesChatHistory verifies that when a
+// soft-deleted session is restored (deleted=0), all chat history messages
+// are still accessible. This was a critical bug where restored sessions
+// had no chat history because chat_history.deleted was set to 1 on delete.
+func TestRestoreDeletedSession_PreservesChatHistory(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "To Delete & Restore")
+
+	// Add messages before deletion
+	_, err := service.AddChatMessage("/project", "claude", sid, "user", "before delete", nil, false, "NewSession")
+	assert.NoError(t, err)
+	_, err = service.AddChatMessage("/project", "claude", sid, "assistant", "before delete reply", nil, false, "")
+	assert.NoError(t, err)
+
+	// Delete the session
+	err = service.DeleteSession("/project", "claude", sid)
+	assert.NoError(t, err)
+
+	// Verify GetChatHistory still returns messages (no deleted column in chat_history)
+	msgsAfterDelete, err := service.GetChatHistory("/project", "claude", sid)
+	assert.NoError(t, err)
+	assert.Len(t, msgsAfterDelete, 2, "messages should still exist after session soft-delete")
+
+	// Restore the session by setting deleted=0
+	_, err = service.DB.Exec("UPDATE chat_sessions SET deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?", sid)
+	assert.NoError(t, err)
+
+	// Verify restored session can be found by GetSessionBackend
+	backend := service.GetSessionBackend(sid)
+	assert.Equal(t, "claude", backend, "restored session should be visible via GetSessionBackend")
+
+	// Verify chat history is fully intact
+	msgsAfterRestore, err := service.GetChatHistory("/project", "claude", sid)
+	assert.NoError(t, err)
+	assert.Len(t, msgsAfterRestore, 2, "all messages should be preserved after restore")
+	assert.Equal(t, "before delete", msgsAfterRestore[0].Content)
+	assert.Equal(t, "before delete reply", msgsAfterRestore[1].Content)
+
+	// Verify the session can accept new messages after restore
+	_, err = service.AddChatMessage("/project", "claude", sid, "user", "after restore", nil, false, "")
+	assert.NoError(t, err)
+
+	msgsFinal, err := service.GetChatHistory("/project", "claude", sid)
+	assert.NoError(t, err)
+	assert.Len(t, msgsFinal, 3)
+	assert.Equal(t, "after restore", msgsFinal[2].Content)
+}
