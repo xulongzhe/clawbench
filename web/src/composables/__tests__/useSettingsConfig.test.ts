@@ -126,6 +126,7 @@ describe('useSettingsConfig', () => {
     expect('terminalFontSize' in localConfig).toBe(true)
     expect('androidLogCapture' in localConfig).toBe(true)
     expect('swipeSession' in localConfig).toBe(true)
+    expect('pushPersistentNotification' in localConfig).toBe(true)
   })
 
   it('reads persisted localStorage value via setLocalConfig', () => {
@@ -234,6 +235,92 @@ describe('useSettingsConfig', () => {
       // Both values should be preserved
       expect(serverConfig.value.chat.collapsed_height).toBe(300)
       expect(serverConfig.value.chat.page_size).toBe(50)
+    })
+  })
+
+  describe('pushPersistentNotification setting', () => {
+    it('defaults to true', () => {
+      const { localConfig } = useSettingsConfig()
+      expect(localConfig.pushPersistentNotification).toBe(true)
+    })
+
+    it('setLocalConfig updates pushPersistentNotification and calls sideEffect', () => {
+      const { localConfig, setLocalConfig } = useSettingsConfig()
+
+      // Mock AndroidNative bridge
+      const mockSetPushPersistentNotification = vi.fn()
+      const originalAndroidNative = (window as any).AndroidNative
+      ;(window as any).AndroidNative = {
+        setPushPersistentNotification: mockSetPushPersistentNotification,
+      }
+
+      setLocalConfig('pushPersistentNotification', false)
+
+      expect(localConfig.pushPersistentNotification).toBe(false)
+      expect(localStorage.getItem('clawbench-settings-pushPersistentNotification')).toBe('false')
+      expect(mockSetPushPersistentNotification).toHaveBeenCalledWith(false)
+
+      // Restore and clean up
+      ;(window as any).AndroidNative = originalAndroidNative
+      localStorage.removeItem('clawbench-settings-pushPersistentNotification')
+    })
+
+    it('sideEffect handles missing AndroidNative gracefully', () => {
+      const { setLocalConfig } = useSettingsConfig()
+
+      // Remove AndroidNative
+      const originalAndroidNative = (window as any).AndroidNative
+      delete (window as any).AndroidNative
+
+      // Should not throw
+      expect(() => setLocalConfig('pushPersistentNotification', true)).not.toThrow()
+
+      // Restore
+      ;(window as any).AndroidNative = originalAndroidNative
+      localStorage.removeItem('clawbench-settings-pushPersistentNotification')
+    })
+
+    it('loadConfig syncs pushPersistentNotification from native', async () => {
+      mockedApiGet.mockResolvedValue({})
+
+      // Mock AndroidNative bridge returning false (native has it disabled)
+      const mockIsPushPersistentNotification = vi.fn().mockReturnValue(false)
+      const originalAndroidNative = (window as any).AndroidNative
+      ;(window as any).AndroidNative = {
+        isPushPersistentNotification: mockIsPushPersistentNotification,
+      }
+
+      const { localConfig, loadConfig } = useSettingsConfig()
+      await loadConfig()
+
+      expect(mockIsPushPersistentNotification).toHaveBeenCalled()
+      expect(localConfig.pushPersistentNotification).toBe(false)
+
+      // Restore
+      ;(window as any).AndroidNative = originalAndroidNative
+      localStorage.removeItem('clawbench-settings-pushPersistentNotification')
+    })
+
+    it('loadConfig does not override if native matches local', async () => {
+      mockedApiGet.mockResolvedValue({})
+
+      // Mock AndroidNative bridge returning true (matches default)
+      const mockIsPushPersistentNotification = vi.fn().mockReturnValue(true)
+      const originalAndroidNative = (window as any).AndroidNative
+      ;(window as any).AndroidNative = {
+        isPushPersistentNotification: mockIsPushPersistentNotification,
+      }
+
+      const { localConfig, loadConfig } = useSettingsConfig()
+      await loadConfig()
+
+      expect(localConfig.pushPersistentNotification).toBe(true)
+      // localStorage should not have been overwritten since values match
+      // (the value was already true from defaults)
+
+      // Restore
+      ;(window as any).AndroidNative = originalAndroidNative
+      localStorage.removeItem('clawbench-settings-pushPersistentNotification')
     })
   })
 })

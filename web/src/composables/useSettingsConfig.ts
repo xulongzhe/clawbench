@@ -127,6 +127,15 @@ const legacyKeys: Record<string, {
   swipeSession: {
     // No legacy key — this is a new setting
   },
+  pushPersistentNotification: {
+    // No legacy key — this is a new setting
+    sideEffect(value: boolean) {
+      try {
+        const native = (window as any).AndroidNative
+        if (native?.setPushPersistentNotification) native.setPushPersistentNotification(value)
+      } catch { /* not in app mode */ }
+    },
+  },
 }
 
 /** Read initial value from prefixed key (falls back to legacy key, then default) */
@@ -171,6 +180,7 @@ const localDefaults: Record<string, any> = {
   terminalFontSize: 12,
   androidLogCapture: false,
   swipeSession: false,
+  pushPersistentNotification: true,
 }
 
 // Build reactive local config from legacy localStorage + defaults
@@ -278,6 +288,22 @@ function getAgentThinkingPref(agentId: string): string | null {
 }
 
 export function useSettingsConfig() {
+  /** Sync local-only settings from Android native to keep WebView and native state in sync. */
+  function syncNativeSettings() {
+    try {
+      const native = (window as any).AndroidNative
+      if (native?.isPushPersistentNotification) {
+        const nativeValue = native.isPushPersistentNotification()
+        if (localConfig.pushPersistentNotification !== nativeValue) {
+          localConfig.pushPersistentNotification = nativeValue
+          try {
+            localStorage.setItem(LOCAL_PREFIX + 'pushPersistentNotification', JSON.stringify(nativeValue))
+          } catch { /* ignore */ }
+        }
+      }
+    } catch { /* not in app mode */ }
+  }
+
   async function loadConfig() {
     try {
       const data = await apiGet<Record<string, any>>('/api/config')
@@ -285,6 +311,8 @@ export function useSettingsConfig() {
     } catch {
       // Server may be unreachable — keep existing cached values
     }
+    // Sync native state after server config loads (app mode only)
+    syncNativeSettings()
   }
 
   async function patchConfig(changes: Record<string, any>): Promise<{ needsRestart: boolean; changedColdFields: string[] }> {

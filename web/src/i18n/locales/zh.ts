@@ -916,6 +916,8 @@ export default {
       portForwardPortDesc: '端口转发服务监听的本地端口号，0 表示自动分配',
       pushEnabled: '启用极光推送',
       pushEnabledDesc: '启用极光推送，在 App 后台时接收通知',
+      pushPersistentNotification: '常驻通知',
+      pushPersistentNotificationDesc: '在通知栏显示推送服务常驻通知，防止推送进程被系统杀死',
       pushStatus: '推送服务状态',
       pushStatusRegistered: '正常',
       pushStatusNotRegistered: '未注册',

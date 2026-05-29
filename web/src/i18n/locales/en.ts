@@ -916,6 +916,8 @@ export default {
       portForwardPortDesc: 'Local port number for port forwarding service to listen on, 0 for auto-assign',
       pushEnabled: 'Enable JPush',
       pushEnabledDesc: 'Enable JPush notifications when app is in background',
+      pushPersistentNotification: 'Persistent Notification',
+      pushPersistentNotificationDesc: 'Show a persistent notification to prevent the push service from being killed by the system',
       pushStatus: 'Push Service Status',
       pushStatusRegistered: 'Connected',
       pushStatusNotRegistered: 'Not Registered',
