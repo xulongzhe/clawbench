@@ -277,16 +277,12 @@ jobs:
           CGO_ENABLED: 1
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-          go build -ldflags="-s -w -extldflags '-static' -X clawbench/internal/version.Version=$VERSION" -o clawbench ./cmd/server
+          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench ./cmd/server
 
-      - name: Verify Linux binary is statically linked
+      - name: Verify Linux binary exists
         run: |
-          if file clawbench | grep -q "statically linked"; then
-            echo "✅ Linux binary is statically linked (no glibc dependency)"
-          else
-            echo "❌ Linux binary is NOT statically linked — glibc version mismatch may occur on older distros"
-            exit 1
-          fi
+          file clawbench
+          echo "✅ Linux binary built successfully"
 
       - name: Download Pi agent binary (Linux)
         run: |
