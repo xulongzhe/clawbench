@@ -171,6 +171,7 @@ export const categoryItems: Record<string, ItemSpec[]> = {
   ],
   push: [
     { labelKey: 'settings.items.pushEnabled', descriptionKey: 'settings.items.pushEnabledDesc', key: 'push.jpush.enabled', type: 'switch', source: 'server', needsRestart: true },
+    { labelKey: 'settings.items.pushPersistentNotification', descriptionKey: 'settings.items.pushPersistentNotificationDesc', key: 'pushPersistentNotification', type: 'switch', source: 'local' },
     { labelKey: 'settings.items.pushAppKey', descriptionKey: 'settings.items.pushAppKeyDesc', key: 'push.jpush.app_key', type: 'text', source: 'server' },
     { labelKey: 'settings.items.pushMasterSecret', descriptionKey: 'settings.items.pushMasterSecretDesc', key: 'push.jpush.master_secret', type: 'password', source: 'server' },
   ],

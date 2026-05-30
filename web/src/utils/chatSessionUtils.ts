@@ -41,3 +41,27 @@ export function parseMessages(
     return msg
   })
 }
+
+/**
+ * Apply a summary update to a message object.
+ * Auto-switches to summary view only when the user is at the bottom of the chat.
+ * If the user has scrolled up to read earlier messages, the summary is stored
+ * but the view stays on original content to avoid interrupting their reading.
+ *
+ * @param msg - The message object to update (mutated in place)
+ * @param summary - The summary text from the WebSocket event
+ * @param atBottom - Whether the user is currently at the bottom of the chat
+ */
+export function applySummaryUpdate(msg: any, summary: string | null | undefined, atBottom: boolean): void {
+  msg.summary = summary
+  if (msg.showingSummary !== true && msg.showingSummary !== false) {
+    // showingSummary was never set (undefined) — auto-set based on summary content and scroll position
+    msg.showingSummary = atBottom && summary != null && summary !== ''
+  } else if (summary != null && summary !== '') {
+    // If currently showing original and a new summary arrives, auto-switch to summary
+    // only when the user is at the bottom
+    if (!msg.showingSummary && atBottom) {
+      msg.showingSummary = true
+    }
+  }
+}

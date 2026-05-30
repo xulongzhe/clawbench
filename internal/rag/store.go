@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,10 +22,11 @@ import (
 type Store struct {
 	db             *sql.DB
 	dbPath         string
-	embeddingDim   int        // adaptive embedding dimension
-	ftsAvailable   bool       // Whether FTS extension loaded successfully
-	ftsDirty       bool       // Whether FTS index needs rebuild after data changes
-	ftsLastRebuild time.Time  // Last time FTS index was rebuilt (for debounce)
+	duckdbOpts     map[string]string // Connection-time DuckDB options (for recovery re-open)
+	embeddingDim   int               // adaptive embedding dimension
+	ftsAvailable   bool              // Whether FTS extension loaded successfully
+	ftsDirty       bool              // Whether FTS index needs rebuild after data changes
+	ftsLastRebuild time.Time         // Last time FTS index was rebuilt (for debounce)
 }
 
 // Chunk represents a text chunk with its embedding and metadata.
@@ -59,18 +61,36 @@ type SearchHit struct {
 }
 
 // NewStore creates a new DuckDB store at the given path.
-func NewStore(dbPath string) (*Store, error) {
+// DuckDB connection settings (threads, memory_limit) are applied before any
+// query runs to prevent SIGFPE crashes on low-memory systems where DuckDB's
+// internal thread-count computation can divide by zero. (ISS-155)
+func NewStore(dbPath string, duckdbOpts map[string]string) (*Store, error) {
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create rag db directory: %w", err)
 	}
 
-	db, err := sql.Open("duckdb", dbPath)
+	// Build DSN with connection-time configuration to prevent SIGFPE on
+	// low-memory systems. DuckDB computes thread count from available memory;
+	// on systems with <4 GB RAM this can yield 0 threads, causing a divide-
+	// by-zero (SIGFPE, sigcode=FPE_INTDIV) inside duckdb_execute_pending.
+	// Setting threads and memory_limit at connection time ensures the values
+	// are applied before any query, including INSTALL/LOAD extensions.
+	dsn := dbPath
+	if len(duckdbOpts) > 0 {
+		params := url.Values{}
+		for k, v := range duckdbOpts {
+			params.Set(k, v)
+		}
+		dsn = dbPath + "?" + params.Encode()
+	}
+
+	db, err := sql.Open("duckdb", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open duckdb: %w", err)
 	}
 
-	s := &Store{db: db, dbPath: dbPath}
+	s := &Store{db: db, dbPath: dbPath, duckdbOpts: duckdbOpts}
 	if err := s.initSchema(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to init duckdb schema: %w", err)
@@ -98,9 +118,33 @@ func NewStore(dbPath string) (*Store, error) {
 }
 
 // InitStore creates the RAG store using the standard .clawbench location.
-func InitStore() (*Store, error) {
+// Applies conservative DuckDB resource limits (threads=1, memory_limit=512MB)
+// by default to prevent SIGFPE crashes on low-memory systems. These can be
+// overridden via the RAGConfig duckdb_threads and duckdb_memory_limit fields.
+func InitStore(cfg model.RAGConfig) (*Store, error) {
 	dbPath := filepath.Join(model.BinDir, ".clawbench", "rag.duckdb")
-	return NewStore(dbPath)
+
+	// Default DuckDB connection settings for low-memory safety.
+	opts := map[string]string{
+		"threads":      "1",
+		"memory_limit": "512MB",
+	}
+
+	// Allow user overrides from config
+	if cfg.DuckDBThreads > 0 {
+		opts["threads"] = strconv.Itoa(cfg.DuckDBThreads)
+	}
+	if cfg.DuckDBMemoryLimit != "" {
+		opts["memory_limit"] = cfg.DuckDBMemoryLimit
+	}
+
+	slog.Info("rag: opening DuckDB store",
+		slog.String("path", dbPath),
+		slog.String("threads", opts["threads"]),
+		slog.String("memory_limit", opts["memory_limit"]),
+	)
+
+	return NewStore(dbPath, opts)
 }
 
 func (s *Store) initSchema() error {
@@ -705,7 +749,17 @@ func (s *Store) RecoverFromCorruption() error {
 	if err := os.Remove(s.dbPath); err != nil {
 		return fmt.Errorf("remove corrupted db: %w", err)
 	}
-	db, err := sql.Open("duckdb", s.dbPath)
+	// Re-open with the same DuckDB connection options (threads, memory_limit)
+	// to prevent SIGFPE on low-memory systems.
+	dsn := s.dbPath
+	if len(s.duckdbOpts) > 0 {
+		params := url.Values{}
+		for k, v := range s.duckdbOpts {
+			params.Set(k, v)
+		}
+		dsn = s.dbPath + "?" + params.Encode()
+	}
+	db, err := sql.Open("duckdb", dsn)
 	if err != nil {
 		return fmt.Errorf("reopen duckdb: %w", err)
 	}

@@ -21,7 +21,7 @@ func Init(cfg model.RAGConfig) error {
 		slog.Warn("rag: gse segmenter not available, Chinese FTS may be limited", slog.String("err", err.Error()))
 	}
 
-	store, err := InitStore()
+	store, err := InitStore(cfg)
 	if err != nil {
 		return fmt.Errorf("init rag store: %w", err)
 	}

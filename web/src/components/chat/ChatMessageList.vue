@@ -315,6 +315,7 @@ function scrollToBottom(force = false) {
 defineExpose({
   scrollToBottom,
   messagesRef,
+  isAtBottom: () => isAtBottom,
 })
 </script>
 

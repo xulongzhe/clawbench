@@ -1135,10 +1135,18 @@ public class BackgroundService extends Service {
      * Start the service as foreground, passing the required foregroundServiceType
      * on Android 14+ (API 34+). Without this, Android 14 throws
      * ForegroundServiceStartNotAllowedException.
+     *
+     * Uses both DATA_SYNC and REMOTE_MESSAGING types:
+     * - DATA_SYNC: for SSH tunnel port forwarding (legacy, has 6-hour limit on Android 15+)
+     * - REMOTE_MESSAGING: for push notification / WebSocket event relay (no time limit)
+     * Declaring both ensures the service survives the dataSync 6-hour timeout on
+     * Android 15+, since at least one declared type is still valid.
      */
     private void startForegroundCompat(int id, Notification notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            startForeground(id, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                    | ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING);
         } else {
             startForeground(id, notification);
         }

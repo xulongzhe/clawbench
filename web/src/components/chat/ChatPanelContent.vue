@@ -144,6 +144,7 @@ import { useAgents } from '@/composables/useAgents'
 import { useToast } from '@/composables/useToast.ts'
 import { useFilePathAnnotation } from '@/composables/useFilePathAnnotation.ts'
 import { useNotification } from '@/composables/useNotification.ts'
+import { applySummaryUpdate } from '@/utils/chatSessionUtils.ts'
 import { useFileUpload } from '@/composables/useFileUpload.ts'
 import { refreshCurrentFile } from '@/composables/useFileRefresh.ts'
 import { playNotificationSound } from '@/composables/useNotificationSound.ts'
@@ -591,17 +592,8 @@ function handleSummaryUpdate(e) {
     const msgId = String(data.targetID)
     const msg = messages.value.find(m => String(m.id) === msgId)
     if (!msg) return
-    msg.summary = data.summary
-    // Auto-show summary if user hasn't manually toggled
-    if (msg.showingSummary !== true && msg.showingSummary !== false) {
-        // showingSummary was never set (undefined) — auto-set based on summary content
-        msg.showingSummary = data.summary != null && data.summary !== ''
-    } else if (data.summary != null && data.summary !== '') {
-        // If currently showing original and a new summary arrives, auto-switch to summary
-        if (!msg.showingSummary) {
-            msg.showingSummary = true
-        }
-    }
+    const atBottom = messageListRef.value?.isAtBottom() ?? true
+    applySummaryUpdate(msg, data.summary, atBottom)
 }
 
 // Toggle summary/original view for a message

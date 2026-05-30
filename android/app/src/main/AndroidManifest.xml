@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -38,7 +39,8 @@
 
         <service
             android:name=".BackgroundService"
-            android:foregroundServiceType="dataSync"
+            android:foregroundServiceType="dataSync|remoteMessaging"
+            android:stopWithTask="false"
             android:exported="false" />
 
         <!-- Sandbox browser for testing forwarded ports — runs in separate process for Cookie/Storage isolation -->
@@ -72,11 +74,35 @@
             </intent-filter>
         </receiver>
 
-        <!-- Required by JPush SDK 6.x / JCore 5.x for push service to function -->
+        <!-- JPush SDK-required UserService: the SDK discovers this service via
+             "cn.jiguang.user.service.action" intent-filter and verifies it's a
+             JCommonService subclass (isAssignableFrom check). Without this, the SDK
+             falls back to single-process mode and loses DataShare binder communication.
+             Runs in :pushcore process alongside PushService — zero extra memory overhead.
+             No foregroundServiceType declared because this service never calls
+             startForeground() — PushService handles FGS promotion for the process. -->
+        <service
+            android:name=".UserService"
+            android:exported="true"
+            android:process=":pushcore">
+            <intent-filter>
+                <action android:name="cn.jiguang.user.service.action" />
+            </intent-filter>
+        </service>
+
+        <!-- Foreground push service for :pushcore process keep-alive.
+             Extends Service directly (not JCommonService) because JCommonService's
+             lifecycle methods are all final, preventing us from adding startForeground()
+             and returning START_STICKY. Promotes itself to foreground with a persistent
+             notification to prevent OEM ROMs from killing the process.
+             stopWithTask="false" ensures the service survives when the user swipes
+             the app from recents — combined with START_STICKY for maximum resilience. -->
         <service
             android:name=".PushService"
             android:enabled="true"
             android:exported="false"
+            android:foregroundServiceType="remoteMessaging"
+            android:stopWithTask="false"
             android:process=":pushcore" />
 
         <!-- Disable JPush InitProvider auto-initialization.

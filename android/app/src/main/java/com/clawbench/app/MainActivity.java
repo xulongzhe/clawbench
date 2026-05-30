@@ -1707,6 +1707,26 @@ public class MainActivity extends AppCompatActivity {
         }
 
         /**
+         * Toggle the push service persistent notification (foreground service).
+         * When enabled, PushService shows a persistent notification that prevents
+         * the :pushcore process from being killed. When disabled, PushService runs
+         * as a background service without a notification (less resistant to being killed).
+         */
+        @JavascriptInterface
+        public void setPushPersistentNotification(boolean enabled) {
+            PushService.setPersistentNotification(activity, enabled);
+        }
+
+        /**
+         * Check whether the push persistent notification is enabled.
+         * Returns true by default.
+         */
+        @JavascriptInterface
+        public boolean isPushPersistentNotification() {
+            return PushService.isPersistentNotificationEnabled(activity);
+        }
+
+        /**
          * Open a chat session by dispatching an event to the WebView.
          * Called by JPushReceiver when a push notification is tapped.
          */

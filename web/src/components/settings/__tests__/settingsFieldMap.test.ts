@@ -32,6 +32,7 @@ describe('settingsFieldMap', () => {
     expect(map['locale']).toBeUndefined()
     expect(map['autoSpeech']).toBeUndefined()
     expect(map['swipeSession']).toBeUndefined()
+    expect(map['pushPersistentNotification']).toBeUndefined()
   })
 
   it('includes TTS sub-config keys', () => {
@@ -86,5 +87,24 @@ describe('settingsFieldMap', () => {
         }
       }
     }
+  })
+
+  it('pushPersistentNotification is a local switch without dependsOn', () => {
+    const pushItems = categoryItems['push']
+    const item = pushItems.find(i => i.key === 'pushPersistentNotification')
+    expect(item).toBeDefined()
+    expect(item!.type).toBe('switch')
+    expect(item!.source).toBe('local')
+    // No dependsOn — this is always visible (not conditional on push.jpush.enabled)
+    // because the serverConfig may not be loaded yet when the page renders,
+    // causing the dependsOn check to fail with the default value (false).
+    expect(item!.dependsOn).toBeUndefined()
+  })
+
+  it('pushPersistentNotification comes after pushEnabled in push category', () => {
+    const pushItems = categoryItems['push']
+    const enabledIdx = pushItems.findIndex(i => i.key === 'push.jpush.enabled')
+    const persistentIdx = pushItems.findIndex(i => i.key === 'pushPersistentNotification')
+    expect(enabledIdx).toBeLessThan(persistentIdx)
   })
 })
