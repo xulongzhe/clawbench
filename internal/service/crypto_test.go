@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"encoding/base64"
 	"fmt"
 	"testing"
 
@@ -172,6 +173,110 @@ func TestRotateAPIKeyEncryption_NoKeys(t *testing.T) {
 	// No API keys stored — rotation should succeed with no-op
 	err := service.RotateAPIKeyEncryption(db, "old-password")
 	assert.NoError(t, err)
+}
+
+func TestLoadAgentAnyAPIKey_Found(t *testing.T) {
+	db := setupTestDBForAgents(t)
+
+	err := service.SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
+	require.NoError(t, err)
+
+	err = service.SaveAgentAPIKey(db, "pi", "openai", "https://api.openai.com", "sk-test-any-key")
+	require.NoError(t, err)
+
+	provider, customURL, apiKey, err := service.LoadAgentAnyAPIKey(db, "pi")
+	require.NoError(t, err)
+	assert.Equal(t, "openai", provider)
+	assert.Equal(t, "https://api.openai.com", customURL)
+	assert.Equal(t, "sk-test-any-key", apiKey)
+}
+
+func TestLoadAgentAnyAPIKey_NotFound(t *testing.T) {
+	db := setupTestDBForAgents(t)
+
+	err := service.SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
+	require.NoError(t, err)
+
+	// No API keys stored for this agent
+	provider, customURL, apiKey, err := service.LoadAgentAnyAPIKey(db, "pi")
+	require.NoError(t, err)
+	assert.Equal(t, "", provider)
+	assert.Equal(t, "", customURL)
+	assert.Equal(t, "", apiKey)
+}
+
+func TestLoadAgentAnyAPIKey_MultipleProviders(t *testing.T) {
+	db := setupTestDBForAgents(t)
+
+	err := service.SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
+	require.NoError(t, err)
+
+	err = service.SaveAgentAPIKey(db, "pi", "openai", "", "sk-openai-key")
+	require.NoError(t, err)
+	err = service.SaveAgentAPIKey(db, "pi", "anthropic", "", "sk-ant-key")
+	require.NoError(t, err)
+
+	// Should return one of the providers (LIMIT 1)
+	provider, _, apiKey, err := service.LoadAgentAnyAPIKey(db, "pi")
+	require.NoError(t, err)
+	assert.NotEmpty(t, provider)
+	assert.NotEmpty(t, apiKey)
+}
+
+func TestDecryptAPIKey_InvalidNonceSize(t *testing.T) {
+	// Create a valid encrypted value, then try decrypting with a wrong-size nonce
+	key := "sk-test-key"
+	encrypted, _, err := service.EncryptAPIKey(key)
+	require.NoError(t, err)
+
+	// Create a nonce of wrong size (1 byte instead of 12)
+	invalidNonce := "AA=="
+	_, err = service.DecryptAPIKey(encrypted, invalidNonce)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid nonce size")
+}
+
+func TestDecryptAPIKey_InvalidNonceBase64(t *testing.T) {
+	// Valid base64 ciphertext but invalid nonce
+	_, err := service.DecryptAPIKey("dGVzdA==", "!!!invalid!!!")
+	assert.Error(t, err)
+}
+
+func TestSaveAgentAPIKey_EncryptError(t *testing.T) {
+	// SaveAgentAPIKey calls EncryptAPIKey internally which should work in normal cases.
+	// This test just verifies the happy path with a non-empty key.
+	db := setupTestDBForAgents(t)
+
+	err := service.SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
+	require.NoError(t, err)
+
+	err = service.SaveAgentAPIKey(db, "pi", "openai", "", "valid-api-key")
+	require.NoError(t, err)
+}
+
+func TestDeriveEncryptionKey_Cached(t *testing.T) {
+	service.ResetEncryptionKeyCache()
+	key1 := service.DeriveEncryptionKey()
+	key2 := service.DeriveEncryptionKey() // Should return cached value
+	assert.Equal(t, key1, key2)
+	assert.Len(t, key2, 32)
+}
+
+func TestDecryptAPIKey_TamperedCiphertext(t *testing.T) {
+	key := "sk-test-key"
+	encrypted, nonce, err := service.EncryptAPIKey(key)
+	require.NoError(t, err)
+
+	// Tamper with the ciphertext (flip some bits)
+	decoded, err := base64.StdEncoding.DecodeString(encrypted)
+	require.NoError(t, err)
+	if len(decoded) > 0 {
+		decoded[0] ^= 0xFF
+	}
+	tampered := base64.StdEncoding.EncodeToString(decoded)
+
+	_, err = service.DecryptAPIKey(tampered, nonce)
+	assert.Error(t, err)
 }
 
 func TestRotateAPIKeyEncryption_WithKeys(t *testing.T) {

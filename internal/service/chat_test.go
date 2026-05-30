@@ -2370,3 +2370,311 @@ func TestRestoreDeletedSession_PreservesChatHistory(t *testing.T) {
 	assert.Len(t, msgsFinal, 3)
 	assert.Equal(t, "after restore", msgsFinal[2].Content)
 }
+
+// ---------- GetSessionModel / UpdateSessionModel ----------
+
+func TestGetSessionModel(t *testing.T) {
+	setupDB(t)
+
+	sid, err := service.CreateSession("/project", "claude", "Test", "claude", "claude-sonnet-4-6", "default", "chat")
+	assert.NoError(t, err)
+
+	modelID := service.GetSessionModel(sid)
+	assert.Equal(t, "claude-sonnet-4-6", modelID)
+}
+
+func TestGetSessionModel_Empty(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "No Model")
+	modelID := service.GetSessionModel(sid)
+	assert.Equal(t, "", modelID)
+}
+
+func TestGetSessionModel_NonExistent(t *testing.T) {
+	setupDB(t)
+	assert.Equal(t, "", service.GetSessionModel("non-existent"))
+}
+
+func TestGetSessionModel_DeletedSession(t *testing.T) {
+	setupDB(t)
+
+	sid, err := service.CreateSession("/project", "claude", "Deleted", "claude", "gpt-4", "default", "chat")
+	assert.NoError(t, err)
+
+	err = service.DeleteSession("/project", "claude", sid)
+	assert.NoError(t, err)
+
+	assert.Equal(t, "", service.GetSessionModel(sid))
+}
+
+func TestUpdateSessionModel(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Model Test")
+
+	err := service.UpdateSessionModel(sid, "gpt-4o")
+	assert.NoError(t, err)
+
+	modelID := service.GetSessionModel(sid)
+	assert.Equal(t, "gpt-4o", modelID)
+}
+
+func TestUpdateSessionModel_NonExistent(t *testing.T) {
+	setupDB(t)
+
+	err := service.UpdateSessionModel("non-existent", "gpt-4o")
+	assert.NoError(t, err) // UPDATE on non-existent row is a no-op
+}
+
+// ---------- GetStreamingMessageID ----------
+
+func TestGetStreamingMessageID_Found(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Stream Test")
+
+	// Add a streaming message then finalize it
+	_, err := service.AddChatMessage("/project", "claude", sid, "assistant", "streaming...", nil, true, "")
+	assert.NoError(t, err)
+
+	err = service.FinalizeStreamingMessage("/project", "claude", sid, "final content")
+	assert.NoError(t, err)
+
+	id := service.GetStreamingMessageID(sid)
+	assert.Greater(t, id, int64(0))
+}
+
+func TestGetStreamingMessageID_NoAssistantMessage(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Empty")
+	id := service.GetStreamingMessageID(sid)
+	assert.Equal(t, int64(0), id)
+}
+
+// ---------- SaveRawResponse ----------
+
+func TestSaveRawResponse(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Raw Test")
+
+	_, err := service.AddChatMessage("/project", "claude", sid, "assistant", "test", nil, false, "")
+	assert.NoError(t, err)
+
+	msgID := service.GetStreamingMessageID(sid)
+
+	err = service.SaveRawResponse(sid, "claude", msgID, "raw output data")
+	assert.NoError(t, err)
+
+	// Verify it was saved
+	var rawOutput string
+	err = service.DB.QueryRow("SELECT raw_output FROM ai_raw_responses WHERE session_id = ?", sid).Scan(&rawOutput)
+	assert.NoError(t, err)
+	assert.Equal(t, "raw output data", rawOutput)
+}
+
+// ---------- GetUnindexedMessages / MarkMessageIndexed / UnindexedCount ----------
+
+func TestGetUnindexedMessages_Empty(t *testing.T) {
+	setupDB(t)
+
+	msgs, err := service.GetUnindexedMessages(10)
+	assert.NoError(t, err)
+	assert.Empty(t, msgs)
+}
+
+func TestGetUnindexedMessages_WithMessages(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Index Test")
+
+	_, err := service.AddChatMessage("/project", "claude", sid, "user", "hello", nil, false, "")
+	assert.NoError(t, err)
+	_, err = service.AddChatMessage("/project", "claude", sid, "assistant", "world", nil, false, "")
+	assert.NoError(t, err)
+
+	msgs, err := service.GetUnindexedMessages(10)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, msgs)
+}
+
+func TestMarkMessageIndexed(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Index Test")
+	msgID, err := service.AddChatMessage("/project", "claude", sid, "user", "hello", nil, false, "")
+	assert.NoError(t, err)
+
+	err = service.MarkMessageIndexed(msgID)
+	assert.NoError(t, err)
+
+	// Verify the message is now indexed
+	var indexed int
+	err = service.DB.QueryRow("SELECT indexed FROM chat_history WHERE id = ?", msgID).Scan(&indexed)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, indexed)
+}
+
+func TestUnindexedCount(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Count Test")
+
+	// Initially 0
+	count, err := service.UnindexedCount()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, count)
+
+	// Add messages (new messages default to indexed=0)
+	_, err = service.AddChatMessage("/project", "claude", sid, "user", "hello", nil, false, "")
+	assert.NoError(t, err)
+
+	count, err = service.UnindexedCount()
+	assert.NoError(t, err)
+	assert.Greater(t, count, 0)
+}
+
+// ---------- GetChatHistoryPaged (cursor-based) ----------
+
+func TestGetChatHistoryPaged_LimitAndBeforeID(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Paged History")
+
+	// Add 5 messages
+	var msgIDs []int64
+	for i := 0; i < 5; i++ {
+		id, err := service.AddChatMessage("/project", "claude", sid, "user", fmt.Sprintf("msg %d", i), nil, false, "")
+		assert.NoError(t, err)
+		msgIDs = append(msgIDs, id)
+	}
+
+	// Get last 2 messages with limit only (no cursor)
+	msgs, err := service.GetChatHistoryPaged("/project", "claude", sid, 2, 0)
+	assert.NoError(t, err)
+	assert.Len(t, msgs, 2)
+	assert.Equal(t, "msg 3", msgs[0].Content)
+	assert.Equal(t, "msg 4", msgs[1].Content)
+
+	// Get 2 messages before the last message (cursor-based)
+	msgs, err = service.GetChatHistoryPaged("/project", "claude", sid, 2, int(msgIDs[4]))
+	assert.NoError(t, err)
+	assert.Len(t, msgs, 2)
+	assert.Equal(t, "msg 2", msgs[0].Content)
+	assert.Equal(t, "msg 3", msgs[1].Content)
+}
+
+// ---------- GetSessionProjectPath ----------
+
+func TestGetSessionProjectPath(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/my/project", "claude", "Test")
+
+	path := service.GetSessionProjectPath(sid)
+	assert.Equal(t, "/my/project", path)
+}
+
+func TestGetSessionProjectPath_NonExistent(t *testing.T) {
+	setupDB(t)
+
+	path := service.GetSessionProjectPath("non-existent")
+	assert.Equal(t, "", path)
+}
+
+// ---------- GetLatestUserModel ----------
+
+func TestGetLatestUserModel_Found(t *testing.T) {
+	setupDB(t)
+
+	_, err := service.CreateSession("/project", "claude", "Test", "claude", "gpt-4o", "user", "chat")
+	assert.NoError(t, err)
+
+	modelID, thinkingEffort := service.GetLatestUserModel("claude", "/project")
+	assert.Equal(t, "gpt-4o", modelID)
+	assert.Equal(t, "", thinkingEffort)
+}
+
+func TestGetLatestUserModel_WithThinkingEffort(t *testing.T) {
+	setupDB(t)
+
+	sid, err := service.CreateSession("/project", "claude", "Test", "claude", "gpt-4o", "user", "chat")
+	assert.NoError(t, err)
+
+	err = service.UpdateSessionThinkingEffort(sid, "high")
+	assert.NoError(t, err)
+
+	modelID, thinkingEffort := service.GetLatestUserModel("claude", "/project")
+	assert.Equal(t, "gpt-4o", modelID)
+	assert.Equal(t, "high", thinkingEffort)
+}
+
+func TestGetLatestUserModel_NotFound(t *testing.T) {
+	setupDB(t)
+
+	modelID, thinkingEffort := service.GetLatestUserModel("claude", "/project")
+	assert.Equal(t, "", modelID)
+	assert.Equal(t, "", thinkingEffort)
+}
+
+// ---------- GetChatHistoryPaged: all branches ----------
+
+func TestGetChatHistoryPaged_NoLimit(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Paged All")
+
+	_, err := service.AddChatMessage("/project", "claude", sid, "user", "msg1", nil, false, "")
+	assert.NoError(t, err)
+	_, err = service.AddChatMessage("/project", "claude", sid, "user", "msg2", nil, false, "")
+	assert.NoError(t, err)
+
+	// limit=0 returns all messages
+	msgs, err := service.GetChatHistoryPaged("/project", "claude", sid, 0, 0)
+	assert.NoError(t, err)
+	assert.Len(t, msgs, 2)
+}
+
+func TestGetChatHistoryPaged_LimitOnly(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Paged Limit")
+
+	for i := 0; i < 5; i++ {
+		_, err := service.AddChatMessage("/project", "claude", sid, "user", fmt.Sprintf("msg %d", i), nil, false, "")
+		assert.NoError(t, err)
+	}
+
+	// limit=3, no cursor — should return the 3 most recent
+	msgs, err := service.GetChatHistoryPaged("/project", "claude", sid, 3, 0)
+	assert.NoError(t, err)
+	assert.Len(t, msgs, 3)
+	assert.Equal(t, "msg 2", msgs[0].Content) // oldest of the 3
+	assert.Equal(t, "msg 4", msgs[2].Content) // newest
+}
+
+func TestGetChatHistoryPaged_Empty(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Empty Paged")
+
+	msgs, err := service.GetChatHistoryPaged("/project", "claude", sid, 10, 0)
+	assert.NoError(t, err)
+	assert.Empty(t, msgs)
+}
+
+// ---------- CreateSession: session_type default ----------
+
+func TestCreateSession_EmptySessionTypeDefaultsToChat(t *testing.T) {
+	setupDB(t)
+
+	sid, err := service.CreateSession("/project", "claude", "Default Type", "", "", "default", "")
+	assert.NoError(t, err)
+
+	var sessionType string
+	err = service.DB.QueryRow("SELECT session_type FROM chat_sessions WHERE id = ?", sid).Scan(&sessionType)
+	assert.NoError(t, err)
+	assert.Equal(t, "chat", sessionType)
+}

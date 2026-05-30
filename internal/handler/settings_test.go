@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,9 +15,11 @@ import (
 
 	"clawbench/internal/middleware"
 	"clawbench/internal/model"
+	"clawbench/internal/version"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestServeConfig_Get(t *testing.T) {
@@ -1521,4 +1525,613 @@ func TestServeConfig_Patch_RecentProjectsMaxCount_NegativeRejected(t *testing.T)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "recent_projects.max_count must be at least 1")
+}
+
+// --- Additional coverage: Kokoro with model_path in patch ---
+
+func TestServeConfig_Patch_KokoroModelPathInPatch(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "kokoro"
+	cfg.TTS.Kokoro.ModelPath = ""
+	cfg.TTS.Kokoro.VoicesPath = ""
+	model.ConfigInstance = cfg
+
+	// Patch model_path and voices_path together when engine is already kokoro
+	body := `{"tts":{"kokoro":{"model_path":"/path/to/kokoro.onnx","voices_path":"/path/to/voices.bin","lang":"en"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "/path/to/kokoro.onnx", model.ConfigInstance.TTS.Kokoro.ModelPath)
+	assert.Equal(t, "/path/to/voices.bin", model.ConfigInstance.TTS.Kokoro.VoicesPath)
+	assert.Equal(t, "en", model.ConfigInstance.TTS.Kokoro.Lang)
+}
+
+// --- MossNano with model_dir in patch (already set engine) ---
+
+func TestServeConfig_Patch_MossNanoModelDirInPatch(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "moss-nano"
+	cfg.TTS.MossNano.ModelDir = ""
+	model.ConfigInstance = cfg
+
+	// Patch model_dir when engine is already moss-nano
+	body := `{"tts":{"moss_nano":{"model_dir":"/path/to/models","voice":"Test","backend":"onnx"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "/path/to/models", model.ConfigInstance.TTS.MossNano.ModelDir)
+	assert.Equal(t, "Test", model.ConfigInstance.TTS.MossNano.Voice)
+	assert.Equal(t, "onnx", model.ConfigInstance.TTS.MossNano.Backend)
+}
+
+// --- mergePatchIntoRaw: new nested map creation ---
+
+func TestMergePatchIntoRaw_NewNestedKey(t *testing.T) {
+	raw := map[string]any{
+		"existing": "value",
+	}
+
+	patch := map[string]any{
+		"new_key": map[string]any{
+			"sub_key": "sub_value",
+		},
+	}
+
+	mergePatchIntoRaw(raw, patch)
+
+	assert.Equal(t, "value", raw["existing"])
+	newKey, ok := raw["new_key"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "sub_value", newKey["sub_key"])
+}
+
+// --- getBuildVersion tests ---
+
+func TestGetBuildVersion_FallbackVCS(t *testing.T) {
+	origVersion := version.Version
+	version.Version = ""
+	defer func() { version.Version = origVersion }()
+
+	v := getBuildVersion()
+	assert.NotEmpty(t, v)
+}
+
+func TestGetBuildVersion_SetVersion(t *testing.T) {
+	origVersion := version.Version
+	version.Version = "v1.2.3"
+	defer func() { version.Version = origVersion }()
+
+	v := getBuildVersion()
+	assert.Equal(t, "v1.2.3", v)
+}
+
+// --- serveConfigPatch error paths ---
+
+func TestServeConfigPatch_BodyReadError(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", errorReader{})
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// errorReader is an io.Reader that always returns an error.
+type errorReader struct{}
+
+func (errorReader) Read(_ []byte) (n int, err error) {
+	return 0, fmt.Errorf("simulated read error")
+}
+
+func TestServeConfigPatch_ApplyConfigPatchError(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"rag":{"api_key":"sk-1***xyz"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "apply_failed")
+}
+
+func TestServeConfigPatch_WriteConfigYAMLError(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	origBinDir := model.BinDir
+	model.BinDir = "/nonexistent/path/that/cannot/be/created"
+	defer func() { model.BinDir = origBinDir }()
+
+	body := `{"chat":{"collapsed_height":200}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "write_failed")
+}
+
+// --- kokoro without voices_path (empty existing) ---
+
+func TestServeConfig_Patch_KokoroWithoutVoicesPath(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "kokoro"
+	cfg.TTS.Kokoro.ModelPath = "/path/to/model.onnx"
+	cfg.TTS.Kokoro.VoicesPath = ""
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"kokoro":{"lang":"en"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "kokoro.voices_path is required")
+}
+
+func TestServeConfig_Patch_KokoroWithVoicesPathInPatch(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "kokoro"
+	cfg.TTS.Kokoro.ModelPath = "/path/to/model.onnx"
+	cfg.TTS.Kokoro.VoicesPath = ""
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"kokoro":{"voices_path":"/path/to/voices.bin","lang":"en"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "/path/to/voices.bin", model.ConfigInstance.TTS.Kokoro.VoicesPath)
+}
+
+// --- writeConfigYAML: no existing file ---
+
+func TestServeConfigPatch_NoExistingConfig(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Chat.CollapsedHeight = 150
+	model.ConfigInstance = cfg
+	model.BinDir = t.TempDir()
+
+	body := `{"chat":{"collapsed_height":200}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 200, model.ConfigInstance.Chat.CollapsedHeight)
+}
+
+// --- IsRunningUnderSupervisor ---
+
+func TestIsRunningUnderSupervisor_EnvOverride(t *testing.T) {
+	orig := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
+	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "1")
+	defer os.Setenv("CLAWBENCH_NO_SUPERVISOR", orig)
+
+	assert.False(t, IsRunningUnderSupervisor())
+}
+
+func TestIsRunningUnderSupervisor_InvocationID(t *testing.T) {
+	origNoSupervisor := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
+	origInvocationID := os.Getenv("INVOCATION_ID")
+	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
+	os.Setenv("INVOCATION_ID", "test-invocation-id")
+	defer func() {
+		os.Setenv("CLAWBENCH_NO_SUPERVISOR", origNoSupervisor)
+		os.Setenv("INVOCATION_ID", origInvocationID)
+	}()
+
+	assert.True(t, IsRunningUnderSupervisor())
+}
+
+// --- ServeConfigPassword: auto-password file ---
+
+func TestServeConfigPassword_WithAutoPasswordFile(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	password := "test-password"
+	hash := sha256.Sum256([]byte(password + "clawbench-salt"))
+	model.SessionToken = hex.EncodeToString(hash[:])
+	model.PasswordIsSHA256 = false
+	bcryptHash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	model.PasswordHash = bcryptHash
+	model.ConfigInstance = model.Config{}
+
+	binDir := t.TempDir()
+	clawbenchDir := filepath.Join(binDir, ".clawbench")
+	require.NoError(t, os.MkdirAll(clawbenchDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(clawbenchDir, "auto-password"), []byte("old-auto-password"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(binDir, "config"), 0755))
+
+	origBinDir := model.BinDir
+	model.BinDir = binDir
+	defer func() { model.BinDir = origBinDir }()
+
+	req := newRequest(t, http.MethodPost, "/api/config/password", map[string]string{
+		"current_password": password,
+		"new_password":     "brand-new-password",
+	})
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfigPassword, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	_, err := os.Stat(filepath.Join(clawbenchDir, "auto-password"))
+	assert.True(t, os.IsNotExist(err), "auto-password file should be removed")
+}
+
+// --- ServeConfigRestart: nil restartFunc ---
+
+func TestServeConfigRestart_NilRestartFuncWarn(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	origRestartFunc := restartFunc
+	restartFunc = nil
+	defer func() { restartFunc = origRestartFunc }()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfigRestart, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "restarting", resp["status"])
+
+	time.Sleep(restartGracePeriod + 100*time.Millisecond)
+}
+
+// --- ServeConfigPassword: RemoteAddr without port ---
+
+func TestServeConfigPassword_RemoteAddrNoPort(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	globalLoginLimiter = &loginLimiter{records: make(map[string]*ipRecord)}
+	defer teardown()
+
+	password := "test-password"
+	hash := sha256.Sum256([]byte(password + "clawbench-salt"))
+	model.SessionToken = hex.EncodeToString(hash[:])
+	model.PasswordIsSHA256 = false
+	bcryptHash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	model.PasswordHash = bcryptHash
+	model.ConfigInstance = model.Config{}
+	model.BinDir = t.TempDir()
+	os.MkdirAll(filepath.Join(model.BinDir, "config"), 0755)
+
+	req := newRequest(t, http.MethodPost, "/api/config/password", map[string]string{
+		"current_password": password,
+		"new_password":     "brand-new-password",
+	})
+	req.RemoteAddr = "192.0.2.1"
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfigPassword, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// --- writeConfigYAML: malformed existing config.yaml ---
+
+func TestServeConfigPatch_MalformedExistingConfig(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Chat.CollapsedHeight = 150
+	model.ConfigInstance = cfg
+
+	binDir := t.TempDir()
+	configDir := filepath.Join(binDir, "config")
+	require.NoError(t, os.MkdirAll(configDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("{{invalid yaml:::"), 0644))
+
+	origBinDir := model.BinDir
+	model.BinDir = binDir
+	defer func() { model.BinDir = origBinDir }()
+
+	body := `{"chat":{"collapsed_height":200}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 200, model.ConfigInstance.Chat.CollapsedHeight)
+}
+
+// --- applyConfigPatch: TTS model, voice, format, speed, max_cache_files ---
+
+func TestServeConfigPatch_TTSModelAndVoice(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.TTS.Engine = "edge"
+	model.ConfigInstance = cfg
+
+	body := `{"tts":{"tts_model":"test-model","voice":"test-voice","format":"mp3","speed":1.5,"max_cache_files":200}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "test-model", model.ConfigInstance.TTS.TTSModel)
+	assert.Equal(t, "test-voice", model.ConfigInstance.TTS.Voice)
+	assert.Equal(t, "mp3", model.ConfigInstance.TTS.Format)
+	assert.Equal(t, 1.5, model.ConfigInstance.TTS.Speed)
+	assert.Equal(t, 200, model.ConfigInstance.TTS.MaxCacheFiles)
+}
+
+// --- applyConfigPatch: port forward, push, terminal, rag ---
+
+func TestServeConfigPatch_PortForward(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"port_forward":{"enabled":true,"port":2222}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, model.ConfigInstance.PortForward.Enabled)
+	assert.Equal(t, 2222, model.ConfigInstance.PortForward.Port)
+}
+
+func TestServeConfigPatch_PushJPush(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"push":{"jpush":{"enabled":true,"app_key":"test-key","master_secret":"test-secret-1234567890"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, model.ConfigInstance.Push.JPush.Enabled)
+	assert.Equal(t, "test-key", model.ConfigInstance.Push.JPush.AppKey)
+}
+
+func TestServeConfigPatch_TerminalFields(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"terminal":{"enabled":true,"idle_timeout":"15m","max_sessions":5,"buffer_lines":5000}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, model.ConfigInstance.Terminal.Enabled)
+	assert.Equal(t, "15m", model.ConfigInstance.Terminal.IdleTimeout)
+	assert.Equal(t, 5, model.ConfigInstance.Terminal.MaxSessions)
+	assert.Equal(t, 5000, model.ConfigInstance.Terminal.BufferLines)
+}
+
+func TestServeConfigPatch_RAGFields(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"rag":{"base_url":"http://localhost:11434","model":"bge-m3","api_key":"valid-full-key","chunk_size":256,"search_limit":10,"search_pool_size":100,"retention_days":60}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "http://localhost:11434", model.ConfigInstance.RAG.BaseURL)
+	assert.Equal(t, "bge-m3", model.ConfigInstance.RAG.Model)
+	assert.Equal(t, "valid-full-key", model.ConfigInstance.RAG.APIKey)
+	assert.Equal(t, 256, model.ConfigInstance.RAG.ChunkSize)
+	assert.Equal(t, 10, model.ConfigInstance.RAG.SearchLimit)
+	assert.Equal(t, 100, model.ConfigInstance.RAG.SearchPoolSize)
+	assert.Equal(t, 60, model.ConfigInstance.RAG.RetentionDays)
+}
+
+// --- serveConfigGet: RAG API key masking ---
+
+func TestServeConfig_Get_RAGAPIKeyMasked(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.RAG.APIKey = "sk-1234567890abcdefghijklmnopqrstuvwxyz"
+	model.ConfigInstance = cfg
+
+	req := newRequest(t, http.MethodGet, "/api/config", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	json.Unmarshal(w.Body.Bytes(), &resp)
+
+	rag, _ := resp["rag"].(map[string]any)
+	assert.Equal(t, "sk-1***xyz", rag["api_key"])
+}
+
+// --- validatePatchValues: default_agent with nil Agents ---
+
+func TestServeConfig_Patch_DefaultAgentEmptyAgents(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	origAgents := model.Agents
+	model.Agents = nil
+	defer func() { model.Agents = origAgents }()
+
+	body := `{"default_agent":"anything"}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// --- validatePatchValues: summarize.api.base_url in patch while backend is api ---
+
+func TestServeConfig_Patch_SummarizeAPIBaseURLInPatchWhileAPI(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Summarize.Backend = "api"
+	cfg.Summarize.API.BaseURL = ""
+	model.ConfigInstance = cfg
+
+	body := `{"summarize":{"api":{"base_url":"https://api.openai.com/v1"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "https://api.openai.com/v1", model.ConfigInstance.Summarize.API.BaseURL)
+}
+
+// --- validatePatchValues: summarize.api.key with *** ---
+
+func TestServeConfig_Patch_SummarizeAPIKeyMaskedRejected(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"summarize":{"api":{"key":"sk-1***xyz"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "must not contain '***'")
+}
+
+// --- validatePatchValues: summarize.api.format anthropic ---
+
+func TestServeConfig_Patch_SummarizeAPIFormatAnthropic(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	model.ConfigInstance = cfg
+
+	body := `{"summarize":{"api":{"base_url":"https://api.anthropic.com","format":"anthropic"}}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "anthropic", model.ConfigInstance.Summarize.API.Format)
+}
+
+// --- ServeConfigPassword: body read error ---
+
+func TestServeConfigPassword_BodyReadError(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	globalLoginLimiter = &loginLimiter{records: make(map[string]*ipRecord)}
+	defer teardown()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config/password", errorReader{})
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "192.0.2.1:1234"
+	withAuthCookie(req, "sometoken")
+	w := callHandler(ServeConfigPassword, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// --- writeConfigYAML: backup path ---
+
+func TestServeConfigPatch_WithExistingConfigBackup(t *testing.T) {
+	_, teardown := setupTestEnv(t)
+	defer teardown()
+
+	cfg := model.Config{}
+	cfg.Chat.CollapsedHeight = 150
+	model.ConfigInstance = cfg
+
+	binDir := t.TempDir()
+	configDir := filepath.Join(binDir, "config")
+	require.NoError(t, os.MkdirAll(configDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("chat:\n  collapsed_height: 100\n"), 0644))
+
+	origBinDir := model.BinDir
+	model.BinDir = binDir
+	defer func() { model.BinDir = origBinDir }()
+
+	body := `{"chat":{"collapsed_height":200}}`
+	req := httptest.NewRequest(http.MethodPatch, "/api/config", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeConfig, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 200, model.ConfigInstance.Chat.CollapsedHeight)
+
+	_, err := os.Stat(filepath.Join(configDir, "config.yaml.bak"))
+	assert.NoError(t, err, "backup file should exist")
 }

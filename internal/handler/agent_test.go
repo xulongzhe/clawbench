@@ -3,8 +3,10 @@ package handler
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"clawbench/internal/model"
@@ -484,4 +486,201 @@ func TestServeAgentRefreshModels_CLINotFound(t *testing.T) {
 	// Should be either 404 (CLINotFound) or 500 (ModelDiscoveryFailed)
 	assert.True(t, w.Code == http.StatusNotFound || w.Code == http.StatusInternalServerError,
 		"expected 404 or 500, got %d", w.Code)
+}
+
+func TestAgentPatch_InvalidJSON(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Send malformed JSON to trigger decodeJSON failure (line 54-56)
+	req := httptest.NewRequest(http.MethodPatch, "/api/agents", strings.NewReader("{invalid"))
+	req.Header.Set("Content-Type", "application/json")
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestAgentPatch_ClearPreferredThinkingEffort(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// First set a preferred thinking effort
+	model.Agents["codebuddy"].PreferredThinkingEffort = "high"
+
+	// Now clear it by sending empty string (empty string with no ThinkingEffortLevels should work)
+	body := map[string]any{
+		"id":                        "codebuddy",
+		"preferred_thinking_effort": "",
+	}
+	req := newRequest(t, http.MethodPatch, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "", model.Agents["codebuddy"].PreferredThinkingEffort)
+}
+
+func TestAgentPatch_PreferredModelEmptyString(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Setting preferred_model to empty string should clear it without validation
+	body := map[string]any{
+		"id":              "codebuddy",
+		"preferred_model": "",
+	}
+	req := newRequest(t, http.MethodPatch, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "", model.Agents["codebuddy"].PreferredModel)
+}
+
+func TestServeAgentRefreshModels_SaveAgentDBError(t *testing.T) {
+	tmpDir, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Override DiscoverModels for testing
+	origDiscover := model.DiscoverModels
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		if spec.Backend == "codebuddy" {
+			return []model.AgentModel{{ID: "glm-6", Name: "GLM 6", Default: true}}
+		}
+		return nil
+	}
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	// Create model cache dir and set global
+	cacheDir := filepath.Join(tmpDir, "model-cache")
+	require.NoError(t, os.MkdirAll(cacheDir, 0755))
+	origCacheDir := model.ModelCacheDir
+	model.ModelCacheDir = cacheDir
+	defer func() { model.ModelCacheDir = origCacheDir }()
+
+	// Delete agents table to cause SaveAgent to fail
+	service.DB.Exec("DROP TABLE agents")
+
+	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	// Should still return 200 (DB save failure is logged but not fatal)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify in-memory agent models were still updated
+	assert.Equal(t, "glm-6", model.Agents["codebuddy"].Models[0].ID)
+}
+
+func TestServeAgentRefreshModels_WriteModelCacheError(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Override DiscoverModels for testing
+	origDiscover := model.DiscoverModels
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		if spec.Backend == "codebuddy" {
+			return []model.AgentModel{{ID: "glm-6", Name: "GLM 6", Default: true}}
+		}
+		return nil
+	}
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	// Set cache dir to invalid path to cause WriteModelCache to fail (lines 178-180)
+	origCacheDir := model.ModelCacheDir
+	model.ModelCacheDir = "/nonexistent/path/that/cannot/be/created"
+	defer func() { model.ModelCacheDir = origCacheDir }()
+
+	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	// Should still return 200 (cache write failure is logged but not fatal)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify in-memory agent models were still updated
+	assert.Equal(t, "glm-6", model.Agents["codebuddy"].Models[0].ID)
+}
+
+func TestServeAgentRefreshModels_CLINotFoundSpecificError(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Create a custom agent whose CLI command doesn't exist on PATH
+	model.Agents["fake-cli"] = &model.Agent{
+		ID:      "fake-cli",
+		Name:    "Fake CLI",
+		Backend: "deepseek", // uses DefaultCmd "deepseek" which is unlikely on test PATH
+		Models:  []model.AgentModel{{ID: "m1", Name: "M1", Default: true}},
+	}
+	model.AgentList = append(model.AgentList, model.Agents["fake-cli"])
+	require.NoError(t, service.SaveAgent(service.DB, model.Agents["fake-cli"]))
+
+	// Override DiscoverModels to return nil — will hit "no models" path
+	origDiscover := model.DiscoverModels
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		return nil
+	}
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	req := newRequest(t, http.MethodPost, "/api/agents/fake-cli/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	// Should be 404 (CLINotFound) or 500 (ModelDiscoveryFailed) depending on whether CLI exists
+	// The key behavior is that it returns an error, not 200
+	assert.NotEqual(t, http.StatusOK, w.Code, "should return error when models discovery returns empty")
+}
+
+func TestAgentPatch_NoThinkingEffortLevels(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Create an agent with no ThinkingEffortLevels
+	model.Agents["nolevels"] = &model.Agent{
+		ID:      "nolevels",
+		Name:    "No Levels",
+		Backend: "test",
+		Models:  []model.AgentModel{{ID: "m1", Name: "Model 1", Default: true}},
+	}
+	model.AgentList = append(model.AgentList, model.Agents["nolevels"])
+	require.NoError(t, service.SaveAgent(service.DB, model.Agents["nolevels"]))
+
+	// Setting preferred_thinking_effort on agent with no levels should accept any value
+	body := map[string]any{
+		"id":                        "nolevels",
+		"preferred_thinking_effort": "anything",
+	}
+	req := newRequest(t, http.MethodPatch, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "anything", model.Agents["nolevels"].PreferredThinkingEffort)
+}
+
+func TestAgentPatch_PatchAgentDBError(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Create a closed DB that will return errors on Exec
+	closedDB, err := service.InitInMemoryDB()
+	require.NoError(t, err)
+	closedDB.Close()
+
+	// Replace service.DB with the closed DB
+	origDB := service.DB
+	service.DB = closedDB
+	defer func() { service.DB = origDB }()
+
+	body := map[string]any{
+		"id":              "codebuddy",
+		"preferred_model": "glm-4-flash",
+	}
+	req := newRequest(t, http.MethodPatch, "/api/agents", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }

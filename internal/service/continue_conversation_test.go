@@ -766,3 +766,50 @@ func TestContinueFromExecution_CreatedAtFormatConsistent(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, unreadCount, "continued session should have 0 unread messages after creation")
 }
+
+// ========== CheckContinueSession: execution not found ==========
+
+func TestCheckContinueSession_ExecutionNotFound(t *testing.T) {
+	setupDB(t)
+
+	exists, sessionID, err := service.CheckContinueSession(99999)
+	assert.Error(t, err)
+	assert.False(t, exists)
+	assert.Empty(t, sessionID)
+}
+
+// ========== ContinueFromExecution: task not found ==========
+
+func TestContinueFromExecution_TaskNotFound(t *testing.T) {
+	setupDB(t)
+
+	// Create an execution referencing a non-existent task
+	sessID := helperCreateScheduledSession(t, "/project", "claude", "Task")
+	result, err := service.DB.Exec(
+		"INSERT INTO task_executions (task_id, session_id, status) VALUES (99999, ?, 'completed')",
+		sessID,
+	)
+	assert.NoError(t, err)
+	execID, _ := result.LastInsertId()
+
+	_, _, err = service.ContinueFromExecution(execID, "/project")
+	assert.Error(t, err)
+}
+
+// ========== ContinueFromExecution: source session not found ==========
+
+func TestContinueFromExecution_SourceSessionNotFound(t *testing.T) {
+	setupDB(t)
+
+	// Create a task + execution with a non-existent session ID
+	taskID := helperCreateScheduledTask(t, "/project", "Task", "claude")
+	result, err := service.DB.Exec(
+		"INSERT INTO task_executions (task_id, session_id, status) VALUES (?, 'nonexistent-session', 'completed')",
+		taskID,
+	)
+	assert.NoError(t, err)
+	execID, _ := result.LastInsertId()
+
+	_, _, err = service.ContinueFromExecution(execID, "/project")
+	assert.Error(t, err)
+}
