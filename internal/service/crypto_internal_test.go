@@ -229,10 +229,12 @@ func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
 	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0600)
 	require.NoError(t, err)
 
-	// Close the DB after loadAllAPIKeys would succeed but before SaveAgentAPIKey would run.
-	// We can't do this with the normal flow, so we test the rollback path indirectly.
-	// Drop the agent_api_keys table to make SaveAgentAPIKey fail during re-encryption
-	_, err = db.Exec("DROP TABLE agent_api_keys")
+	// Make the DB read-only by putting it in WAL mode and opening a second read-only connection
+	// Actually, simpler: close the DB and reopen it in a way that the write will fail.
+	// The simplest way: open a second :memory: DB that doesn't have the table.
+	// Actually, the easiest: use the same DB but set PRAGMA query_only = ON
+	// This will make all write operations fail
+	_, err = db.Exec("PRAGMA query_only = ON")
 	require.NoError(t, err)
 
 	err = RotateAPIKeyEncryption(db, "old-password")
@@ -243,6 +245,9 @@ func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(tmpDir, ".clawbench", "auto-password"))
 	require.NoError(t, err)
 	assert.Equal(t, "old-password", string(data), "password should be rolled back on rotation failure")
+
+	// Restore query_only for cleanup
+	_, _ = db.Exec("PRAGMA query_only = OFF")
 }
 
 func TestInitInMemoryDB_Success(t *testing.T) {
