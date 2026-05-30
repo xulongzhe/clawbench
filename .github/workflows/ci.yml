@@ -290,6 +290,7 @@ jobs:
           mkdir -p .clawbench/pi
           curl -sL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-linux-x64.tar.gz" | tar xzf - -C .clawbench/pi --strip-components=1
           chmod +x .clawbench/pi/pi
+          echo "${PI_VERSION}" > .clawbench/pi/VERSION
 
       - name: Package
         run: |
