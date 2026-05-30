@@ -2083,3 +2083,68 @@ func TestReorderQuickCommands_EmptyIDs(t *testing.T) {
 	err := ReorderQuickCommands([]int64{})
 	assert.NoError(t, err)
 }
+
+// ---------- InitDB AgentDDL execution ----------
+
+func TestInitDB_CreatesAgentTables(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err := InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	// Verify agents table was created by AgentDDL
+	tables := getTableColumns(t, DB, "agents")
+	assert.Contains(t, tables, "id", "agents table should exist with id column")
+	assert.Contains(t, tables, "name", "agents table should exist with name column")
+	assert.Contains(t, tables, "backend", "agents table should exist with backend column")
+
+	// Verify agent_api_keys table was created by AgentDDL
+	tables = getTableColumns(t, DB, "agent_api_keys")
+	assert.Contains(t, tables, "agent_id", "agent_api_keys table should exist with agent_id column")
+	assert.Contains(t, tables, "provider", "agent_api_keys table should exist with provider column")
+	assert.Contains(t, tables, "encrypted_key", "agent_api_keys table should exist with encrypted_key column")
+}
+
+// ---------- ReorderQuickCommands: DB.Begin error path ----------
+
+func TestReorderQuickCommands_DBNotInitialized(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Set DB to a closed connection to trigger Begin error
+	db, err := sql.Open("sqlite", ":memory:")
+	assert.NoError(t, err)
+	db.Close()
+	DB = db
+	DBRead = db
+
+	err = ReorderQuickCommands([]int64{1, 2})
+	assert.Error(t, err, "reorder should fail when DB is closed")
+}
+
+// ---------- ReorderChatQuickSend: DB.Begin error path ----------
+
+func TestReorderChatQuickSend_DBNotInitialized(t *testing.T) {
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Set DB to a closed connection to trigger Begin error
+	db, err := sql.Open("sqlite", ":memory:")
+	assert.NoError(t, err)
+	db.Close()
+	DB = db
+	DBRead = db
+
+	err = ReorderChatQuickSend([]int64{1, 2})
+	assert.Error(t, err, "reorder should fail when DB is closed")
+}

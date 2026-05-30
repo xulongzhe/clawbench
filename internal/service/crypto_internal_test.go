@@ -178,6 +178,124 @@ func TestLoadAllAPIKeys_CorruptKey(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestRotateAPIKeyEncryption_LoadKeysError(t *testing.T) {
+	db, err := InitInMemoryDB()
+	require.NoError(t, err)
+
+	origDB := DB
+	origDBRead := DBRead
+	DB = db
+	DBRead = db
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Close the DB to make loadAllAPIKeys fail
+	db.Close()
+
+	err = RotateAPIKeyEncryption(db, "old-password")
+	assert.Error(t, err, "should fail when loadAllAPIKeys errors")
+	assert.Contains(t, err.Error(), "load API keys for rotation")
+}
+
+func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	// Write initial password file
+	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0600)
+	require.NoError(t, err)
+
+	db, err := InitInMemoryDB()
+	require.NoError(t, err)
+
+	origDB := DB
+	origDBRead := DBRead
+	DB = db
+	DBRead = db
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err = SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
+	require.NoError(t, err)
+
+	// Encrypt with old password
+	ResetEncryptionKeyCache()
+	err = SaveAgentAPIKey(db, "pi", "openai", "", "sk-test-key")
+	require.NoError(t, err)
+
+	// Update password file before rotation (as the real code does)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0600)
+	require.NoError(t, err)
+
+	// Close the DB after loadAllAPIKeys would succeed but before SaveAgentAPIKey would run.
+	// We can't do this with the normal flow, so we test the rollback path indirectly.
+	// Drop the agent_api_keys table to make SaveAgentAPIKey fail during re-encryption
+	_, err = db.Exec("DROP TABLE agent_api_keys")
+	require.NoError(t, err)
+
+	err = RotateAPIKeyEncryption(db, "old-password")
+	assert.Error(t, err, "should fail when SaveAgentAPIKey errors during rotation")
+	assert.Contains(t, err.Error(), "re-encrypt API key")
+
+	// Verify password was rolled back
+	data, err := os.ReadFile(filepath.Join(tmpDir, ".clawbench", "auto-password"))
+	require.NoError(t, err)
+	assert.Equal(t, "old-password", string(data), "password should be rolled back on rotation failure")
+}
+
+func TestInitInMemoryDB_Success(t *testing.T) {
+	db, err := InitInMemoryDB()
+	require.NoError(t, err)
+	defer db.Close()
+
+	// Verify agents table exists
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agents'").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "agents table should exist")
+
+	// Verify agent_api_keys table exists
+	err = db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='agent_api_keys'").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "agent_api_keys table should exist")
+}
+
+func TestDeriveKeyFromPassword_FallbackKey(t *testing.T) {
+	// Test that deriveKeyFromPassword produces a valid key when BinDir is empty
+	// (HKDF with empty password should succeed, not hit the fallback path)
+	origBinDir := model.BinDir
+	model.BinDir = ""
+	defer func() { model.BinDir = origBinDir }()
+
+	ResetEncryptionKeyCache()
+	key := deriveKeyFromPassword()
+	assert.Len(t, key, 32, "derived key should be 32 bytes")
+}
+
+func TestDeriveEncryptionKey_ConcurrentAccess(t *testing.T) {
+	ResetEncryptionKeyCache()
+
+	// Call DeriveEncryptionKey from multiple goroutines to test thread safety
+	done := make(chan []byte, 5)
+	for i := 0; i < 5; i++ {
+		go func() {
+			done <- DeriveEncryptionKey()
+		}()
+	}
+
+	var keys [][]byte
+	for i := 0; i < 5; i++ {
+		keys = append(keys, <-done)
+	}
+
+	// All goroutines should get the same key
+	for i := 1; i < len(keys); i++ {
+		assert.Equal(t, keys[0], keys[i], "concurrent DeriveEncryptionKey calls should return the same key")
+	}
+}
+
 func TestRotateAPIKeyEncryption_WithPasswordChange(t *testing.T) {
 	tmpDir := t.TempDir()
 	origBinDir := model.BinDir

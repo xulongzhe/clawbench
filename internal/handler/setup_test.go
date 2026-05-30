@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"clawbench/internal/model"
@@ -1378,6 +1379,9 @@ func TestSetupVerify_FakePiNoOutput(t *testing.T) {
 // TestSetupVerify_FakePiWithCustomURL tests verify with custom_url injected via
 // PI_CUSTOM_URL env var.
 func TestSetupVerify_FakePiWithCustomURL(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Pi binary path resolution differs on Windows")
+	}
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 
@@ -1407,6 +1411,9 @@ func TestSetupVerify_FakePiWithCustomURL(t *testing.T) {
 // TestSetupVerify_FakePiNoEnvVar tests verify with a provider that has no EnvVar
 // (falls through to cmd.Env = os.Environ()).
 func TestSetupVerify_FakePiNoEnvVar(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Pi binary path resolution differs on Windows")
+	}
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 
@@ -1446,6 +1453,9 @@ func TestSetupVerify_FakePiNoEnvVar(t *testing.T) {
 
 // TestWritePiConfigFiles_HomeDirError tests the path where os.UserHomeDir fails.
 func TestWritePiConfigFiles_HomeDirError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var not used on Windows")
+	}
 	// Set HOME to an invalid value to potentially cause issues
 	// Actually os.UserHomeDir reads $HOME on Unix, so we can't easily make it fail.
 	// Instead test that writePiConfigFiles works correctly and doesn't crash.
@@ -1481,6 +1491,9 @@ func TestWritePiConfigFiles_HomeDirError(t *testing.T) {
 // TestAtomicWriteFile_WriteToReadOnlyDir tests the error path where the target
 // directory is read-only.
 func TestAtomicWriteFile_WriteToReadOnlyDir(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permissions not supported on Windows")
+	}
 	tmpDir := t.TempDir()
 	readOnlyDir := filepath.Join(tmpDir, "readonly")
 	require.NoError(t, os.MkdirAll(readOnlyDir, 0555))

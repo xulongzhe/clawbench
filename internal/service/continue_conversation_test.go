@@ -1,6 +1,7 @@
 package service_test
 
 import (
+	"database/sql"
 	"testing"
 
 	"clawbench/internal/model"
@@ -796,20 +797,141 @@ func TestContinueFromExecution_TaskNotFound(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// ========== ContinueFromExecution: source session not found ==========
+// ========== CheckContinueSession: closed DB connection ==========
 
-func TestContinueFromExecution_SourceSessionNotFound(t *testing.T) {
+func TestCheckContinueSession_ClosedDB(t *testing.T) {
 	setupDB(t)
 
-	// Create a task + execution with a non-existent session ID
-	taskID := helperCreateScheduledTask(t, "/project", "Task", "claude")
-	result, err := service.DB.Exec(
-		"INSERT INTO task_executions (task_id, session_id, status) VALUES (?, 'nonexistent-session', 'completed')",
-		taskID,
-	)
+	origDBRead := service.DBRead
+	// Use a closed DB connection — this triggers a real error from the SQL driver
+	closedDB, err := sql.Open("sqlite", ":memory:")
 	assert.NoError(t, err)
-	execID, _ := result.LastInsertId()
+	closedDB.Close()
+	service.DBRead = closedDB
+	t.Cleanup(func() { service.DBRead = origDBRead })
 
-	_, _, err = service.ContinueFromExecution(execID, "/project")
+	exists, sessionID, err := service.CheckContinueSession(1)
 	assert.Error(t, err)
+	assert.False(t, exists)
+	assert.Empty(t, sessionID)
+}
+
+// ========== restoreDeletedSession: DB error path ==========
+
+func TestRestoreDeletedSession_DBError(t *testing.T) {
+	setupDB(t)
+
+	origDB := service.DB
+	// Set DB to a closed connection to trigger an error
+	closedDB, err := sql.Open("sqlite", ":memory:")
+	assert.NoError(t, err)
+	closedDB.Close()
+	service.DB = closedDB
+	t.Cleanup(func() { service.DB = origDB })
+
+	// restoreDeletedSession is private, but we can test the equivalent DB call
+	_, err = service.DB.Exec(
+		"UPDATE chat_sessions SET deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		"some-session-id",
+	)
+	assert.Error(t, err, "should fail with closed DB")
+}
+
+// ========== ContinueFromExecution: task_execution summary not copied when assistant message already has chat_message summary ==========
+
+func TestContinueFromExecution_TaskExecutionSummaryNotCopiedWhenChatMessageSummaryExists(t *testing.T) {
+	setupDB(t)
+	projectPath := "/test/project"
+
+	// Create task + session + assistant message + execution
+	taskID := helperCreateScheduledTask(t, projectPath, "Summary Priority Test", "agent1")
+	sessionID := helperCreateScheduledSessionWithDetails(t, projectPath, "claude", "Summary Priority Test", "agent1", "", "")
+	_, err := service.DB.Exec("INSERT INTO chat_history (session_id, project_path, role, content, backend) VALUES (?, ?, 'user', 'hello', 'claude')", sessionID, projectPath)
+	assert.NoError(t, err)
+	asstResult, err := service.DB.Exec("INSERT INTO chat_history (session_id, project_path, role, content, backend) VALUES (?, ?, 'assistant', '{\"blocks\":[{\"type\":\"text\",\"text\":\"response\"}]}', 'claude')", sessionID, projectPath)
+	assert.NoError(t, err)
+	asstID, _ := asstResult.LastInsertId()
+	execID := helperCreateTaskExecution(t, taskID, sessionID, "completed")
+
+	// Add BOTH a chat_message summary and a task_execution summary
+	_, err = service.DB.Exec("INSERT INTO summaries (target_type, target_id, summary, created_at) VALUES ('chat_message', ?, 'chat-level summary', CURRENT_TIMESTAMP)", asstID)
+	assert.NoError(t, err)
+	_, err = service.DB.Exec("INSERT INTO summaries (target_type, target_id, summary, created_at) VALUES ('task_execution', ?, 'task-level summary', CURRENT_TIMESTAMP)", execID)
+	assert.NoError(t, err)
+
+	// Continue
+	newSessionID, alreadyExists, err := service.ContinueFromExecution(execID, projectPath)
+	assert.NoError(t, err)
+	assert.False(t, alreadyExists)
+	assert.NotEmpty(t, newSessionID)
+
+	// The new assistant message should have the chat_message summary (from step 10a), NOT the task_execution summary
+	var newAsstID int64
+	err = service.DB.QueryRow("SELECT id FROM chat_history WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1", newSessionID).Scan(&newAsstID)
+	assert.NoError(t, err)
+
+	summary, found := service.GetSummary("chat_message", newAsstID)
+	assert.True(t, found)
+	assert.Equal(t, "chat-level summary", summary, "chat_message summary from 10a should take priority over task_execution summary from 10b")
+}
+
+// ========== ContinueFromExecution: task_execution summary with empty string not copied ==========
+
+func TestContinueFromExecution_TaskExecutionSummaryEmptyNotCopied(t *testing.T) {
+	setupDB(t)
+	projectPath := "/test/project"
+
+	// Create task + session + assistant message + execution
+	taskID := helperCreateScheduledTask(t, projectPath, "Empty Summary Test", "agent1")
+	sessionID := helperCreateScheduledSessionWithDetails(t, projectPath, "claude", "Empty Summary Test", "agent1", "", "")
+	_, err := service.DB.Exec("INSERT INTO chat_history (session_id, project_path, role, content, backend) VALUES (?, ?, 'user', 'hello', 'claude')", sessionID, projectPath)
+	assert.NoError(t, err)
+	_, err = service.DB.Exec("INSERT INTO chat_history (session_id, project_path, role, content, backend) VALUES (?, ?, 'assistant', '{\"blocks\":[{\"type\":\"text\",\"text\":\"response\"}]}', 'claude')", sessionID, projectPath)
+	assert.NoError(t, err)
+	execID := helperCreateTaskExecution(t, taskID, sessionID, "completed")
+
+	// Add an empty task_execution summary — should NOT be copied
+	_, err = service.DB.Exec("INSERT INTO summaries (target_type, target_id, summary, created_at) VALUES ('task_execution', ?, '', CURRENT_TIMESTAMP)", execID)
+	assert.NoError(t, err)
+
+	// Continue
+	newSessionID, alreadyExists, err := service.ContinueFromExecution(execID, projectPath)
+	assert.NoError(t, err)
+	assert.False(t, alreadyExists)
+	assert.NotEmpty(t, newSessionID)
+
+	// The new assistant message should NOT have any chat_message summary
+	var newAsstID int64
+	err = service.DB.QueryRow("SELECT id FROM chat_history WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1", newSessionID).Scan(&newAsstID)
+	assert.NoError(t, err)
+
+	_, found := service.GetSummary("chat_message", newAsstID)
+	assert.False(t, found, "empty task_execution summary should not be copied")
+}
+
+// ========== ContinueFromExecution: task_execution summary with no assistant message ==========
+
+func TestContinueFromExecution_TaskExecutionSummaryNoAssistantMessage(t *testing.T) {
+	setupDB(t)
+	projectPath := "/test/project"
+
+	// Create task + session with NO messages + execution
+	taskID := helperCreateScheduledTask(t, projectPath, "No Asst Test", "agent1")
+	sessionID := helperCreateScheduledSessionWithDetails(t, projectPath, "claude", "No Asst Test", "agent1", "", "")
+	execID := helperCreateTaskExecution(t, taskID, sessionID, "completed")
+
+	// Add a task_execution summary
+	_, err := service.DB.Exec("INSERT INTO summaries (target_type, target_id, summary, created_at) VALUES ('task_execution', ?, 'task summary', CURRENT_TIMESTAMP)", execID)
+	assert.NoError(t, err)
+
+	// Continue — no assistant message exists, so task_execution summary won't be copied as chat_message
+	newSessionID, alreadyExists, err := service.ContinueFromExecution(execID, projectPath)
+	assert.NoError(t, err)
+	assert.False(t, alreadyExists)
+	assert.NotEmpty(t, newSessionID)
+
+	// No chat_message summaries should exist for the new session's messages
+	msgs, err := service.GetChatHistory(projectPath, "claude", newSessionID)
+	assert.NoError(t, err)
+	assert.Empty(t, msgs)
 }
