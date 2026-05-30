@@ -1,8 +1,12 @@
 <template>
   <div class="exec-detail-page">
-    <!-- Header: breadcrumb + refresh -->
+    <!-- Header: breadcrumb + actions -->
     <div class="exec-detail-header">
       <TaskBreadcrumb />
+      <button v-if="showContinueBtn" class="header-btn continue-btn" :class="{ 'continue-btn-active': !continueLoading && !isRunning }" :disabled="continueLoading || isRunning" @click="onContinueConversation" :title="t('task.exec.continueConversation')">
+        <MessageSquare :size="14" />
+        <span v-if="continueLoading" class="continue-label">{{ t('task.exec.continueConversationLoading') }}</span>
+      </button>
       <button class="header-btn refresh-btn" :class="{ spinning: refreshing }" :disabled="refreshing" @click="onRefresh" :title="t('common.refresh')">
         <RefreshCw :size="14" />
       </button>
@@ -61,7 +65,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, provide, onUnmounted, inject } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { RefreshCw } from 'lucide-vue-next'
+import { RefreshCw, MessageSquare } from 'lucide-vue-next'
 import TaskBreadcrumb from '@/components/task/TaskBreadcrumb.vue'
 import ChatMessageItem from '@/components/chat/ChatMessageItem.vue'
 import ToolDetailOverlay from '@/components/chat/ToolDetailOverlay.vue'
@@ -74,21 +78,43 @@ import { useLocalhostUrlClickHandler } from '@/composables/useLocalhostAnnotatio
 import { store as appStore } from '@/stores/app.ts'
 import { useAutoSpeech } from '@/composables/useAutoSpeech.ts'
 import { useTaskTab } from '@/composables/useTaskTab.ts'
+import { useSessionIdentity } from '@/composables/useSessionIdentity.ts'
 import { formatToolOutput } from '@/utils/renderToolDetail.ts'
 
 const props = defineProps({
   execDetail: Object,
   taskName: String,
+  taskId: Number,
 })
 
 const emit = defineEmits(['close', 'open-file'])
 
 const { t } = useI18n()
 const { refreshExecDetail } = useTaskTab()
+const identity = useSessionIdentity()
 const theme = inject('theme', ref('light'))
 const { openFilePath, verifyFilePaths } = useFilePathAnnotation()
 const { handleLocalhostUrlClick } = useLocalhostUrlClickHandler()
 const switchTab = inject('switchTab', () => {})
+
+// ── Continue conversation logic ──
+const continueLoading = ref(false)
+const isRunning = computed(() => props.execDetail?.status === 'running')
+const showContinueBtn = computed(() => {
+  // Show button for completed or cancelled executions, not for running ones
+  const status = props.execDetail?.status
+  return status && status !== 'running' && props.taskId && props.execDetail?.id
+})
+
+async function onContinueConversation() {
+  if (!props.taskId || !props.execDetail?.id || continueLoading.value) return
+  continueLoading.value = true
+  try {
+    await identity.continueFromExecution(props.taskId, Number(props.execDetail.id), switchTab)
+  } finally {
+    continueLoading.value = false
+  }
+}
 
 // ── Refresh logic ──
 const refreshing = ref(false)
@@ -354,6 +380,30 @@ onUnmounted(() => {
 
 .header-btn.spinning svg {
   animation: exec-spin 1s linear infinite;
+}
+
+.continue-btn {
+  width: auto;
+  padding: 0 8px;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.continue-btn .continue-label {
+  white-space: nowrap;
+}
+
+.continue-btn-active {
+  background: var(--accent-color, #0066cc);
+  color: #fff;
+}
+
+@media (hover: hover) {
+  .continue-btn-active:hover:not(:disabled) {
+    background: var(--accent-color-dark, #0055aa);
+    color: #fff;
+  }
 }
 
 @keyframes exec-spin {

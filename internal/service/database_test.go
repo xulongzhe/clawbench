@@ -1406,3 +1406,104 @@ func TestInitDB_TTSSummariesFreshInstall(t *testing.T) {
 
 	CloseDB()
 }
+
+// TestSchema_SourceSessionIDMigration adds source_session_id column
+// for the "continue conversation" feature.
+func TestSchema_SourceSessionIDMigration(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	origDB := DB
+	origDBRead := DBRead
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	// Step 1: Create DB with schema that lacks source_session_id
+	dbDir := filepath.Join(tmpDir, ".clawbench")
+	assert.NoError(t, os.MkdirAll(dbDir, 0755))
+	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
+	assert.NoError(t, err)
+	db.SetMaxOpenConns(1)
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
+
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS chat_sessions (
+			id TEXT PRIMARY KEY, project_path TEXT NOT NULL, backend TEXT NOT NULL,
+			title TEXT NOT NULL, agent_id TEXT DEFAULT '', agent_source TEXT DEFAULT 'default',
+			model TEXT DEFAULT '', session_type TEXT NOT NULL DEFAULT 'chat',
+			external_session_id TEXT DEFAULT '', deleted INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(project_path, backend, id)
+		);
+		CREATE TABLE IF NOT EXISTS chat_history (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL,
+			role TEXT NOT NULL CHECK(role IN ('user', 'assistant')), content TEXT NOT NULL,
+			session_id TEXT, backend TEXT NOT NULL DEFAULT 'claude',
+			streaming INTEGER NOT NULL DEFAULT 0, deleted INTEGER NOT NULL DEFAULT 0,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS scheduled_tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, name TEXT NOT NULL,
+			cron_expr TEXT NOT NULL, agent_id TEXT NOT NULL, prompt TEXT NOT NULL,
+			status TEXT DEFAULT 'active', repeat_mode TEXT NOT NULL DEFAULT 'unlimited',
+			max_runs INTEGER DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS task_executions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL,
+			session_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'completed',
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS forwarded_ports (
+			port INTEGER PRIMARY KEY, name TEXT NOT NULL DEFAULT '',
+			protocol TEXT NOT NULL DEFAULT 'http', created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS recent_projects (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT UNIQUE NOT NULL,
+			accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS ai_raw_responses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+			message_id INTEGER NOT NULL, backend TEXT NOT NULL DEFAULT '',
+			raw_output TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS summaries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, target_type TEXT NOT NULL,
+			target_id INTEGER NOT NULL, summary TEXT NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(target_type, target_id)
+		);
+		CREATE TABLE IF NOT EXISTS tts_summaries (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, message_id INTEGER NOT NULL,
+			tts_summary TEXT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(message_id)
+		);
+		CREATE TABLE IF NOT EXISTS terminal_quick_commands (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, command TEXT NOT NULL,
+			hidden INTEGER NOT NULL DEFAULT 0, auto_execute INTEGER NOT NULL DEFAULT 0,
+			sort_order INTEGER NOT NULL DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE IF NOT EXISTS chat_quick_send (
+			id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, command TEXT NOT NULL,
+			sort_order INTEGER NOT NULL DEFAULT 0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	assert.NoError(t, err)
+
+	// Verify source_session_id does not exist
+	columns := getTableColumns(t, db, "chat_sessions")
+	assert.NotContains(t, columns, "source_session_id")
+	db.Close()
+
+	// Step 2: Run InitDB — should add source_session_id
+	err = InitDB()
+	assert.NoError(t, err)
+	defer CloseDB()
+
+	// Step 3: Verify column was added
+	columns = getTableColumns(t, DB, "chat_sessions")
+	assert.Contains(t, columns, "source_session_id", "source_session_id column should exist after migration")
+}

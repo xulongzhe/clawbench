@@ -27,6 +27,8 @@ export interface UseSessionManagerOptions {
   switchSessionCore: (sessionId: string) => Promise<void>
   createSessionCore: (agentId?: string) => Promise<void>
   deleteSessionCore: (sessionId: string, backend?: string) => Promise<void>
+  continueFromExecutionCore: (taskId: number, execId: number, switchTabFn: (tab: string) => void) => Promise<boolean>
+  checkContinueSessionCore: (taskId: number, execId: number) => Promise<{ exists: boolean; sessionId: string }>
 
   // Stream operations (from useChatStream)
   disconnectStream: () => void
@@ -49,6 +51,8 @@ export function useSessionManager(options: UseSessionManagerOptions) {
     switchSessionCore,
     createSessionCore,
     deleteSessionCore,
+    continueFromExecutionCore,
+    checkContinueSessionCore,
     disconnectStream,
     stopPolling,
     updateRenderedContents,
@@ -182,6 +186,17 @@ export function useSessionManager(options: UseSessionManagerOptions) {
     deleteDraft(deletedId)
   }
 
+  /** Continue a task execution as a new chat session. */
+  async function continueFromExecution(taskId: number, execId: number, switchTabFn: (tab: string) => void): Promise<boolean> {
+    cleanupActiveStream()
+    return await continueFromExecutionCore(taskId, execId, switchTabFn)
+  }
+
+  /** Check whether a continued session already exists for a task execution. */
+  async function checkContinueSession(taskId: number, execId: number): Promise<{ exists: boolean; sessionId: string }> {
+    return await checkContinueSessionCore(taskId, execId)
+  }
+
   // ── Queue sync on session change ──
 
   // When currentSessionId changes (from ANY path), fetch the queue
@@ -229,6 +244,8 @@ export function useSessionManager(options: UseSessionManagerOptions) {
       deleteSession,
       sendMessage: extra.sendMessage,
       openChatPanel: extra.openChatPanel,
+      continueFromExecution,
+      checkContinueSession,
     })
   }
 
@@ -245,6 +262,8 @@ export function useSessionManager(options: UseSessionManagerOptions) {
     createSession,
     deleteSession,
     deleteCurrentSession,
+    continueFromExecution,
+    checkContinueSession,
     // Cleanup (exposed for onStreamEnd and other edge cases)
     cleanupActiveStream,
     // Visibility change cleanup — call removeEventListener on unmount

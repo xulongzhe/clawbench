@@ -31,6 +31,7 @@ export default {
     refresh: '刷新',
     more: '更多',
     settings: '设置',
+    fileViewer: '文件查看器',
   },
   toast: {
     portForwardAppOnly: '端口转发仅在移动端APP支持',
@@ -195,6 +196,9 @@ export default {
       deleteFailed: '删除会话失败',
       completed: '会话已完成',
       clickToViewDetails: '点击查看详情',
+      continueFailed: '继续对话失败',
+      continued: '已继续对话 ({count}/{max})',
+      sessionLimitReached: '已达到最大会话数',
     },
     messageList: {
       loadingMore: '加载中...',
@@ -389,6 +393,8 @@ export default {
       completed: '执行完毕',
       tabOriginal: '原文',
       tabSummary: '摘要',
+      continueConversation: '继续对话',
+      continueConversationLoading: '继续中...',
     },
   },
   file: {

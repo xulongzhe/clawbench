@@ -152,6 +152,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: vi.fn(),
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             const identity = useSessionIdentity()
@@ -168,6 +170,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: vi.fn(),
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             const identity = useSessionIdentity()
@@ -193,6 +197,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: vi.fn(),
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             const identity = useSessionIdentity()
@@ -209,6 +215,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: vi.fn(),
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             const identity = useSessionIdentity()
@@ -229,6 +237,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: mockDelete,
                 sendMessage: vi.fn(),
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             const identity = useSessionIdentity()
@@ -244,6 +254,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: vi.fn(),
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             const identity = useSessionIdentity()
@@ -264,6 +276,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: mockSend,
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             const identity = useSessionIdentity()
@@ -282,6 +296,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: mockSend,
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             const identity = useSessionIdentity()
@@ -317,6 +333,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: vi.fn(),
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
             const identity = useSessionIdentity()
             expect(() => identity.openChatPanel()).not.toThrow()
@@ -501,6 +519,8 @@ describe('useSessionIdentity', () => {
                 deleteSession: vi.fn(),
                 sendMessage: vi.fn(),
                 openChatPanel: vi.fn(),
+                continueFromExecution: vi.fn().mockResolvedValue(true),
+                checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
             })
 
             resetIdentity()

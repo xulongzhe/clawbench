@@ -368,7 +368,7 @@ clawbench/
 │   │   ├── chat.go              # AI 聊天（SSE 流式推送）
 │   │   ├── chat_quick_send.go   # 快捷发送 CRUD
 │   │   ├── agent.go             # Agent 管理
-│   │   ├── scheduler.go         # 定时任务
+│   │   ├── scheduler.go         # 定时任务（CRUD + 执行列表 + 继续对话 GET/POST /api/tasks/{id}/executions/{execId}/continue）
 │   │   ├── rag_api.go           # RAG 搜索 API
 │   │   ├── file.go              # 文件读取
 │   │   ├── file_ops.go          # 文件操作
@@ -392,6 +392,7 @@ clawbench/
 │   ├── service/                 # 业务逻辑
 │   │   ├── database.go          # SQLite 初始化
 │   │   ├── chat.go              # 聊天历史管理
+│   │   ├── continue_conversation.go # 继续对话（从任务执行继续 → 新会话）
 │   │   ├── summary.go           # 聊天自动摘要（AsyncSummarize + summaries 表）
 │   │   ├── scheduler.go         # 定时任务调度
 │   │   ├── uuid.go              # UUID 工具

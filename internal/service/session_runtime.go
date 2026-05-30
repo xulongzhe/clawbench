@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"clawbench/internal/ai"
@@ -315,19 +316,24 @@ func SendSessionEvent(sessionID string, event ai.StreamEvent) bool {
 }
 
 // chatSummaryEnabled controls whether chat message auto-summarization is active.
-// Set during server startup based on config.
-var chatSummaryEnabled = true
+// Set during server startup based on config. Uses atomic.Bool for safe concurrent
+// access from HTTP handlers (write) and session completion goroutines (read).
+var chatSummaryEnabled atomic.Bool
+
+func init() {
+	chatSummaryEnabled.Store(true) // default enabled
+}
 
 // SetChatSummaryEnabled configures whether chat messages are auto-summarized on completion.
 func SetChatSummaryEnabled(enabled bool) {
-	chatSummaryEnabled = enabled
+	chatSummaryEnabled.Store(enabled)
 }
 
 // triggerChatSummarization triggers async summarization for the last assistant
 // message(s) in a session when it completes normally.
 // Skipped for cancelled/disconnected sessions (those use skipEvent=true in SetSessionRunning).
 func triggerChatSummarization(sessionID string) {
-	if !chatSummaryEnabled || taskSummarizerInstance == nil {
+	if !chatSummaryEnabled.Load() || taskSummarizerInstance == nil {
 		return
 	}
 

@@ -36,6 +36,7 @@ type Scheduler struct {
 	entries           map[int64]cron.EntryID // task ID -> cron entry ID
 	mu                sync.Mutex
 	runningExecutions sync.Map // key: executionID, value: *RunningExecution
+	taskRunning       sync.Map // key: taskID (int64), value: struct{}{} — atomic check-and-set to prevent duplicate executions (ISS-187)
 	taskSummarizer    *summarize.TaskSummarizer
 }
 
@@ -104,6 +105,17 @@ func (s *Scheduler) HasRunningExecutions(taskID int64) bool {
 		return true
 	})
 	return found
+}
+
+// MarkTaskRunning atomically marks a task as running. Used for testing to simulate
+// a running task without actually executing the AI backend.
+func (s *Scheduler) MarkTaskRunning(taskID int64) {
+	s.taskRunning.Store(taskID, struct{}{})
+}
+
+// UnmarkTaskRunning removes the running flag for a task. Used for testing cleanup.
+func (s *Scheduler) UnmarkTaskRunning(taskID int64) {
+	s.taskRunning.Delete(taskID)
 }
 
 // CancelExecution cancels a specific running execution by its ID.
@@ -316,6 +328,10 @@ func (s *Scheduler) TriggerTask(id int64) error {
 	if err != nil {
 		return fmt.Errorf("task not found: %w", err)
 	}
+	// Atomically check-and-set task running flag (ISS-187).
+	if _, loaded := s.taskRunning.LoadOrStore(id, struct{}{}); loaded {
+		return fmt.Errorf("task %d already has a running execution", id)
+	}
 	go s.executeTask(task, task.ProjectPath, "manual")
 	return nil
 }
@@ -394,8 +410,11 @@ func (s *Scheduler) registerTaskLocked(task *model.ScheduledTask) error {
 		if err != nil || current.Status != "active" {
 			return
 		}
-		// Skip if a previous execution of this task is still running
-		if s.HasRunningExecutions(taskID) {
+		// Atomically check-and-set task running flag to prevent duplicate
+		// executions from concurrent cron ticks (ISS-187).
+		// LoadOrStore returns (value, loaded) — if loaded=true, another tick
+		// already claimed this task.
+		if _, loaded := s.taskRunning.LoadOrStore(taskID, struct{}{}); loaded {
 			slog.Info("skipping cron trigger: task already running",
 				slog.Int64("task_id", taskID),
 			)
@@ -571,6 +590,7 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	s.runningExecutions.Store(sessionID, running)
 	defer func() {
 		s.runningExecutions.Delete(sessionID)
+		s.taskRunning.Delete(task.ID) // Allow next cron tick to run (ISS-187)
 		cancel()
 	}()
 
