@@ -146,7 +146,7 @@ PR 创建时会自动加载模板，包含以下字段：
 
 ## 代码风格
 
-- **Go**：`gofmt` + `go vet`
+- **Go**：`gofumpt`（通过 golangci-lint）+ `golangci-lint v2` 全量严格
 - **Vue / TypeScript**：遵循项目已有配置
 - 变更须有测试覆盖
 
@@ -162,6 +162,28 @@ CI 强制执行覆盖率 gate：
 - **Tier 2**：变更行覆盖率不低于 80%
 
 详见 [AGENTS.md](AGENTS.md) 中的"Coverage gate"章节。
+
+## Lint
+
+```bash
+./scripts/lint-go.sh              # Go 全量 lint
+./scripts/lint-go.sh --fix        # 自动修复可修复的问题
+./scripts/lint-go.sh --diff       # 仅检查暂存区变更
+```
+
+### nolint 使用规范
+
+仅在真正合理的场景使用 `//nolint`，且必须附带原因说明：
+
+```go
+//nolint:errcheck // 有意忽略：只读响应的 Close() 错误
+resp.Body.Close()
+```
+
+禁止：
+- 不带原因的 `//nolint`
+- 为绕过问题批量添加 `//nolint`
+- 降低 linter 阈值来绕过问题
 
 ## 发布流程
 

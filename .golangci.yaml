@@ -1,0 +1,168 @@
+# golangci-lint v2 配置
+# 全量严格模式：所有代码必须通过所有 linters
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  go: "1.25"
+
+linters:
+  default: none
+  enable:
+    # --- 默认集（Go 官方基线）---
+    - errcheck       # 未检查的错误返回值
+    - govet          # 可疑代码结构
+    - ineffassign    # 无效赋值
+    - staticcheck    # 综合静态分析（含 gosimple）
+    - unused         # 未使用的代码
+
+    # --- 正确性 ---
+    - bodyclose      # HTTP 响应体未关闭
+    - copyloopvar    # 循环变量捕获问题
+    - errorlint      # 错误包装（Go 1.13+）
+    - nilerr         # 错误检查后返回 nil
+    - nilnesserr     # nil 错误返回或缺少 nil 检查
+    - noctx          # HTTP 请求缺少 context
+    - rowserrcheck   # SQL rows.Err 未检查
+    - sqlclosecheck  # SQL rows/stmt 未关闭
+
+    # --- 安全 ---
+    - gosec          # 安全问题扫描
+
+    # --- 代码质量 ---
+    - gocritic       # 综合诊断（bug/性能/风格）
+    - goconst        # 重复字符串应提取为常量
+    - unconvert      # 不必要的类型转换
+    - unparam        # 未使用的函数参数
+    - revive         # golint 替代品
+
+    # --- 复杂度 ---
+    - gocyclo        # 圈复杂度
+    - gocognit       # 认知复杂度
+
+    # --- 风格 ---
+    - misspell       # 拼写错误
+    - nakedret       # 长函数中的裸返回
+    - intrange       # 使用 range over int（Go 1.22+）
+    - whitespace     # 多余的空白行
+
+    # --- 性能 ---
+    - prealloc       # 切片预分配提示
+
+    # --- 指令强制 ---
+    - nolintlint     # 要求 //nolint 指令附带原因
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+    gocognit:
+      min-complexity: 30
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - hugeParam      # 大结构体参数提示，噪声较大
+        - rangeValCopy   # range 值拷贝提示，常见模式噪声
+
+    goconst:
+      min-occurrences: 4
+      ignore-tests: true
+
+    gocyclo:
+      min-complexity: 15
+
+    gosec: {}
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment  # 过于严格，按需单独使用
+
+    misspell:
+      locale: US
+      ignore-rules:
+        - cancelled
+        - cancelling
+
+    nakedret:
+      max-func-lines: 30
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: var-declaration
+        - name: var-naming
+
+    unparam:
+      check-exported: false
+
+  exclusions:
+    rules:
+      # 测试文件豁免复杂度、安全和代码质量检查
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - gocognit
+          - gosec
+          - errcheck
+          - goconst
+          - noctx
+
+      # gosec: 文件管理器固有模式 — 路径已通过 IsPathUnderAnyRoot 验证
+      - linters:
+          - gosec
+        text: "G304:"
+      - linters:
+          - gosec
+        text: "G703:"
+      # gosec: AI 后端按设计通过变量启动 CLI 子进程
+      - linters:
+          - gosec
+        text: "G204:"
+
+      # cmd/ 和 main.go 豁免 package-comments
+      - path: (cmd/|main\.go)
+        linters:
+          - revive
+        text: "package-comments"
+
+formatters:
+  enable:
+    - gofumpt        # 比 gofmt 更严格的格式化
+  settings:
+    gofumpt:
+      module-path: clawbench
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 10

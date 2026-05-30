@@ -76,8 +76,16 @@ LDFLAGS="-X 'clawbench/internal/version.Version=$FULL_VERSION'"
 VERSION_CODE=$(git rev-list --count HEAD 2>/dev/null || echo "1")
 echo "  Version: $FULL_VERSION (code: $VERSION_CODE, release: $IS_RELEASE)"
 
-# 1. Build Go backend
-echo "[1/5] Building Go backend..."
+# 1. Lint Go code
+echo "[1/5] Linting Go code..."
+if command -v golangci-lint >/dev/null 2>&1; then
+    ./scripts/lint-go.sh
+else
+    echo "  golangci-lint not found, skipping lint"
+fi
+
+# 2. Build Go backend
+echo "[2/5] Building Go backend..."
 if command -v go >/dev/null 2>&1; then
     if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then
         BINARY_NAME="$NAME"
@@ -100,7 +108,7 @@ fi
 PI_VERSION="${PI_VERSION:-0.78.0}"
 PI_DIR=".clawbench/pi"
 if [ -n "$DOWNLOAD_PI" ]; then
-    echo "[2/5] Downloading Pi v${PI_VERSION}..."
+    echo "[3/5] Downloading Pi v${PI_VERSION}..."
     # Determine platform for Pi binary
     if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then
         case "$TARGET_OS" in
@@ -141,11 +149,11 @@ if [ -n "$DOWNLOAD_PI" ]; then
         echo "  Unknown platform, skipping Pi download"
     fi
 else
-    echo "[2/5] Pi download skipped (use --with-pi to download embedded agent)"
+    echo "[3/5] Pi download skipped (use --with-pi to download embedded agent)"
 fi
 
 # 2. Build Vue frontend
-echo "[3/5] Building Vue frontend..."
+echo "[4/5] Building Vue frontend..."
 if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
     if [ ! -d "node_modules" ]; then
         echo "  Installing dependencies..."
@@ -161,7 +169,7 @@ fi
 
 # 3. Build Android APK (optional)
 if [ -n "$BUILD_ANDROID" ]; then
-    echo "[4/5] Building Android APK..."
+    echo "[5/5] Building Android APK..."
     if [ -d "android" ] && [ -f "android/gradlew" ]; then
         (cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease \
             -PversionCode=$VERSION_CODE -PversionName="$FULL_VERSION")
@@ -170,7 +178,7 @@ if [ -n "$BUILD_ANDROID" ]; then
         echo "  Android project not found, skipping APK build"
     fi
 else
-    echo "[4/5] Android APK skipped (use --android to build)"
+    echo "[5/5] Android APK skipped (use --android to build)"
 fi
 
 echo ""

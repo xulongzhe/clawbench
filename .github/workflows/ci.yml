@@ -7,6 +7,24 @@ on:
     branches: [main]
 
 jobs:
+  golangci-lint:
+    name: Lint (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.12.2
+          args: --timeout=5m --new-from-rev=${{ github.event.pull_request.base.sha || github.sha~1 }}
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -19,9 +37,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-
-      - name: Go vet
-        run: go vet ./...
 
       - name: Go test
         run: go test ./...
