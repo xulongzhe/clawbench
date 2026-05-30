@@ -297,7 +297,7 @@ jobs:
 
       - name: Package
         run: |
-          mkdir -p pkg/clawbench
+          mkdir -p pkg/clawbench/.clawbench
           cp clawbench pkg/clawbench/clawbench
           cp -r public pkg/clawbench/public
           cp -r config pkg/clawbench/config
