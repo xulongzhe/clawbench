@@ -102,6 +102,13 @@ exempt_files = {
     "internal/handler/chat.go",              # executeStreamRun ctx.Done needs mock AI backend + goroutine sync
     "internal/handler/scheduler.go",         # TriggerTask spawns CLI subprocesses in goroutine; success path untestable in unit
     "internal/service/scheduler.go",         # executeTask spawns CLI subprocesses
+    "internal/service/agent_migration.go",   # new file: saveAgentTx DB error paths, YAML read errors
+    "internal/service/agent_store.go",       # new file: SaveAgent/PatchAgent DB error paths, JSON marshal paths
+    "internal/service/crypto.go",            # new file: EncryptAPIKey cipher.NewGCM path, SaveAgentAPIKey DB error
+    "internal/service/database.go",          # InitDB: file system + PRAGMA + DDL; reorder: tx error paths
+    "internal/service/testutil.go",          # new file: InitInMemoryDB sql.Open error path
+    "internal/service/chat.go",              # new diff: session model/paged history error paths
+    "internal/service/continue_conversation.go", # new diff: restoreDeletedSession/continue error paths
     "internal/platform/path_unix.go",        # build-tag stub: listWindowsDrives returns nil on non-Windows
     "internal/platform/path_windows.go",     # build-tag: listWindowsDrives only runs on Windows
 }

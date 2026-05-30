@@ -871,6 +871,9 @@ func TestFetchModelsFromEndpoint_InvalidURL(t *testing.T) {
 // ---------- writePiConfigFiles unit tests ----------
 
 func TestWritePiConfigFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var not used on Windows")
+	}
 	tmpDir := t.TempDir()
 
 	// Override home directory to temp dir
@@ -1293,6 +1296,9 @@ func cleanupFakePiBinary(t *testing.T) {
 // TestSetupVerify_FakePiSuccess tests the full verify path with a fake Pi binary
 // that exits successfully.
 func TestSetupVerify_FakePiSuccess(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake Pi binary path resolution differs on Windows")
+	}
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 

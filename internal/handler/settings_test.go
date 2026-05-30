@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1656,6 +1657,9 @@ func TestServeConfigPatch_ApplyConfigPatchError(t *testing.T) {
 }
 
 func TestServeConfigPatch_WriteConfigYAMLError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("invalid BinDir path behavior differs on Windows")
+	}
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
