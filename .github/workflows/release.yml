@@ -82,18 +82,20 @@ jobs:
         run: |
           file clawbench-linux
           echo "✅ Linux binary built successfully"
-          fi
 
       - name: Download Pi agent binary (Linux)
         run: |
           PI_VERSION="${PI_VERSION:-0.78.0}"
           mkdir -p .clawbench/pi
-          curl -sL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-linux-x64.tar.gz" | tar xzf - -C .clawbench/pi --strip-components=1
+          curl -fSL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-linux-x64.tar.gz" -o pi-download.tar.gz
+          tar xzf pi-download.tar.gz -C .clawbench/pi --strip-components=1
           chmod +x .clawbench/pi/pi
+          test -x .clawbench/pi/pi || { echo "ERROR: Pi binary not found after download"; exit 1; }
+          rm -f pi-download.tar.gz
 
       - name: Package Linux
         run: |
-          mkdir -p pkg-linux/clawbench
+          mkdir -p pkg-linux/clawbench/.clawbench
           cp clawbench-linux pkg-linux/clawbench/clawbench
           cp -r public pkg-linux/clawbench/public
           cp -r config pkg-linux/clawbench/config
@@ -140,13 +142,15 @@ jobs:
           $url = "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-windows-x64.zip"
           Invoke-WebRequest -Uri $url -OutFile pi-download.zip
           Expand-Archive -Path pi-download.zip -DestinationPath pi-download
-          Copy-Item -Recurse pi-download\pi\* .clawbench\pi\
+          # Windows zip has no pi/ prefix; copy contents directly into .clawbench/pi
+          Copy-Item -Recurse pi-download\* .clawbench\pi\
+          if (-not (Test-Path .clawbench\pi\pi.exe)) { Write-Error "ERROR: Pi binary not found after download"; exit 1 }
           Remove-Item -Recurse -Force pi-download, pi-download.zip
 
       - name: Package Windows
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path pkg-windows/clawbench
+          New-Item -ItemType Directory -Force -Path pkg-windows/clawbench/.clawbench
           Copy-Item clawbench.exe pkg-windows/clawbench/
           Copy-Item -Recurse public pkg-windows/clawbench/public
           Copy-Item -Recurse config pkg-windows/clawbench/config
@@ -188,12 +192,15 @@ jobs:
         run: |
           PI_VERSION="${PI_VERSION:-0.78.0}"
           mkdir -p .clawbench/pi
-          curl -sL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-arm64.tar.gz" | tar xzf - -C .clawbench/pi --strip-components=1
+          curl -fSL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-arm64.tar.gz" -o pi-download.tar.gz
+          tar xzf pi-download.tar.gz -C .clawbench/pi --strip-components=1
           chmod +x .clawbench/pi/pi
+          test -x .clawbench/pi/pi || { echo "ERROR: Pi binary not found after download"; exit 1; }
+          rm -f pi-download.tar.gz
 
       - name: Package macOS arm64
         run: |
-          mkdir -p pkg-mac-arm64/clawbench
+          mkdir -p pkg-mac-arm64/clawbench/.clawbench
           cp clawbench-darwin-arm64 pkg-mac-arm64/clawbench/clawbench
           cp -r public pkg-mac-arm64/clawbench/public
           cp -r config pkg-mac-arm64/clawbench/config
@@ -239,12 +246,15 @@ jobs:
         run: |
           PI_VERSION="${PI_VERSION:-0.78.0}"
           mkdir -p .clawbench/pi
-          curl -sL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-x64.tar.gz" | tar xzf - -C .clawbench/pi --strip-components=1
+          curl -fSL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-x64.tar.gz" -o pi-download.tar.gz
+          tar xzf pi-download.tar.gz -C .clawbench/pi --strip-components=1
           chmod +x .clawbench/pi/pi
+          test -x .clawbench/pi/pi || { echo "ERROR: Pi binary not found after download"; exit 1; }
+          rm -f pi-download.tar.gz
 
       - name: Package macOS amd64
         run: |
-          mkdir -p pkg-mac-amd64/clawbench
+          mkdir -p pkg-mac-amd64/clawbench/.clawbench
           cp clawbench-darwin-amd64 pkg-mac-amd64/clawbench/clawbench
           cp -r public pkg-mac-amd64/clawbench/public
           cp -r config pkg-mac-amd64/clawbench/config
