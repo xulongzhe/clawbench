@@ -25,7 +25,10 @@ func setupTestStore(t *testing.T) *Store {
 	}
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.duckdb")
-	store, err := NewStore(dbPath)
+	store, err := NewStore(dbPath, map[string]string{
+		"threads":      "2",
+		"memory_limit": "256MB",
+	})
 	require.NoError(t, err, "NewStore should succeed")
 	t.Cleanup(func() {
 		store.Close()
@@ -85,11 +88,53 @@ func TestNewStore_CreatesDB(t *testing.T) {
 	assert.NotEmpty(t, store.dbPath)
 }
 
+// TestNewStore_DuckDBOpts verifies that DuckDB connection options (threads,
+// memory_limit) are applied correctly. This prevents SIGFPE crashes on
+// low-memory systems where DuckDB's thread-count computation divides by zero.
+func TestNewStore_DuckDBOpts(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.duckdb")
+
+	store, err := NewStore(dbPath, map[string]string{
+		"threads":      "1",
+		"memory_limit": "256MB",
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+
+	// Verify the store was created with the options
+	assert.NotNil(t, store.db)
+	assert.Equal(t, dbPath, store.dbPath)
+	assert.Equal(t, "1", store.duckdbOpts["threads"])
+	assert.Equal(t, "256MB", store.duckdbOpts["memory_limit"])
+
+	// Verify DuckDB respects the settings by querying current settings
+	var threads int
+	err = store.db.QueryRow("SELECT current_setting('threads')").Scan(&threads)
+	if err == nil {
+		assert.Equal(t, 1, threads, "DuckDB threads should be set to 1")
+	}
+}
+
+// TestNewStore_NilOpts verifies that NewStore works with nil options
+// (backward compatibility — uses DuckDB defaults).
+func TestNewStore_NilOpts(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.duckdb")
+
+	store, err := NewStore(dbPath, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { store.Close() })
+
+	assert.NotNil(t, store.db)
+	assert.Nil(t, store.duckdbOpts)
+}
+
 func TestNewStore_CreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	nestedDir := filepath.Join(dir, "deep", "nested")
 	dbPath := filepath.Join(nestedDir, "test.duckdb")
-	store, err := NewStore(dbPath)
+	store, err := NewStore(dbPath, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { store.Close() })
 	assert.NotNil(t, store)
@@ -1000,7 +1045,7 @@ func TestNewStore_FailedSchema(t *testing.T) {
 	// Write garbage to the parent to make it harder to create the DB
 	// This tests the error path indirectly; the real test is that NewStore
 	// returns an error when it can't init schema.
-	store, err := NewStore(dbPath)
+	store, err := NewStore(dbPath, nil)
 	if err != nil {
 		// If it fails, that's the expected error path
 		assert.Nil(t, store)
@@ -1204,7 +1249,10 @@ func TestNewStore_ExistingChunksRebuildsFTS(t *testing.T) {
 	dbPath := store.dbPath
 	store.Close()
 
-	store2, err := NewStore(dbPath)
+	store2, err := NewStore(dbPath, map[string]string{
+		"threads":      "2",
+		"memory_limit": "256MB",
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() { store2.Close() })
 

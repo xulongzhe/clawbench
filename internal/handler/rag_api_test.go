@@ -331,7 +331,7 @@ func TestServeRAGSession_LocalhostCrossProject(t *testing.T) {
 func setupRAGStore(t *testing.T) *rag.Store {
 	t.Helper()
 	dir := t.TempDir()
-	store, err := rag.NewStore(dir + "/test.duckdb")
+	store, err := rag.NewStore(dir+"/test.duckdb", nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { store.Close() })
 	return store

@@ -317,7 +317,7 @@ func TestStartCleanupWorker_WithRetention(t *testing.T) {
 	model.BinDir = t.TempDir()
 
 	// Need a store for cleanup worker
-	store, err := InitStore()
+	store, err := InitStore(model.RAGConfig{})
 	require.NoError(t, err)
 	GlobalStore = store
 
