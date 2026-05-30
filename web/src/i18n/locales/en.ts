@@ -31,6 +31,7 @@ export default {
     refresh: 'Refresh',
     more: 'More',
     settings: 'Settings',
+    fileViewer: 'File Viewer',
   },
   toast: {
     portForwardAppOnly: 'Port forwarding is only available in the mobile app',
@@ -195,6 +196,9 @@ export default {
       deleteFailed: 'Failed to delete session',
       completed: 'Session completed',
       clickToViewDetails: 'Click to view details',
+      continueFailed: 'Failed to continue conversation',
+      continued: 'Conversation continued ({count}/{max})',
+      sessionLimitReached: 'Maximum session limit reached',
     },
     messageList: {
       loadingMore: 'Loading...',
@@ -389,6 +393,8 @@ export default {
       completed: 'Execution completed',
       tabOriginal: 'Original',
       tabSummary: 'Summary',
+      continueConversation: 'Continue',
+      continueConversationLoading: 'Continuing...',
     },
   },
   file: {

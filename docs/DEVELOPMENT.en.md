@@ -368,7 +368,7 @@ clawbench/
 │   │   ├── chat.go              # AI chat (SSE streaming)
 │   │   ├── chat_quick_send.go   # Quick send CRUD
 │   │   ├── agent.go             # Agent management
-│   │   ├── scheduler.go         # Scheduled tasks
+│   │   ├── scheduler.go         # Scheduled tasks (CRUD + execution list + continue conversation GET/POST /api/tasks/{id}/executions/{execId}/continue)
 │   │   ├── rag_api.go           # RAG search API
 │   │   ├── file.go              # File reading
 │   │   ├── file_ops.go          # File operations
@@ -392,6 +392,7 @@ clawbench/
 │   ├── service/                 # Business logic
 │   │   ├── database.go          # SQLite initialization
 │   │   ├── chat.go              # Chat history management
+│   │   ├── continue_conversation.go # Continue conversation (from task execution → new session)
 │   │   ├── summary.go           # Chat auto-summary (AsyncSummarize + summaries table)
 │   │   ├── scheduler.go         # Scheduled task scheduling
 │   │   ├── uuid.go              # UUID utility

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 	model TEXT DEFAULT '',
 	session_type TEXT NOT NULL DEFAULT 'chat',
 	external_session_id TEXT DEFAULT '',
+	source_session_id TEXT DEFAULT NULL,
 	thinking_effort TEXT DEFAULT '',
 	deleted INTEGER NOT NULL DEFAULT 0,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -54,15 +55,14 @@ CREATE TABLE IF NOT EXISTS recent_projects (
 	accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS scheduled_tasks (
-	id TEXT PRIMARY KEY,
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	project_path TEXT NOT NULL,
 	name TEXT NOT NULL,
-	description TEXT,
 	cron_expr TEXT NOT NULL,
 	agent_id TEXT NOT NULL,
 	prompt TEXT NOT NULL,
-	session_id TEXT,
-	status TEXT NOT NULL DEFAULT 'active',
+	session_id TEXT DEFAULT '',
+	status TEXT DEFAULT 'active',
 	repeat_mode TEXT NOT NULL DEFAULT 'unlimited',
 	max_runs INTEGER DEFAULT 0,
 	last_run_at DATETIME,
@@ -74,16 +74,19 @@ CREATE TABLE IF NOT EXISTS scheduled_tasks (
 );
 CREATE TABLE IF NOT EXISTS task_executions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	task_id TEXT NOT NULL,
+	task_id INTEGER NOT NULL,
 	session_id TEXT NOT NULL,
 	trigger_type TEXT NOT NULL DEFAULT 'auto',
 	status TEXT NOT NULL DEFAULT 'completed',
+	read_at DATETIME,
+	summary TEXT,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_executions_task ON task_executions(task_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_history_session ON chat_history(project_path, backend, session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_backend ON chat_sessions(project_path, backend);
 CREATE INDEX IF NOT EXISTS idx_executions_session ON task_executions(session_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON scheduled_tasks(project_path, created_at DESC);
 CREATE TABLE IF NOT EXISTS ai_raw_responses (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	session_id TEXT NOT NULL,
@@ -92,6 +95,15 @@ CREATE TABLE IF NOT EXISTS ai_raw_responses (
 	raw_output TEXT NOT NULL,
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS summaries (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	target_type TEXT NOT NULL,
+	target_id   INTEGER NOT NULL,
+	summary     TEXT NOT NULL,
+	created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(target_type, target_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_source_session ON chat_sessions(source_session_id) WHERE source_session_id IS NOT NULL;
 `
 
 // setupDB creates an in-memory SQLite database with the required schema,

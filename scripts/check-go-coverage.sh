@@ -100,6 +100,7 @@ exempt_files = {
     "internal/ai/vecli_stream.go",           # parseVeCLISessionSummary: integration-only
     "internal/model/discovery.go",           # model discovery spawns CLI subprocesses and reads external files
     "internal/handler/chat.go",              # executeStreamRun ctx.Done needs mock AI backend + goroutine sync
+    "internal/handler/scheduler.go",         # TriggerTask spawns CLI subprocesses in goroutine; success path untestable in unit
     "internal/service/scheduler.go",         # executeTask spawns CLI subprocesses
     "internal/platform/path_unix.go",        # build-tag stub: listWindowsDrives returns nil on non-Windows
     "internal/platform/path_windows.go",     # build-tag: listWindowsDrives only runs on Windows

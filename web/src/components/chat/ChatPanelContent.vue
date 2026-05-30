@@ -321,6 +321,8 @@ const manager = useSessionManager({
   switchSessionCore: session.switchSession,
   createSessionCore: session.createSession,
   deleteSessionCore: session.deleteSession,
+  continueFromExecutionCore: session.continueFromExecution,
+  checkContinueSessionCore: session.checkContinueSession,
   disconnectStream: stream.disconnectStream,
   stopPolling: stream.stopPolling,
   updateRenderedContents: (forceFull) => render.updateRenderedContents(forceFull),

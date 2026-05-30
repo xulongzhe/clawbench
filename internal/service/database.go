@@ -200,6 +200,17 @@ func InitDB(runFromServer ...bool) error {
 		}
 	}
 
+	// Migrate: add source_session_id column for "continue conversation" feature
+	var hasSourceSessionID int
+	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_sessions') WHERE name='source_session_id'").Scan(&hasSourceSessionID)
+	if hasSourceSessionID == 0 {
+		if _, err := DB.Exec("ALTER TABLE chat_sessions ADD COLUMN source_session_id TEXT DEFAULT NULL"); err != nil {
+			return fmt.Errorf("failed to add source_session_id column: %w", err)
+		}
+		// Best-effort index creation; ignore error since the column already exists
+		DB.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_source_session ON chat_sessions(source_session_id) WHERE source_session_id IS NOT NULL")
+	}
+
 	// Migrate: add thinking_effort column for per-session thinking effort selection
 	var hasThinkingEffort int
 	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_sessions') WHERE name='thinking_effort'").Scan(&hasThinkingEffort)
