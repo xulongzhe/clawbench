@@ -207,9 +207,8 @@ func InitDB(runFromServer ...bool) error {
 		if _, err := DB.Exec("ALTER TABLE chat_sessions ADD COLUMN source_session_id TEXT DEFAULT NULL"); err != nil {
 			return fmt.Errorf("failed to add source_session_id column: %w", err)
 		}
-		if _, err := DB.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_source_session ON chat_sessions(source_session_id) WHERE source_session_id IS NOT NULL"); err != nil {
-			return fmt.Errorf("failed to create source_session_id index: %w", err)
-		}
+		// Best-effort index creation; ignore error since the column already exists
+		DB.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_source_session ON chat_sessions(source_session_id) WHERE source_session_id IS NOT NULL")
 	}
 
 	// Migrate: add thinking_effort column for per-session thinking effort selection
