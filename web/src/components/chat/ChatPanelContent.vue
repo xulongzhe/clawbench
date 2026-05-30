@@ -592,13 +592,17 @@ function handleSummaryUpdate(e) {
     const msg = messages.value.find(m => String(m.id) === msgId)
     if (!msg) return
     msg.summary = data.summary
-    // Auto-show summary if user hasn't manually toggled
+    // Auto-show summary only if the user is at the bottom of the chat.
+    // If the user has scrolled up to read earlier messages, don't yank
+    // their view away by auto-switching to summary.
+    const atBottom = messageListRef.value?.isAtBottom() ?? true
     if (msg.showingSummary !== true && msg.showingSummary !== false) {
         // showingSummary was never set (undefined) — auto-set based on summary content
-        msg.showingSummary = data.summary != null && data.summary !== ''
+        msg.showingSummary = atBottom && data.summary != null && data.summary !== ''
     } else if (data.summary != null && data.summary !== '') {
         // If currently showing original and a new summary arrives, auto-switch to summary
-        if (!msg.showingSummary) {
+        // only when the user is at the bottom
+        if (!msg.showingSummary && atBottom) {
             msg.showingSummary = true
         }
     }
