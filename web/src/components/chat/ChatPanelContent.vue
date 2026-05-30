@@ -198,6 +198,9 @@ const toolDetailOverlay = ref({
   status: '',
   done: true,
 })
+// Active thinking overlay: tracks which block is being shown so we can reactively update
+const activeThinkingOverlay = ref(null) // { msgId, blockIdx } or null
+let thinkingRenderTimer = null
 const toast = useToast()
 const notification = useNotification()
 const autoSpeech = useAutoSpeech()
@@ -396,6 +399,35 @@ watch(() => props.active, async (val) => {
   }
 }, { immediate: true })
 
+// Reactively update thinking overlay content as block.text changes during streaming
+watch(
+  () => {
+    if (!activeThinkingOverlay.value || !toolDetailOverlay.value.show) return null
+    const block = findThinkingBlock(activeThinkingOverlay.value)
+    return block ? block.text : null
+  },
+  (text) => {
+    if (text === null) return
+    // Debounce: avoid re-rendering markdown on every SSE event
+    if (thinkingRenderTimer) clearTimeout(thinkingRenderTimer)
+    thinkingRenderTimer = setTimeout(() => {
+      toolDetailOverlay.value = {
+        ...toolDetailOverlay.value,
+        inputHtml: `<div class="thinking-overlay-md">${renderMarkdown(text)}</div>`,
+        done: !loading.value, // Mark done when session completes
+      }
+    }, 300)
+  }
+)
+
+// Clean up thinking overlay state when overlay closes
+watch(() => toolDetailOverlay.value.show, (show) => {
+  if (!show) {
+    activeThinkingOverlay.value = null
+    if (thinkingRenderTimer) { clearTimeout(thinkingRenderTimer); thinkingRenderTimer = null }
+  }
+})
+
 async function handleShowAgentSelector() {
   await agentsComposable.loadAgents()
   // If only one agent exists, skip the selector and create directly
@@ -559,16 +591,31 @@ function handleShowToolDetail(block) {
   }
 }
 
-function handleShowThinkingDetail({ text }) {
+function handleShowThinkingDetail({ text, msgId, blockIdx }) {
+  // Store identifiers for reactive lookup (survives messages array replacement on loadHistory)
+  activeThinkingOverlay.value = { msgId: String(msgId), blockIdx }
+
+  // Initial render
+  const block = findThinkingBlock(activeThinkingOverlay.value)
+  const currentText = block ? block.text : text // fallback to snapshot if lookup fails
+
   toolDetailOverlay.value = {
     show: true,
     name: 'DeepThink',
     summary: '',
-    inputHtml: `<div class="thinking-overlay-md">${renderMarkdown(text)}</div>`,
+    inputHtml: `<div class="thinking-overlay-md">${renderMarkdown(currentText)}</div>`,
     outputHtml: '',
     status: '',
-    done: true,
+    done: !loading.value, // Will update to true when streaming ends
   }
+}
+
+/** Look up the thinking block from the live messages array by msgId + blockIdx */
+function findThinkingBlock({ msgId, blockIdx }) {
+  const msg = messages.value.find(m => String(m.id) === msgId)
+  if (!msg || !msg.blocks) return null
+  const block = msg.blocks[blockIdx]
+  return (block && block.type === 'thinking') ? block : null
 }
 
 function handleFileOpenInOverlay(filePath) {
@@ -622,6 +669,7 @@ onUnmounted(() => {
     stream.disconnectStream()
     stream.stopPolling()
     session.stopMsgCountPolling()
+    if (thinkingRenderTimer) { clearTimeout(thinkingRenderTimer); thinkingRenderTimer = null }
     document.removeEventListener('visibilitychange', session.handleVisibilityChange)
     document.removeEventListener('visibilitychange', manager._visibilityHandler)
     window.removeEventListener('clawbench-summary-update', handleSummaryUpdate)

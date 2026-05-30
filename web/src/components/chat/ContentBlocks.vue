@@ -8,7 +8,7 @@
     <template v-else>
     <template v-for="(block, bi) in blocks" :key="bi">
       <!-- Thinking block -->
-      <div v-if="block.type === 'thinking'" class="chat-thinking" @click.stop="handleThinkingClick(block)">
+      <div v-if="block.type === 'thinking'" class="chat-thinking" @click.stop="handleThinkingClick(block, bi)">
         <div class="thinking-header">
           <Brain :size="12" />
           <span class="thinking-label">{{ t('chat.message.deepThinking') }}</span>
@@ -198,8 +198,8 @@ function scheduledTaskKeys(bi) {
   return scheduledTaskKeysUtil(taskKeyIndex.value, bi)
 }
 
-function handleThinkingClick(block) {
-  emit('show-thinking-detail', { text: block.text })
+function handleThinkingClick(block, bi) {
+  emit('show-thinking-detail', { text: block.text, msgId: props.msgId, blockIdx: bi })
 }
 
 /** Click inside expanded tool-detail: dispatch to tool action handlers first, then fall through to generic behavior. */
