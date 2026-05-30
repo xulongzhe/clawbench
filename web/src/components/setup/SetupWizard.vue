@@ -202,18 +202,24 @@ async function fetchModels() {
   summarizeModel.value = ''
   verifyResult.value = null
 
-  const result = await scanModels(provider.value, customUrl.value, apiKey.value)
-  modelsList.value = result.models || []
-  summarizeModelHintVal.value = result.summarize_model_hint || ''
-  if (result.error) {
-    modelsErrorMsg.value = result.error
+  try {
+    const result = await scanModels(provider.value, customUrl.value, apiKey.value)
+    modelsList.value = result.models || []
+    summarizeModelHintVal.value = result.summarize_model_hint || ''
+    if (result.error) {
+      modelsErrorMsg.value = result.error
+    }
+    if (modelsList.value.length > 0) {
+      // Default: first model for chat, hint for summarize
+      chatModel.value = modelsList.value[0].id
+      summarizeModel.value = summarizeModelHintVal.value || modelsList.value[0].id
+    }
+  } catch (err) {
+    modelsErrorMsg.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    modelsLoading.value = false
+    persistState()
   }
-  if (modelsList.value.length > 0) {
-    // Default: first model for chat, hint for summarize
-    chatModel.value = modelsList.value[0].id
-    summarizeModel.value = summarizeModelHintVal.value || modelsList.value[0].id
-  }
-  persistState()
 }
 
 async function handleVerify() {
