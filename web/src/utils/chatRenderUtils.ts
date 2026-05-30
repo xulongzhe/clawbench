@@ -35,6 +35,15 @@ export function rewriteImageUrls(html: string, projectRoot: string): string {
   })
 }
 
+/** Escape HTML special characters in attribute values to prevent XSS (ISS-247) */
+function escapeHtmlAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
 /**
  * Convert audio file links to inline audio players.
  * Replaces <a href="...mp3"> links with <audio> elements.
@@ -43,7 +52,8 @@ export function convertAudioLinks(html: string): string {
   return html.replace(/<a href="([^"]+)">([^<]*)<\/a>/g, (match, href) => {
     const lower = href.toLowerCase()
     if (AUDIO_EXTENSIONS.some(ext => lower.endsWith(ext))) {
-      return `<div class="chat-audio-wrapper"><audio src="${href}" controls class="chat-audio-player"></audio></div>`
+      const safeHref = escapeHtmlAttr(href)
+      return `<div class="chat-audio-wrapper"><audio src="${safeHref}" controls class="chat-audio-player"></audio></div>`
     }
     return match
   })

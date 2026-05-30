@@ -289,7 +289,8 @@ export function useChatStream(options: UseChatStreamOptions) {
     eventSource.addEventListener('content', (e) => {
       if (!guard()) return
       resetStreamTimeout()
-      const data = JSON.parse(e.data)
+      let data: any
+      try { data = JSON.parse(e.data) } catch { console.warn('SSE content: invalid JSON, skipping'); return }
       // Coalesce content into the most recent text block
       const blocks = streamingMsg.blocks
       const existingText = findLastBlockOfType(blocks, 'text')
@@ -305,7 +306,8 @@ export function useChatStream(options: UseChatStreamOptions) {
     eventSource.addEventListener('thinking', (e) => {
       if (!guard()) return
       resetStreamTimeout()
-      const data = JSON.parse(e.data)
+      let data: any
+      try { data = JSON.parse(e.data) } catch { console.warn('SSE thinking: invalid JSON, skipping'); return }
       const blocks = streamingMsg.blocks
       // Coalesce thinking into the most recent thinking block
       const existingThinking = findLastBlockOfType(blocks, 'thinking')
@@ -322,7 +324,8 @@ export function useChatStream(options: UseChatStreamOptions) {
 
     eventSource.addEventListener('tool_use', (e) => {
       resetStreamTimeout()
-      const data = JSON.parse(e.data)
+      let data: any
+      try { data = JSON.parse(e.data) } catch { console.warn('SSE tool_use: invalid JSON, skipping'); return }
       if (!guard()) return
       const blocks = streamingMsg.blocks
       // Always check for existing block with same ID first — the backend may
@@ -382,7 +385,8 @@ export function useChatStream(options: UseChatStreamOptions) {
 
     eventSource.addEventListener('tool_result', (e) => {
       resetStreamTimeout()
-      const data = JSON.parse(e.data)
+      let data: any
+      try { data = JSON.parse(e.data) } catch { console.warn('SSE tool_result: invalid JSON, skipping'); return }
       if (!guard()) return
       const blocks = streamingMsg.blocks
       // Find the matching tool_use block and update output/status
@@ -400,7 +404,8 @@ export function useChatStream(options: UseChatStreamOptions) {
     eventSource.addEventListener('metadata', (e) => {
       if (!guard()) return
       resetStreamTimeout()
-      const data = JSON.parse(e.data)
+      let data: any
+      try { data = JSON.parse(e.data) } catch { console.warn('SSE metadata: invalid JSON, skipping'); return }
       streamingMsg.metadata = data
     })
 
@@ -450,7 +455,8 @@ export function useChatStream(options: UseChatStreamOptions) {
     eventSource.addEventListener('warning', (e) => {
       if (!guard()) return
       resetStreamTimeout()
-      const data = JSON.parse(e.data)
+      let data: any
+      try { data = JSON.parse(e.data) } catch { console.warn('SSE warning: invalid JSON, skipping'); return }
       // Flush any streaming text before adding warning block
       if (streamingMsg.streamingText) {
         streamingMsg.blocks.push({ type: 'text', text: streamingMsg.streamingText })
@@ -470,7 +476,8 @@ export function useChatStream(options: UseChatStreamOptions) {
       // Always update pending queue — it's independent of the streaming message
       onQueueConsume?.()
       if (!guard()) return
-      const data = JSON.parse(e.data)
+      let data: any
+      try { data = JSON.parse(e.data) } catch { console.warn('SSE queue_consume: invalid JSON, skipping'); return }
 
       // Add user message bubble (DB message already persisted by backend)
       const userContent = data.text || ''
@@ -507,7 +514,8 @@ export function useChatStream(options: UseChatStreamOptions) {
 
     eventSource.addEventListener('queue_update', (e) => {
       resetStreamTimeout()
-      const data = JSON.parse(e.data)
+      let data: any
+      try { data = JSON.parse(e.data) } catch { console.warn('SSE queue_update: invalid JSON, skipping'); return }
       // Always update pending queue — it's independent of the streaming message
       onQueueUpdate?.(data.queue || [])
     })
@@ -535,7 +543,8 @@ export function useChatStream(options: UseChatStreamOptions) {
       // Backend reported error (e.g. session not running) — reload from DB for final state
       onLoadHistory().catch(() => {
         if (!guard()) return
-        const data = JSON.parse(e.data)
+        let data: any
+        try { data = JSON.parse(e.data) } catch { console.warn('SSE error: invalid JSON, skipping'); return }
         streamingMsg.content = `${gt('chat.stream.errorPrefix')} ${data.error}`
         const errorBlock = { type: 'error', text: data.error }
         if (data.reason) errorBlock.reason = data.reason

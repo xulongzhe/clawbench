@@ -988,6 +988,144 @@ describe('useChatStream', () => {
     })
   })
 
+  describe('JSON.parse error handling (ISS-244)', () => {
+    it('should skip content event with invalid JSON without crashing', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      // Send malformed JSON as content event
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      es.listeners.get('content')?.forEach(listener => {
+        listener({ data: 'not valid json{' } as any)
+      })
+      consoleSpy.mockRestore()
+
+      // Stream should still be alive — no crash
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg).toBeDefined()
+      // No text blocks should have been added from the malformed event
+      const textBlocks = assistantMsg.blocks.filter((b: any) => b.type === 'text')
+      expect(textBlocks.length).toBe(0)
+    })
+
+    it('should skip thinking event with invalid JSON without crashing', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      es.listeners.get('thinking')?.forEach(listener => {
+        listener({ data: '{broken json' } as any)
+      })
+      consoleSpy.mockRestore()
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg).toBeDefined()
+      expect(assistantMsg.blocks.length).toBe(0)
+    })
+
+    it('should skip tool_use event with invalid JSON without crashing', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      es.listeners.get('tool_use')?.forEach(listener => {
+        listener({ data: 'not-json' } as any)
+      })
+      consoleSpy.mockRestore()
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg).toBeDefined()
+      expect(assistantMsg.blocks.length).toBe(0)
+    })
+
+    it('should recover from invalid JSON and process subsequent valid events', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      // Send invalid content event
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      es.listeners.get('content')?.forEach(listener => {
+        listener({ data: 'not-json' } as any)
+      })
+      consoleSpy.mockRestore()
+
+      // Send valid content event — should still work
+      es.simulate('content', { content: 'Hello after error' })
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg).toBeDefined()
+      const textBlocks = assistantMsg.blocks.filter((b: any) => b.type === 'text')
+      expect(textBlocks.length).toBe(1)
+      expect(textBlocks[0].text).toBe('Hello after error')
+    })
+
+    it('should skip metadata event with invalid JSON without crashing', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      es.listeners.get('metadata')?.forEach(listener => {
+        listener({ data: '{invalid' } as any)
+      })
+      consoleSpy.mockRestore()
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg).toBeDefined()
+      expect(assistantMsg.metadata).toBeUndefined()
+    })
+
+    it('should skip warning event with invalid JSON without crashing', () => {
+      const options = createOptions()
+      const { connectStream } = useChatStream(options)
+
+      connectStream('test-session-1')
+      const es = getLatestEs()
+      es.simulateOpen()
+
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      es.listeners.get('warning')?.forEach(listener => {
+        listener({ data: 'not-json' } as any)
+      })
+      consoleSpy.mockRestore()
+
+      const assistantMsg = options.messages.value.find(
+        (m: any) => m.role === 'assistant' && m.streaming
+      )
+      expect(assistantMsg).toBeDefined()
+      expect(assistantMsg.blocks.length).toBe(0)
+    })
+  })
+
   describe('connectStream', () => {
     it('should disconnect previous stream before connecting new one', () => {
       const options = createOptions()

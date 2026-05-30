@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"clawbench/internal/model"
 
@@ -227,4 +229,37 @@ func TestCLIHelpers_NoDeadCode(t *testing.T) {
 	_ = fmt.Sprintf
 	_ = flag.NewFlagSet
 	_ = strings.TrimSpace
+}
+
+// ---------- ISS-265: httpClient timeout ----------
+
+func TestHTTPClient_HasTimeout(t *testing.T) {
+	// Verify that the shared httpClient has a non-zero timeout to prevent
+	// indefinite hangs when the server is unresponsive (ISS-265).
+	assert.NotZero(t, httpClient.Timeout, "httpClient should have a non-zero Timeout")
+	assert.Equal(t, 30*time.Second, httpClient.Timeout, "httpClient Timeout should be 30s")
+}
+
+func TestHTTPDo_TimeoutOnSlowServer(t *testing.T) {
+	// Create a server that never responds to verify the client timeout fires
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(60 * time.Second) // Never responds within 30s timeout
+	}))
+	defer server.Close()
+
+	// Create a client with a shorter timeout for this test to avoid slow tests
+	shortClient := &http.Client{
+		Timeout: 500 * time.Millisecond,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	start := time.Now()
+	_, err := shortClient.Get(server.URL)
+	elapsed := time.Since(start)
+
+	// Should have timed out rather than waiting the full 60s
+	assert.Error(t, err, "request should fail with timeout")
+	assert.Less(t, elapsed, 5*time.Second, "should fail within timeout period, not wait for server")
 }

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"clawbench/internal/model"
 
@@ -77,7 +78,9 @@ func apiURL() string {
 
 // httpClient returns an HTTP client that skips TLS verification.
 // CLI connects to localhost — self-signed certs are expected.
+// Timeout: 30s — prevents indefinite hangs when the server is unresponsive (ISS-265).
 var httpClient = &http.Client{
+	Timeout: 30 * time.Second,
 	Transport: &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	},
