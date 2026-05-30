@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   buildMessageSnapshot,
   parseMessages,
+  applySummaryUpdate,
 } from '@/utils/chatSessionUtils.ts'
 
 // ── buildMessageSnapshot ──
@@ -267,3 +268,129 @@ function customParser(content: string) {
   if (!content) return { blocks: [], metadata: null, cancelled: false }
   return { blocks: [{ type: 'text', text: content }], metadata: null, cancelled: false }
 }
+
+// ── applySummaryUpdate ──
+
+describe('applySummaryUpdate', () => {
+  it('stores summary on the message', () => {
+    const msg = { id: '1', showingSummary: undefined }
+    applySummaryUpdate(msg, 'A summary', true)
+    expect(msg.summary).toBe('A summary')
+  })
+
+  it('stores null summary on the message', () => {
+    const msg = { id: '1', showingSummary: true }
+    applySummaryUpdate(msg, null, true)
+    expect(msg.summary).toBeNull()
+  })
+
+  // ── showingSummary undefined (never set) ──
+
+  it('sets showingSummary=true when atBottom and non-empty summary', () => {
+    const msg = { id: '1', showingSummary: undefined }
+    applySummaryUpdate(msg, 'Summary text', true)
+    expect(msg.showingSummary).toBe(true)
+  })
+
+  it('sets showingSummary=false when atBottom but empty summary', () => {
+    const msg = { id: '1', showingSummary: undefined }
+    applySummaryUpdate(msg, '', true)
+    expect(msg.showingSummary).toBe(false)
+  })
+
+  it('sets showingSummary=false when atBottom but null summary', () => {
+    const msg = { id: '1', showingSummary: undefined }
+    applySummaryUpdate(msg, null, true)
+    expect(msg.showingSummary).toBe(false)
+  })
+
+  it('sets showingSummary=false when not atBottom even with non-empty summary', () => {
+    const msg = { id: '1', showingSummary: undefined }
+    applySummaryUpdate(msg, 'Summary text', false)
+    expect(msg.showingSummary).toBe(false)
+  })
+
+  it('still stores summary when not atBottom even though showingSummary stays false', () => {
+    const msg = { id: '1', showingSummary: undefined }
+    applySummaryUpdate(msg, 'Summary text', false)
+    expect(msg.summary).toBe('Summary text')
+    expect(msg.showingSummary).toBe(false)
+  })
+
+  // ── showingSummary = false (user viewing original) ──
+
+  it('auto-switches to summary when atBottom and new non-empty summary arrives', () => {
+    const msg = { id: '1', showingSummary: false }
+    applySummaryUpdate(msg, 'New summary', true)
+    expect(msg.showingSummary).toBe(true)
+  })
+
+  it('does NOT auto-switch when not atBottom and new non-empty summary arrives', () => {
+    const msg = { id: '1', showingSummary: false }
+    applySummaryUpdate(msg, 'New summary', false)
+    expect(msg.showingSummary).toBe(false)
+  })
+
+  it('does NOT auto-switch when atBottom but summary is empty', () => {
+    const msg = { id: '1', showingSummary: false }
+    applySummaryUpdate(msg, '', true)
+    expect(msg.showingSummary).toBe(false)
+  })
+
+  it('does NOT auto-switch when atBottom but summary is null', () => {
+    const msg = { id: '1', showingSummary: false }
+    applySummaryUpdate(msg, null, true)
+    expect(msg.showingSummary).toBe(false)
+  })
+
+  // ── showingSummary = true (already showing summary) ──
+
+  it('keeps showingSummary=true when already showing summary and new summary arrives', () => {
+    const msg = { id: '1', showingSummary: true, summary: 'Old summary' }
+    applySummaryUpdate(msg, 'Updated summary', true)
+    expect(msg.showingSummary).toBe(true)
+    expect(msg.summary).toBe('Updated summary')
+  })
+
+  it('keeps showingSummary=true even when not atBottom if already showing summary', () => {
+    const msg = { id: '1', showingSummary: true, summary: 'Old summary' }
+    applySummaryUpdate(msg, 'Updated summary', false)
+    expect(msg.showingSummary).toBe(true)
+    expect(msg.summary).toBe('Updated summary')
+  })
+
+  // ── Edge cases ──
+
+  it('handles empty string summary when showingSummary is true', () => {
+    const msg = { id: '1', showingSummary: true, summary: 'Old' }
+    applySummaryUpdate(msg, '', true)
+    expect(msg.showingSummary).toBe(true)
+    expect(msg.summary).toBe('')
+  })
+
+  it('handles undefined summary', () => {
+    const msg = { id: '1', showingSummary: undefined }
+    applySummaryUpdate(msg, undefined, true)
+    expect(msg.showingSummary).toBe(false)
+    expect(msg.summary).toBeUndefined()
+  })
+
+  it('user who manually toggled off stays off when not at bottom', () => {
+    // Simulate: user was at bottom, summary arrived (auto-switched to true),
+    // user manually toggled back to original (false), then scrolled up.
+    // Another summary update should NOT auto-switch.
+    const msg = { id: '1', showingSummary: false, summary: 'Old summary' }
+    applySummaryUpdate(msg, 'New summary', false)
+    expect(msg.showingSummary).toBe(false)
+    expect(msg.summary).toBe('New summary')
+  })
+
+  it('user who manually toggled off gets auto-switched when scrolls back to bottom', () => {
+    // User had toggled to original, but is now at the bottom again.
+    // A new summary should auto-switch.
+    const msg = { id: '1', showingSummary: false, summary: 'Old summary' }
+    applySummaryUpdate(msg, 'New summary', true)
+    expect(msg.showingSummary).toBe(true)
+    expect(msg.summary).toBe('New summary')
+  })
+})
