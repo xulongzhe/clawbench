@@ -23,7 +23,8 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
-          args: --timeout=5m --new-from-rev=${{ github.event.pull_request.base.sha || github.sha~1 }}
+          args: --timeout=5m
+          only-new-issues: true
 
   test:
     name: Test (${{ matrix.os }})
