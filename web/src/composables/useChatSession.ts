@@ -467,6 +467,76 @@ export function useChatSession(options: UseChatSessionOptions) {
     }
   }
 
+  /**
+   * Check whether a continued session already exists for a task execution.
+   * Returns { exists, sessionId } — does not create anything.
+   */
+  async function checkContinueSession(taskId: number, execId: number): Promise<{ exists: boolean; sessionId: string }> {
+    try {
+      const resp = await fetch(`/api/tasks/${taskId}/executions/${execId}/continue`)
+      if (!resp.ok) return { exists: false, sessionId: '' }
+      const data = await resp.json()
+      return { exists: !!data.exists, sessionId: data.sessionId || '' }
+    } catch {
+      return { exists: false, sessionId: '' }
+    }
+  }
+
+  /**
+   * Continue a task execution as a new chat session.
+   * 1. GET check — if already continued, navigate to existing session
+   * 2. POST create — create new session with copied history
+   * 3. Navigate to chat tab and switch to the new/existing session
+   * Returns true on success, false on error.
+   */
+  async function continueFromExecution(taskId: number, execId: number, switchTabFn: (tab: string) => void): Promise<boolean> {
+    try {
+      // Step 1: Pre-check
+      const check = await checkContinueSession(taskId, execId)
+      let sessionId = ''
+      let isNewlyCreated = false
+
+      if (check.exists && check.sessionId) {
+        // Already continued — navigate to existing session (no toast)
+        sessionId = check.sessionId
+      } else {
+        // Step 2: POST create
+        const resp = await fetch(`/api/tasks/${taskId}/executions/${execId}/continue`, { method: 'POST' })
+        if (!resp.ok) {
+          const errData = await resp.json().catch(() => ({}))
+          const msgKey = errData.msgKey || ''
+          if (resp.status === 409 || msgKey === 'SessionLimitReached') {
+            toast.show(gt('chat.session.sessionLimitReached'), { icon: '⚠️', type: 'error' })
+          } else {
+            toast.show(errData.error || gt('chat.session.continueFailed'), { icon: '⚠️', type: 'error' })
+          }
+          return false
+        }
+        const data = await resp.json()
+        if (!data.ok || !data.sessionId) {
+          toast.show(gt('chat.session.continueFailed'), { icon: '⚠️', type: 'error' })
+          return false
+        }
+        sessionId = data.sessionId
+        isNewlyCreated = !data.alreadyExists
+        // Toast: only when a new session is actually created (not when restoring a deleted one)
+        if (isNewlyCreated) {
+          const maxCount = store.state.sessionMaxCount
+          toast.show(gt('chat.session.continued', { count: data.sessionCount ?? '', max: maxCount }), { icon: '💬', type: 'success', duration: 1500 })
+        }
+      }
+
+      // Step 3: Navigate — switchTab first, then switchSession
+      switchTabFn('chat')
+      await switchSession(sessionId)
+      return true
+    } catch (err) {
+      console.error('Failed to continue from execution:', err)
+      toast.show(gt('chat.session.continueFailed'), { icon: '⚠️', type: 'error' })
+      return false
+    }
+  }
+
   return {
     // Exposed refs (consumed by ChatPanelContent etc.)
     currentSessionId,
@@ -491,6 +561,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     startMsgCountPolling,
     stopMsgCountPolling,
     handleVisibilityChange,
+    continueFromExecution,
+    checkContinueSession,
     // Agent helpers — delegate to singleton
     getAgentIcon,
     getAgentName,

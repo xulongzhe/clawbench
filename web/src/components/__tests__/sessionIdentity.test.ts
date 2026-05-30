@@ -13,6 +13,8 @@ beforeEach(() => {
     deleteSession: vi.fn(),
     sendMessage: vi.fn(),
     openChatPanel: vi.fn(),
+    continueFromExecution: vi.fn().mockResolvedValue(true),
+    checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
   })
 })
 
@@ -61,6 +63,8 @@ describe('registerSessionActions', () => {
       deleteSession: vi.fn(),
       sendMessage: vi.fn(),
       openChatPanel: vi.fn(),
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
     })
 
     registerSessionActions({
@@ -69,6 +73,8 @@ describe('registerSessionActions', () => {
       deleteSession: vi.fn(),
       sendMessage: vi.fn(),
       openChatPanel: vi.fn(),
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
     })
 
     const { switchSession } = useSessionIdentity()
@@ -87,6 +93,8 @@ describe('action delegation', () => {
       deleteSession: vi.fn(),
       sendMessage: vi.fn(),
       openChatPanel: vi.fn(),
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
     })
 
     const { switchSession } = useSessionIdentity()
@@ -102,6 +110,8 @@ describe('action delegation', () => {
       deleteSession: vi.fn(),
       sendMessage: vi.fn(),
       openChatPanel: vi.fn(),
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
     })
     const { switchSession } = useSessionIdentity()
     // Should not throw
@@ -116,6 +126,8 @@ describe('action delegation', () => {
       deleteSession: vi.fn(),
       sendMessage: vi.fn(),
       openChatPanel: vi.fn(),
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
     })
 
     const { createSession } = useSessionIdentity()
@@ -131,6 +143,8 @@ describe('action delegation', () => {
       deleteSession: mockDelete,
       sendMessage: vi.fn(),
       openChatPanel: vi.fn(),
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
     })
 
     const { deleteSession } = useSessionIdentity()
@@ -146,6 +160,8 @@ describe('action delegation', () => {
       deleteSession: vi.fn(),
       sendMessage: mockSend,
       openChatPanel: vi.fn(),
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
     })
 
     const { sendMessage } = useSessionIdentity()
@@ -161,11 +177,50 @@ describe('action delegation', () => {
       deleteSession: vi.fn(),
       sendMessage: vi.fn(),
       openChatPanel: mockOpen,
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
     })
 
     const { openChatPanel } = useSessionIdentity()
     openChatPanel()
     expect(mockOpen).toHaveBeenCalled()
+  })
+
+  it('delegates continueFromExecution to registered callback', async () => {
+    const mockContinue = vi.fn().mockResolvedValue(true)
+    const mockSwitchTab = vi.fn()
+    registerSessionActions({
+      switchSession: vi.fn(),
+      createSession: vi.fn(),
+      deleteSession: vi.fn(),
+      sendMessage: vi.fn(),
+      openChatPanel: vi.fn(),
+      continueFromExecution: mockContinue,
+      checkContinueSession: vi.fn().mockResolvedValue({ exists: false, sessionId: '' }),
+    })
+
+    const { continueFromExecution } = useSessionIdentity()
+    const result = await continueFromExecution(1, 42, mockSwitchTab)
+    expect(result).toBe(true)
+    expect(mockContinue).toHaveBeenCalledWith(1, 42, mockSwitchTab)
+  })
+
+  it('delegates checkContinueSession to registered callback', async () => {
+    const mockCheck = vi.fn().mockResolvedValue({ exists: true, sessionId: 'existing-s1' })
+    registerSessionActions({
+      switchSession: vi.fn(),
+      createSession: vi.fn(),
+      deleteSession: vi.fn(),
+      sendMessage: vi.fn(),
+      openChatPanel: vi.fn(),
+      continueFromExecution: vi.fn().mockResolvedValue(true),
+      checkContinueSession: mockCheck,
+    })
+
+    const { checkContinueSession } = useSessionIdentity()
+    const result = await checkContinueSession(1, 42)
+    expect(result).toEqual({ exists: true, sessionId: 'existing-s1' })
+    expect(mockCheck).toHaveBeenCalledWith(1, 42)
   })
 })
 

@@ -3,7 +3,7 @@
     <TaskListPage v-if="currentView === 'list' && !formViewOpen" ref="listPageRef" @create="onCreate" @select="onTaskSelect" @history="onTaskHistoryFromList" />
     <TaskDetailPage v-else-if="currentView === 'settings' && !execDetailOpen && !formViewOpen" :task="selectedTaskData" @edit="onEdit" @deleted="onTaskDeleted" @history="onTaskHistory" />
     <TaskHistoryTab v-else-if="currentView === 'history' && !execDetailOpen && !formViewOpen" :task="selectedTaskData" @open-file="onOpenFile" />
-    <TaskExecDetail v-else-if="execDetailOpen && !formViewOpen" :execDetail="selectedExecData" :taskName="selectedTaskData?.name" @close="closeExecDetail" @open-file="onOpenFile" />
+    <TaskExecDetail v-else-if="execDetailOpen && !formViewOpen" :execDetail="selectedExecData" :taskName="selectedTaskData?.name" :taskId="selectedTaskId" @close="closeExecDetail" @open-file="onOpenFile" />
     <TaskFormPage v-else-if="formViewOpen" :mode="formMode" :task="formMode === 'edit' ? selectedTaskData : null" @close="closeForm" @saved="onFormSaved" />
   </div>
 </template>
