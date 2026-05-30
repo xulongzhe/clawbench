@@ -248,6 +248,26 @@ ClawBench interacts with AI programming tools by calling local CLIs, no extra AP
 
 All nine backends can be switched in real time on the ClawBench Web UI, with isolated session data.
 
+### Setup Wizard
+
+When no AI CLI is installed and the embedded Pi binary is detected (`.clawbench/pi/pi`), a setup wizard appears on first launch, guiding users through:
+
+1. **Welcome**: Displays embedded agent info
+2. **Select Provider**: 23 `WizardReady` LLM providers (OpenAI, Anthropic, Google, DeepSeek, Alibaba Qwen, Moonshot, etc.) from `ProviderRegistry`
+3. **Enter API Key**: Encrypted with AES-256-GCM and stored in `agent_api_keys` table
+4. **Verify Model**: Calls `/v1/models` or uses predefined `KnownModels` list to verify connectivity
+5. **Name Agent**: Completes creation and auto-configures `summarize` backend
+
+Build with `--with-pi` to download the Pi binary:
+
+```bash
+./build.sh --with-pi              # Download embedded Pi agent
+./build.sh --linux --with-pi      # Linux + Pi (CI release build)
+PI_VERSION=0.79.0 ./build.sh --with-pi  # Override Pi version
+```
+
+API Key Security: HKDF-SHA256 derives a 32-byte AES key from the auto-password; `RotateAPIKeyEncryption` re-encrypts all keys automatically on login password change.
+
 ### TTS Speech Synthesis Configuration
 
 ClawBench supports TTS speech synthesis, automatically summarizing and reading aloud AI replies. Supports 5 TTS engines and 12 summarization backends.
@@ -294,9 +314,9 @@ ClawBench supports running multiple instances on the same server (different port
 
 Browsers don't distinguish cookies by port, so cookies are automatically prefixed by port (e.g. `cb20300_`) to prevent collisions between instances on the same domain. The default port 20000 uses unprefixed cookie names for backward compatibility.
 
-### Linux Static Linking
+### Linux Dynamic Linking
 
-The Linux binary in GitHub Releases is statically linked (`-extldflags '-static'`) with no glibc/libstdc++ runtime dependencies. It runs directly on systems with older glibc versions such as Rocky Linux 9.
+The Linux binary in GitHub Releases uses dynamic linking (CGO_ENABLED=1) and requires glibc 2.39+ (Ubuntu 24.04+). Static linking (`-extldflags '-static'`) was removed because DuckDB's CGO code is incompatible with static linking — the binary builds successfully but crashes with SIGSEGV at runtime when DuckDB runs.
 
 ### Data Storage
 
@@ -375,7 +395,8 @@ clawbench/
 │   │   ├── file_thumb.go        # Image thumbnail generation (square canvas + dominant-color padding)
 │   │   ├── file_archive.go      # File archive download (zip, symlink traversal protection)
 │   │   ├── file_watch.go        # File change SSE notifications
-│   │   ├── settings.go          # Settings (password change + SHA-256 verification)
+│   │   ├── settings.go          # Settings (password change + SHA-256 verification + encryption key rotation)
+│   │   ├── setup.go             # Setup wizard (/api/setup/status, providers, models, verify, complete)
 │   │   ├── upload.go            # File upload
 │   │   ├── git.go               # Git operations
 │   │   ├── project.go           # Project management
@@ -393,12 +414,15 @@ clawbench/
 │   │   ├── database.go          # SQLite initialization
 │   │   ├── chat.go              # Chat history management
 │   │   ├── continue_conversation.go # Continue conversation (from task execution → new session)
+│   │   ├── agent_store.go       # Agent store (DB-backed CRUD + agent_api_keys table)
+│   │   ├── agent_migration.go   # Agent migration (YAML → DB one-time migration, idempotent)
+│   │   ├── crypto.go            # API key encryption (AES-256-GCM + HKDF-SHA256, key rotation on password change)
 │   │   ├── summary.go           # Chat auto-summary (AsyncSummarize + summaries table)
 │   │   ├── scheduler.go         # Scheduled task scheduling
 │   │   ├── uuid.go              # UUID utility
 │   │   └── logger.go            # File logger (daily rotation)
 │   ├── model/                   # Data models
-│   │   ├── config.go / defaults.go / chat.go / file.go / agent.go / scheduler.go / path.go / ssh.go / discovery.go
+│   │   ├── config.go / defaults.go / chat.go / file.go / agent.go / scheduler.go / path.go / ssh.go / discovery.go / provider_registry.go
 │   │   └── errors.go
 │   ├── ssh/                     # SSH tunnel server
 │   │   ├── server.go            # SSH server (direct-tcpip port forwarding)

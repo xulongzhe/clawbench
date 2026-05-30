@@ -52,3 +52,11 @@ A: Data is stored in the `.clawbench/` directory alongside the binary, including
 **Q: How do I back up data?**
 
 A: Back up the `.clawbench/ClawBench.db` database file in the directory alongside the binary.
+
+**Q: What if I don't have any AI CLI installed on first launch?**
+
+A: If the release package includes the embedded Pi agent (or you built with `./build.sh --with-pi`), a setup wizard appears automatically on first launch. The wizard guides you through selecting an LLM provider (23 supported including OpenAI, Anthropic, DeepSeek, etc.), entering your API key, verifying model connectivity, and naming your agent. API keys are encrypted with AES-256-GCM and encryption keys auto-rotate on password change.
+
+**Q: What's the difference between wizard-created agents and YAML-configured agents?**
+
+A: Wizard-created agents are stored in the database (`agents` table), while YAML-configured agents are stored in the `config/agents/` directory. When both exist, database agents take precedence on ID collision. Wizard agent API keys are encrypted and stored in the `agent_api_keys` table; YAML agent API keys are managed by the respective CLI tools.

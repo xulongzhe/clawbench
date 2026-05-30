@@ -130,6 +130,8 @@ cd clawbench
 
 That's it — on every startup, ClawBench automatically scans for installed AI CLI tools, generates minimal agent configs for each detected backend, and auto-discovers available models and thinking effort levels. No manual configuration needed.
 
+> If no AI CLI is installed but the embedded Pi agent is available (from the release package or `--with-pi` build), a setup wizard appears on first launch, guiding you through selecting an LLM provider, entering your API key, verifying model access, and creating an agent — all in one click.
+
 > A random 8-character hex password is auto-generated on first startup and printed to the console in a bordered box. Save it securely.
 
 Once deployed, access `http://server-ip:20000` from your phone app or mobile browser:
@@ -191,6 +193,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Model Selection Persistence**: Model choice and thinking effort per agent auto-saved to localStorage, restored on reload/session switch
 - **Scheduled Tasks**: AI creates Cron schedules via CLI subcommands, executes automatically; independent tab with 4-level breadcrumb navigation; task cards embedded in chat messages; frequency presets (hourly/daily/weekly/monthly) + custom cron expressions; per-execution read tracking + TTS playback; execution auto-summary + completion notification (sound/haptic/toast)
 - **Continue Conversation**: One-click continue conversation from task execution detail, auto-copies history messages and summaries to a new session, inherits backend/agent/model/thinking effort; sessions originated from scheduled tasks show a purple "Task" badge in session list
+- **Setup Wizard**: When no AI CLI is installed, the embedded Pi agent provides a 5-step guided setup (Welcome → Select Provider → Enter API Key → Verify Model → Name Agent), supporting 23 LLM providers (OpenAI, Anthropic, Google, DeepSeek, Alibaba Qwen, etc.). API keys are encrypted with AES-256-GCM and encryption keys auto-rotate on password change
 - **Multi-Session Management**: Create, switch, delete independent sessions, swipe to switch
 - **Swipe Session Toggle**: Toggle left/right swipe session switching in Settings → Chat; defaults to off to prevent accidental switches when scrolling wide content
 - **Image Upload**: Upload images for AI conversation (multimodal)
@@ -285,6 +288,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 
 ### 🔒 Security
 - Optional password protection (SHA-256 salted hash storage, password change available in settings panel)
+- API Key encrypted storage (AES-256-GCM + HKDF-SHA256 key derivation, encryption key auto-rotation on password change)
 - Multi-instance cookie isolation (cookies auto-prefixed by port, no collisions on same domain)
 - Path traversal protection, all operations restricted to project directory
 - Git parameter injection protection (SHA/branch name/tag name validation, `--` separator)
