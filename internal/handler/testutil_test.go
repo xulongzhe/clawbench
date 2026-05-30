@@ -188,6 +188,11 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		t.Fatalf("failed to create tables: %v", err)
 	}
 
+	// Create agent store tables (agents + agent_api_keys)
+	if _, err := db.Exec(service.AgentDDL); err != nil {
+		t.Fatalf("failed to create agent tables: %v", err)
+	}
+
 	service.DB = db
 	service.DBRead = db // Same instance for :memory: SQLite — data is shared
 

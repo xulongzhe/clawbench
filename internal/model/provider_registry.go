@@ -1,0 +1,304 @@
+package model
+
+import (
+	"sort"
+	"strings"
+)
+
+// KnownModel describes a pre-defined model for providers that don't support /v1/models.
+// Used by Anthropic-format providers (anthropic, fireworks, minimax, etc.).
+type KnownModel struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	ContextLength    int    `json:"context_length"`    // in tokens, 0 = unknown
+	SupportsThinking bool   `json:"supports_thinking"` // whether model supports extended thinking
+	CostTier         string `json:"cost_tier"`         // "cheap", "moderate", "expensive"
+}
+
+// ModelInfo represents a model returned from the /v1/models endpoint or KnownModels.
+// Unified format for frontend display.
+type ModelInfo struct {
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Created          int64  `json:"created"`           // Unix timestamp from /v1/models (0 for KnownModels)
+	ContextLength    int    `json:"context_length"`    // in tokens, 0 = unknown
+	SupportsThinking bool   `json:"supports_thinking"` // whether model supports extended thinking
+	CostTier         string `json:"cost_tier"`         // "cheap", "moderate", "expensive"
+}
+
+// ProviderSpec describes a built-in LLM provider for the setup wizard.
+// ChatEndpoint and ModelsEndpoint are separate because different providers
+// have inconsistent path structures (e.g., DeepSeek /v1/chat/completions
+// but /models derivation would miss /v1/).
+type ProviderSpec struct {
+	ID             string       `json:"id"`
+	Name           string       `json:"name"`
+	EnvVar         string       `json:"envVar"`
+	ChatEndpoint   string       `json:"-"` // full URL for summarize API calls
+	ModelsEndpoint string       `json:"-"` // full URL for GET /v1/models (may be "" for Anthropic-format)
+	APIFormat      string       `json:"-"` // "openai" or "anthropic"
+	KnownModels    []KnownModel `json:"-"` // fallback model list for providers without /v1/models
+	SupportsCLI    bool         `json:"-"` // true = Pi CLI can use this provider directly
+	WizardReady    bool         `json:"-"` // true = can be configured via setup wizard (single API key)
+}
+
+// ProviderRegistry maps provider IDs to their specifications.
+// Data sourced from Pi's packages/ai/scripts/generate-models.ts.
+var ProviderRegistry = map[string]ProviderSpec{
+	// --- OpenAI-compatible providers ---
+	"openai": {
+		ID: "openai", Name: "OpenAI", EnvVar: "OPENAI_API_KEY",
+		ChatEndpoint: "https://api.openai.com/v1/chat/completions",
+		ModelsEndpoint: "https://api.openai.com/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"anthropic": {
+		ID: "anthropic", Name: "Anthropic", EnvVar: "ANTHROPIC_API_KEY",
+		ChatEndpoint: "https://api.anthropic.com/v1/messages",
+		ModelsEndpoint: "",
+		APIFormat: "anthropic", SupportsCLI: true, WizardReady: true,
+		KnownModels: []KnownModel{
+			{ID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", ContextLength: 200000, SupportsThinking: true, CostTier: "expensive"},
+			{ID: "claude-3-7-sonnet-20250219", Name: "Claude 3.7 Sonnet", ContextLength: 200000, SupportsThinking: true, CostTier: "expensive"},
+			{ID: "claude-3-5-haiku-20241022", Name: "Claude 3.5 Haiku", ContextLength: 200000, SupportsThinking: false, CostTier: "cheap"},
+			{ID: "claude-3-5-sonnet-20241022", Name: "Claude 3.5 Sonnet", ContextLength: 200000, SupportsThinking: true, CostTier: "moderate"},
+		},
+	},
+	"google": {
+		ID: "google", Name: "Google Gemini", EnvVar: "GEMINI_API_KEY",
+		ChatEndpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+		ModelsEndpoint: "https://generativelanguage.googleapis.com/v1beta/openai/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"deepseek": {
+		ID: "deepseek", Name: "DeepSeek", EnvVar: "DEEPSEEK_API_KEY",
+		ChatEndpoint: "https://api.deepseek.com/v1/chat/completions",
+		ModelsEndpoint: "https://api.deepseek.com/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"groq": {
+		ID: "groq", Name: "Groq", EnvVar: "GROQ_API_KEY",
+		ChatEndpoint: "https://api.groq.com/openai/v1/chat/completions",
+		ModelsEndpoint: "https://api.groq.com/openai/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"openrouter": {
+		ID: "openrouter", Name: "OpenRouter", EnvVar: "OPENROUTER_API_KEY",
+		ChatEndpoint: "https://openrouter.ai/api/v1/chat/completions",
+		ModelsEndpoint: "https://openrouter.ai/api/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"cerebras": {
+		ID: "cerebras", Name: "Cerebras", EnvVar: "CEREBRAS_API_KEY",
+		ChatEndpoint: "https://api.cerebras.ai/v1/chat/completions",
+		ModelsEndpoint: "https://api.cerebras.ai/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"xai": {
+		ID: "xai", Name: "xAI Grok", EnvVar: "XAI_API_KEY",
+		ChatEndpoint: "https://api.x.ai/v1/chat/completions",
+		ModelsEndpoint: "https://api.x.ai/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"mistral": {
+		ID: "mistral", Name: "Mistral", EnvVar: "MISTRAL_API_KEY",
+		ChatEndpoint: "https://api.mistral.ai/v1/chat/completions",
+		ModelsEndpoint: "https://api.mistral.ai/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"fireworks": {
+		ID: "fireworks", Name: "Fireworks", EnvVar: "FIREWORKS_API_KEY",
+		ChatEndpoint: "https://api.fireworks.ai/inference/v1/messages",
+		ModelsEndpoint: "",
+		APIFormat: "anthropic", SupportsCLI: true, WizardReady: true,
+		KnownModels: []KnownModel{
+			{ID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", ContextLength: 200000, SupportsThinking: true, CostTier: "expensive"},
+			{ID: "claude-3-5-haiku-20241022", Name: "Claude 3.5 Haiku", ContextLength: 200000, SupportsThinking: false, CostTier: "cheap"},
+		},
+	},
+	"minimax": {
+		ID: "minimax", Name: "MiniMax", EnvVar: "MINIMAX_API_KEY",
+		ChatEndpoint: "https://api.minimax.io/anthropic/v1/messages",
+		ModelsEndpoint: "",
+		APIFormat: "anthropic", SupportsCLI: true, WizardReady: true,
+		KnownModels: []KnownModel{
+			{ID: "MiniMax-Text-01", Name: "MiniMax-Text-01", ContextLength: 0, SupportsThinking: false, CostTier: "cheap"},
+		},
+	},
+	"minimax-cn": {
+		ID: "minimax-cn", Name: "MiniMax (China)", EnvVar: "MINIMAX_API_KEY",
+		ChatEndpoint: "https://api.minimaxi.com/anthropic/v1/messages",
+		ModelsEndpoint: "",
+		APIFormat: "anthropic", SupportsCLI: true, WizardReady: true,
+		KnownModels: []KnownModel{
+			{ID: "MiniMax-Text-01", Name: "MiniMax-Text-01", ContextLength: 0, SupportsThinking: false, CostTier: "cheap"},
+		},
+	},
+	"kimi-coding": {
+		ID: "kimi-coding", Name: "Kimi For Coding", EnvVar: "KIMI_API_KEY",
+		ChatEndpoint: "https://api.kimi.com/coding/v1/messages",
+		ModelsEndpoint: "",
+		APIFormat: "anthropic", SupportsCLI: true, WizardReady: true,
+		KnownModels: []KnownModel{
+			{ID: "kimi-k2-0711-preview", Name: "Kimi K2", ContextLength: 131072, SupportsThinking: false, CostTier: "moderate"},
+		},
+	},
+	"moonshotai": {
+		ID: "moonshotai", Name: "Moonshot AI", EnvVar: "MOONSHOT_API_KEY",
+		ChatEndpoint: "https://api.moonshot.ai/v1/chat/completions",
+		ModelsEndpoint: "https://api.moonshot.ai/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"moonshotai-cn": {
+		ID: "moonshotai-cn", Name: "Moonshot AI (China)", EnvVar: "MOONSHOT_API_KEY",
+		ChatEndpoint: "https://api.moonshot.cn/v1/chat/completions",
+		ModelsEndpoint: "https://api.moonshot.cn/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"xiaomi": {
+		ID: "xiaomi", Name: "Xiaomi MiMo", EnvVar: "XIAOMI_API_KEY",
+		ChatEndpoint: "https://api.xiaomimimo.com/v1/chat/completions",
+		ModelsEndpoint: "https://api.xiaomimimo.com/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"xiaomi-token-plan-cn": {
+		ID: "xiaomi-token-plan-cn", Name: "Xiaomi MiMo Token Plan (China)", EnvVar: "XIAOMI_TOKEN_PLAN_CN_API_KEY",
+		ChatEndpoint: "https://token-plan-cn.xiaomimimo.com/v1/chat/completions",
+		ModelsEndpoint: "https://token-plan-cn.xiaomimimo.com/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"xiaomi-token-plan-ams": {
+		ID: "xiaomi-token-plan-ams", Name: "Xiaomi MiMo Token Plan (Amsterdam)", EnvVar: "XIAOMI_TOKEN_PLAN_AMS_API_KEY",
+		ChatEndpoint: "https://token-plan-ams.xiaomimimo.com/v1/chat/completions",
+		ModelsEndpoint: "https://token-plan-ams.xiaomimimo.com/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"xiaomi-token-plan-sgp": {
+		ID: "xiaomi-token-plan-sgp", Name: "Xiaomi MiMo Token Plan (Singapore)", EnvVar: "XIAOMI_TOKEN_PLAN_SGP_API_KEY",
+		ChatEndpoint: "https://token-plan-sgp.xiaomimimo.com/v1/chat/completions",
+		ModelsEndpoint: "https://token-plan-sgp.xiaomimimo.com/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"zai": {
+		ID: "zai", Name: "ZAI", EnvVar: "ZAI_API_KEY",
+		ChatEndpoint: "https://api.z.ai/api/coding/paas/v4/chat/completions",
+		ModelsEndpoint: "https://api.z.ai/api/coding/paas/v4/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"huggingface": {
+		ID: "huggingface", Name: "Hugging Face", EnvVar: "HF_API_KEY",
+		ChatEndpoint: "https://router.huggingface.co/v1/chat/completions",
+		ModelsEndpoint: "https://router.huggingface.co/v1/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"opencode": {
+		ID: "opencode", Name: "OpenCode Zen", EnvVar: "OPENCODE_API_KEY",
+		ChatEndpoint: "https://opencode.ai/zen/chat/completions",
+		ModelsEndpoint: "https://opencode.ai/zen/models",
+		APIFormat: "openai", SupportsCLI: true, WizardReady: true,
+	},
+	"vercel-ai-gateway": {
+		ID: "vercel-ai-gateway", Name: "Vercel AI Gateway", EnvVar: "AI_GATEWAY_API_KEY",
+		ChatEndpoint: "https://ai-gateway.vercel.sh/v1/messages",
+		ModelsEndpoint: "",
+		APIFormat: "anthropic", SupportsCLI: true, WizardReady: true,
+		KnownModels: []KnownModel{
+			{ID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", ContextLength: 200000, SupportsThinking: true, CostTier: "expensive"},
+			{ID: "claude-3-5-haiku-20241022", Name: "Claude 3.5 Haiku", ContextLength: 200000, SupportsThinking: false, CostTier: "cheap"},
+		},
+	},
+
+	// --- Enterprise providers (NOT available in wizard, manual config only) ---
+	"amazon-bedrock": {
+		ID: "amazon-bedrock", Name: "Amazon Bedrock", EnvVar: "",
+		ChatEndpoint: "", ModelsEndpoint: "", APIFormat: "",
+		SupportsCLI: true, WizardReady: false,
+	},
+	"azure-openai-responses": {
+		ID: "azure-openai-responses", Name: "Azure OpenAI Responses", EnvVar: "AZURE_OPENAI_API_KEY",
+		ChatEndpoint: "", ModelsEndpoint: "", APIFormat: "",
+		SupportsCLI: true, WizardReady: false,
+	},
+	"cloudflare-ai-gateway": {
+		ID: "cloudflare-ai-gateway", Name: "Cloudflare AI Gateway", EnvVar: "CLOUDFLARE_API_KEY",
+		ChatEndpoint: "", ModelsEndpoint: "", APIFormat: "",
+		SupportsCLI: true, WizardReady: false,
+	},
+	"cloudflare-workers-ai": {
+		ID: "cloudflare-workers-ai", Name: "Cloudflare Workers AI", EnvVar: "CLOUDFLARE_API_KEY",
+		ChatEndpoint: "", ModelsEndpoint: "", APIFormat: "",
+		SupportsCLI: true, WizardReady: false,
+	},
+	"google-vertex": {
+		ID: "google-vertex", Name: "Google Vertex AI", EnvVar: "",
+		ChatEndpoint: "", ModelsEndpoint: "", APIFormat: "",
+		SupportsCLI: true, WizardReady: false,
+	},
+}
+
+// GetWizardProviders returns all providers that can be configured via the setup wizard,
+// sorted by ID. Enterprise providers (WizardReady=false) are excluded.
+func GetWizardProviders() []ProviderSpec {
+	var providers []ProviderSpec
+	for _, spec := range ProviderRegistry {
+		if spec.WizardReady {
+			providers = append(providers, spec)
+		}
+	}
+	sort.Slice(providers, func(i, j int) bool {
+		return providers[i].ID < providers[j].ID
+	})
+	return providers
+}
+
+// FindProviderSpec looks up a provider by ID. Returns nil if not found.
+func FindProviderSpec(providerID string) *ProviderSpec {
+	spec, ok := ProviderRegistry[providerID]
+	if !ok {
+		return nil
+	}
+	return &spec
+}
+
+// GetSummarizeModelHint returns a recommended model ID for summarization.
+// For KnownModels providers: picks the first model with CostTier=="cheap".
+// For /v1/models providers: scans model IDs for cheap-model keywords.
+// Falls back to the first model if no better match found.
+func GetSummarizeModelHint(knownModels []KnownModel, v1Models []ModelInfo) string {
+	// Priority 1: KnownModels with CostTier=="cheap"
+	if len(knownModels) > 0 {
+		for _, m := range knownModels {
+			if m.CostTier == "cheap" {
+				return m.ID
+			}
+		}
+		// No cheap model found, return first known model
+		return knownModels[0].ID
+	}
+
+	// Priority 2: /v1/models keyword matching
+	if len(v1Models) > 0 {
+		// Keywords in priority order — match as hyphen-delimited segment
+		// to avoid false positives (e.g., "mini" matching "gemini")
+		keywords := []string{"mini", "flash", "haiku", "lite", "small"}
+		for _, kw := range keywords {
+			for _, m := range v1Models {
+				lowerID := strings.ToLower(m.ID)
+				// Match keyword as a segment: preceded by hyphen, dot, slash, or start of string
+				for _, sep := range []string{"-", ".", "/", "_"} {
+					if strings.Contains(lowerID, sep+kw) {
+						return m.ID
+					}
+				}
+				// Also match if the ID starts with the keyword (e.g., "mini-max")
+				if strings.HasPrefix(lowerID, kw) {
+					return m.ID
+				}
+			}
+		}
+		// No keyword match, return first model
+		return v1Models[0].ID
+	}
+
+	return ""
+}

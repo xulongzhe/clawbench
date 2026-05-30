@@ -18,6 +18,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 
+	"clawbench/internal/ai"
 	"clawbench/internal/cli"
 	"clawbench/internal/handler"
 	"clawbench/internal/model"
@@ -476,6 +477,15 @@ func main() {
 	}
 	defer service.CloseDB()
 
+	// Inject API key loader for Pi CLI runtime (avoids import cycle between ai and service packages)
+	ai.SetAgentAPIKeyLoader(func(agentID string) (provider, customURL, apiKey string, found bool) {
+		p, cu, ak, err := service.LoadAgentAnyAPIKey(service.DB, agentID)
+		if err != nil || ak == "" {
+			return "", "", "", false
+		}
+		return p, cu, ak, true
+	})
+
 	// Initialize RAG history memory system (always enabled)
 	if err := rag.Init(cfg.RAG); err != nil {
 		slog.Warn("failed to initialize RAG system, search will be limited", slog.String("err", err.Error()))
@@ -507,20 +517,16 @@ func main() {
 	modelCacheDir := filepath.Join(model.BinDir, ".clawbench", "model-cache")
 	model.ModelCacheDir = modelCacheDir
 
-	// 1. Load existing agent YAMLs
-	if err := model.LoadAgents(agentsDir); err != nil {
-		slog.Warn("failed to load agents", slog.String("err", err.Error()))
+	// 1. One-time YAML → DB migration (idempotent: skips if agents table already has records)
+	if err := service.MigrateAgentsFromYAML(service.DB, agentsDir); err != nil {
+		slog.Warn("failed to migrate agents from YAML", slog.String("err", err.Error()))
 	}
 
-	// 2. Detect installed CLIs and generate configs for new backends
-	present := model.SyncDiscoverAgents(agentsDir)
+	// 2. Set ConfigDir for BuildCommonPrompt (replaces old agentsDir variable)
+	model.ConfigDir = filepath.Dir(agentsDir)
 
-	// 3. Reload agents if new YAMLs were generated or existing ones loaded
-	if len(model.AgentList) == 0 || len(present) > 0 {
-		if err := model.LoadAgents(agentsDir); err != nil {
-			slog.Warn("failed to reload agents after discovery", slog.String("err", err.Error()))
-		}
-	}
+	// 3. Detect installed CLIs and write new agents to DB (replaces SyncDiscoverAgents)
+	present := model.SyncDiscoverAgentsDB(service.DB)
 
 	// 4. Synchronous model discovery on first run (no cache exists)
 	if _, err := os.Stat(modelCacheDir); os.IsNotExist(err) {
@@ -528,8 +534,8 @@ func main() {
 		model.SyncDiscoverModels(modelCacheDir)
 	}
 
-	// 5. Merge runtime data: fill models from cache, levels from Registry, soft-remove missing CLIs
-	model.MergeDiscoveredData(modelCacheDir, present)
+	// 5. Merge runtime data: fill models/levels from cache/registry, delete missing CLIs, reload memory
+	model.MergeDiscoveredDataDB(service.DB, modelCacheDir, present)
 
 	slog.Info("agents loaded", slog.Int("count", len(model.AgentList)))
 

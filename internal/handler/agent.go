@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"clawbench/internal/model"
+	"clawbench/internal/service"
 )
 
 // ServeAgentSubRoutes handles /api/agents/* sub-routes (e.g. /api/agents/{id}/refresh-models).
@@ -107,8 +108,8 @@ func serveAgentsPatch(w http.ResponseWriter, r *http.Request) {
 		agent.PreferredThinkingEffort = level
 	}
 
-	// Persist to YAML
-	if err := model.WriteAgentYAML(agent); err != nil {
+	// Persist to database
+	if err := service.PatchAgent(service.DB, agentID, agent.PreferredModel, agent.PreferredThinkingEffort); err != nil {
 		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
 		return
 	}
@@ -167,6 +168,11 @@ func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
 	// Update in-memory agent (regardless of ModelsAutoDetected — manual refresh always overrides)
 	agent.Models = models
 	agent.ModelsAutoDetected = true
+
+	// Update database
+	if err := service.SaveAgent(service.DB, agent); err != nil {
+		slog.Warn("failed to persist model refresh to DB", "agent", agentID, "error", err)
+	}
 
 	// Update cache file
 	if err := model.WriteModelCache(model.ModelCacheDir, agent.Backend, models); err != nil {

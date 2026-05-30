@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -1402,4 +1403,365 @@ func DiscoverVeCLIModels() []AgentModel {
 
 	slog.Info("vecli model discovery succeeded", "models", len(models))
 	return models
+}
+
+// --- Embedded Pi binary detection ---
+
+// EmbeddedAgentPath returns the absolute path to the embedded Pi binary,
+// or empty string if not found. Checks {binDir}/.clawbench/pi/ for the binary.
+func EmbeddedAgentPath() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		slog.Error("failed to get executable path", "error", err)
+		return ""
+	}
+	baseDir := filepath.Dir(exePath)
+	for _, name := range []string{"pi", "pi.exe"} {
+		p := filepath.Join(baseDir, ".clawbench", "pi", name)
+		if info, err := os.Stat(p); err == nil && !info.IsDir() {
+			return p
+		}
+	}
+	return ""
+}
+
+// EmbeddedAgentVersion extracts the version from the embedded Pi binary.
+// First checks .clawbench/pi/VERSION file (fast), falls back to pi --version.
+func EmbeddedAgentVersion() string {
+	exePath, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	baseDir := filepath.Dir(exePath)
+
+	// Fast path: read VERSION file
+	versionFile := filepath.Join(baseDir, ".clawbench", "pi", "VERSION")
+	if data, err := os.ReadFile(versionFile); err == nil {
+		v := strings.TrimSpace(string(data))
+		if v != "" {
+			return v
+		}
+	}
+
+	// Slow path: run pi --version
+	piPath := EmbeddedAgentPath()
+	if piPath == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, piPath, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// --- DB-based agent discovery and merge ---
+
+// SyncDiscoverAgentsDB is the DB-based replacement for SyncDiscoverAgents.
+// It detects installed CLIs from BackendRegistry and writes new agents to the database
+// instead of YAML files. Existing DB records are never overwritten.
+// It also checks for the embedded Pi binary.
+// Returns a set of backend types whose CLI is currently present.
+func SyncDiscoverAgentsDB(db *sql.DB) map[string]bool {
+	type result struct {
+		spec   BackendSpec
+		exists bool
+	}
+	results := make([]result, len(BackendRegistry))
+	var wg sync.WaitGroup
+	for i, spec := range BackendRegistry {
+		wg.Add(1)
+		go func(i int, spec BackendSpec) {
+			defer wg.Done()
+			exists := spec.NoCLI || CheckCLIExists(spec.DefaultCmd)
+			results[i] = result{spec: spec, exists: exists}
+		}(i, spec)
+	}
+	wg.Wait()
+
+	// Also check for embedded Pi binary
+	embeddedPath := EmbeddedAgentPath()
+	if embeddedPath != "" {
+		// Mark pi as present for model discovery, but do NOT auto-create an agent.
+		// The setup wizard handles agent creation with API key + model configuration.
+		// Auto-creating here would set needs_setup=false, skipping the wizard,
+		// and leave a broken agent with no API key.
+		for i, r := range results {
+			if r.spec.Backend == "pi" && !r.exists {
+				results[i] = result{spec: r.spec, exists: true}
+			}
+		}
+	}
+
+	present := make(map[string]bool)
+
+	for _, r := range results {
+		if r.exists {
+			present[r.spec.Backend] = true
+		}
+
+		// Skip auto-creation for Pi when it's only found via embedded binary.
+		// The setup wizard handles Pi agent creation with API key + model config.
+		// Auto-creating from embedded binary would leave a broken agent (no API key).
+		if r.spec.Backend == "pi" && embeddedPath != "" {
+			// Only auto-create if Pi CLI is genuinely installed on PATH (not just embedded)
+			if _, lookupErr := exec.LookPath(r.spec.DefaultCmd); lookupErr != nil {
+				continue
+			}
+		}
+
+		// Check if DB already has an agent for this backend
+		var count int
+		err := db.QueryRow("SELECT COUNT(*) FROM agents WHERE backend = ?", r.spec.Backend).Scan(&count)
+		if err != nil {
+			slog.Warn("failed to query agents table", "backend", r.spec.Backend, "error", err)
+			continue
+		}
+		if count > 0 {
+			continue // Don't overwrite existing DB records
+		}
+
+		if !r.exists {
+			continue
+		}
+
+		// New CLI found + no DB record → insert minimal agent
+		agent := &Agent{
+			ID:        r.spec.ID,
+			Name:      r.spec.Name,
+			Icon:      r.spec.Icon,
+			Specialty: r.spec.Specialty,
+			Backend:   r.spec.Backend,
+			Source:    "auto",
+		}
+
+		// Set command to embedded path for pi backend
+		if r.spec.Backend == "pi" && embeddedPath != "" {
+			agent.Command = embeddedPath
+		}
+
+		if err := saveAgentToDB(db, agent); err != nil {
+			slog.Warn("failed to insert agent to DB", "backend", r.spec.ID, "error", err)
+			continue
+		}
+		slog.Info("auto-inserted agent to DB", "backend", r.spec.ID)
+	}
+
+	// Include backends that have existing DB records but are not in BackendRegistry
+	// (e.g., wizard-created agents, manual agents, mock backend).
+	// This ensures MergeDiscoveredDataDB doesn't soft-delete them.
+	rows, err := db.Query("SELECT DISTINCT backend FROM agents")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var backend string
+			if err := rows.Scan(&backend); err == nil && !present[backend] {
+				present[backend] = true
+			}
+		}
+	}
+
+	return present
+}
+
+// saveAgentToDB inserts a minimal agent record into the database.
+func saveAgentToDB(db *sql.DB, agent *Agent) error {
+	modelsJSON, err := json.Marshal(agent.Models)
+	if err != nil {
+		return fmt.Errorf("marshal models: %w", err)
+	}
+	levelsJSON, err := json.Marshal(agent.ThinkingEffortLevels)
+	if err != nil {
+		return fmt.Errorf("marshal thinking_effort_levels: %w", err)
+	}
+
+	_, err = db.Exec(`INSERT INTO agents (id, name, icon, specialty, backend, command,
+		thinking_effort, thinking_effort_levels, preferred_model, preferred_thinking_effort,
+		system_prompt, models, models_auto_detected, source, sort_order)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		agent.ID, agent.Name, agent.Icon, agent.Specialty, agent.Backend, agent.Command,
+		agent.ThinkingEffort, string(levelsJSON), agent.PreferredModel, agent.PreferredThinkingEffort,
+		agent.SystemPrompt, string(modelsJSON), agent.ModelsAutoDetected, agent.Source, agent.SortOrder)
+	return err
+}
+
+// MergeDiscoveredDataDB is the DB-based replacement for MergeDiscoveredData.
+// It performs three operations:
+// 1. Soft-delete: DELETE auto-source agents whose backend is not in the present map
+// 2. Fill ThinkingEffortLevels from BackendRegistry and update DB
+// 3. Fill Models from cache for agents with empty models and update DB
+// 4. Reload in-memory state from DB
+func MergeDiscoveredDataDB(db *sql.DB, cacheDir string, present map[string]bool) {
+	// Step 1: Soft-delete auto agents whose CLI is not present
+	if present != nil {
+		// Build list of present backends for SQL
+		presentBackends := make([]string, 0, len(present))
+		for backend := range present {
+			presentBackends = append(presentBackends, backend)
+		}
+
+		// Delete auto-source agents whose backend is NOT in present
+		if len(presentBackends) > 0 {
+			// Build placeholders
+			placeholders := make([]string, len(presentBackends))
+			args := make([]any, len(presentBackends)+1)
+			args[0] = "auto" // source
+			for i, b := range presentBackends {
+				placeholders[i] = "?"
+				args[i+1] = b
+			}
+			query := fmt.Sprintf("DELETE FROM agents WHERE source = ? AND backend NOT IN (%s)",
+				strings.Join(placeholders, ","))
+			result, err := db.Exec(query, args...)
+			if err != nil {
+				slog.Warn("failed to soft-delete missing CLI agents", "error", err)
+			} else if rows, _ := result.RowsAffected(); rows > 0 {
+				slog.Info("soft-deleted agents with missing CLIs", "count", rows)
+			}
+		} else {
+			// No backends present — delete all auto agents
+			result, err := db.Exec("DELETE FROM agents WHERE source = ?", "auto")
+			if err != nil {
+				slog.Warn("failed to soft-delete all auto agents", "error", err)
+			} else if rows, _ := result.RowsAffected(); rows > 0 {
+				slog.Info("soft-deleted all auto agents (no CLIs present)", "count", rows)
+			}
+		}
+	}
+
+	// Step 2: Fill ThinkingEffortLevels from BackendRegistry and update DB
+	rows, err := db.Query("SELECT id, backend FROM agents")
+	if err != nil {
+		slog.Warn("failed to query agents for merge", "error", err)
+		return
+	}
+	type agentRef struct {
+		ID      string
+		Backend string
+	}
+	var agentRefs []agentRef
+	for rows.Next() {
+		var ref agentRef
+		if err := rows.Scan(&ref.ID, &ref.Backend); err != nil {
+			continue
+		}
+		agentRefs = append(agentRefs, ref)
+	}
+	rows.Close()
+
+	for _, ref := range agentRefs {
+		spec := FindSpecByBackend(ref.Backend)
+		if spec == nil {
+			continue
+		}
+
+		// Update ThinkingEffortLevels
+		levelsJSON, _ := json.Marshal(spec.ThinkingEffortLevels)
+		if _, err := db.Exec("UPDATE agents SET thinking_effort_levels = ? WHERE id = ?",
+			string(levelsJSON), ref.ID); err != nil {
+			slog.Warn("failed to update thinking_effort_levels", "id", ref.ID, "error", err)
+		}
+	}
+
+	// Step 3: Fill Models from cache for agents with empty models
+	rows, err = db.Query("SELECT id, backend, models FROM agents WHERE models = '[]' AND models_auto_detected = 0")
+	if err != nil {
+		slog.Warn("failed to query agents for model fill", "error", err)
+		return
+	}
+	type agentModelRef struct {
+		ID      string
+		Backend string
+	}
+	var modelRefs []agentModelRef
+	for rows.Next() {
+		var ref agentModelRef
+		var modelsStr string
+		if err := rows.Scan(&ref.ID, &ref.Backend, &modelsStr); err != nil {
+			continue
+		}
+		modelRefs = append(modelRefs, ref)
+	}
+	rows.Close()
+
+	for _, ref := range modelRefs {
+		cached := ReadModelCache(cacheDir, ref.Backend)
+		if len(cached) == 0 {
+			continue
+		}
+		modelsJSON, _ := json.Marshal(cached)
+		if _, err := db.Exec("UPDATE agents SET models = ?, models_auto_detected = 1 WHERE id = ?",
+			string(modelsJSON), ref.ID); err != nil {
+			slog.Warn("failed to update models from cache", "id", ref.ID, "error", err)
+		}
+	}
+
+	// Step 4: Reload in-memory state from DB
+	agents, err := loadAgentsFromDBRows(db)
+	if err != nil {
+		slog.Warn("failed to reload agents from DB after merge", "error", err)
+		return
+	}
+
+	Agents = make(map[string]*Agent)
+	AgentList = agents
+	for _, agent := range agents {
+		Agents[agent.ID] = agent
+		// Set CanRefreshModels from BackendRegistry (runtime only, not persisted)
+		if spec := FindSpecByBackend(agent.Backend); spec != nil {
+			agent.CanRefreshModels = CanDiscoverModels(*spec)
+		}
+	}
+
+	// Build common prompt and prepend to each agent's system prompt
+	commonPrompt := BuildCommonPrompt(false)
+	for _, agent := range Agents {
+		if commonPrompt != "" && agent.SystemPrompt != "" {
+			agent.SystemPrompt = commonPrompt + "\n\n" + agent.SystemPrompt
+		} else if commonPrompt != "" {
+			agent.SystemPrompt = commonPrompt
+		}
+	}
+}
+
+// loadAgentsFromDBRows loads agents from the database into Agent structs.
+func loadAgentsFromDBRows(db *sql.DB) ([]*Agent, error) {
+	rows, err := db.Query(`SELECT id, name, icon, specialty, backend, command,
+		thinking_effort, thinking_effort_levels, preferred_model, preferred_thinking_effort,
+		system_prompt, models, models_auto_detected, source, sort_order
+		FROM agents ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var agents []*Agent
+	for rows.Next() {
+		agent := &Agent{}
+		var modelsJSON, levelsJSON string
+		var autoDetected int
+
+		err := rows.Scan(&agent.ID, &agent.Name, &agent.Icon, &agent.Specialty,
+			&agent.Backend, &agent.Command, &agent.ThinkingEffort, &levelsJSON,
+			&agent.PreferredModel, &agent.PreferredThinkingEffort,
+			&agent.SystemPrompt, &modelsJSON, &autoDetected,
+			&agent.Source, &agent.SortOrder)
+		if err != nil {
+			return nil, err
+		}
+
+		agent.ModelsAutoDetected = autoDetected == 1
+
+		if err := json.Unmarshal([]byte(modelsJSON), &agent.Models); err != nil {
+			agent.Models = nil
+		}
+		if err := json.Unmarshal([]byte(levelsJSON), &agent.ThinkingEffortLevels); err != nil {
+			agent.ThinkingEffortLevels = nil
+		}
+
+		agents = append(agents, agent)
+	}
+	return agents, nil
 }

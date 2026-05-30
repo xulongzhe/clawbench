@@ -1,0 +1,228 @@
+package service
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"sort"
+
+	"clawbench/internal/model"
+)
+
+// AgentDDL creates the agents and agent_api_keys tables.
+// Exported so handler tests and other external packages can create these tables
+// in their test databases.
+const AgentDDL = `
+CREATE TABLE IF NOT EXISTS agents (
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL,
+	icon TEXT NOT NULL DEFAULT '',
+	specialty TEXT NOT NULL DEFAULT '',
+	backend TEXT NOT NULL,
+	command TEXT NOT NULL DEFAULT '',
+	thinking_effort TEXT NOT NULL DEFAULT '',
+	thinking_effort_levels TEXT NOT NULL DEFAULT '[]',
+	preferred_model TEXT NOT NULL DEFAULT '',
+	preferred_thinking_effort TEXT NOT NULL DEFAULT '',
+	system_prompt TEXT NOT NULL DEFAULT '',
+	models TEXT NOT NULL DEFAULT '[]',
+	models_auto_detected INTEGER NOT NULL DEFAULT 0,
+	source TEXT NOT NULL DEFAULT 'auto',
+	sort_order INTEGER NOT NULL DEFAULT 0,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_agents_backend ON agents(backend);
+CREATE INDEX IF NOT EXISTS idx_agents_source ON agents(source);
+CREATE INDEX IF NOT EXISTS idx_agents_sort ON agents(sort_order);
+
+CREATE TABLE IF NOT EXISTS agent_api_keys (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	agent_id TEXT NOT NULL,
+	provider TEXT NOT NULL,
+	custom_url TEXT NOT NULL DEFAULT '',
+	encrypted_key TEXT NOT NULL,
+	key_nonce TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_api_keys_agent_provider
+	ON agent_api_keys(agent_id, provider);
+`
+
+// LoadAgentsFromDB loads all agents from the database and returns them sorted by ID.
+func LoadAgentsFromDB(db *sql.DB) ([]*model.Agent, error) {
+	rows, err := db.Query(`
+		SELECT id, name, icon, specialty, backend, command,
+			thinking_effort, thinking_effort_levels,
+			preferred_model, preferred_thinking_effort,
+			system_prompt, models, models_auto_detected,
+			source, sort_order
+		FROM agents ORDER BY id
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query agents: %w", err)
+	}
+	defer rows.Close()
+
+	var agents []*model.Agent
+	for rows.Next() {
+		a := &model.Agent{}
+		var modelsJSON, levelsJSON string
+		var modelsAutoDetected int
+
+		err := rows.Scan(
+			&a.ID, &a.Name, &a.Icon, &a.Specialty, &a.Backend, &a.Command,
+			&a.ThinkingEffort, &levelsJSON,
+			&a.PreferredModel, &a.PreferredThinkingEffort,
+			&a.SystemPrompt, &modelsJSON, &modelsAutoDetected,
+			&a.Source, &a.SortOrder,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan agent: %w", err)
+		}
+
+		a.ModelsAutoDetected = modelsAutoDetected == 1
+
+		// Parse models JSON
+		if modelsJSON != "" && modelsJSON != "[]" {
+			var models []model.AgentModel
+			if err := json.Unmarshal([]byte(modelsJSON), &models); err == nil {
+				a.Models = models
+			}
+		}
+
+		// Parse thinking effort levels JSON
+		if levelsJSON != "" && levelsJSON != "[]" {
+			var levels []string
+			if err := json.Unmarshal([]byte(levelsJSON), &levels); err == nil {
+				a.ThinkingEffortLevels = levels
+			}
+		}
+
+		agents = append(agents, a)
+	}
+
+	return agents, rows.Err()
+}
+
+// SaveAgent inserts or updates an agent in the database (upsert).
+// DBExec is the minimal interface for DB operations that work with both *sql.DB and *sql.Tx.
+type DBExec interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func SaveAgent(db DBExec, agent *model.Agent) error {
+	modelsJSON, err := json.Marshal(agent.Models)
+	if err != nil {
+		return fmt.Errorf("marshal models: %w", err)
+	}
+	levelsJSON, err := json.Marshal(agent.ThinkingEffortLevels)
+	if err != nil {
+		return fmt.Errorf("marshal thinking_effort_levels: %w", err)
+	}
+
+	modelsAutoDetected := 0
+	if agent.ModelsAutoDetected {
+		modelsAutoDetected = 1
+	}
+
+	sortOrder := agent.SortOrder
+
+	_, err = db.Exec(`
+		INSERT INTO agents (id, name, icon, specialty, backend, command,
+			thinking_effort, thinking_effort_levels,
+			preferred_model, preferred_thinking_effort,
+			system_prompt, models, models_auto_detected,
+			source, sort_order)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			icon = excluded.icon,
+			specialty = excluded.specialty,
+			backend = excluded.backend,
+			command = excluded.command,
+			thinking_effort = excluded.thinking_effort,
+			thinking_effort_levels = excluded.thinking_effort_levels,
+			preferred_model = excluded.preferred_model,
+			preferred_thinking_effort = excluded.preferred_thinking_effort,
+			system_prompt = excluded.system_prompt,
+			models = excluded.models,
+			models_auto_detected = excluded.models_auto_detected,
+			source = excluded.source,
+			sort_order = excluded.sort_order,
+			updated_at = CURRENT_TIMESTAMP
+	`, agent.ID, agent.Name, agent.Icon, agent.Specialty, agent.Backend, agent.Command,
+		agent.ThinkingEffort, string(levelsJSON),
+		agent.PreferredModel, agent.PreferredThinkingEffort,
+		agent.SystemPrompt, string(modelsJSON), modelsAutoDetected,
+		agent.Source, sortOrder)
+
+	if err != nil {
+		return fmt.Errorf("save agent %s: %w", agent.ID, err)
+	}
+	return nil
+}
+
+// DeleteAgent deletes an agent by ID. Cascades to agent_api_keys (requires PRAGMA foreign_keys=ON).
+// Returns nil even if the agent doesn't exist.
+func DeleteAgent(db *sql.DB, id string) error {
+	// Ensure foreign keys are enforced for cascade delete
+	db.Exec("PRAGMA foreign_keys = ON")
+	_, err := db.Exec("DELETE FROM agents WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete agent %s: %w", id, err)
+	}
+	return nil
+}
+
+// PatchAgent updates only the user-editable fields (preferred_model, preferred_thinking_effort).
+// Returns nil even if the agent doesn't exist (no rows affected).
+func PatchAgent(db *sql.DB, id, preferredModel, preferredThinkingEffort string) error {
+	_, err := db.Exec(`
+		UPDATE agents
+		SET preferred_model = ?, preferred_thinking_effort = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`,
+		preferredModel, preferredThinkingEffort, id)
+	if err != nil {
+		return fmt.Errorf("patch agent %s: %w", id, err)
+	}
+	return nil
+}
+
+// LoadAgentsIntoMemory loads agents from DB into the global model.Agents map and model.AgentList slice.
+// Also builds the common prompt and prepends it to each agent's system prompt.
+func LoadAgentsIntoMemory(db *sql.DB) error {
+	agents, err := LoadAgentsFromDB(db)
+	if err != nil {
+		return err
+	}
+
+	model.Agents = make(map[string]*model.Agent)
+	model.AgentList = agents
+
+	for _, agent := range agents {
+		model.Agents[agent.ID] = agent
+	}
+
+	// Sort by ID for deterministic ordering
+	sort.Slice(model.AgentList, func(i, j int) bool {
+		return model.AgentList[i].ID < model.AgentList[j].ID
+	})
+
+	// Build common prompt from rules.md
+	commonPrompt := model.BuildCommonPrompt(false)
+
+	// Prepend common prompt to each agent's system prompt
+	for _, agent := range model.Agents {
+		if commonPrompt != "" && agent.SystemPrompt != "" {
+			agent.SystemPrompt = commonPrompt + "\n\n" + agent.SystemPrompt
+		} else if commonPrompt != "" {
+			agent.SystemPrompt = commonPrompt
+		}
+	}
+
+	return nil
+}

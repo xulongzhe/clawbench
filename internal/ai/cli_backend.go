@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"clawbench/internal/model"
 )
 
 // CLIBackend is a generic AI backend that shells out to a CLI tool and streams
@@ -38,10 +40,21 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 	}
 	cmd := exec.CommandContext(ctx, cmdName, args...)
 	cmd.Dir = req.WorkDir
+
+	// Initialize env vars from current process environment
+	cmd.Env = os.Environ()
+
 	// Inject CLAWBENCH_SCHEDULED=1 for anti-recursion: prevents AI from
 	// creating new scheduled tasks during a scheduled execution.
 	if req.ScheduledExecution {
-		cmd.Env = append(os.Environ(), "CLAWBENCH_SCHEDULED=1")
+		cmd.Env = append(cmd.Env, "CLAWBENCH_SCHEDULED=1")
+	}
+
+	// Inject API key from agent_api_keys table if available.
+	// This enables Pi CLI to authenticate without relying on global auth.json.
+	// Env vars are per-process, so concurrent sessions with different providers work correctly.
+	if req.AgentID != "" {
+		injectAgentAPIKey(cmd, req)
 	}
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -207,8 +220,25 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 	return ch, nil
 }
 
-// filterSkipNonJSON returns a filterLine that skips empty lines and lines
-// that don't start with '{'.
+// AgentAPIKeyLoader loads an API key for an agent+provider combination.
+// AgentAPIKeyLoader loads the API key for a Pi agent.
+// Returns (provider, customURL, apiKey, true) on success, or ("", "", "", false) if not found.
+// This is injected from the handler/service layer to avoid import cycles.
+type AgentAPIKeyLoader func(agentID string) (provider, customURL, apiKey string, found bool)
+
+// agentAPIKeyLoader is the global function for loading agent API keys.
+// Set by the application startup via SetAgentAPIKeyLoader.
+var agentAPIKeyLoader AgentAPIKeyLoader
+
+// SetAgentAPIKeyLoader sets the function used to load encrypted API keys
+// for agents. Must be called once during application startup, after
+// service.InitDB(). This avoids import cycles between internal/ai and
+// internal/service packages.
+func SetAgentAPIKeyLoader(loader AgentAPIKeyLoader) {
+	agentAPIKeyLoader = loader
+}
+// filterSkipNonJSON returns a line filter that discards lines
+// that don't start with '{' (non-JSON lines from CLI stderr).
 func filterSkipNonJSON() func(string) (string, bool) {
 	return func(line string) (string, bool) {
 		if line == "" || !strings.HasPrefix(line, "{") {
@@ -216,4 +246,45 @@ func filterSkipNonJSON() func(string) (string, bool) {
 		}
 		return line, true
 	}
+}
+
+// injectAgentAPIKey loads the encrypted API key for the agent from the database
+// and injects it as an environment variable on the CLI command. For Pi agents,
+// also adds the --provider flag so Pi knows which provider config to use.
+// If the agent has no stored API key, this is a no-op (Pi falls back to auth.json).
+func injectAgentAPIKey(cmd *exec.Cmd, req ChatRequest) {
+	if agentAPIKeyLoader == nil {
+		return
+	}
+
+	agent, ok := model.Agents[req.AgentID]
+	if !ok {
+		return
+	}
+
+	// Only inject for Pi backend (setup-wizard-created agents)
+	if agent.Backend != "pi" {
+		return
+	}
+
+	// Find the provider and API key for this agent — single DB query
+	provider, customURL, apiKey, found := agentAPIKeyLoader(req.AgentID)
+	if !found || apiKey == "" {
+		return // No stored API key — Pi will fall back to auth.json
+	}
+
+	// Find the provider spec and inject the env var
+	spec := model.FindProviderSpec(provider)
+	if spec != nil && spec.EnvVar != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", spec.EnvVar, apiKey))
+		// Add --provider flag to Pi CLI args
+		cmd.Args = append(cmd.Args[:len(cmd.Args)-1], "--provider", provider, cmd.Args[len(cmd.Args)-1])
+	}
+
+	// Inject custom URL if provided
+	if customURL != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("PI_CUSTOM_URL=%s", customURL))
+	}
+
+	slog.Debug("injected API key for agent", "agent_id", req.AgentID, "provider", provider)
 }

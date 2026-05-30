@@ -6,6 +6,9 @@
     <!-- Login -->
     <LoginView v-else-if="!isAuthenticated" @login-success="handleLoginSuccess" />
 
+    <!-- Setup wizard (after login, before main UI) -->
+    <SetupWizard v-else-if="needsSetup" @complete="handleSetupComplete" />
+
     <!-- Main app -->
     <div v-else class="app-container" :class="{ 'chrome-hidden': terminalKeyboardActive, 'chat-keyboard-open': chatKeyboardActive, 'project-switching': switchingProject }" :key="projectKey">
       <AppHeader
@@ -262,6 +265,7 @@ import ProxyPanelContent from './components/proxy/ProxyPanelContent.vue'
 import TerminalPanelContent from './components/terminal/TerminalPanelContent.vue'
 import ProjectDialog from './components/ProjectDialog.vue'
 import LoginView from './components/LoginView.vue'
+import SetupWizard from './components/setup/SetupWizard.vue'
 import TocDrawer from './components/TocDrawer.vue'
 import FileDetailsDialog from './components/file/FileDetailsDialog.vue'
 import GitHistoryDrawer from './components/git/GitHistoryDrawer.vue'
@@ -298,6 +302,7 @@ import 'highlight.js/styles/github-dark.css'
 import './assets/hljs-light-override.css'
 
 const isAuthenticated = ref(null)
+const needsSetup = ref(false)
 const { t } = useI18n()
 
 // SPA hot project switch: key forces Vue to destroy/rebuild the app-container subtree
@@ -611,9 +616,31 @@ async function handleLoginSuccess() {
     // clawbench_project cookie first. Without this, ChatPanelContent mounts
     // and calls loadHistory() which fails with NoProjectSelected (no cookie).
     try { await store.loadProject() } catch (_) { /* loadProject has its own error handling */ }
+    // Check if setup wizard is needed (no agents + embedded Pi binary)
+    try {
+      const resp = await fetch('/api/setup/status')
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data.needs_setup) {
+          isAuthenticated.value = true
+          needsSetup.value = true
+          return
+        }
+      }
+    } catch { /* proceed to normal app if check fails */ }
     isAuthenticated.value = true
     initMermaid()
     await store.loadFiles('')
+}
+
+function handleSetupComplete() {
+    needsSetup.value = false
+    initMermaid()
+    // Reload data that the app needs after agent is configured
+    sessionIdentity.initSessionFromAPI()
+    loadSessionsOnce()
+    store.loadFiles('').catch(() => {})
+    store.loadGitBranch().catch(() => {})
 }
 
 const projectDialogOpen = ref(false)
@@ -946,6 +973,17 @@ onMounted(async () => {
         return
     }
     initMermaid()
+    // Check if setup wizard is needed (no agents + embedded Pi binary)
+    try {
+      const setupResp = await fetch('/api/setup/status')
+      if (setupResp.ok) {
+        const setupData = await setupResp.json()
+        if (setupData.needs_setup) {
+          needsSetup.value = true
+          return  // Skip normal app init — wizard will handle it
+        }
+      }
+    } catch { /* proceed to normal app if check fails */ }
     // Load project first so the backend sets the clawbench_project cookie.
     // Without this, subsequent chat/session API calls fail with NoProjectSelected
     // on first login (no cookie yet) and show "加载聊天记录失败".

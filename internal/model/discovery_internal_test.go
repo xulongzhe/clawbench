@@ -79,11 +79,11 @@ func TestCanDiscoverModels(t *testing.T) {
 
 // --- BuildCommonPrompt edge cases (internal access to agentsDir) ---
 
-func TestBuildCommonPrompt_NoAgentsDir(t *testing.T) {
-	// When agentsDir is empty, loadRules returns "", so BuildCommonPrompt returns ""
-	origDir := agentsDir
-	agentsDir = ""
-	t.Cleanup(func() { agentsDir = origDir })
+func TestBuildCommonPrompt_NoConfigDir(t *testing.T) {
+	// When ConfigDir is empty, loadRules returns "", so BuildCommonPrompt returns ""
+	origDir := ConfigDir
+	ConfigDir = ""
+	t.Cleanup(func() { ConfigDir = origDir })
 
 	result := BuildCommonPrompt(false)
 	assert.Empty(t, result)
@@ -91,8 +91,8 @@ func TestBuildCommonPrompt_NoAgentsDir(t *testing.T) {
 
 func TestBuildCommonPrompt_ScheduledRemovesMarkers(t *testing.T) {
 	// Verify that in scheduled mode, both the content AND markers are removed
-	origDir := agentsDir
-	t.Cleanup(func() { agentsDir = origDir })
+	origDir := ConfigDir
+	t.Cleanup(func() { ConfigDir = origDir })
 
 	// We can't easily test this from outside the package because agentsDir
 	// is unexported. This test verifies marker stripping behavior.

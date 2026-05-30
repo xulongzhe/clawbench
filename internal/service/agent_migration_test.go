@@ -1,0 +1,231 @@
+package service
+
+import (
+	"clawbench/internal/model"
+	"database/sql"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
+	"gopkg.in/yaml.v3"
+)
+
+// setupTestDBForMigration creates an in-memory SQLite with agents tables for migration tests.
+func setupTestDBForMigration(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
+
+	_, err = db.Exec(AgentDDL)
+	require.NoError(t, err)
+
+	origDB := DB
+	origDBRead := DBRead
+	DB = db
+	DBRead = db
+	t.Cleanup(func() {
+		DB = origDB
+		DBRead = origDBRead
+		db.Close()
+	})
+
+	return db
+}
+
+func TestMigrateAgentsFromYAML_HappyPath(t *testing.T) {
+	db := setupTestDBForMigration(t)
+	dir := t.TempDir()
+
+	// Write two YAML files
+	writeAgentYAML(t, dir, "claude.yaml", map[string]any{
+		"id": "claude", "name": "Claude", "icon": "🤖",
+		"specialty": "代码编写与推理", "backend": "claude",
+		"preferred_model": "claude-sonnet-4-6",
+	})
+	writeAgentYAML(t, dir, "pi.yaml", map[string]any{
+		"id": "pi", "name": "Pi", "icon": "🥧",
+		"specialty": "极简编程智能体", "backend": "pi",
+		"preferred_model": "minimax-cn/MiniMax-M2.7",
+		"system_prompt": "You are a versatile assistant.",
+	})
+
+	err := MigrateAgentsFromYAML(db, dir)
+	require.NoError(t, err)
+
+	// Verify agents were migrated
+	agents, err := LoadAgentsFromDB(db)
+	require.NoError(t, err)
+	require.Len(t, agents, 2)
+
+	// Sorted by ID: claude first, pi second
+	assert.Equal(t, "claude", agents[0].ID)
+	assert.Equal(t, "Claude", agents[0].Name)
+	assert.Equal(t, "claude-sonnet-4-6", agents[0].PreferredModel)
+	assert.Equal(t, "auto", agents[0].Source) // migrated agents are "auto"
+
+	assert.Equal(t, "pi", agents[1].ID)
+	assert.Equal(t, "Pi", agents[1].Name)
+	assert.Equal(t, "minimax-cn/MiniMax-M2.7", agents[1].PreferredModel)
+	assert.Equal(t, "You are a versatile assistant.", agents[1].SystemPrompt)
+	assert.Equal(t, "auto", agents[1].Source)
+}
+
+func TestMigrateAgentsFromYAML_Idempotent(t *testing.T) {
+	db := setupTestDBForMigration(t)
+	dir := t.TempDir()
+
+	writeAgentYAML(t, dir, "pi.yaml", map[string]any{
+		"id": "pi", "name": "Pi", "backend": "pi",
+	})
+
+	// Migrate once
+	err := MigrateAgentsFromYAML(db, dir)
+	require.NoError(t, err)
+
+	// Migrate again — should be a no-op (agents table not empty)
+	err = MigrateAgentsFromYAML(db, dir)
+	require.NoError(t, err)
+
+	// Should still have exactly one agent
+	agents, err := LoadAgentsFromDB(db)
+	require.NoError(t, err)
+	assert.Len(t, agents, 1)
+}
+
+func TestMigrateAgentsFromYAML_EmptyDir(t *testing.T) {
+	db := setupTestDBForMigration(t)
+	dir := t.TempDir() // empty dir
+
+	err := MigrateAgentsFromYAML(db, dir)
+	require.NoError(t, err)
+
+	// No agents should be created
+	agents, err := LoadAgentsFromDB(db)
+	require.NoError(t, err)
+	assert.Empty(t, agents)
+}
+
+func TestMigrateAgentsFromYAML_NonexistentDir(t *testing.T) {
+	db := setupTestDBForMigration(t)
+
+	err := MigrateAgentsFromYAML(db, "/nonexistent/path")
+	require.NoError(t, err) // should not error, just skip
+
+	agents, err := LoadAgentsFromDB(db)
+	require.NoError(t, err)
+	assert.Empty(t, agents)
+}
+
+func TestMigrateAgentsFromYAML_InvalidYAML(t *testing.T) {
+	db := setupTestDBForMigration(t)
+	dir := t.TempDir()
+
+	// Write a valid and an invalid YAML
+	writeAgentYAML(t, dir, "pi.yaml", map[string]any{
+		"id": "pi", "name": "Pi", "backend": "pi",
+	})
+	// Invalid YAML (missing id)
+	os.WriteFile(filepath.Join(dir, "invalid.yaml"), []byte("name: no-id\nbackend: test\n"), 0644)
+	// Non-YAML file (should be skipped)
+	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not a yaml"), 0644)
+
+	err := MigrateAgentsFromYAML(db, dir)
+	require.NoError(t, err)
+
+	// Only the valid agent should be migrated
+	agents, err := LoadAgentsFromDB(db)
+	require.NoError(t, err)
+	require.Len(t, agents, 1)
+	assert.Equal(t, "pi", agents[0].ID)
+}
+
+func TestMigrateAgentsFromYAML_ModelsAndLevels(t *testing.T) {
+	db := setupTestDBForMigration(t)
+	dir := t.TempDir()
+
+	writeAgentYAML(t, dir, "codebuddy.yaml", map[string]any{
+		"id": "codebuddy", "name": "顶梁柱", "icon": "🐛",
+		"specialty": "全栈开发助手", "backend": "codebuddy",
+		"preferred_model": "glm-5.1",
+		"thinking_effort_levels": []string{"low", "medium", "high", "xhigh"},
+		"models": []map[string]any{
+			{"id": "glm-5.1", "name": "GLM-5.1", "default": true},
+			{"id": "glm-4.7", "name": "GLM-4.7"},
+		},
+	})
+
+	err := MigrateAgentsFromYAML(db, dir)
+	require.NoError(t, err)
+
+	agents, err := LoadAgentsFromDB(db)
+	require.NoError(t, err)
+	require.Len(t, agents, 1)
+
+	got := agents[0]
+	assert.Equal(t, "codebuddy", got.ID)
+	assert.Equal(t, "顶梁柱", got.Name)
+	assert.Equal(t, "glm-5.1", got.PreferredModel)
+	require.Len(t, got.Models, 2)
+	assert.Equal(t, "glm-5.1", got.Models[0].ID)
+	assert.True(t, got.Models[0].Default)
+	require.Len(t, got.ThinkingEffortLevels, 4)
+	assert.Equal(t, "xhigh", got.ThinkingEffortLevels[3])
+}
+
+func TestMigrateAgentsFromYAML_AlreadyHasDBAgents(t *testing.T) {
+	db := setupTestDBForMigration(t)
+	dir := t.TempDir()
+
+	// Pre-populate DB with an agent (simulates previous migration)
+	err := SaveAgent(db, &model.Agent{
+		ID: "existing", Name: "Existing", Backend: "claude", Source: "auto",
+	})
+	require.NoError(t, err)
+
+	// Write YAML that would create another agent
+	writeAgentYAML(t, dir, "pi.yaml", map[string]any{
+		"id": "pi", "name": "Pi", "backend": "pi",
+	})
+
+	// Migration should be skipped (agents table not empty)
+	err = MigrateAgentsFromYAML(db, dir)
+	require.NoError(t, err)
+
+	// Should only have the pre-existing agent
+	agents, err := LoadAgentsFromDB(db)
+	require.NoError(t, err)
+	require.Len(t, agents, 1)
+	assert.Equal(t, "existing", agents[0].ID)
+}
+
+func TestMigrateAgentsFromYAML_DirectoryEntry(t *testing.T) {
+	db := setupTestDBForMigration(t)
+	dir := t.TempDir()
+
+	// Create a subdirectory (should be skipped)
+	os.MkdirAll(filepath.Join(dir, "subdir"), 0755)
+	writeAgentYAML(t, dir, "pi.yaml", map[string]any{
+		"id": "pi", "name": "Pi", "backend": "pi",
+	})
+
+	err := MigrateAgentsFromYAML(db, dir)
+	require.NoError(t, err)
+
+	agents, err := LoadAgentsFromDB(db)
+	require.NoError(t, err)
+	require.Len(t, agents, 1)
+	assert.Equal(t, "pi", agents[0].ID)
+}
+
+// Helper to write a YAML agent file
+func writeAgentYAML(t *testing.T, dir, filename string, data map[string]any) {
+	t.Helper()
+	content, err := yaml.Marshal(data)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(dir, filename), content, 0644)
+	require.NoError(t, err)
+}

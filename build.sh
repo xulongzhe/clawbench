@@ -9,6 +9,7 @@ ASSETS="assets"
 TARGET_OS=""
 TARGET_ARCH=""
 BUILD_ANDROID=""
+DOWNLOAD_PI=""
 for arg in "$@"; do
     case "$arg" in
         --windows)
@@ -34,6 +35,9 @@ for arg in "$@"; do
             ;;
         --android)
             BUILD_ANDROID=1
+            ;;
+        --with-pi)
+            DOWNLOAD_PI=1
             ;;
     esac
 done
@@ -61,7 +65,7 @@ VERSION_CODE=$(git rev-list --count HEAD 2>/dev/null || echo "1")
 echo "  Version: $FULL_VERSION (code: $VERSION_CODE, release: $IS_RELEASE)"
 
 # 1. Build Go backend
-echo "[1/3] Building Go backend..."
+echo "[1/4] Building Go backend..."
 if command -v go >/dev/null 2>&1; then
     if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then
         BINARY_NAME="$NAME"
@@ -78,8 +82,58 @@ else
     echo "  Go not found, skipping backend build"
 fi
 
+# 1.5 Download Pi binary (embedded agent for setup wizard)
+# Default: skip. Use --with-pi to download, or set PI_VERSION to override version.
+# CI sets --with-pi alongside the cross-compile flag (e.g. --linux --with-pi).
+PI_VERSION="${PI_VERSION:-0.78.0}"
+PI_DIR=".clawbench/pi"
+if [ -n "$DOWNLOAD_PI" ]; then
+    echo "[2/4] Downloading Pi v${PI_VERSION}..."
+    # Determine platform for Pi binary
+    if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then
+        case "$TARGET_OS" in
+            linux)   PI_PLATFORM="linux-$TARGET_ARCH" ;;
+            darwin)  PI_PLATFORM="darwin-$TARGET_ARCH" ;;
+            windows) PI_PLATFORM="windows-$TARGET_ARCH" ;;
+            *)       PI_PLATFORM="" ;;
+        esac
+        # Pi uses "x64" not "amd64" in its archive names
+        PI_PLATFORM="${PI_PLATFORM/amd64/x64}"
+    else
+        PI_PLATFORM="$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)"
+        PI_PLATFORM="${PI_PLATFORM/x86_64/x64}"
+        PI_PLATFORM="${PI_PLATFORM/aarch64/arm64}"
+    fi
+
+    if [ -n "$PI_PLATFORM" ]; then
+        PI_EXT="tar.gz"
+        [ "${TARGET_OS:-}" = "windows" ] && PI_EXT="zip"
+        PI_ARCHIVE="pi-${PI_PLATFORM}.${PI_EXT}"
+        PI_URL="https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/${PI_ARCHIVE}"
+
+        mkdir -p "$PI_DIR"
+        if [ -f "$PI_DIR/VERSION" ] && [ "$(cat "$PI_DIR/VERSION")" = "$PI_VERSION" ] && [ -f "$PI_DIR/pi" -o -f "$PI_DIR/pi.exe" ]; then
+            echo "  Pi v${PI_VERSION} already cached in $PI_DIR/"
+        else
+            echo "  Downloading $PI_URL ..."
+            if [ "$PI_EXT" = "zip" ]; then
+                curl -sL "$PI_URL" -o /tmp/pi-download.zip && unzip -qo /tmp/pi-download.zip -d /tmp/pi-download && cp -r /tmp/pi-download/pi/* "$PI_DIR/" && rm -rf /tmp/pi-download /tmp/pi-download.zip
+            else
+                curl -sL "$PI_URL" | tar xzf - -C "$PI_DIR" --strip-components=1
+            fi
+            chmod +x "$PI_DIR/pi" 2>/dev/null || true
+            echo -n "$PI_VERSION" > "$PI_DIR/VERSION"
+            echo "  Pi v${PI_VERSION} downloaded to $PI_DIR/"
+        fi
+    else
+        echo "  Unknown platform, skipping Pi download"
+    fi
+else
+    echo "[2/4] Pi download skipped (use --with-pi to download embedded agent)"
+fi
+
 # 2. Build Vue frontend
-echo "[2/3] Building Vue frontend..."
+echo "[3/4] Building Vue frontend..."
 if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
     if [ ! -d "node_modules" ]; then
         echo "  Installing dependencies..."
@@ -95,7 +149,7 @@ fi
 
 # 3. Build Android APK (optional)
 if [ -n "$BUILD_ANDROID" ]; then
-    echo "[3/3] Building Android APK..."
+    echo "[4/4] Building Android APK..."
     if [ -d "android" ] && [ -f "android/gradlew" ]; then
         (cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease \
             -PversionCode=$VERSION_CODE -PversionName="$FULL_VERSION")
@@ -104,7 +158,7 @@ if [ -n "$BUILD_ANDROID" ]; then
         echo "  Android project not found, skipping APK build"
     fi
 else
-    echo "[3/3] Android APK skipped (use --android to build)"
+    echo "[4/4] Android APK skipped (use --android to build)"
 fi
 
 echo ""
@@ -117,6 +171,7 @@ else
     echo "  ./$NAME              # Go binary"
 fi
 echo "  public/              # Frontend (if built)"
+echo "  .clawbench/pi/       # Pi agent binary (if --with-pi)"
 echo ""
 echo "Run with: ./$NAME"
 echo ""
@@ -127,3 +182,7 @@ echo "  ./build.sh --darwin         # macOS arm64 (Apple Silicon)"
 echo "  ./build.sh --darwin-amd64   # macOS amd64 (Intel)"
 echo "  ./build.sh --target=darwin/arm64"
 echo "  ./build.sh --android          # Android APK (release)"
+echo ""
+echo "Embedded agent:"
+echo "  ./build.sh --linux --with-pi  # Linux + Pi binary (CI release)"
+echo "  PI_VERSION=0.79.0 ./build.sh --with-pi  # Override Pi version"

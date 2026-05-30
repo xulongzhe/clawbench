@@ -42,6 +42,12 @@ type Agent struct {
 	// Computed from BackendRegistry at load time based on whether the backend spec
 	// has model discovery capability (DiscoverModelsFunc or ListModelsCmd+ParseModels).
 	CanRefreshModels bool `yaml:"-" json:"canRefreshModels"`
+
+	// Source indicates how the agent was created: "auto" (CLI detected), "setup" (wizard), "manual" (user).
+	Source string `yaml:"-" json:"source"`
+
+	// SortOrder determines display order in agent list; lower values first.
+	SortOrder int `yaml:"-" json:"sortOrder"`
 }
 
 // DefaultModelID returns the default model ID for this agent.
@@ -82,7 +88,7 @@ var (
 	AgentList     []*Agent          // ordered list for API responses
 	ClawbenchBin  string            // absolute path to clawbench binary for {{CLAWBENCH_BIN}} replacement
 	ModelCacheDir string            // model cache directory, set by main.go at startup
-	agentsDir     string            // saved from LoadAgents for BuildCommonPrompt re-calls
+	ConfigDir     string            // config directory containing rules.md; set at startup, replaces agentsDir for loadRules
 )
 
 // GetDefaultAgentID returns the default agent ID for new sessions.
@@ -105,7 +111,9 @@ func GetDefaultAgentID() string {
 func LoadAgents(dir string) error {
 	Agents = make(map[string]*Agent)
 	AgentList = nil
-	agentsDir = dir // save for BuildCommonPrompt re-calls
+	// Set ConfigDir to the parent of the agents directory (where rules.md lives)
+	// This is kept for backward compatibility during migration; will be removed after YAML loading is removed.
+	ConfigDir = filepath.Dir(dir)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -155,11 +163,13 @@ func LoadAgents(dir string) error {
 // WriteAgentYAML writes the agent's user-editable fields back to its YAML file.
 // It uses atomic write (tmp + rename) to avoid partial writes.
 // Only preferred_model and thinking_effort are written; all other fields are preserved as-is.
+// DEPRECATED: This function will be removed once agent persistence moves fully to DB.
+// It is kept temporarily for backward compatibility during migration.
 func WriteAgentYAML(agent *Agent) error {
-	if agentsDir == "" {
-		return fmt.Errorf("agents directory not initialized")
+	if ConfigDir == "" {
+		return fmt.Errorf("config directory not initialized")
 	}
-	yamlPath := filepath.Join(agentsDir, agent.ID+".yaml")
+	yamlPath := filepath.Join(ConfigDir, "agents", agent.ID+".yaml")
 
 	// Read existing YAML to preserve all fields
 	data, err := os.ReadFile(yamlPath)
@@ -216,7 +226,7 @@ var scheduledMarkerRe = regexp.MustCompile(`\n*<!-- SCHEDULED_(BEGIN|END) -->\n*
 // a scheduled execution (anti-recursion).
 // In both modes, the HTML comment markers themselves are stripped from the output.
 func BuildCommonPrompt(scheduled bool) string {
-	rules := loadRules(agentsDir)
+	rules := loadRules(ConfigDir)
 	if rules == "" {
 		return ""
 	}
@@ -233,10 +243,10 @@ func BuildCommonPrompt(scheduled bool) string {
 	return rules
 }
 
-// loadRules reads config/rules.md from the parent of the agents directory,
+// loadRules reads config/rules.md from the given config directory,
 // replaces placeholders ({{PORT}}, {{AVAILABLE_AGENTS}}), and returns the content.
-func loadRules(agentsDir string) string {
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(agentsDir), "rules.md"))
+func loadRules(configDir string) string {
+	data, err := os.ReadFile(filepath.Join(configDir, "rules.md"))
 	if err != nil {
 		return ""
 	}

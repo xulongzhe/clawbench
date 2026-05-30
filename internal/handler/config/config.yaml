@@ -40,11 +40,12 @@ session:
     max_count: 20
 summarize:
     api:
-        base_url: https://api.openai.com/v1
+        agent_id: openai
+        base_url: https://api.openai.com/v1/chat/completions
         format: openai
-        key: sk-1234567890abcdef
+        key: ""
     backend: api
-    model: codebuddy-latest
+    model: gpt-4o-mini
 terminal:
     buffer_lines: 0
     enabled: false

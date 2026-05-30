@@ -181,6 +181,12 @@ func InitDB(runFromServer ...bool) error {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 
+	// Create agent store tables (agents + agent_api_keys).
+	// Defined in agent_store.go as AgentDDL constant.
+	if _, err := DB.Exec(AgentDDL); err != nil {
+		return fmt.Errorf("failed to create agent tables: %w", err)
+	}
+
 	// Schema migrations: add columns that may not exist in older databases.
 	var hasReadAt int
 	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('task_executions') WHERE name='read_at'").Scan(&hasReadAt)

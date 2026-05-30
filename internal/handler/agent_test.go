@@ -8,71 +8,75 @@ import (
 	"testing"
 
 	"clawbench/internal/model"
+	"clawbench/internal/service"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// setupAgentTestEnv creates a temp agents directory with YAML files and calls LoadAgents.
+// setupAgentTestEnv creates a temp agents directory with DB records and in-memory agents.
 // Returns the temp dir and a teardown function.
 func setupAgentTestEnv(t *testing.T) (string, func()) {
 	t.Helper()
 
-	// Create temp config dir structure: config/agents/*.yaml
+	// Create temp dir for model cache etc.
 	tmpDir := t.TempDir()
-	agentsDir := filepath.Join(tmpDir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
-
-	// Write test agent YAMLs
-	codebuddyYAML := `id: codebuddy
-name: Test
-icon: 🤖
-specialty: testing
-backend: codebuddy
-preferred_model: ""
-thinking_effort: ""
-models:
-  - id: glm-5.1
-    name: GLM 5.1
-    default: true
-  - id: glm-4-flash
-    name: GLM 4 Flash
-thinking_effort_levels:
-  - low
-  - medium
-  - high
-`
-	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "codebuddy.yaml"), []byte(codebuddyYAML), 0644))
-
-	claudeYAML := `id: claude
-name: Claude
-icon: 🧠
-specialty: reasoning
-backend: claude
-preferred_model: ""
-thinking_effort: ""
-models:
-  - id: claude-sonnet-4-6
-    name: Claude Sonnet
-    default: true
-thinking_effort_levels:
-  - low
-  - medium
-  - high
-  - xhigh
-`
-	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "claude.yaml"), []byte(claudeYAML), 0644))
 
 	// Save original globals
 	origAgents := model.Agents
 	origAgentList := model.AgentList
+	origDB := service.DB
+	origDBRead := service.DBRead
 
-	// Load agents from temp dir
-	require.NoError(t, model.LoadAgents(agentsDir))
+	// Init in-memory SQLite
+	db, err := service.InitInMemoryDB()
+	require.NoError(t, err)
+	service.DB = db
+	service.DBRead = db
+
+	// Set up test agents directly in DB
+	codebuddyAgent := &model.Agent{
+		ID:      "codebuddy",
+		Name:    "Test",
+		Icon:    "🤖",
+		Specialty: "testing",
+		Backend: "codebuddy",
+		Models: []model.AgentModel{
+			{ID: "glm-5.1", Name: "GLM 5.1", Default: true},
+			{ID: "glm-4-flash", Name: "GLM 4 Flash"},
+		},
+		ThinkingEffortLevels: []string{"low", "medium", "high"},
+		Source:               "auto",
+	}
+	claudeAgent := &model.Agent{
+		ID:      "claude",
+		Name:    "Claude",
+		Icon:    "🧠",
+		Specialty: "reasoning",
+		Backend: "claude",
+		Models: []model.AgentModel{
+			{ID: "claude-sonnet-4-6", Name: "Claude Sonnet", Default: true},
+		},
+		ThinkingEffortLevels: []string{"low", "medium", "high", "xhigh"},
+		Source:               "auto",
+	}
+
+	require.NoError(t, service.SaveAgent(db, codebuddyAgent))
+	require.NoError(t, service.SaveAgent(db, claudeAgent))
+
+	// Load agents into memory
+	model.Agents = map[string]*model.Agent{
+		"codebuddy": codebuddyAgent,
+		"claude":    claudeAgent,
+	}
+	model.AgentList = []*model.Agent{codebuddyAgent, claudeAgent}
 
 	teardown := func() {
 		model.Agents = origAgents
 		model.AgentList = origAgentList
+		service.DB = origDB
+		service.DBRead = origDBRead
+		db.Close()
 	}
 
 	return tmpDir, teardown
@@ -96,7 +100,7 @@ func TestAgentGet(t *testing.T) {
 }
 
 func TestAgentPatch_PreferredModel(t *testing.T) {
-	tmpDir, teardown := setupAgentTestEnv(t)
+	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 
 	body := map[string]any{
@@ -112,10 +116,11 @@ func TestAgentPatch_PreferredModel(t *testing.T) {
 	// Verify in-memory agent updated
 	assert.Equal(t, "glm-4-flash", model.Agents["codebuddy"].PreferredModel)
 
-	// Verify YAML file updated
-	yamlData, err := os.ReadFile(filepath.Join(tmpDir, "agents", "codebuddy.yaml"))
+	// Verify DB updated
+	var preferredModel string
+	err := service.DB.QueryRow("SELECT preferred_model FROM agents WHERE id = ?", "codebuddy").Scan(&preferredModel)
 	require.NoError(t, err)
-	assert.Contains(t, string(yamlData), "glm-4-flash")
+	assert.Equal(t, "glm-4-flash", preferredModel)
 }
 
 func TestAgentPatch_InvalidPreferredModel(t *testing.T) {
@@ -134,12 +139,12 @@ func TestAgentPatch_InvalidPreferredModel(t *testing.T) {
 }
 
 func TestAgentPatch_PreferredThinkingEffort(t *testing.T) {
-	tmpDir, teardown := setupAgentTestEnv(t)
+	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 
 	body := map[string]any{
-		"id":                          "codebuddy",
-		"preferred_thinking_effort":   "high",
+		"id":                        "codebuddy",
+		"preferred_thinking_effort": "high",
 	}
 	req := newRequest(t, http.MethodPatch, "/api/agents", body)
 	withAuthCookie(req, model.SessionToken)
@@ -150,10 +155,11 @@ func TestAgentPatch_PreferredThinkingEffort(t *testing.T) {
 	// Verify in-memory agent updated
 	assert.Equal(t, "high", model.Agents["codebuddy"].PreferredThinkingEffort)
 
-	// Verify YAML file updated
-	yamlData, err := os.ReadFile(filepath.Join(tmpDir, "agents", "codebuddy.yaml"))
+	// Verify DB updated
+	var preferredThinking string
+	err := service.DB.QueryRow("SELECT preferred_thinking_effort FROM agents WHERE id = ?", "codebuddy").Scan(&preferredThinking)
 	require.NoError(t, err)
-	assert.Contains(t, string(yamlData), "high")
+	assert.Equal(t, "high", preferredThinking)
 }
 
 func TestAgentPatch_InvalidPreferredThinkingEffort(t *testing.T) {
@@ -161,8 +167,8 @@ func TestAgentPatch_InvalidPreferredThinkingEffort(t *testing.T) {
 	defer teardown()
 
 	body := map[string]any{
-		"id":                          "codebuddy",
-		"preferred_thinking_effort":   "ultra",
+		"id":                        "codebuddy",
+		"preferred_thinking_effort": "ultra",
 	}
 	req := newRequest(t, http.MethodPatch, "/api/agents", body)
 	withAuthCookie(req, model.SessionToken)
@@ -187,13 +193,13 @@ func TestAgentPatch_NonexistentAgent(t *testing.T) {
 }
 
 func TestAgentPatch_BothFields(t *testing.T) {
-	tmpDir, teardown := setupAgentTestEnv(t)
+	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 
 	body := map[string]any{
-		"id":                          "claude",
-		"preferred_model":             "claude-sonnet-4-6",
-		"preferred_thinking_effort":   "xhigh",
+		"id":                        "claude",
+		"preferred_model":           "claude-sonnet-4-6",
+		"preferred_thinking_effort": "xhigh",
 	}
 	req := newRequest(t, http.MethodPatch, "/api/agents", body)
 	withAuthCookie(req, model.SessionToken)
@@ -205,16 +211,16 @@ func TestAgentPatch_BothFields(t *testing.T) {
 	assert.Equal(t, "claude-sonnet-4-6", model.Agents["claude"].PreferredModel)
 	assert.Equal(t, "xhigh", model.Agents["claude"].PreferredThinkingEffort)
 
-	// Verify YAML file updated
-	yamlData, err := os.ReadFile(filepath.Join(tmpDir, "agents", "claude.yaml"))
+	// Verify DB updated
+	var preferredModel, preferredThinking string
+	err := service.DB.QueryRow("SELECT preferred_model, preferred_thinking_effort FROM agents WHERE id = ?", "claude").Scan(&preferredModel, &preferredThinking)
 	require.NoError(t, err)
-	content := string(yamlData)
-	assert.Contains(t, content, "claude-sonnet-4-6")
-	assert.Contains(t, content, "xhigh")
+	assert.Equal(t, "claude-sonnet-4-6", preferredModel)
+	assert.Equal(t, "xhigh", preferredThinking)
 }
 
 func TestAgentPatch_ClearPreferredModel(t *testing.T) {
-	tmpDir, teardown := setupAgentTestEnv(t)
+	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 
 	// First set a preferred model
@@ -231,11 +237,6 @@ func TestAgentPatch_ClearPreferredModel(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "", model.Agents["codebuddy"].PreferredModel)
-
-	// Verify YAML file does NOT contain preferred_model
-	yamlData, err := os.ReadFile(filepath.Join(tmpDir, "agents", "codebuddy.yaml"))
-	require.NoError(t, err)
-	assert.NotContains(t, string(yamlData), "preferred_model")
 }
 
 func TestAgentPatch_DefaultModelIDRespectsPreferred(t *testing.T) {
