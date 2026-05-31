@@ -210,56 +210,8 @@ func main() {
 	summarize.InlineCodeMaxLen = cfg.TTS.InlineCodeMaxLen
 	summarize.MaxSummarizeRunes = cfg.TTS.MaxSummarizeRunes
 
-	// Initialize TTS summarizer from config
-	// Language is now per-request (sent from frontend), not configured at startup.
-	summarizeBackend := cfg.Summarize.Backend
-
-	var ttsSummarizer summarize.Summarizer
-	if summarizeBackend == "simple" {
-		ttsSummarizer = summarize.NewSimple()
-		slog.Info("tts summarizer configured",
-			slog.String("backend", "simple"),
-		)
-	} else if summarizeBackend == "api" {
-		if cfg.Summarize.API.BaseURL == "" {
-			slog.Error("summarize.backend is \"api\" but summarize.api.base_url is not configured")
-			os.Exit(1)
-		}
-		if cfg.Summarize.API.Format == "anthropic" {
-			s := summarize.NewAnthropic(cfg.Summarize.API.BaseURL, cfg.Summarize.API.Key, cfg.Summarize.Model)
-			ttsSummarizer = s
-			slog.Info("tts summarizer configured",
-				slog.String("backend", "api"),
-				slog.String("format", "anthropic"),
-				slog.String("model", s.Model),
-			)
-		} else {
-			s := summarize.NewOpenAI(cfg.Summarize.API.BaseURL, cfg.Summarize.API.Key, cfg.Summarize.Model)
-			ttsSummarizer = s
-			slog.Info("tts summarizer configured",
-				slog.String("backend", "api"),
-				slog.String("format", "openai"),
-				slog.String("model", s.Model),
-			)
-		}
-	} else {
-		s, err := summarize.NewAIBackendSummarizer(summarizeBackend)
-		if err != nil {
-			slog.Error("failed to create AI backend summarizer, falling back to simple",
-				slog.String("backend", summarizeBackend),
-				slog.String("error", err.Error()),
-			)
-			ttsSummarizer = summarize.NewSimple()
-		} else {
-			s.Model = cfg.Summarize.Model // empty = use backend default
-			ttsSummarizer = s
-			slog.Info("tts summarizer configured",
-				slog.String("backend", summarizeBackend),
-				slog.String("model", s.Model),
-			)
-		}
-	}
-	handler.SetSummarizer(ttsSummarizer)
+	// NOTE: TTS summarizer initialization is deferred until after DB init,
+	// because the API key may need to be resolved from agent_api_keys table.
 
 	// Initialize TTS synthesis provider from config
 	var ttsProvider speech.SpeechProvider
@@ -477,6 +429,18 @@ func main() {
 	}
 	defer service.CloseDB()
 
+	// Resolve summarize API key from agent_api_keys table if not in config.
+	// Setup wizard stores the key encrypted in agent_api_keys with key="" in config.yaml
+	// and agent_id pointing to the agent. At startup, resolve the key from DB.
+	if cfg.Summarize.Backend == "api" && cfg.Summarize.API.Key == "" && cfg.Summarize.API.AgentID != "" {
+		if _, _, ak, err := service.LoadAgentAnyAPIKey(service.DB, cfg.Summarize.API.AgentID); err == nil && ak != "" {
+			cfg.Summarize.API.Key = ak
+			slog.Info("resolved summarize API key from agent_api_keys", slog.String("agent_id", cfg.Summarize.API.AgentID))
+		} else if err != nil {
+			slog.Warn("failed to resolve summarize API key from agent_api_keys", slog.String("agent_id", cfg.Summarize.API.AgentID), slog.String("err", err.Error()))
+		}
+	}
+
 	// Inject API key loader for Pi CLI runtime (avoids import cycle between ai and service packages)
 	ai.SetAgentAPIKeyLoader(func(agentID string) (provider, customURL, apiKey string, found bool) {
 		p, cu, ak, err := service.LoadAgentAnyAPIKey(service.DB, agentID)
@@ -485,6 +449,42 @@ func main() {
 		}
 		return p, cu, ak, true
 	})
+
+	// Initialize TTS summarizer from config (deferred from earlier — needs DB for API key resolution).
+	// Language is now per-request (sent from frontend), not configured at startup.
+	summarizeBackend := cfg.Summarize.Backend
+
+	var ttsSummarizer summarize.Summarizer
+	if summarizeBackend == "simple" {
+		ttsSummarizer = summarize.NewSimple()
+		slog.Info("tts summarizer configured", slog.String("backend", "simple"))
+	} else if summarizeBackend == "api" {
+		if cfg.Summarize.API.BaseURL == "" {
+			slog.Error("summarize.backend is \"api\" but summarize.api.base_url is not configured")
+			os.Exit(1)
+		}
+		if cfg.Summarize.API.Format == "anthropic" {
+			s := summarize.NewAnthropic(cfg.Summarize.API.BaseURL, cfg.Summarize.API.Key, cfg.Summarize.Model)
+			ttsSummarizer = s
+			slog.Info("tts summarizer configured", slog.String("backend", "api"), slog.String("format", "anthropic"), slog.String("model", s.Model))
+		} else {
+			s := summarize.NewOpenAI(cfg.Summarize.API.BaseURL, cfg.Summarize.API.Key, cfg.Summarize.Model)
+			ttsSummarizer = s
+			slog.Info("tts summarizer configured", slog.String("backend", "api"), slog.String("format", "openai"), slog.String("model", s.Model))
+		}
+	} else {
+		s, err := summarize.NewAIBackendSummarizer(summarizeBackend)
+		if err != nil {
+			slog.Error("failed to create AI backend summarizer, falling back to simple",
+				slog.String("backend", summarizeBackend), slog.String("error", err.Error()))
+			ttsSummarizer = summarize.NewSimple()
+		} else {
+			s.Model = cfg.Summarize.Model // empty = use backend default
+			ttsSummarizer = s
+			slog.Info("tts summarizer configured", slog.String("backend", summarizeBackend), slog.String("model", s.Model))
+		}
+	}
+	handler.SetSummarizer(ttsSummarizer)
 
 	// Initialize RAG history memory system (always enabled)
 	if err := rag.Init(cfg.RAG); err != nil {

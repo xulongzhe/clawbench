@@ -633,14 +633,22 @@ async function handleLoginSuccess() {
     await store.loadFiles('')
 }
 
-function handleSetupComplete() {
-    needsSetup.value = false
-    initMermaid()
-    // Reload data that the app needs after agent is configured
-    sessionIdentity.initSessionFromAPI()
-    loadSessionsOnce()
+async function handleSetupComplete() {
+    // Reset cached agents so fresh data is loaded
+    resetAgents()
+
+    // Load agents and session data BEFORE switching to main UI
+    // to prevent error flashes (e.g., "no agent configured")
+    try {
+        await sessionIdentity.initSessionFromAPI()
+    } catch { /* best effort */ }
+    loadSessionsOnce().catch(() => {})
     store.loadFiles('').catch(() => {})
     store.loadGitBranch().catch(() => {})
+
+    // Now switch to main UI — agents and session are loaded
+    needsSetup.value = false
+    initMermaid()
 }
 
 const projectDialogOpen = ref(false)
