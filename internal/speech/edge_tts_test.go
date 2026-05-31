@@ -85,3 +85,115 @@ func TestEdgeTTSProvider_DifferentVoices(t *testing.T) {
 		assert.Equal(t, voice, p.Voice)
 	}
 }
+
+// --- DRM token generation tests ---
+
+func TestGenerateSecMsGec_Format(t *testing.T) {
+	token := generateSecMsGec()
+	// Should be a 64-character uppercase hex string (SHA256)
+	assert.Len(t, token, 64)
+	for _, c := range token {
+		assert.True(t, (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'),
+			"token should be uppercase hex, got: %c", c)
+	}
+}
+
+func TestGenerateSecMsGec_ConsistentWithin5Min(t *testing.T) {
+	token1 := generateSecMsGec()
+	token2 := generateSecMsGec()
+	// Tokens should be identical within the same 5-minute window
+	assert.Equal(t, token1, token2, "tokens within 5-min window should be identical")
+}
+
+func TestGenerateMUID_Format(t *testing.T) {
+	muid := generateMUID()
+	// Should be a 32-character uppercase hex string
+	assert.Len(t, muid, 32)
+	for _, c := range muid {
+		assert.True(t, (c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'),
+			"muid should be uppercase hex, got: %c", c)
+	}
+}
+
+func TestGenerateMUID_Uniqueness(t *testing.T) {
+	muid1 := generateMUID()
+	muid2 := generateMUID()
+	assert.NotEqual(t, muid1, muid2, "different MUIDs should be unique")
+}
+
+func TestGenerateConnectID_Format(t *testing.T) {
+	id := generateConnectID()
+	// UUID v4 without dashes = 32 hex chars
+	assert.Len(t, id, 32)
+	for _, c := range id {
+		assert.True(t, (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'),
+			"connect ID should be lowercase hex, got: %c", c)
+	}
+}
+
+func TestGenerateConnectID_Uniqueness(t *testing.T) {
+	id1 := generateConnectID()
+	id2 := generateConnectID()
+	assert.NotEqual(t, id1, id2, "different connect IDs should be unique")
+}
+
+// --- SSML building tests ---
+
+func TestBuildSSML(t *testing.T) {
+	tests := []struct {
+		name     string
+		voice    string
+		rate     string
+		text     string
+		contains []string
+	}{
+		{
+			"Chinese voice",
+			"zh-CN-XiaoxiaoNeural", "+0%", "你好世界",
+			[]string{"zh-CN-XiaoxiaoNeural", "+0%", "你好世界", "<speak", "</speak>", "<voice", "</voice>", "<prosody", "</prosody>"},
+		},
+		{
+			"English voice with fast rate",
+			"en-US-JennyNeural", "+20%", "Hello world",
+			[]string{"en-US-JennyNeural", "+20%", "Hello world"},
+		},
+		{
+			"XML special characters escaped",
+			"zh-CN-XiaoxiaoNeural", "+0%", "A<B&C>D",
+			[]string{"A&lt;B&amp;C&gt;D"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ssml := buildSSML(tt.voice, tt.rate, tt.text)
+			for _, substr := range tt.contains {
+				assert.Contains(t, ssml, substr, "SSML should contain %q", substr)
+			}
+		})
+	}
+}
+
+// --- removeIncompatibleChars tests ---
+
+func TestRemoveIncompatibleChars(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{"normal text", "hello world", "hello world"},
+		{"tab preserved", "hello\tworld", "hello\tworld"},
+		{"newline preserved", "hello\nworld", "hello\nworld"},
+		{"carriage return preserved", "hello\rworld", "hello\rworld"},
+		{"control chars removed", "hello\x00\x01world", "hello  world"},
+		{"vertical tab removed", "hello\x0Bworld", "hello world"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := removeIncompatibleChars(tt.input)
+			assert.Equal(t, tt.expect, result)
+		})
+	}
+}
