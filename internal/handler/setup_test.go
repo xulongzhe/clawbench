@@ -2368,9 +2368,6 @@ func TestWritePiConfigFiles_CustomURL(t *testing.T) {
 	os.Setenv("HOME", tmpDir)
 	defer os.Setenv("HOME", origHome)
 
-	spec := model.FindProviderSpec("openai")
-	require.NotNil(t, spec)
-
 	req := setupCompleteRequest{
 		Provider:       "openai",
 		CustomURL:      "https://api.deepseek.com/v1/chat/completions",
@@ -2381,7 +2378,7 @@ func TestWritePiConfigFiles_CustomURL(t *testing.T) {
 		AgentID:        "custom-deepseek",
 	}
 
-	writePiConfigFiles(req, spec)
+	writePiConfigFiles(req)
 
 	modelsPath := filepath.Join(tmpDir, ".pi", "agent", "models.json")
 	data, err := os.ReadFile(modelsPath)
