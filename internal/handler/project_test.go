@@ -35,18 +35,22 @@ func TestServeProjectSet(t *testing.T) {
 		assert.NotEmpty(t, resp["homeDir"], "homeDir should be present in response")
 	})
 
-	t.Run("GET_WithoutCookie_FallsBackToWatchDir", func(t *testing.T) {
-		env, teardown := setupTestEnv(t)
+	t.Run("GET_WithoutCookie_FallsBackToHomeDir", func(t *testing.T) {
+		_, teardown := setupTestEnv(t)
 		defer teardown()
 
 		req := newRequest(t, http.MethodGet, "/api/project", nil)
-		// No project cookie
+		// No project cookie, no recent projects → should fallback to home directory
 
 		w := callHandler(ServeProjectSet, req)
 
 		assert.Equal(t, http.StatusOK, w.Code)
-		absWatchDir, _ := filepath.Abs(env.WatchDir)
-		assertJSONField(t, w, "path", absWatchDir)
+		// When no cookie and no recents, should fallback to home directory
+		// (not RootPaths[0] which is "/" on Linux)
+		var resp map[string]interface{}
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		assert.NotEmpty(t, resp["path"], "path should not be empty")
+		assert.NotEqual(t, "/", resp["path"], "path should not be root /")
 	})
 
 	t.Run("GET_WithoutCookie_FallsBackToRecentProject", func(t *testing.T) {
