@@ -64,7 +64,6 @@ export async function startServer(): Promise<ServerState> {
   writeFileSync(join(configDir, 'config.yaml'), `port: ${port}
 password: "${password}"
 log_level: warn
-watch_dir: "${projectRoot}"
 default_agent: mock
 chat:
   initial_messages: 20

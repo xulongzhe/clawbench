@@ -31,7 +31,10 @@ test.describe('Chat', () => {
 
     // Reload so the frontend picks up the items
     await page.reload()
+    // Wait for network idle and app to fully initialize
     await page.waitForLoadState('networkidle')
+    // Ensure chat textarea is ready before interacting
+    await expect(page.locator('.chat-textarea')).toBeVisible()
 
     // Click send with empty input to open quick-send popup
     await chat.openQuickSendMenu()

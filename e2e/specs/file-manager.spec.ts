@@ -24,7 +24,8 @@ test.describe('File Manager', () => {
     await expect(dirItem).toBeVisible({ timeout: 10000 })
     await dirItem.click()
     // After clicking a directory, file list should update
-    await expect(page.locator('.file-item').first()).toBeVisible({ timeout: 5000 })
+    // Use 10s timeout — Firefox/WebKit can be slower to re-render
+    await expect(page.locator('.file-item').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('should show file list container', async ({ page }) => {

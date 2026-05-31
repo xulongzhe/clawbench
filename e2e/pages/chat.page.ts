@@ -45,6 +45,10 @@ export class ChatPage {
   /** Fill the textarea and click send */
   async sendMessage(text: string) {
     await this.textarea.fill(text)
+    // Brief pause to let Vue's v-model react to the filled value.
+    // Without this, Firefox/WebKit may fire the click before the
+    // framework has processed the input event, sending an empty message.
+    await this.page.waitForTimeout(100)
     await this.sendButton.click()
   }
 
