@@ -11,10 +11,13 @@
 
 FROM ubuntu:24.04
 
-# Install ca-certificates for HTTPS (models.dev API, LLM provider APIs)
+# Install runtime dependencies:
+# - ca-certificates: HTTPS (LLM provider APIs)
+# - python3 + pip: edge-tts (free TTS engine)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends ca-certificates python3 python3-pip && \
+    pip3 install --break-system-packages edge-tts && \
+    rm -rf /var/lib/apt/lists/* /root/.cache/pip
 
 WORKDIR /app
 
