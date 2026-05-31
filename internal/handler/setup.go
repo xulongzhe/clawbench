@@ -429,6 +429,10 @@ func ServeSetupComplete(w http.ResponseWriter, r *http.Request) {
 	// 4. Auto-configure summarize backend
 	if spec.ChatEndpoint != "" && req.SummarizeModel != "" {
 		configureSummarizeBackend(req, spec)
+	} else {
+		slog.Warn("skipping summarize backend configuration",
+			"chat_endpoint", spec.ChatEndpoint, "summarize_model", req.SummarizeModel,
+			"reason", map[bool]string{true: "empty model", false: "empty endpoint"}[req.SummarizeModel == ""])
 	}
 
 	// 5. Reload agents from DB into memory
@@ -492,16 +496,26 @@ func reinitSummarizer(req setupCompleteRequest, spec *model.ProviderSpec) {
 		chatEndpoint = req.CustomURL
 	}
 
-	// API key already stored in agent_api_keys table — read it back
-	customURL, apiKey, err := service.LoadAgentAPIKey(service.DB, req.AgentID, req.Provider)
+	// Try to load API key from agent_api_keys table (encrypted store).
+	// Fall back to the raw key from the request if DB read fails.
+	apiKey := ""
+	customURL, dbKey, err := service.LoadAgentAPIKey(service.DB, req.AgentID, req.Provider)
 	if err != nil {
-		slog.Warn("failed to load API key for summarize reinit", "error", err)
-		return
+		slog.Warn("failed to load API key from DB for summarize reinit, using request key",
+			"agent_id", req.AgentID, "provider", req.Provider, "error", err)
+		apiKey = req.APIKey
+	} else if dbKey != "" {
+		apiKey = dbKey
+	} else {
+		// DB returned empty key — fall back to request key
+		slog.Warn("DB returned empty API key for summarize reinit, using request key",
+			"agent_id", req.AgentID, "provider", req.Provider)
+		apiKey = req.APIKey
 	}
 	_ = customURL // not needed for summarize
 
 	if apiKey == "" {
-		slog.Warn("no API key available for summarize reinit")
+		slog.Warn("no API key available for summarize reinit", "agent_id", req.AgentID, "provider", req.Provider)
 		return
 	}
 

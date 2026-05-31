@@ -637,18 +637,45 @@ async function handleSetupComplete() {
     // Reset cached agents so fresh data is loaded
     resetAgents()
 
+    // Register event listeners that were skipped during wizard (onMounted skipped them)
+    window.addEventListener('open-file-manager', handleOpenFileManager)
+    window.addEventListener('navigate-to-commit', handleNavigateToCommit)
+    window.addEventListener('quote-sent', playQuoteEmitAnimation)
+    window.addEventListener('clawbench-open-session', handleOpenSession)
+    window.addEventListener('clawbench-open-task', handleOpenTask)
+    document.addEventListener('click', handleOverflowOutsideClick)
+    window.addEventListener('clawbench-theme-change', (e) => {
+        const resolved = e.detail
+        theme.value = resolved
+        initMermaid()
+        reRenderMermaid()
+    })
+    window.addEventListener('clawbench-showhidden-change', (e) => {
+        showHidden.value = e.detail
+    })
+    loadTasks()
+    loadConfig()
+
+    // Load project first so backend sets clawbench_project cookie
+    try { await store.loadProject() } catch (_) { /* best effort */ }
+
     // Load agents and session data BEFORE switching to main UI
     // to prevent error flashes (e.g., "no agent configured")
     try {
         await sessionIdentity.initSessionFromAPI()
     } catch { /* best effort */ }
     loadSessionsOnce().catch(() => {})
-    store.loadFiles('').catch(() => {})
     store.loadGitBranch().catch(() => {})
 
     // Now switch to main UI — agents and session are loaded
     needsSetup.value = false
     initMermaid()
+
+    // Continue with remaining init that was deferred
+    if (isAppMode.value) syncToNative().catch(() => {})
+    loadSSHInfo().catch(() => {})
+    loadTerminalStatus().catch(() => {})
+    try { await store.loadFiles('') } catch (_) {}
 }
 
 const projectDialogOpen = ref(false)
@@ -922,26 +949,6 @@ function playQuoteEmitAnimation(e) {
 }
 
 onMounted(async () => {
-    initGlobalEvents()
-    loadTasks()
-    loadConfig() // Load server config early for settings page
-    window.addEventListener('open-file-manager', handleOpenFileManager)
-    window.addEventListener('navigate-to-commit', handleNavigateToCommit)
-    window.addEventListener('quote-sent', playQuoteEmitAnimation)
-    window.addEventListener('clawbench-open-session', handleOpenSession)
-    window.addEventListener('clawbench-open-task', handleOpenTask)
-    document.addEventListener('click', handleOverflowOutsideClick)
-    // Sync reactive state from Settings page changes
-    window.addEventListener('clawbench-theme-change', (e) => {
-        const resolved = e.detail
-        theme.value = resolved
-        // Re-render mermaid diagrams for new theme
-        initMermaid()
-        reRenderMermaid()
-    })
-    window.addEventListener('clawbench-showhidden-change', (e) => {
-        showHidden.value = e.detail
-    })
     applyTheme(theme.value)
     let resp
     try {
@@ -949,7 +956,6 @@ onMounted(async () => {
     } catch (_) {
         isAuthenticated.value = false
         if (isAppMode.value) {
-            // Gear menu provides reconfigure option in app mode — show a brief hint
             toast.show(t('toast.serverUnreachableApp'), { icon: '⚠️', type: 'error', duration: 5000 })
         } else {
             toast.show(t('toast.serverUnreachableWeb'), { icon: '⚠️', type: 'error', duration: 0, onClick: () => location.reload() })
@@ -980,18 +986,41 @@ onMounted(async () => {
         }
         return
     }
-    initMermaid()
-    // Check if setup wizard is needed (no agents + embedded Pi binary)
+    // Check if setup wizard is needed BEFORE any main app initialization.
+    // If needs_setup, show wizard and skip all main UI loading to prevent
+    // error flashes (e.g., "no agent configured", "failed to load chat history").
     try {
       const setupResp = await fetch('/api/setup/status')
       if (setupResp.ok) {
         const setupData = await setupResp.json()
         if (setupData.needs_setup) {
           needsSetup.value = true
-          return  // Skip normal app init — wizard will handle it
+          initGlobalEvents() // Needed for WS connection (setup wizard uses API)
+          return  // Skip ALL main app initialization — wizard will handle it
         }
       }
     } catch { /* proceed to normal app if check fails */ }
+
+    // ── Main app initialization (only when setup is NOT needed) ──
+    initGlobalEvents()
+    initMermaid()
+    loadTasks()
+    loadConfig()
+    window.addEventListener('open-file-manager', handleOpenFileManager)
+    window.addEventListener('navigate-to-commit', handleNavigateToCommit)
+    window.addEventListener('quote-sent', playQuoteEmitAnimation)
+    window.addEventListener('clawbench-open-session', handleOpenSession)
+    window.addEventListener('clawbench-open-task', handleOpenTask)
+    document.addEventListener('click', handleOverflowOutsideClick)
+    window.addEventListener('clawbench-theme-change', (e) => {
+        const resolved = e.detail
+        theme.value = resolved
+        initMermaid()
+        reRenderMermaid()
+    })
+    window.addEventListener('clawbench-showhidden-change', (e) => {
+        showHidden.value = e.detail
+    })
     // Load project first so the backend sets the clawbench_project cookie.
     // Without this, subsequent chat/session API calls fail with NoProjectSelected
     // on first login (no cookie yet) and show "加载聊天记录失败".

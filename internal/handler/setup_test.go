@@ -1030,11 +1030,13 @@ func TestReinitSummarizer_NoAPIKey(t *testing.T) {
 	spec := model.FindProviderSpec("openai")
 	require.NotNil(t, spec)
 
-	// Don't save any API key — LoadAgentAPIKey will fail
+	// Don't save any API key — LoadAgentAPIKey will fail, but reinitSummarizer
+	// falls back to req.APIKey, so it should still create a summarizer
 	reinitSummarizer(req, spec)
 
-	// Should not have changed the summarizer
-	assert.Equal(t, origSummarizer, summarizer)
+	// Summarizer should have been updated (fallback to req.APIKey)
+	assert.NotNil(t, summarizer)
+	assert.NotEqual(t, origSummarizer, summarizer)
 }
 
 // ---------- configureSummarizeBackend edge case ----------
@@ -1673,10 +1675,39 @@ func TestReinitSummarizer_EmptyAPIKey(t *testing.T) {
 	spec := model.FindProviderSpec("openai")
 	require.NotNil(t, spec)
 
-	// LoadAgentAPIKey will fail (no rows), so it should return early
+	// LoadAgentAPIKey will fail (no rows), but reinitSummarizer falls back
+	// to req.APIKey, so it should still create a summarizer
 	reinitSummarizer(req, spec)
 
-	// Summarizer should not have changed
+	// Summarizer should have been updated (fallback to req.APIKey)
+	assert.NotNil(t, summarizer)
+	assert.NotEqual(t, origSummarizer, summarizer)
+}
+
+// TestReinitSummarizer_NoKeyAtAll tests that when both DB key and request key
+// are empty, the summarizer is not changed.
+func TestReinitSummarizer_NoKeyAtAll(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	origSummarizer := summarizer
+	defer func() { summarizer = origSummarizer }()
+
+	req := setupCompleteRequest{
+		Provider:       "openai",
+		CustomURL:      "",
+		APIKey:         "", // No key in request either
+		Model:          "gpt-4o",
+		SummarizeModel: "gpt-4o-mini",
+		AgentID:        "no-key-at-all-agent",
+	}
+
+	spec := model.FindProviderSpec("openai")
+	require.NotNil(t, spec)
+
+	reinitSummarizer(req, spec)
+
+	// Should not have changed the summarizer — no key available at all
 	assert.Equal(t, origSummarizer, summarizer)
 }
 
