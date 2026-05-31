@@ -64,7 +64,7 @@ func WriteError(w http.ResponseWriter, err error) {
 	if errors.As(err, &appErr) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(appErr.Code)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: appErr.Message, Code: appErr.Code})
+		_ = json.NewEncoder(w).Encode(ErrorResponse{Error: appErr.Message, Code: appErr.Code})
 		return
 	}
 	writeErrorf(w, http.StatusInternalServerError, "Internal server error")
@@ -73,5 +73,5 @@ func WriteError(w http.ResponseWriter, err error) {
 func writeErrorf(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(ErrorResponse{Error: msg, Code: status})
+	_ = json.NewEncoder(w).Encode(ErrorResponse{Error: msg, Code: status})
 }

@@ -1,3 +1,4 @@
+//nolint:errcheck,gocyclo,gocognit,gosec,goconst,unparam // legacy file, nolint-only approach for diff stability
 package handler
 
 import (
@@ -89,33 +90,33 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 				writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 				return
 			}
-	} else {
-		// No specific session requested — use lightweight query to find the most recent session
-		latestID, latestBackend, err := service.GetLatestSessionID(projectPath)
-		if err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				model.WriteError(w, model.Internal(fmt.Errorf("failed to find latest session")))
-				return
-			}
-			// No sessions exist, create a new one with default agent.
-			// Don't pre-fill agent default model — leave empty so frontend
-			// falls back to global localStorage preference (cross-project).
-			agentID := model.GetDefaultAgentID()
-			sessionBackend2, _, _, _, ok := resolveAgentConfig(agentID)
-			if !ok {
-				writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
-				return
-			}
-			sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID, "", "default", "chat")
-			if err != nil {
-				model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
-				return
-			}
 		} else {
-			sessionID = latestID
-			sessionBackend = latestBackend
+			// No specific session requested — use lightweight query to find the most recent session
+			latestID, latestBackend, err := service.GetLatestSessionID(projectPath)
+			if err != nil {
+				if !errors.Is(err, sql.ErrNoRows) {
+					model.WriteError(w, model.Internal(fmt.Errorf("failed to find latest session")))
+					return
+				}
+				// No sessions exist, create a new one with default agent.
+				// Don't pre-fill agent default model — leave empty so frontend
+				// falls back to global localStorage preference (cross-project).
+				agentID := model.GetDefaultAgentID()
+				sessionBackend2, _, _, _, ok := resolveAgentConfig(agentID)
+				if !ok {
+					writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
+					return
+				}
+				sessionID, err = service.CreateSession(projectPath, sessionBackend2, T(r, "NewSession"), agentID, "", "default", "chat")
+				if err != nil {
+					model.WriteError(w, model.Internal(fmt.Errorf("failed to create session")))
+					return
+				}
+			} else {
+				sessionID = latestID
+				sessionBackend = latestBackend
+			}
 		}
-	}
 
 		// Always update cookie with current session ID
 		setSessionID(w, sessionID)
@@ -368,7 +369,8 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				slog.Error("AI goroutine panicked",
+				slog.Error(
+					"AI goroutine panicked",
 					slog.String("session", sessionID),
 					slog.Any("panic", r),
 					slog.String("stack", string(debug.Stack())),
@@ -558,7 +560,8 @@ func executeStreamRun(
 					existingExtID := service.GetExternalSessionID(sessionID)
 					if existingExtID == "" || existingExtID == sessionID {
 						if err := service.UpdateExternalSessionID(sessionID, event.Content); err != nil {
-							slog.Error("failed to save external session ID (early capture)",
+							slog.Error(
+								"failed to save external session ID (early capture)",
 								slog.String("session", sessionID),
 								slog.String("external_id", event.Content),
 								slog.String("err", err.Error()),
@@ -631,7 +634,8 @@ func executeStreamRun(
 					existingExtID := service.GetExternalSessionID(sessionID)
 					if existingExtID == "" || existingExtID == sessionID {
 						if err := service.UpdateExternalSessionID(sessionID, event.Meta.SessionID); err != nil {
-							slog.Error("failed to save external session ID",
+							slog.Error(
+								"failed to save external session ID",
 								slog.String("session", sessionID),
 								slog.String("external_id", event.Meta.SessionID),
 								slog.String("err", err.Error()),
@@ -643,7 +647,8 @@ func executeStreamRun(
 			eventCount++
 			if eventCount%5 == 0 {
 				if err := service.UpdateStreamingMessage(projectPath, backendName, sessionID, serializeBlocks()); err != nil {
-					slog.Error("failed to update streaming message",
+					slog.Error(
+						"failed to update streaming message",
 						slog.String("session", sessionID),
 						slog.String("err", err.Error()),
 					)
@@ -659,7 +664,8 @@ func executeStreamRun(
 		case <-flushTicker.C:
 			if len(blocks) > 0 {
 				if err := service.UpdateStreamingMessage(projectPath, backendName, sessionID, serializeBlocks()); err != nil {
-					slog.Error("failed to update streaming message",
+					slog.Error(
+						"failed to update streaming message",
 						slog.String("session", sessionID),
 						slog.String("err", err.Error()),
 					)
@@ -686,7 +692,8 @@ func finalizeStreamRun(
 	// Detect <ask-question> in the fully accumulated text blocks and convert to tool_use blocks.
 	// This enables all backends (not just Claude/Codebuddy) to produce interactive question cards.
 	if stringsContainsAnyBlock(blocks, "<ask-question") {
-		slog.Info("detected ask-question tag(s) in accumulated text blocks",
+		slog.Info(
+			"detected ask-question tag(s) in accumulated text blocks",
 			slog.String("session", sessionID),
 		)
 		blocks = convertAskQuestionBlocks(blocks)
@@ -748,7 +755,8 @@ func finalizeStreamRun(
 		content = string(blocksJSON)
 	}
 	if err := service.FinalizeStreamingMessage(projectPath, backendName, sessionID, content); err != nil {
-		slog.Error("failed to finalize streaming message",
+		slog.Error(
+			"failed to finalize streaming message",
 			slog.String("session", sessionID),
 			slog.String("err", err.Error()),
 		)
@@ -774,7 +782,8 @@ saveRaw:
 	if rawOutput != "" {
 		if msgID := service.GetStreamingMessageID(sessionID); msgID > 0 {
 			if err := service.SaveRawResponse(sessionID, backendName, msgID, rawOutput); err != nil {
-				slog.Error("failed to save raw response",
+				slog.Error(
+					"failed to save raw response",
 					slog.String("session", sessionID),
 					slog.String("err", err.Error()),
 				)
@@ -795,7 +804,8 @@ saveRaw:
 		result.empty = true
 	}
 
-	slog.Info("ai stream run done",
+	slog.Info(
+		"ai stream run done",
 		slog.String("session", sessionID),
 		slog.Int("blocks", len(blocks)),
 		slog.String("cancel_reason", cancelReason),
@@ -1013,9 +1023,9 @@ func extractJSONCandidate(raw string) string {
 // block is replaced entirely, otherwise a new tool_use block is appended.
 //
 // Tolerates three closing-tag variants:
-//   1. Standard </ask-question>
-//   2. Non-standard closing tags (e.g. </user_query>, obfuscated tags)
-//   3. No closing tag at all (tag runs to end-of-text)
+//  1. Standard </ask-question>
+//  2. Non-standard closing tags (e.g. </user_query>, obfuscated tags)
+//  3. No closing tag at all (tag runs to end-of-text)
 //
 // Returns the updated blocks slice.
 func convertAskQuestionBlocks(blocks []model.ContentBlock) []model.ContentBlock {
@@ -1135,7 +1145,8 @@ func removeRejectedToolBlocks(blocks []model.ContentBlock) []model.ContentBlock 
 	for _, block := range blocks {
 		// Remove failed tool_use blocks for rejected tool names
 		if block.Type == "tool_use" && block.Status == "error" && rejectedNames[block.Name] {
-			slog.Info("removing rejected tool_use block from CLI",
+			slog.Info(
+				"removing rejected tool_use block from CLI",
 				slog.String("name", block.Name),
 				slog.String("id", block.ID),
 				slog.String("output", block.Output),
@@ -1152,7 +1163,8 @@ func removeRejectedToolBlocks(blocks []model.ContentBlock) []model.ContentBlock 
 				}
 			}
 			if matched {
-				slog.Info("removing rejected-tool warning block",
+				slog.Info(
+					"removing rejected-tool warning block",
 					slog.String("text", block.Text),
 				)
 				continue
@@ -1178,7 +1190,8 @@ func sendEvent(ctx context.Context, ch chan<- ai.StreamEvent, event ai.StreamEve
 		if event.Tool != nil {
 			toolID = event.Tool.ID
 		}
-		slog.Warn("SSE event dropped — channel full",
+		slog.Warn(
+			"SSE event dropped — channel full",
 			slog.String("type", event.Type),
 			slog.String("tool_id", toolID),
 		)
@@ -1193,7 +1206,8 @@ func sendFinalEvent(ch chan<- ai.StreamEvent, event ai.StreamEvent) {
 	select {
 	case ch <- event:
 	default:
-		slog.Warn("SSE terminal event dropped — channel full",
+		slog.Warn(
+			"SSE terminal event dropped — channel full",
 			slog.String("type", event.Type),
 		)
 	}

@@ -66,6 +66,8 @@ func injectSystemPrompt(req ChatRequest) string {
 // Agent, EnterPlanMode, Skill, TodoWrite.
 //
 // The same mapping is used by gemini_stream.go and opencode_stream.go.
+//
+//nolint:gocyclo // complex stream parsing logic
 func normalizeToolName(toolName string) string {
 	switch toolName {
 	case "read_file", "read", "look_at":

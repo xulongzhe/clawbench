@@ -17,11 +17,11 @@ func killProcessGroupSig(cmd *exec.Cmd, sig syscall.Signal) {
 
 	pgid, err := syscall.Getpgid(cmd.Process.Pid)
 	if err != nil {
-		cmd.Process.Signal(sig)
+		_ = cmd.Process.Signal(sig)
 		return
 	}
 
 	if err := syscall.Kill(-pgid, sig); err != nil {
-		cmd.Process.Signal(sig)
+		_ = cmd.Process.Signal(sig)
 	}
 }

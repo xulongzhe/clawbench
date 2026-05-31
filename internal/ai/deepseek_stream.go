@@ -52,6 +52,8 @@ func (p *DeepSeekStreamParser) GetCapturedSessionID() string {
 
 // ParseLine parses a single JSON line from DeepSeek TUI's stream-json output and sends
 // StreamEvent(s) to the provided channel.
+//
+//nolint:gocyclo // complex stream parsing logic
 func (p *DeepSeekStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 	var msg DeepSeekStreamMessage
 	if err := json.Unmarshal([]byte(line), &msg); err != nil {

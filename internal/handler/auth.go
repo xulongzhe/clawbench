@@ -33,11 +33,11 @@ type loginLimiter struct {
 }
 
 const (
-	maxLoginFails    = 5
-	initialLoginBlock = 5 * time.Minute
-	maxLoginBlock     = 1 * time.Hour
+	maxLoginFails        = 5
+	initialLoginBlock    = 5 * time.Minute
+	maxLoginBlock        = 1 * time.Hour
 	loginCleanupInterval = 10 * time.Minute
-	loginRecordTTL    = 30 * time.Minute
+	loginRecordTTL       = 30 * time.Minute
 )
 
 var (
@@ -220,11 +220,11 @@ func ServeLogin(w http.ResponseWriter, r *http.Request) {
 				SameSite: http.SameSiteLaxMode,
 			})
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 		} else {
 			limiter.recordFailure(remoteIP)
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]bool{"ok": false})
+			_ = json.NewEncoder(w).Encode(map[string]bool{"ok": false})
 		}
 		return
 	}

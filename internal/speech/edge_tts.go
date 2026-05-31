@@ -23,7 +23,7 @@ const (
 
 	// Microsoft Edge TTS service constants.
 	edgeBaseURL            = "speech.platform.bing.com/consumer/speech/synthesize/readaloud"
-	edgeTrustedClientToken = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
+	edgeTrustedClientToken = "6A5AA1D4EAFF4E9FB37E23D68491D6F4" //nolint:gosec // Edge TTS public trusted client token
 	edgeChromiumVersion    = "143.0.3650.75"
 
 	// Windows file time epoch offset (seconds from 1601-01-01 to 1970-01-01).
@@ -52,7 +52,7 @@ func NewEdgeTTSProvider() *EdgeTTSProvider {
 func (p *EdgeTTSProvider) Synthesize(ctx context.Context, text string, outputPath string, language string) error {
 	// Ensure output directory exists
 	dir := filepath.Dir(outputPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("edge-tts: failed to create output directory: %w", err)
 	}
 
@@ -69,7 +69,7 @@ func (p *EdgeTTSProvider) Synthesize(ctx context.Context, text string, outputPat
 	if err != nil {
 		return fmt.Errorf("edge-tts: failed to create output file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Build SSML
 	rate := p.Rate
@@ -81,8 +81,8 @@ func (p *EdgeTTSProvider) Synthesize(ctx context.Context, text string, outputPat
 	// Connect and synthesize
 	if err := p.synthesizeViaWebSocket(ctx, ssml, f); err != nil {
 		// Remove the empty/broken output file on error
-		f.Close()
-		os.Remove(outputPath)
+		_ = f.Close()
+		_ = os.Remove(outputPath)
 		return fmt.Errorf("edge-tts: %w", err)
 	}
 
@@ -95,6 +95,8 @@ func (p *EdgeTTSProvider) Synthesize(ctx context.Context, text string, outputPat
 
 // synthesizeViaWebSocket connects to the Edge TTS WebSocket, sends the SSML,
 // and writes the received audio data to w.
+//
+//nolint:gocognit,gocyclo // WebSocket protocol requires sequential message handling with multiple error paths
 func (p *EdgeTTSProvider) synthesizeViaWebSocket(ctx context.Context, ssml string, w *os.File) error {
 	// Generate DRM token and connection ID
 	secMsGec := generateSecMsGec()
@@ -121,12 +123,15 @@ func (p *EdgeTTSProvider) synthesizeViaWebSocket(ctx context.Context, ssml strin
 	dialer := websocket.Dialer{}
 	conn, resp, err := dialer.DialContext(ctx, wsURL, header)
 	if err != nil {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 		if resp != nil {
 			return fmt.Errorf("websocket handshake failed (status %s): %w", resp.Status, err)
 		}
 		return fmt.Errorf("websocket dial failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send speech generation config
 	timestamp := currentTimeInMST()
@@ -252,7 +257,9 @@ func generateConnectID() string {
 		binaryUint48(b[10:16]))
 }
 
-func binaryUint32(b []byte) uint32 { return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3]) }
+func binaryUint32(b []byte) uint32 {
+	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+}
 func binaryUint16(b []byte) uint16 { return uint16(b[0])<<8 | uint16(b[1]) }
 func binaryUint48(b []byte) uint64 {
 	return uint64(b[0])<<40 | uint64(b[1])<<32 | uint64(b[2])<<24 | uint64(b[3])<<16 | uint64(b[4])<<8 | uint64(b[5])

@@ -1,3 +1,4 @@
+//nolint:noctx // DB global, context not applicable
 package service
 
 import (
@@ -13,14 +14,14 @@ var validIdentifier = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 // generateUUID generates a standard UUID v4 format string with an optional prefix.
 // It checks for conflicts in the specified database table and column.
 // Returns empty string on exhaustion or error.
-func generateUUID(prefix, tableName, column string) string {
+func generateUUID(prefix, tableName, column string) string { //nolint:unparam // tableName always "chat_sessions" currently; kept generic for future use
 	// Validate identifiers to prevent SQL injection (ISS-009)
 	if !validIdentifier.MatchString(tableName) || !validIdentifier.MatchString(column) {
 		slog.Error("generateUUID: invalid identifier", slog.String("table", tableName), slog.String("column", column))
 		return ""
 	}
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		b := make([]byte, 16)
 		if _, err := rand.Read(b); err != nil {
 			slog.Error("generateUUID: rand.Read failed", slog.String("err", err.Error()))

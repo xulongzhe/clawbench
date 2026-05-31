@@ -15,7 +15,7 @@ import (
 // ValidatePath now requires the base directory to exist on disk (for EvalSymlinks).
 func ensureDir(t *testing.T, dir string) {
 	t.Helper()
-	assert.NoError(t, os.MkdirAll(dir, 0755))
+	assert.NoError(t, os.MkdirAll(dir, 0o755))
 }
 
 func TestValidatePath_ValidPath(t *testing.T) {
@@ -154,7 +154,7 @@ func TestValidatePath_SymlinkTraversal(t *testing.T) {
 	ensureDir(t, outside)
 
 	// Create a file outside the base
-	assert.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("sensitive"), 0644))
+	assert.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("sensitive"), 0o644))
 
 	// Create symlink inside base pointing to outside
 	assert.NoError(t, os.Symlink(outside, filepath.Join(base, "escape")))
@@ -168,7 +168,7 @@ func TestValidatePath_SymlinkInsideProject(t *testing.T) {
 	// Create base dir with a real subdirectory and a symlink to it
 	base := filepath.Join(t.TempDir(), "base")
 	ensureDir(t, filepath.Join(base, "real"))
-	assert.NoError(t, os.WriteFile(filepath.Join(base, "real", "file.txt"), []byte("ok"), 0644))
+	assert.NoError(t, os.WriteFile(filepath.Join(base, "real", "file.txt"), []byte("ok"), 0o644))
 
 	// Symlink inside project pointing to another location also inside project
 	assert.NoError(t, os.Symlink(filepath.Join(base, "real"), filepath.Join(base, "link")))
@@ -206,7 +206,7 @@ func TestValidatePath_SymlinkEscapeViaParent(t *testing.T) {
 	assert.NoError(t, os.Symlink(base, linkBase))
 
 	// Trying to access a file that resolves outside via the symlinked base
-	assert.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("sensitive"), 0644))
+	assert.NoError(t, os.WriteFile(filepath.Join(outside, "secret.txt"), []byte("sensitive"), 0o644))
 	assert.NoError(t, os.Symlink(outside, filepath.Join(base, "escape")))
 
 	// Even through the symlinked base, escaping should be rejected
@@ -266,7 +266,7 @@ func TestValidatePath_NestedSymlinkStillEscapes(t *testing.T) {
 	assert.NoError(t, os.Symlink(outside, filepath.Join(base, "link1")))
 
 	// Create file in outside
-	assert.NoError(t, os.WriteFile(filepath.Join(outside, "target.txt"), []byte("data"), 0644))
+	assert.NoError(t, os.WriteFile(filepath.Join(outside, "target.txt"), []byte("data"), 0o644))
 
 	_, valid := model.ValidatePath(base, "link1/target.txt")
 	assert.False(t, valid, "should reject symlink pointing outside base")
@@ -276,7 +276,7 @@ func TestValidatePath_FileInBaseDir(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "base")
 	ensureDir(t, base)
 	// Create a file directly in base
-	assert.NoError(t, os.WriteFile(filepath.Join(base, "readme.md"), []byte("hello"), 0644))
+	assert.NoError(t, os.WriteFile(filepath.Join(base, "readme.md"), []byte("hello"), 0o644))
 
 	path, valid := model.ValidatePath(base, "readme.md")
 	assert.True(t, valid)

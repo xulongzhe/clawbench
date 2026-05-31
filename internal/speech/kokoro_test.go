@@ -2,8 +2,11 @@ package speech
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -68,6 +71,54 @@ func TestKokoroSynthesize_CancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
+	err := p.Synthesize(ctx, "test", outputPath, "")
+	assert.Error(t, err)
+}
+
+// --- Synthesize MkdirAll error path ---
+
+func TestKokoroSynthesize_MkdirAllError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("MkdirAll error path not reliably testable on Windows")
+	}
+	p := NewKokoroProvider()
+	p.ModelPath = "/proc/self/exe" // exists on Linux, so we get past model check
+	p.VoicesPath = "/fake/voices.bin"
+	// Impossible output path triggers MkdirAll error
+	outputPath := "/proc/nonexistent-dir-for-test/output.wav"
+
+	err := p.Synthesize(context.Background(), "test", outputPath, "")
+	assert.Error(t, err)
+	// On Linux, the error could be either MkdirAll or model check depending on order
+}
+
+// --- Synthesize voices not configured ---
+
+func TestKokoroSynthesize_NoVoicesConfigured(t *testing.T) {
+	p := NewKokoroProvider()
+	// Use a real file for ModelPath so we get past the model check
+	p.ModelPath = os.Args[0] // the test binary itself exists
+	outputPath := filepath.Join(t.TempDir(), "output.wav")
+
+	err := p.Synthesize(context.Background(), "test", outputPath, "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "voices path not configured")
+}
+
+// --- Synthesize exercises slog.Info path (L110-111) ---
+
+func TestKokoroSynthesize_SlogInfoPath(t *testing.T) {
+	p := NewKokoroProvider()
+	// Use real files so we get past model/voices checks
+	p.ModelPath = os.Args[0]
+	p.VoicesPath = os.Args[0]
+	outputPath := filepath.Join(t.TempDir(), "output.wav")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// This will fail because python3/bridge script won't be found,
+	// but it exercises the slog.Info and MkdirAll success paths
 	err := p.Synthesize(ctx, "test", outputPath, "")
 	assert.Error(t, err)
 }

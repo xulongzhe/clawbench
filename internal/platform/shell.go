@@ -55,7 +55,7 @@ func lookupPasswdShell() string {
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	prefix := u.Username + ":"
 	scanner := bufio.NewScanner(f)
@@ -102,10 +102,11 @@ func SetLoginShell() {
 	current := os.Getenv("SHELL")
 	resolved := ResolveLoginShell()
 	if resolved != current {
-		slog.Info("correcting SHELL to user's login shell",
+		slog.Info(
+			"correcting SHELL to user's login shell",
 			slog.String("old", current),
 			slog.String("new", resolved),
 		)
-		os.Setenv("SHELL", resolved)
+		_ = os.Setenv("SHELL", resolved)
 	}
 }

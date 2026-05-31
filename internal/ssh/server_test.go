@@ -1,16 +1,24 @@
 package ssh
 
 import (
+	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	crypto_sha256 "crypto/sha256"
+	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	gossh "golang.org/x/crypto/ssh"
 
 	"clawbench/internal/model"
@@ -44,7 +52,7 @@ func testServerHelper(t *testing.T, password string, portReg *service.ProxyRegis
 }
 
 // testSSHClient connects to an SSH server with the given credentials.
-func testSSHClient(t *testing.T, addr, user, password string) *gossh.Client {
+func testSSHClient(t *testing.T, addr, user, password string) *gossh.Client { //nolint:unparam // user param kept for API clarity
 	t.Helper()
 	clientCfg := &gossh.ClientConfig{
 		User: user,
@@ -258,7 +266,7 @@ func TestSSHPortForward_AllowedButUnregisteredPortWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read: %v", err)
 	}
-	if string(buf[:n]) != string(testMsg) {
+	if !bytes.Equal(buf[:n], testMsg) {
 		t.Errorf("echo mismatch: got %q, want %q", string(buf[:n]), string(testMsg))
 	}
 }
@@ -305,7 +313,7 @@ func TestSSHPortForward_RegisteredPortWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read: %v", err)
 	}
-	if string(buf[:n]) != string(testMsg) {
+	if !bytes.Equal(buf[:n], testMsg) {
 		t.Errorf("echo mismatch: got %q, want %q", string(buf[:n]), string(testMsg))
 	}
 }
@@ -342,7 +350,7 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 	buf1 := make([]byte, 1024)
 	conn1.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n1, _ := conn1.Read(buf1)
-	if string(buf1[:n1]) != string(testMsg1) {
+	if !bytes.Equal(buf1[:n1], testMsg1) {
 		t.Errorf("port1 echo mismatch: got %q", string(buf1[:n1]))
 	}
 
@@ -351,7 +359,7 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 	buf2 := make([]byte, 1024)
 	conn2.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n2, _ := conn2.Read(buf2)
-	if string(buf2[:n2]) != string(testMsg2) {
+	if !bytes.Equal(buf2[:n2], testMsg2) {
 		t.Errorf("port2 echo mismatch: got %q", string(buf2[:n2]))
 	}
 }
@@ -669,7 +677,7 @@ func TestSSHServer_BruteForceProtection(t *testing.T) {
 	srv := testServerHelper(t, "correct-password", portReg)
 
 	// Make multiple failed auth attempts from the same client
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		clientCfg := &gossh.ClientConfig{
 			User: "clawbench",
 			Auth: []gossh.AuthMethod{
@@ -724,7 +732,7 @@ func TestSSHServer_SuccessfulAuthResetsCounter(t *testing.T) {
 	srv := testServerHelper(t, "correct-password", portReg)
 
 	// Make 3 failed attempts (below the threshold of 5)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		clientCfg := &gossh.ClientConfig{
 			User: "clawbench",
 			Auth: []gossh.AuthMethod{
@@ -741,7 +749,7 @@ func TestSSHServer_SuccessfulAuthResetsCounter(t *testing.T) {
 	client.Close()
 
 	// Now 3 more failures should NOT trigger block (counter was reset)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		clientCfg := &gossh.ClientConfig{
 			User: "clawbench",
 			Auth: []gossh.AuthMethod{
@@ -789,7 +797,180 @@ func TestSSHServer_JoinHostPort_LocalhostTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read: %v", err)
 	}
-	if string(buf[:n]) != string(testMsg) {
+	if !bytes.Equal(buf[:n], testMsg) {
 		t.Errorf("echo mismatch: got %q, want %q", string(buf[:n]), string(testMsg))
 	}
+}
+
+// --- Auth Tracker Internal Tests ---
+
+func TestAuthTracker_IsBlocked_ExpiredBlock(t *testing.T) {
+	tracker := newAuthTracker()
+	// Simulate a blocked IP whose block has already expired
+	tracker.records["1.2.3.4"] = &ipRecord{
+		failCount:    5,
+		lastFail:     time.Now().Add(-10 * time.Minute),
+		blockedUntil: time.Now().Add(-1 * time.Minute), // expired
+	}
+	// isBlocked should return false and clear the block
+	if tracker.isBlocked("1.2.3.4") {
+		t.Error("expected isBlocked=false for expired block")
+	}
+	// After clearing, the record should have zero blockedUntil and failCount
+	rec := tracker.records["1.2.3.4"]
+	if !rec.blockedUntil.IsZero() {
+		t.Error("expected blockedUntil to be zeroed after block expiry")
+	}
+	if rec.failCount != 0 {
+		t.Error("expected failCount to be reset after block expiry")
+	}
+}
+
+func TestAuthTracker_Cleanup_ExpiredRecords(t *testing.T) {
+	tracker := newAuthTracker()
+	// Add a record that is old enough to be cleaned up (past TTL)
+	tracker.records["1.1.1.1"] = &ipRecord{
+		failCount:    1,
+		lastFail:     time.Now().Add(-31 * time.Minute), // past recordTTL
+		blockedUntil: time.Time{},                       // not currently blocked
+	}
+	// Add a record that is still within TTL
+	tracker.records["2.2.2.2"] = &ipRecord{
+		failCount:    1,
+		lastFail:     time.Now(),
+		blockedUntil: time.Time{},
+	}
+	tracker.cleanup()
+	if _, exists := tracker.records["1.1.1.1"]; exists {
+		t.Error("expected expired record to be cleaned up")
+	}
+	if _, exists := tracker.records["2.2.2.2"]; !exists {
+		t.Error("expected non-expired record to be preserved")
+	}
+}
+
+func TestAuthTracker_Cleanup_BlockedRecord(t *testing.T) {
+	tracker := newAuthTracker()
+	// Add a still-blocked record (should not be cleaned up even if lastFail is old)
+	tracker.records["3.3.3.3"] = &ipRecord{
+		failCount:    5,
+		lastFail:     time.Now().Add(-31 * time.Minute),
+		blockedUntil: time.Now().Add(5 * time.Minute), // still blocked
+	}
+	tracker.cleanup()
+	if _, exists := tracker.records["3.3.3.3"]; !exists {
+		t.Error("expected still-blocked record to be preserved")
+	}
+}
+
+func TestExtractIP_MalformedAddress(t *testing.T) {
+	// Test the error path where net.SplitHostPort fails
+	addr := &net.IPAddr{IP: net.ParseIP("1.2.3.4")}
+	result := extractIP(addr)
+	// net.IPAddr.String() returns "1.2.3.4" without a port, so SplitHostPort fails
+	if result != addr.String() {
+		t.Errorf("expected fallback to addr.String(), got %q", result)
+	}
+}
+
+// --- Host Key Error Path Tests ---
+
+func TestSSHServer_LoadHostKey_PermissivePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on Windows: admin privileges bypass file permissions")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root bypasses filesystem permissions")
+	}
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "ssh_host_key")
+
+	// Generate a fresh key and save with permissive permissions
+	keyBytes := marshalSignerKey(t)
+	require.NoError(t, os.WriteFile(keyPath, keyBytes, 0o644)) // permissive
+
+	// loadHostKey should fix permissions and succeed
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", nil)
+	loadedSigner, err := srv.loadHostKey(keyPath)
+	if err != nil {
+		t.Fatalf("expected loadHostKey to succeed, got: %v", err)
+	}
+	if loadedSigner == nil {
+		t.Error("expected non-nil signer")
+	}
+
+	// Verify permissions were fixed
+	info, statErr := os.Stat(keyPath)
+	if statErr == nil {
+		perm := info.Mode().Perm()
+		if perm&0o077 != 0 {
+			t.Errorf("expected permissions to be fixed, got %04o", perm)
+		}
+	}
+}
+
+func TestSSHServer_LoadHostKey_ParseError(t *testing.T) {
+	tmpDir := t.TempDir()
+	keyPath := filepath.Join(tmpDir, "ssh_host_key")
+
+	// Write invalid key data
+	require.NoError(t, os.WriteFile(keyPath, []byte("not a valid key"), 0o600))
+
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", nil)
+	_, err := srv.loadHostKey(keyPath)
+	if err == nil {
+		t.Error("expected error for invalid key data")
+	}
+	if !strings.Contains(err.Error(), "failed to parse host key") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestSSHServer_GenerateAndSaveHostKey_WriteFail(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on Windows: admin privileges bypass file permissions")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root can write anywhere")
+	}
+	// Use a read-only directory to trigger write failure
+	tmpDir := t.TempDir()
+	readOnlyDir := filepath.Join(tmpDir, "readonly")
+	require.NoError(t, os.MkdirAll(readOnlyDir, 0o555))
+	defer func() { _ = os.Chmod(readOnlyDir, 0o755) }()
+
+	keyPath := filepath.Join(readOnlyDir, "ssh_host_key")
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", nil)
+
+	// Should fall back to ephemeral key when save fails
+	signer, err := srv.generateAndSaveHostKey(keyPath)
+	if err != nil {
+		t.Fatalf("expected fallback to ephemeral key, got: %v", err)
+	}
+	if signer == nil {
+		t.Error("expected non-nil signer from fallback")
+	}
+}
+
+func TestSSHServer_UnknownChannelType(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := testServerHelper(t, "test-password", portReg)
+	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
+
+	// Open a "session" channel (not direct-tcpip) — should be rejected
+	channel, _, err := client.OpenChannel("session", nil)
+	if err == nil {
+		channel.Close()
+		t.Error("expected session channel to be rejected")
+	}
+}
+
+// marshalSignerKey generates a fresh ECDSA key and returns PEM-encoded bytes for saving to disk.
+func marshalSignerKey(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	keyBytes, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	return pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyBytes})
 }

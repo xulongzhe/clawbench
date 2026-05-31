@@ -36,7 +36,7 @@ var thumbDecodeExts = []string{
 
 // FileThumb handles GET /api/file/thumb?path=<path>&w=<width>
 // Returns a JPEG thumbnail of the image file at the given path.
-func FileThumb(w http.ResponseWriter, r *http.Request) {
+func FileThumb(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-format thumbnail generation
 	projectPath, ok := requireProject(w, r)
 	if !ok {
 		return
@@ -76,7 +76,7 @@ func FileThumb(w http.ResponseWriter, r *http.Request) {
 	widthStr := r.URL.Query().Get("w")
 	targetWidth := thumbDefaultWidth
 	if widthStr != "" {
-		if w, err := strconv.Atoi(widthStr); err == nil {
+		if w, err := strconv.Atoi(widthStr); err == nil { //nolint:govet // shadowed err, scoped to if-block
 			targetWidth = clampInt(w, thumbMinWidth, thumbMaxWidth)
 		}
 	}
@@ -88,7 +88,7 @@ func FileThumb(w http.ResponseWriter, r *http.Request) {
 		model.WriteError(w, model.NotFound(nil, "cannot open file"))
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	img, _, err := image.Decode(f)
 	if err != nil {
@@ -137,8 +137,8 @@ func FileThumb(w http.ResponseWriter, r *http.Request) {
 	// Center the scaled image on the canvas
 	offsetX := (targetWidth - scaledW) / 2
 	offsetY := (targetWidth - scaledH) / 2
-	for y := 0; y < scaledH; y++ {
-		for x := 0; x < scaledW; x++ {
+	for y := range scaledH {
+		for x := range scaledW {
 			dst.Set(offsetX+x, offsetY+y, scaled.At(x, y))
 		}
 	}
@@ -153,7 +153,7 @@ func FileThumb(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
 	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
-	buf.WriteTo(w)
+	_, _ = buf.WriteTo(w)
 }
 
 // scaleImage resizes an image to the target dimensions using nearest-neighbor
@@ -161,8 +161,8 @@ func FileThumb(w http.ResponseWriter, r *http.Request) {
 func scaleImage(src image.Image, dstW, dstH int) *image.RGBA {
 	dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
 	srcW, srcH := src.Bounds().Dx(), src.Bounds().Dy()
-	for y := 0; y < dstH; y++ {
-		for x := 0; x < dstW; x++ {
+	for y := range dstH {
+		for x := range dstW {
 			// Map destination pixel to source pixel (nearest neighbor)
 			sx := (x * srcW) / dstW
 			sy := (y * srcH) / dstH
@@ -206,17 +206,17 @@ func dominantColor(src image.Image) color.RGBA {
 		return color.RGBA{R: 128, G: 128, B: 128, A: 255}
 	}
 	return color.RGBA{
-		R: uint8(rSum / count),
-		G: uint8(gSum / count),
-		B: uint8(bSum / count),
+		R: uint8(rSum / count), //nolint:gosec // average of uint8 values, cannot overflow
+		G: uint8(gSum / count), //nolint:gosec // average of uint8 values, cannot overflow
+		B: uint8(bSum / count), //nolint:gosec // average of uint8 values, cannot overflow
 		A: 255,
 	}
 }
 
 // drawDominant fills the destination image with the given color.
 func drawDominant(dst *image.RGBA, c color.RGBA) {
-	for y := 0; y < dst.Bounds().Dy(); y++ {
-		for x := 0; x < dst.Bounds().Dx(); x++ {
+	for y := range dst.Bounds().Dy() {
+		for x := range dst.Bounds().Dx() {
 			dst.SetRGBA(x, y, c)
 		}
 	}
@@ -234,13 +234,13 @@ func isThumbDecodable(path string) bool {
 	return false
 }
 
-// clampInt returns v clamped to [min, max].
-func clampInt(v, min, max int) int {
-	if v < min {
-		return min
+// clampInt returns v clamped to [lo, hi].
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
 	}
-	if v > max {
-		return max
+	if v > hi {
+		return hi
 	}
 	return v
 }

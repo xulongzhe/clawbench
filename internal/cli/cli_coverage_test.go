@@ -17,7 +17,7 @@ import (
 )
 
 // helper: start a test server and configure model.ConfigInstance.Port to match
-func setupTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
+func setupTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server { //nolint:unparam // test helper: server used by caller indirectly
 	t.Helper()
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
@@ -42,7 +42,7 @@ func captureStdout(t *testing.T, fn func()) string {
 
 	fn()
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	buf := make([]byte, 4096)
@@ -55,8 +55,8 @@ func captureStdout(t *testing.T, fn func()) string {
 func TestFindConfigPath_BinDirConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, "config")
-	os.MkdirAll(configDir, 0755)
-	os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("port: 12345"), 0644)
+	_ = os.MkdirAll(configDir, 0o755)
+	_ = os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("port: 12345"), 0o644)
 
 	path := FindConfigPath(tmpDir)
 	assert.Equal(t, filepath.Join(tmpDir, "config", "config.yaml"), path)
@@ -97,7 +97,7 @@ func TestHTTPDo_SuccessWithServer(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/test", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "value": 42})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "value": 42})
 	})
 
 	result, status, err := httpDo(http.MethodGet, "/api/test", nil)
@@ -110,11 +110,11 @@ func TestHTTPDo_PostWithBody(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		assert.Equal(t, "hello", body["key"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
 	_, status, err := httpDo(http.MethodPost, "/api/test", map[string]any{"key": "hello"})
@@ -125,7 +125,7 @@ func TestHTTPDo_PostWithBody(t *testing.T) {
 func TestHTTPDo_NonJSONResp(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	})
 
 	_, _, err := httpDo(http.MethodGet, "/api/test", nil)
@@ -153,7 +153,7 @@ func TestHTTPDoWithProject_SetsCookieAndReturnsData(t *testing.T) {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "tasks": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "tasks": []any{}})
 	})
 
 	_, status, err := httpDoWithProject(http.MethodGet, "/api/tasks", nil, "/my/project")
@@ -173,7 +173,7 @@ func TestRunList_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/tasks", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"tasks": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"tasks": []any{}})
 	})
 
 	output := captureStdout(t, func() {
@@ -186,7 +186,7 @@ func TestRunList_ServerSuccess(t *testing.T) {
 func TestRunList_ServerError(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{"error": "internal"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "internal"})
 	})
 
 	code := runList([]string{"--project", "/test"})
@@ -209,7 +209,7 @@ func TestRunGet_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.URL.Path, "/api/tasks/42")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"id": "42", "name": "test"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": "42", "name": "test"})
 	})
 
 	output := captureStdout(t, func() {
@@ -240,7 +240,7 @@ func TestRunListExec_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.URL.Path, "/api/tasks/1/executions")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"executions": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"executions": []any{}})
 	})
 
 	output := captureStdout(t, func() {
@@ -271,7 +271,7 @@ func TestRunDeleteExec_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
 	output := captureStdout(t, func() {
@@ -287,7 +287,7 @@ func TestRunListAgents_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/api/agents", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"agents": []any{
 				map[string]any{"id": "codebuddy", "name": "CodeBuddy"},
 			},
@@ -304,7 +304,7 @@ func TestRunListAgents_ServerSuccess(t *testing.T) {
 func TestRunListAgents_ServerError(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{"error": "fail"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "fail"})
 	})
 
 	code := runListAgents([]string{})
@@ -340,7 +340,7 @@ func TestRunTrigger_MissingTaskID(t *testing.T) {
 func TestRunPause_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
 	code := runPause([]string{"1", "--project", "/test"})
@@ -350,7 +350,7 @@ func TestRunPause_ServerSuccess(t *testing.T) {
 func TestRunResume_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
 	code := runResume([]string{"1", "--project", "/test"})
@@ -360,7 +360,7 @@ func TestRunResume_ServerSuccess(t *testing.T) {
 func TestRunTrigger_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
 	code := runTrigger([]string{"1", "--project", "/test"})
@@ -377,7 +377,7 @@ func TestRunDelete_MissingTaskID(t *testing.T) {
 func TestRunDelete_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
 	code := runDelete([]string{"1", "--project", "/test"})
@@ -387,7 +387,7 @@ func TestRunDelete_ServerSuccess(t *testing.T) {
 // ---------- runUpdate ----------
 
 func TestRunUpdate_ScheduledBlock(t *testing.T) {
-	os.Setenv("CLAWBENCH_SCHEDULED", "1")
+	_ = os.Setenv("CLAWBENCH_SCHEDULED", "1")
 	defer os.Unsetenv("CLAWBENCH_SCHEDULED")
 
 	code := runUpdate([]string{"1", "--project", "/test"})
@@ -410,7 +410,7 @@ func TestRunCreate_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPost, r.Method)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": 1})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": 1})
 	})
 
 	code := runCreate([]string{
@@ -426,7 +426,7 @@ func TestRunCreate_ServerSuccess(t *testing.T) {
 func TestRunCreate_ServerError(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]any{"error": "bad request"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "bad request"})
 	})
 
 	code := runCreate([]string{
@@ -444,7 +444,7 @@ func TestRunCreate_ServerError(t *testing.T) {
 func TestRunCreate_LimitedRepeatWithMaxRuns(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": 1})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": 1})
 	})
 
 	code := runCreate([]string{
@@ -464,7 +464,7 @@ func TestRunCreate_LimitedRepeatWithMaxRuns(t *testing.T) {
 func TestRunCreate_UnlimitedRepeat(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": 1})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": 1})
 	})
 
 	code := runCreate([]string{
@@ -483,7 +483,7 @@ func TestRunCreate_UnlimitedRepeat(t *testing.T) {
 func TestRunCreate_OnceRepeat(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": 1})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "id": 1})
 	})
 
 	code := runCreate([]string{
@@ -510,7 +510,7 @@ func TestRunUpdate_ServerSuccess(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, http.MethodPut, r.Method)
 		var body map[string]any
-		json.NewDecoder(r.Body).Decode(&body)
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		assert.Equal(t, "update", body["action"])
 		assert.Equal(t, "NewName", body["name"])
 		assert.Equal(t, "0 * * * *", body["cron_expr"])
@@ -520,7 +520,7 @@ func TestRunUpdate_ServerSuccess(t *testing.T) {
 		assert.Equal(t, float64(10), body["max_runs"])
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	})
 
 	code := runUpdate([]string{
@@ -544,7 +544,7 @@ func TestRunUpdate_InvalidRepeat(t *testing.T) {
 func TestRunUpdate_ServerError(t *testing.T) {
 	setupTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]any{"error": "fail"})
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": "fail"})
 	})
 
 	code := runUpdate([]string{"1", "--name", "X", "--project", "/test"})
@@ -563,8 +563,8 @@ func TestLoadConfig_FromFile(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, "config")
-	os.MkdirAll(configDir, 0755)
-	os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("port: 12345\nwatch_dir: /tmp"), 0644)
+	_ = os.MkdirAll(configDir, 0o755)
+	_ = os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("port: 12345\nwatch_dir: /tmp"), 0o644)
 
 	// loadConfig() reads os.Args[0] to compute BinDir, then calls FindConfigPath.
 	// Since we can't easily control os.Args[0] in tests, just test that

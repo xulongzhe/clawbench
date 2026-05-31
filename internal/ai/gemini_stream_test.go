@@ -449,8 +449,8 @@ func TestNormalizeGeminiInput_FieldRemapping(t *testing.T) {
 	}
 	result1 := string(norm1)
 	var parsed1 map[string]any
-	if err := json.Unmarshal([]byte(result1), &parsed1); err != nil {
-		t.Fatalf("failed to parse result: %v", err)
+	if unmarshalErr := json.Unmarshal([]byte(result1), &parsed1); unmarshalErr != nil {
+		t.Fatalf("failed to parse result: %v", unmarshalErr)
 	}
 	if _, exists := parsed1["filePath"]; exists {
 		t.Error("filePath should be removed")
@@ -467,8 +467,8 @@ func TestNormalizeGeminiInput_FieldRemapping(t *testing.T) {
 	}
 	result2 := string(norm2)
 	var parsed2 map[string]any
-	if err := json.Unmarshal([]byte(result2), &parsed2); err != nil {
-		t.Fatalf("failed to parse result: %v", err)
+	if unmarshalErr := json.Unmarshal([]byte(result2), &parsed2); unmarshalErr != nil {
+		t.Fatalf("failed to parse result: %v", unmarshalErr)
 	}
 	if _, exists := parsed2["dirPath"]; exists {
 		t.Error("dirPath should be removed")

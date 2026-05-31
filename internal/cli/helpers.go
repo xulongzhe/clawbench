@@ -108,7 +108,7 @@ func httpDo(method, path string, body any) (map[string]any, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("server not reachable at %s: %w", apiURL(), err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -153,7 +153,7 @@ func httpDoWithProject(method, path string, body any, projectPath string) (map[s
 	if err != nil {
 		return nil, 0, fmt.Errorf("server not reachable at %s: %w", apiURL(), err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

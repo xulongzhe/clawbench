@@ -21,7 +21,9 @@ import (
 // --- Shared Helpers ---
 
 // codexCommand matches the agent config in config/agents/codex-MiniMax.yaml:
-//   command: codex --profile m27
+//
+//	command: codex --profile m27
+//
 // This tells CodexBackend to use the MiniMax provider (MINIMAX_API_KEY) instead of OpenAI.
 const codexCommand = "codex --profile m27"
 

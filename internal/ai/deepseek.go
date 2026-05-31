@@ -17,11 +17,12 @@ var deepseekBackend = &CLIBackend{
 // Command: deepseek exec --auto --output-format stream-json [flags] "prompt"
 //
 // Supported flags:
-//   --resume <session_id>      Resume a previous session
-//   --continue                 Continue the most recent session
-//   --system-prompt <text>     Inject custom system prompt
-//   --system-prompt-file <path> Read system prompt from file
-//   --model <model>            Override model (e.g. deepseek-v4-flash, deepseek-v4-pro)
+//
+//	--resume <session_id>      Resume a previous session
+//	--continue                 Continue the most recent session
+//	--system-prompt <text>     Inject custom system prompt
+//	--system-prompt-file <path> Read system prompt from file
+//	--model <model>            Override model (e.g. deepseek-v4-flash, deepseek-v4-pro)
 func buildDeepSeekStreamArgs(req ChatRequest) []string {
 	args := []string{
 		"exec",

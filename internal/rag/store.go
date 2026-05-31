@@ -15,7 +15,7 @@ import (
 
 	"clawbench/internal/model"
 
-	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/marcboeker/go-duckdb" // register DuckDB driver
 )
 
 // Store manages the DuckDB connection and vector storage operations.
@@ -31,19 +31,19 @@ type Store struct {
 
 // Chunk represents a text chunk with its embedding and metadata.
 type Chunk struct {
-	ID                  int64     `json:"id"`
-	SessionID           string    `json:"session_id"`
-	MessageID           int64     `json:"message_id"`
-	ChunkText           string    `json:"chunk_text"`
-	ChunkTextSegmented  string    `json:"chunk_text_segmented"` // gse-segmented text for FTS
-	ChunkIndex          int       `json:"chunk_index"`
-	TokenCount          int       `json:"token_count"`
-	Embedding           []float64 `json:"embedding"`
-	HasEmbedding        bool      `json:"has_embedding"`
-	ProjectPath         string    `json:"project_path"`
-	Backend             string    `json:"backend"`
-	Role                string    `json:"role"`
-	CreatedAt           time.Time `json:"created_at"`
+	ID                 int64     `json:"id"`
+	SessionID          string    `json:"session_id"`
+	MessageID          int64     `json:"message_id"`
+	ChunkText          string    `json:"chunk_text"`
+	ChunkTextSegmented string    `json:"chunk_text_segmented"` // gse-segmented text for FTS
+	ChunkIndex         int       `json:"chunk_index"`
+	TokenCount         int       `json:"token_count"`
+	Embedding          []float64 `json:"embedding"`
+	HasEmbedding       bool      `json:"has_embedding"`
+	ProjectPath        string    `json:"project_path"`
+	Backend            string    `json:"backend"`
+	Role               string    `json:"role"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // SearchHit represents a search result with similarity score.
@@ -66,7 +66,7 @@ type SearchHit struct {
 // internal thread-count computation can divide by zero. (ISS-155)
 func NewStore(dbPath string, duckdbOpts map[string]string) (*Store, error) {
 	// Ensure parent directory exists
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create rag db directory: %w", err)
 	}
 
@@ -92,7 +92,7 @@ func NewStore(dbPath string, duckdbOpts map[string]string) (*Store, error) {
 
 	s := &Store{db: db, dbPath: dbPath, duckdbOpts: duckdbOpts}
 	if err := s.initSchema(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to init duckdb schema: %w", err)
 	}
 
@@ -138,7 +138,8 @@ func InitStore(cfg model.RAGConfig) (*Store, error) {
 		opts["memory_limit"] = cfg.DuckDBMemoryLimit
 	}
 
-	slog.Info("rag: opening DuckDB store",
+	slog.Info(
+		"rag: opening DuckDB store",
 		slog.String("path", dbPath),
 		slog.String("threads", opts["threads"]),
 		slog.String("memory_limit", opts["memory_limit"]),
@@ -193,15 +194,15 @@ func (s *Store) initSchema() error {
 	}
 
 	// Migrate existing databases: add new columns if they don't exist
-	s.db.Exec("ALTER TABLE chat_chunks ADD COLUMN chunk_text_segmented TEXT")
+	_, _ = s.db.Exec("ALTER TABLE chat_chunks ADD COLUMN chunk_text_segmented TEXT")
 	// DuckDB does not support ADD COLUMN with NOT NULL DEFAULT constraints,
 	// so add as nullable, then set default and backfill.
 	if _, err := s.db.Exec("ALTER TABLE chat_chunks ADD COLUMN has_embedding BOOLEAN"); err == nil {
 		// Column was just added (didn't exist before), set default value
-		s.db.Exec("UPDATE chat_chunks SET has_embedding = false WHERE has_embedding IS NULL")
+		_, _ = s.db.Exec("UPDATE chat_chunks SET has_embedding = false WHERE has_embedding IS NULL")
 	}
 	// Mark existing rows with embeddings as having embedding
-	s.db.Exec("UPDATE chat_chunks SET has_embedding = true WHERE embedding IS NOT NULL AND (has_embedding IS NULL OR has_embedding = false)")
+	_, _ = s.db.Exec("UPDATE chat_chunks SET has_embedding = true WHERE embedding IS NOT NULL AND (has_embedding IS NULL OR has_embedding = false)")
 
 	// Sync sequence to max(id) so next insert doesn't violate primary key.
 	// This can happen when the table was created with auto-increment IDs
@@ -210,8 +211,8 @@ func (s *Store) initSchema() error {
 	// so we query the max id and drop+recreate the sequence with the correct start value.
 	var maxID int
 	if err := s.db.QueryRow("SELECT COALESCE(MAX(id), 0) FROM chat_chunks").Scan(&maxID); err == nil && maxID > 0 {
-		s.db.Exec("DROP SEQUENCE IF EXISTS chat_chunks_id_seq")
-		s.db.Exec(fmt.Sprintf("CREATE SEQUENCE chat_chunks_id_seq START WITH %d", maxID+1))
+		_, _ = s.db.Exec("DROP SEQUENCE IF EXISTS chat_chunks_id_seq")
+		_, _ = s.db.Exec(fmt.Sprintf("CREATE SEQUENCE chat_chunks_id_seq START WITH %d", maxID+1))
 	}
 
 	return nil
@@ -233,7 +234,7 @@ func (s *Store) CreateFTSIndex() error {
 		return fmt.Errorf("FTS not available")
 	}
 	// Drop existing index first (FTS doesn't auto-update)
-	s.db.Exec("PRAGMA drop_fts_index('chat_chunks')")
+	_, _ = s.db.Exec("PRAGMA drop_fts_index('chat_chunks')")
 	_, err := s.db.Exec(`
 		PRAGMA create_fts_index(
 			'chat_chunks', 'id', 'chunk_text_segmented',
@@ -292,7 +293,8 @@ func (s *Store) InsertChunks(chunks []Chunk) error {
 				chunk_index, token_count, embedding, has_embedding, project_path, backend, role, created_at)
 			VALUES (nextval('chat_chunks_id_seq'), ?, ?, ?, ?, ?, ?, %s, ?, ?, ?, ?, ?)`,
 			embeddingSQL)
-		_, err := s.db.Exec(sqlStr,
+		_, err := s.db.Exec(
+			sqlStr,
 			c.SessionID, c.MessageID, c.ChunkText, c.ChunkTextSegmented,
 			c.ChunkIndex, c.TokenCount,
 			c.HasEmbedding,
@@ -370,7 +372,7 @@ func (s *Store) SearchSimple(queryEmbedding []float64, limit int, projectPath, b
 	if err != nil {
 		return nil, fmt.Errorf("search query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var hits []SearchHit
 	for rows.Next() {
@@ -447,7 +449,7 @@ func (s *Store) SearchFTS(queryText string, limit int, projectPath, backend, rol
 	if err != nil {
 		return nil, fmt.Errorf("fts search query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var hits []SearchHit
 	for rows.Next() {
@@ -473,13 +475,13 @@ func (s *Store) SearchHybrid(queryEmbedding []float64, queryText string, poolSiz
 
 	// If one source fails completely, fall back to the other
 	if vecErr != nil && ftsErr != nil {
-		return nil, fmt.Errorf("both search sources failed: vector=%v, fts=%v", vecErr, ftsErr)
+		return nil, fmt.Errorf("both search sources failed: vector=%w, fts=%w", vecErr, ftsErr)
 	}
 	if vecErr != nil {
-		return ftsHits, nil
+		return ftsHits, nil //nolint:nilerr // intentional: return successful source when other fails
 	}
 	if ftsErr != nil {
-		return vecHits, nil
+		return vecHits, nil //nolint:nilerr // intentional: return successful source when other fails
 	}
 
 	// RRF fusion: score = sum(1 / (k + rank_i)) for each source
@@ -547,7 +549,7 @@ func (s *Store) GetPendingEmbeddings(limit int) ([]PendingChunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var pending []PendingChunk
 	for rows.Next() {
@@ -594,11 +596,12 @@ func (s *Store) UpdateEmbedding(chunkID int64, embedding []float64) error {
 	if err != nil {
 		return fmt.Errorf("embedding validation for update: %w", err)
 	}
-	_, err = s.db.Exec(fmt.Sprintf(`
+	_, err = s.db.Exec(
+		fmt.Sprintf(`
 		INSERT INTO chat_chunks (id, session_id, message_id, chunk_text, chunk_text_segmented,
 			chunk_index, token_count, embedding, has_embedding, project_path, backend, role, created_at)
 		VALUES (%d, ?, ?, ?, ?, ?, ?, %s, ?, ?, ?, ?, ?)`,
-		chunkID, embeddingLiteral),
+			chunkID, embeddingLiteral),
 		c.SessionID, c.MessageID, c.ChunkText, c.ChunkTextSegmented,
 		c.ChunkIndex, c.TokenCount,
 		true, // has_embedding = true now
@@ -736,7 +739,7 @@ func (s *Store) DeleteChunksBySessionIDs(sessionIDs []string) (int64, error) {
 // Close closes the DuckDB connection.
 func (s *Store) Close() error {
 	if s.db != nil {
-		return s.db.Close()
+		_ = s.db.Close()
 	}
 	return nil
 }
@@ -744,7 +747,7 @@ func (s *Store) Close() error {
 // RecoverFromCorruption attempts to recover from a corrupted DuckDB file
 // by deleting it and recreating from scratch.
 func (s *Store) RecoverFromCorruption() error {
-	s.db.Close()
+	_ = s.db.Close()
 	slog.Warn("deleting corrupted rag.duckdb for recovery", slog.String("path", s.dbPath))
 	if err := os.Remove(s.dbPath); err != nil {
 		return fmt.Errorf("remove corrupted db: %w", err)

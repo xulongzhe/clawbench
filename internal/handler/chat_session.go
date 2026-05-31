@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -11,7 +12,7 @@ import (
 )
 
 // ServeSessions handles GET (list) and POST (create) for chat sessions.
-func ServeSessions(w http.ResponseWriter, r *http.Request) {
+func ServeSessions(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo // multi-method session handler
 	projectPath, ok := requireProject(w, r)
 	if !ok {
 		return
@@ -88,7 +89,7 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) {
 		agentSource := "default"
 		backend2, _, _, _, ok := resolveAgentConfig(agentID)
 		if !ok {
-		writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
+			writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
 			return
 		}
 		if backend2 != "" {

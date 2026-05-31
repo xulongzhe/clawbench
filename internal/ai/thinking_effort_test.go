@@ -12,10 +12,10 @@ import (
 
 func TestBuildBaseStreamArgs_ThinkingEffort_Set(t *testing.T) {
 	req := ChatRequest{
-		Prompt:        "hello world",
-		SystemPrompt:  "you are helpful",
-		Model:         "claude-4",
-		WorkDir:       "/home/user/project",
+		Prompt:         "hello world",
+		SystemPrompt:   "you are helpful",
+		Model:          "claude-4",
+		WorkDir:        "/home/user/project",
 		ThinkingEffort: "high",
 	}
 	args := buildBaseStreamArgs(req, nil)
@@ -43,8 +43,8 @@ func TestBuildBaseStreamArgs_ThinkingEffort_Empty(t *testing.T) {
 
 func TestBuildPiStreamArgs_ThinkingEffort_Set(t *testing.T) {
 	req := ChatRequest{
-		Prompt:        "hello world",
-		Model:         "pi-4",
+		Prompt:         "hello world",
+		Model:          "pi-4",
 		ThinkingEffort: "high",
 	}
 	args := buildPiStreamArgs(req)
@@ -70,8 +70,8 @@ func TestBuildPiStreamArgs_ThinkingEffort_Empty(t *testing.T) {
 
 func TestBuildCodexStreamArgs_ThinkingEffort_Set(t *testing.T) {
 	req := ChatRequest{
-		Prompt:        "hello world",
-		Model:         "codex-1",
+		Prompt:         "hello world",
+		Model:          "codex-1",
 		ThinkingEffort: "high",
 	}
 	args := buildCodexStreamArgs(req)
@@ -102,8 +102,8 @@ func TestBuildCodexStreamArgs_ThinkingEffort_Empty(t *testing.T) {
 
 func TestBuildCodexResumeArgs_ThinkingEffort_Set(t *testing.T) {
 	req := ChatRequest{
-		Prompt:        "continue this",
-		Model:         "codex-1",
+		Prompt:         "continue this",
+		Model:          "codex-1",
 		ThinkingEffort: "medium",
 	}
 	args := buildCodexResumeArgs(req, "thread_abc123")
@@ -140,8 +140,8 @@ func TestBuildCodexResumeArgs_ThinkingEffort_Empty(t *testing.T) {
 
 func TestBuildOpenCodeStreamArgs_ThinkingEffort_Set(t *testing.T) {
 	req := ChatRequest{
-		Prompt:        "hello world",
-		Model:         "opencode-model",
+		Prompt:         "hello world",
+		Model:          "opencode-model",
 		ThinkingEffort: "high",
 	}
 	args := buildOpenCodeStreamArgs(req)

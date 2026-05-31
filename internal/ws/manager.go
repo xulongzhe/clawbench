@@ -8,13 +8,13 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 
 	"clawbench/internal/i18n"
 	"clawbench/internal/model"
 	"clawbench/internal/push"
-	"unicode/utf8"
 )
 
 // ClientSubscription tracks a single client's WS connection and push state.
@@ -63,8 +63,10 @@ type Manager struct {
 	jpush         *push.JPushClient
 }
 
-var defaultManager *Manager
-var defaultManagerOnce sync.Once
+var (
+	defaultManager     *Manager
+	defaultManagerOnce sync.Once
+)
 
 // SetManagerForTest sets the global manager for testing. Do not use in production.
 func SetManagerForTest(m *Manager) {
@@ -75,7 +77,7 @@ func SetManagerForTest(m *Manager) {
 func NewManagerForTest(jpushClient *push.JPushClient) *Manager {
 	return &Manager{
 		subscriptions: make(map[string]*ClientSubscription),
-		jpush:        jpushClient,
+		jpush:         jpushClient,
 	}
 }
 
@@ -83,7 +85,7 @@ func InitManager(jpushClient *push.JPushClient) {
 	defaultManagerOnce.Do(func() {
 		defaultManager = &Manager{
 			subscriptions: make(map[string]*ClientSubscription),
-			jpush:        jpushClient,
+			jpush:         jpushClient,
 		}
 	})
 }
@@ -100,7 +102,7 @@ func (m *Manager) Subscribe(conn *websocket.Conn, writeMu *sync.Mutex, clientID,
 	// Check subscription limit (existing clientID reconnect is allowed)
 	if _, exists := m.subscriptions[clientID]; !exists && len(m.subscriptions) >= maxSubscriptions {
 		m.mu.Unlock()
-		conn.Close(websocket.StatusPolicyViolation, "too many subscriptions")
+		_ = conn.Close(websocket.StatusPolicyViolation, "too many subscriptions")
 		slog.Warn("ws: subscription rejected, limit reached", "limit", maxSubscriptions, "client_id", clientID)
 		return nil
 	}
@@ -126,7 +128,7 @@ func (m *Manager) Subscribe(conn *websocket.Conn, writeMu *sync.Mutex, clientID,
 
 	// Close old connection outside of locks to avoid blocking on slow networks
 	if oldConn != nil {
-		oldConn.Close(websocket.StatusNormalClosure, "replaced")
+		_ = oldConn.Close(websocket.StatusNormalClosure, "replaced")
 	}
 
 	slog.Info("ws: client subscribed", "client_id", clientID)
@@ -222,7 +224,7 @@ func (m *Manager) BroadcastEvent(msg ServerMessage) {
 // deliveredRegIDs tracks which pushRegIDs have already been notified for this event
 // (via WS or JPush), preventing duplicate notifications when the same device has
 // multiple subscriptions (e.g., frontend WS + native WS).
-func (m *Manager) broadcastToSubscription(key string, msg ServerMessage, deliveredRegIDs map[string]bool) {
+func (m *Manager) broadcastToSubscription(key string, msg ServerMessage, deliveredRegIDs map[string]bool) { //nolint:gocognit,gocyclo // multi-client broadcast with push fallback
 	m.mu.Lock()
 	sub, ok := m.subscriptions[key]
 	m.mu.Unlock()

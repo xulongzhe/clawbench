@@ -54,7 +54,7 @@ func buildVeCLIArgs(req ChatRequest) []string {
 type VeCLISessionSummary struct {
 	SessionMetrics struct {
 		Models map[string]struct {
-			API    struct {
+			API struct {
 				TotalRequests  int `json:"totalRequests"`
 				TotalErrors    int `json:"totalErrors"`
 				TotalLatencyMs int `json:"totalLatencyMs"`
@@ -69,9 +69,9 @@ type VeCLISessionSummary struct {
 			} `json:"tokens"`
 		} `json:"models"`
 		Tools struct {
-			TotalCalls    int `json:"totalCalls"`
-			TotalSuccess  int `json:"totalSuccess"`
-			TotalFail     int `json:"totalFail"`
+			TotalCalls      int `json:"totalCalls"`
+			TotalSuccess    int `json:"totalSuccess"`
+			TotalFail       int `json:"totalFail"`
 			TotalDurationMs int `json:"totalDurationMs"`
 		} `json:"tools"`
 		Files struct {
@@ -91,14 +91,15 @@ func (s *VeCLISessionSummary) extractMetadata(reqModel string) *Metadata {
 	}
 	// Prefer the model matching reqModel, then fall back to first entry
 	for name, m := range s.SessionMetrics.Models {
-		if name == reqModel || meta.Model == "" {
-			meta.Model = name
-			meta.InputTokens = m.Tokens.Prompt
-			meta.OutputTokens = m.Tokens.Candidates
-			meta.DurationMs = m.API.TotalLatencyMs
-			if name == reqModel {
-				break
-			}
+		if name != reqModel && meta.Model != "" {
+			continue
+		}
+		meta.Model = name
+		meta.InputTokens = m.Tokens.Prompt
+		meta.OutputTokens = m.Tokens.Candidates
+		meta.DurationMs = m.API.TotalLatencyMs
+		if name == reqModel {
+			break
 		}
 	}
 	if meta.Model == "" && reqModel != "" {

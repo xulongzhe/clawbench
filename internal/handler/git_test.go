@@ -21,11 +21,11 @@ import (
 // initGitRepo initializes a real git repo in dir with an initial commit.
 func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
-	run := func(name string, args ...string) {
-		cmd := exec.Command(name, args...)
+	run := func(_ string, args ...string) {
+		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("command %s %v failed: %v\n%s", name, args, err, out)
+			t.Fatalf("command git %v failed: %v\n%s", args, err, out)
 		}
 	}
 	run("git", "init")
@@ -33,7 +33,7 @@ func initGitRepo(t *testing.T, dir string) {
 	run("git", "config", "user.name", "Test")
 
 	// Create initial file and commit
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Test"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# Test"), 0o644); err != nil {
 		t.Fatalf("failed to write README: %v", err)
 	}
 	run("git", "add", ".")
@@ -109,7 +109,7 @@ func TestServeGitInit_AlreadyRepo(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "already a git repository", resp["error"])
 }
 
@@ -153,7 +153,7 @@ func TestServeGitStatus_UncommittedChanges(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	assert.Equal(t, true, resp["hasUncommitted"])
 }
@@ -171,7 +171,7 @@ func TestServeGitStatus_NoChanges(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	assert.Equal(t, false, resp["hasUncommitted"])
 }
@@ -187,7 +187,7 @@ func TestServeGitStatus_NotGitRepo(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["isGit"])
 	assert.Equal(t, false, resp["hasUncommitted"])
 }
@@ -224,7 +224,7 @@ func TestServeGitHistory_WithCommits(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	commits, ok := resp["commits"].([]interface{})
 	assert.True(t, ok)
 	assert.GreaterOrEqual(t, len(commits), 2)
@@ -293,7 +293,7 @@ func TestServeGitDiff_UncommittedChanges(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["empty"])
 	assert.Contains(t, resp["diff"], "# Modified content")
 }
@@ -311,7 +311,7 @@ func TestServeGitDiff_NoChanges(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["empty"])
 }
 
@@ -344,7 +344,7 @@ func TestServeGitDiff_SpecificCommit(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["empty"])
 	assert.Contains(t, resp["diff"], "# Updated")
 }
@@ -364,7 +364,7 @@ func TestServeGitProjectHistory_WithCommits(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	commits, ok := resp["commits"].([]interface{})
 	assert.True(t, ok)
@@ -382,7 +382,7 @@ func TestServeGitProjectHistory_NotGitRepo(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["isGit"])
 	commits, ok := resp["commits"].([]interface{})
 	assert.True(t, ok)
@@ -397,7 +397,7 @@ func TestServeGitProjectHistory_Pagination(t *testing.T) {
 	initGitRepo(t, env.ProjectDir)
 
 	// Create multiple commits
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		createTestFile(t, env.ProjectDir, fmt.Sprintf("file%d.txt", i), "content")
 		gitCommitAll(t, env.ProjectDir, fmt.Sprintf("add file%d", i))
 	}
@@ -410,7 +410,7 @@ func TestServeGitProjectHistory_Pagination(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	commits, _ := resp["commits"].([]interface{})
 	totalCommits := len(commits)
 	assert.GreaterOrEqual(t, totalCommits, 6) // initial + 5
@@ -423,7 +423,7 @@ func TestServeGitProjectHistory_Pagination(t *testing.T) {
 	assertOK(t, w2)
 
 	var resp2 map[string]interface{}
-	json.Unmarshal(w2.Body.Bytes(), &resp2)
+	_ = json.Unmarshal(w2.Body.Bytes(), &resp2)
 	commits2, _ := resp2["commits"].([]interface{})
 	assert.Equal(t, totalCommits-1, len(commits2))
 }
@@ -448,7 +448,7 @@ func TestServeGitCommitFiles_Success(t *testing.T) {
 	assertOK(t, w)
 
 	var files []map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &files)
+	_ = json.Unmarshal(w.Body.Bytes(), &files)
 	assert.GreaterOrEqual(t, len(files), 1)
 
 	// Check that newfile.txt is in the list
@@ -511,7 +511,7 @@ func TestServeGitCommitFiles_MergeCommit(t *testing.T) {
 	assertOK(t, w)
 
 	var result map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 
 	// Verify it's a merge response
 	assert.Equal(t, true, result["merge"])
@@ -523,7 +523,7 @@ func TestServeGitCommitFiles_MergeCommit(t *testing.T) {
 
 	// Verify each group has label and files
 	for _, g := range groups {
-		group := g.(map[string]interface{})
+		group, _ := g.(map[string]interface{})
 		assert.NotEmpty(t, group["label"])
 		files, ok := group["files"].([]interface{})
 		assert.True(t, ok, "expected files array in group")
@@ -533,10 +533,10 @@ func TestServeGitCommitFiles_MergeCommit(t *testing.T) {
 	// Verify no duplicate files across groups (dedup works)
 	allPaths := map[string]bool{}
 	for _, g := range groups {
-		group := g.(map[string]interface{})
+		group, _ := g.(map[string]interface{})
 		for _, f := range group["files"].([]interface{}) {
-			file := f.(map[string]interface{})
-			path := file["path"].(string)
+			file, _ := f.(map[string]interface{})
+			path, _ := file["path"].(string)
 			assert.False(t, allPaths[path], "duplicate file path: %s", path)
 			allPaths[path] = true
 		}
@@ -563,7 +563,7 @@ func TestServeGitFileDiff_SpecificCommit(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["empty"])
 	assert.Contains(t, resp["diff"], "# Changed")
 }
@@ -584,7 +584,7 @@ func TestServeGitFileDiff_HeadDiff(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["empty"])
 	assert.Contains(t, resp["diff"], "# Working tree change")
 }
@@ -635,7 +635,7 @@ func TestServeGitWorkingTreeFiles_UncommittedFiles(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	assert.Equal(t, true, resp["hasUncommitted"])
 }
@@ -651,7 +651,7 @@ func TestServeGitWorkingTreeFiles_NotGitRepo(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["isGit"])
 	assert.Equal(t, false, resp["hasUncommitted"])
 }
@@ -672,7 +672,7 @@ func TestServeGitWorkingTreeFiles_SpecificFileCheck(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	assert.Equal(t, true, resp["hasUncommitted"])
 }
@@ -690,7 +690,7 @@ func TestServeGitWorkingTreeFiles_NoChanges(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	assert.Equal(t, false, resp["hasUncommitted"])
 }
@@ -713,7 +713,7 @@ func TestServeGitVerifyCommits_SingleCommit(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	results, ok := resp["results"].(map[string]interface{})
 	assert.True(t, ok)
 	info, ok := results[sha].(map[string]interface{})
@@ -742,8 +742,8 @@ func TestServeGitVerifyCommits_MultipleCommits(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	results := resp["results"].(map[string]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	results, _ := resp["results"].(map[string]interface{})
 	assert.NotNil(t, results[sha1])
 	assert.NotNil(t, results[sha2])
 }
@@ -764,8 +764,8 @@ func TestServeGitVerifyCommits_MixedValidInvalid(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	results := resp["results"].(map[string]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	results, _ := resp["results"].(map[string]interface{})
 	assert.NotNil(t, results[sha])
 	assert.Nil(t, results["0000000000000000000000000000000000000000"])
 }
@@ -787,8 +787,8 @@ func TestServeGitVerifyCommits_AbbreviatedSHA(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	results := resp["results"].(map[string]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
+	results, _ := resp["results"].(map[string]interface{})
 	// Result should be keyed by the requested abbreviated SHA, not the full SHA
 	info, ok := results[abbrevSHA].(map[string]interface{})
 	assert.True(t, ok, "abbreviated SHA should resolve to a valid commit")
@@ -890,13 +890,13 @@ func TestServeGitProjectHistory_IncludesParents(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	commits, ok := resp["commits"].([]interface{})
 	assert.True(t, ok)
 	assert.GreaterOrEqual(t, len(commits), 2)
 
 	// First commit (most recent) should have parents
-	first := commits[0].(map[string]interface{})
+	first, _ := commits[0].(map[string]interface{})
 	parents, ok := first["parents"].([]interface{})
 	assert.True(t, ok)
 	assert.GreaterOrEqual(t, len(parents), 1)
@@ -1021,7 +1021,7 @@ func TestServeGitWorktrees_NotGitRepo(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["isGit"])
 	worktrees, ok := resp["worktrees"].([]interface{})
 	assert.True(t, ok)
@@ -1041,17 +1041,18 @@ func TestServeGitWorktrees_SingleWorktree(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	worktrees, ok := resp["worktrees"].([]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, 1, len(worktrees))
 
-	wt := worktrees[0].(map[string]interface{})
+	wt, _ := worktrees[0].(map[string]interface{})
 	assert.Equal(t, true, wt["isCurrent"])
 	// Resolve symlinks before comparing — macOS /var is a symlink to /private/var,
 	// so os.Getwd() returns /private/var/... while t.TempDir() returns /var/...
-	actualPath, _ := filepath.EvalSymlinks(wt["path"].(string))
+	pathStr, _ := wt["path"].(string)
+	actualPath, _ := filepath.EvalSymlinks(pathStr)
 	expectedPath, _ := filepath.EvalSymlinks(env.ProjectDir)
 	assert.Equal(t, expectedPath, actualPath)
 }
@@ -1156,7 +1157,7 @@ func TestServeGitBranches_NotGitRepo(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["isGit"])
 	assert.Equal(t, "", resp["defaultBranch"])
 	assert.Equal(t, "", resp["currentBranch"])
@@ -1178,13 +1179,13 @@ func TestServeGitBranches_SingleBranch(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	branches, ok := resp["branches"].([]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, 1, len(branches))
 
-	b := branches[0].(map[string]interface{})
+	b, _ := branches[0].(map[string]interface{})
 	assert.Equal(t, true, b["isCurrent"])
 	assert.Equal(t, true, b["isDefault"])
 }
@@ -1272,7 +1273,7 @@ func TestServeGitCheckout_DirtyWorktree(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "dirty_worktree", resp["error"])
 	assert.NotNil(t, resp["untrackedCount"])
@@ -1308,7 +1309,7 @@ func TestServeGitCheckout_DirtyWithStash(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["success"])
 	assert.Equal(t, "feature-x", resp["branch"])
 	assert.Equal(t, true, resp["stashed"])
@@ -1342,7 +1343,7 @@ func TestServeGitCheckout_Success(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["success"])
 	assert.Equal(t, "feature-y", resp["branch"])
 	assert.Equal(t, false, resp["stashed"])
@@ -1390,7 +1391,7 @@ func TestServeGitCheckout_Conflict(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "checkout_failed", resp["error"])
 	assert.NotNil(t, resp["errorDetail"])
@@ -1414,7 +1415,7 @@ func TestServeGitCheckout_MutexConcurrency(t *testing.T) {
 	assertStatus(t, w, http.StatusConflict)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "checkout_in_progress", resp["error"])
 
@@ -1449,7 +1450,7 @@ func TestServeGitCheckout_ForceFlag(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["success"])
 	assert.Equal(t, "feature-force", resp["branch"])
 }
@@ -1994,7 +1995,7 @@ func TestServeGitTags_NotGitRepo(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["isGit"])
 	tags, ok := resp["tags"].([]interface{})
 	assert.True(t, ok)
@@ -2038,7 +2039,7 @@ func TestServeGitTags_NoTags(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	tags, ok := resp["tags"].([]interface{})
 	assert.True(t, ok)
@@ -2069,13 +2070,13 @@ func TestServeGitTags_LightweightTag(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	tags, ok := resp["tags"].([]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, 1, len(tags))
 
-	tag := tags[0].(map[string]interface{})
+	tag, _ := tags[0].(map[string]interface{})
 	assert.Equal(t, "v1.0", tag["name"])
 	assert.Equal(t, sha, tag["sha"])
 	assert.NotEmpty(t, tag["date"])
@@ -2106,13 +2107,13 @@ func TestServeGitTags_AnnotatedTag(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	tags, ok := resp["tags"].([]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, 1, len(tags))
 
-	tag := tags[0].(map[string]interface{})
+	tag, _ := tags[0].(map[string]interface{})
 	assert.Equal(t, "v2.0", tag["name"])
 	assert.Equal(t, "Release v2.0", tag["msg"])
 	assert.NotEmpty(t, tag["date"])
@@ -2142,7 +2143,7 @@ func TestServeGitTags_MultipleTags(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	tags, ok := resp["tags"].([]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, 2, len(tags))
@@ -2167,13 +2168,13 @@ func TestServeGitWorktrees_ChangeCountDirty(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["isGit"])
 	worktrees, ok := resp["worktrees"].([]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, 1, len(worktrees))
 
-	wt := worktrees[0].(map[string]interface{})
+	wt, _ := worktrees[0].(map[string]interface{})
 	assert.Equal(t, true, wt["dirty"])
 	// changeCount should be >= 2 (one modified, one untracked)
 	changeCount, ok := wt["changeCount"].(float64)
@@ -2200,12 +2201,12 @@ func TestServeGitWorktrees_ChangeCountClean(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	worktrees, ok := resp["worktrees"].([]interface{})
 	assert.True(t, ok)
 	assert.Equal(t, 1, len(worktrees))
 
-	wt := worktrees[0].(map[string]interface{})
+	wt, _ := worktrees[0].(map[string]interface{})
 	assert.Equal(t, false, wt["dirty"])
 	// changeCount should be 0 for clean worktree
 	changeCount, ok := wt["changeCount"].(float64)
@@ -2240,7 +2241,7 @@ func TestServeGitDeleteBranch_Success(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["success"])
 }
 
@@ -2259,7 +2260,7 @@ func TestServeGitDeleteBranch_CurrentBranch(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "cannot_delete_current", resp["error"])
 }
@@ -2290,7 +2291,7 @@ func TestServeGitDeleteBranch_DefaultBranch(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "cannot_delete_default", resp["error"])
 }
@@ -2310,7 +2311,7 @@ func TestServeGitDeleteBranch_NotFound(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "branch_not_found", resp["error"])
 }
@@ -2373,7 +2374,7 @@ func TestServeGitDeleteBranch_UnmergedForce(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["success"])
 }
 
@@ -2405,7 +2406,7 @@ func TestServeGitDeleteWorktree_Success(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["success"])
 }
 
@@ -2424,7 +2425,7 @@ func TestServeGitDeleteWorktree_CurrentWorktree(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "cannot_delete_current", resp["error"])
 }
@@ -2474,7 +2475,7 @@ func TestServeGitDeleteWorktree_PathTraversalRejected(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "path_not_allowed", resp["error"])
 }
@@ -2505,7 +2506,7 @@ func TestServeGitDeleteTag_Success(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["success"])
 }
 
@@ -2524,7 +2525,7 @@ func TestServeGitDeleteTag_NotFound(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["success"])
 	assert.Equal(t, "delete_failed", resp["error"])
 }
@@ -2602,7 +2603,7 @@ func TestServeGitVerifyWorktrees_SingleWorktree(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	results, ok := resp["results"].(map[string]interface{})
 	assert.True(t, ok)
 	info, ok := results[env.ProjectDir].(map[string]interface{})
@@ -2626,7 +2627,7 @@ func TestServeGitVerifyWorktrees_NonWorktreePath(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	results, ok := resp["results"].(map[string]interface{})
 	assert.True(t, ok)
 	assert.Nil(t, results["/tmp/nonexistent-worktree-path"])
@@ -2647,7 +2648,7 @@ func TestServeGitVerifyWorktrees_RelativePath(t *testing.T) {
 	}
 	run("git", "branch", "feature-x")
 	run("git", "worktree", "add", ".worktrees/feature-x", "feature-x")
-	defer os.RemoveAll(filepath.Join(env.ProjectDir, ".worktrees"))
+	defer func() { _ = os.RemoveAll(filepath.Join(env.ProjectDir, ".worktrees")) }()
 
 	req := newRequest(t, http.MethodPost, "/api/git/verify-worktrees", map[string]interface{}{
 		"paths": []string{".worktrees/feature-x"},
@@ -2658,7 +2659,7 @@ func TestServeGitVerifyWorktrees_RelativePath(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	results, ok := resp["results"].(map[string]interface{})
 	assert.True(t, ok)
 
@@ -2691,7 +2692,7 @@ func TestServeGitVerifyWorktrees_EmptyPaths(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	results, ok := resp["results"].(map[string]interface{})
 	assert.True(t, ok)
 	assert.Empty(t, results)
@@ -2756,7 +2757,7 @@ func TestServeGitVerifyWorktrees_NonGitDir(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	results, ok := resp["results"].(map[string]interface{})
 	assert.True(t, ok)
 	assert.Empty(t, results, "non-git dir should return empty results")
@@ -2782,7 +2783,7 @@ func TestServeGitVerifyWorktrees_MaxPathsTruncation(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	results, ok := resp["results"].(map[string]interface{})
 	assert.True(t, ok)
 	assert.LessOrEqual(t, len(results), 100, "results should be truncated to maxPaths=100")
@@ -2806,7 +2807,7 @@ func TestServeGitVerifyWorktrees_MultipleWorktrees(t *testing.T) {
 	run("git", "worktree", "add", ".worktrees/feature-a", "feature-a")
 	run("git", "branch", "feature-b")
 	run("git", "worktree", "add", ".worktrees/feature-b", "feature-b")
-	defer os.RemoveAll(filepath.Join(env.ProjectDir, ".worktrees"))
+	defer func() { _ = os.RemoveAll(filepath.Join(env.ProjectDir, ".worktrees")) }()
 
 	featureAPath := filepath.Join(env.ProjectDir, ".worktrees/feature-a")
 	featureBPath := filepath.Join(env.ProjectDir, ".worktrees/feature-b")
@@ -2820,7 +2821,7 @@ func TestServeGitVerifyWorktrees_MultipleWorktrees(t *testing.T) {
 	assertOK(t, w)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	results, ok := resp["results"].(map[string]interface{})
 	assert.True(t, ok)
 
@@ -2842,19 +2843,19 @@ func TestIsValidGitSHA(t *testing.T) {
 		sha  string
 		want bool
 	}{
-		{"abc1234", true},                     // 7-char abbreviated SHA
-		{"abc123def456", true},                 // 12-char abbreviated SHA
+		{"abc1234", true},      // 7-char abbreviated SHA
+		{"abc123def456", true}, // 12-char abbreviated SHA
 		{"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0", true}, // 40-char full SHA
-		{"abcdef", true},                       // 6-char minimum
-		{"ABCDE", false},                       // uppercase, too short
-		{"abcde", false},                       // 5 chars, too short
-		{"", false},                            // empty
-		{"--upload-pack=evil", false},          // argument injection attempt
-		{"-c", false},                          // flag-like
-		{"abc123; rm -rf /", false},            // shell injection attempt
-		{"g123456", false},                     // non-hex char 'g'
-		{"12345abcde", true},                   // digits + hex
-		{"HEAD", true},                         // HEAD is a safe git ref for working tree diffs
+		{"abcdef", true},              // 6-char minimum
+		{"ABCDE", false},              // uppercase, too short
+		{"abcde", false},              // 5 chars, too short
+		{"", false},                   // empty
+		{"--upload-pack=evil", false}, // argument injection attempt
+		{"-c", false},                 // flag-like
+		{"abc123; rm -rf /", false},   // shell injection attempt
+		{"g123456", false},            // non-hex char 'g'
+		{"12345abcde", true},          // digits + hex
+		{"HEAD", true},                // HEAD is a safe git ref for working tree diffs
 	}
 	for _, tt := range tests {
 		t.Run(tt.sha, func(t *testing.T) {
@@ -2874,17 +2875,17 @@ func TestIsValidGitRefName(t *testing.T) {
 		{"release/v1.0", true},
 		{"fix_bug", true},
 		{"v1.0", true},
-		{"", false},                          // empty
-		{"-c", false},                        // starts with dash
-		{"--upload-pack=evil", false},        // starts with dash
-		{"-m", false},                        // starts with dash
-		{"branch with spaces", false},        // contains spaces
-		{"branch\twith\ttabs", false},        // contains tabs
-		{"branch\nnewline", false},           // contains newline
-		{"branch\x00null", false},            // contains NUL byte
-		{"feature-x.y", true},               // dots are fine
-		{"a", true},                          // single char
-		{"release/1.0.0", true},             // complex but valid
+		{"", false},                   // empty
+		{"-c", false},                 // starts with dash
+		{"--upload-pack=evil", false}, // starts with dash
+		{"-m", false},                 // starts with dash
+		{"branch with spaces", false}, // contains spaces
+		{"branch\twith\ttabs", false}, // contains tabs
+		{"branch\nnewline", false},    // contains newline
+		{"branch\x00null", false},     // contains NUL byte
+		{"feature-x.y", true},         // dots are fine
+		{"a", true},                   // single char
+		{"release/1.0.0", true},       // complex but valid
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -2909,7 +2910,7 @@ func TestServeGitFileDiff_InvalidSHA(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "InvalidSHA", resp["msgKey"])
 }
 
@@ -2926,7 +2927,7 @@ func TestServeGitCommitFiles_InvalidSHA(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "InvalidSHA", resp["msgKey"])
 }
 
@@ -2945,7 +2946,7 @@ func TestServeGitVerifyCommits_ArgInjectionSHA(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "InvalidSHA", resp["msgKey"])
 }
 
@@ -2981,7 +2982,7 @@ func TestServeGitCheckout_FlagAsBranchName(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "InvalidBranchName", resp["msgKey"])
 }
 
@@ -3015,7 +3016,7 @@ func TestServeGitDeleteBranch_FlagAsBranchName(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "invalid_branch_name", resp["error"])
 }
 
@@ -3034,7 +3035,7 @@ func TestServeGitDeleteTag_FlagAsTagName(t *testing.T) {
 	assertStatus(t, w, http.StatusBadRequest)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "invalid_tag_name", resp["error"])
 }
 

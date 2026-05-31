@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -9,7 +10,7 @@ import (
 )
 
 // ServeChatHistory handles GET (list), POST (add), DELETE (clear) for chat history.
-func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
+func ServeChatHistory(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo // multi-method chat history handler
 	projectPath, ok := requireProject(w, r)
 	if !ok {
 		return
@@ -30,7 +31,7 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 					agentID := model.GetDefaultAgentID()
 					backend, _, _, _, ok := resolveAgentConfig(agentID)
 					if !ok {
-				writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
+						writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "NoAgentsAvailable")
 						return
 					}
 					// Don't pre-fill agent default model — leave empty so frontend
@@ -46,15 +47,15 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 				setSessionID(w, sessionID)
 			}
 		}
-	// ISS-077: Verify the session belongs to the requesting project
-	sessionProject := service.GetSessionProjectPath(sessionID)
-	if sessionProject != projectPath {
-		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
-		return
-	}
-	backend := service.GetSessionBackend(sessionID)
+		// ISS-077: Verify the session belongs to the requesting project
+		sessionProject := service.GetSessionProjectPath(sessionID)
+		if sessionProject != projectPath {
+			writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
+			return
+		}
+		backend := service.GetSessionBackend(sessionID)
 		if backend == "" {
-		writeLocalizedErrorf(w, r, http.StatusNotFound, "SessionNotFound")
+			writeLocalizedErrorf(w, r, http.StatusNotFound, "SessionNotFound")
 			return
 		}
 		messages, err := service.GetChatHistory(projectPath, backend, sessionID)
@@ -76,7 +77,7 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if req.Role != "user" && req.Role != "assistant" {
-		writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRole")
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRole")
 			return
 		}
 		sessionID := req.SessionID
@@ -90,7 +91,7 @@ func ServeChatHistory(w http.ResponseWriter, r *http.Request) {
 		}
 		backend := service.GetSessionBackend(sessionID)
 		if backend == "" {
-		writeLocalizedErrorf(w, r, http.StatusBadRequest, "SessionNotFound")
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "SessionNotFound")
 			return
 		}
 		if _, err := service.AddChatMessage(projectPath, backend, sessionID, req.Role, req.Content, req.Files, false, T(r, "NewSession")); err != nil {

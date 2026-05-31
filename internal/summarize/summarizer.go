@@ -138,7 +138,7 @@ func (g *ttsPipeline) Summarize(ctx context.Context, text string, language strin
 		second, err := g.passFn(ctx, result, prompt, 2)
 		if err != nil {
 			// On second pass failure, use first pass result
-			return postProcess(result, g.opts.PreserveMarkdown), nil
+			return postProcess(result, g.opts.PreserveMarkdown), nil //nolint:nilerr // intentional: fallback to first pass on second pass failure
 		}
 		result = second
 	}

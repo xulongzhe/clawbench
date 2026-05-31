@@ -28,10 +28,10 @@ func setupIndexerDB(t *testing.T) *sql.DB {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.ExecContext(context.Background(), "PRAGMA journal_mode=WAL")
+	_, _ = db.ExecContext(context.Background(), "PRAGMA busy_timeout=5000")
 
-	_, err = db.Exec(`
+	_, err = db.ExecContext(context.Background(), `
 		CREATE TABLE IF NOT EXISTS chat_history (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			project_path TEXT NOT NULL,
@@ -42,6 +42,7 @@ func setupIndexerDB(t *testing.T) *sql.DB {
 			backend TEXT NOT NULL DEFAULT 'claude',
 			streaming INTEGER NOT NULL DEFAULT 0,
 			indexed INTEGER NOT NULL DEFAULT 0,
+			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 		CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -52,7 +53,6 @@ func setupIndexerDB(t *testing.T) *sql.DB {
 			agent_id TEXT DEFAULT '',
 			agent_source TEXT DEFAULT 'default',
 			model TEXT DEFAULT '',
-			external_session_id TEXT DEFAULT '',
 			session_type TEXT NOT NULL DEFAULT 'chat',
 			deleted INTEGER NOT NULL DEFAULT 0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -70,31 +70,31 @@ func setupIndexerDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() {
 		service.DB = origDB
 		service.DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	})
 	return db
 }
 
 // newHealthyMockEmbedder creates a mock server that responds to both
 // /v1/models (health) and /v1/embeddings (embed).
-func newHealthyMockEmbedder(t *testing.T) (*EmbeddingClient, func()) {
+func newHealthyMockEmbedder(t *testing.T) (_ *EmbeddingClient, cleanup func()) {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/models":
+		case testV1Models:
 			resp := openaiModelsResponse{
-				Data: []openaiModelInfo{{ID: "bge-m3:latest"}},
+				Data: []openaiModelInfo{{ID: testModelBgeM3Latest}},
 			}
-			json.NewEncoder(w).Encode(resp)
-		case "/v1/embeddings":
+			_ = json.NewEncoder(w).Encode(resp)
+		case testV1Embeddings:
 			var req openaiEmbedRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			data := make([]openaiEmbeddingData, len(req.Input))
 			for i := range req.Input {
 				data[i] = openaiEmbeddingData{Embedding: makeTestEmbedding(1024), Index: i}
 			}
 			resp := openaiEmbedResponse{Data: data}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -112,7 +112,7 @@ func TestNewIndexer_Construction(t *testing.T) {
 	defer cleanup()
 
 	idx := NewIndexer(store, embedder, model.RAGConfig{
-		PollInterval: "10s",
+		PollInterval: testPollInterval10s,
 		BatchSize:    10,
 		ChunkSize:    512,
 		ChunkOverlap: 64,
@@ -131,7 +131,7 @@ func TestIndexer_StartStop(t *testing.T) {
 	defer cleanup()
 
 	idx := NewIndexer(store, embedder, model.RAGConfig{
-		PollInterval: "24h", // long interval so indexBatch only runs once
+		PollInterval: testPollInterval24h, // long interval so indexBatch only runs once
 		BatchSize:    10,
 		ChunkSize:    512,
 		ChunkOverlap: 64,
@@ -152,7 +152,7 @@ func TestIndexer_DoubleStart(t *testing.T) {
 	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
-	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: "24h"})
+	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: testPollInterval24h})
 	t.Cleanup(func() { SetEmbedderHealthy(false) })
 
 	idx.Start()
@@ -168,7 +168,7 @@ func TestIndexer_DoubleStop(t *testing.T) {
 	embedder, cleanup := newHealthyMockEmbedder(t)
 	defer cleanup()
 
-	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: "24h"})
+	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: testPollInterval24h})
 	t.Cleanup(func() { SetEmbedderHealthy(false) })
 
 	// Stop before start — should be no-op
@@ -189,7 +189,7 @@ func TestIndexer_indexBatch_EmbedderNotReachable(t *testing.T) {
 	// Use a client pointing to a non-existent server
 	embedder := NewEmbeddingClient("http://127.0.0.1:1", "bge-m3", "")
 
-	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: "10s"})
+	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: testPollInterval10s})
 	t.Cleanup(func() { SetEmbedderHealthy(false) })
 
 	// indexBatch should return early when embedder is unreachable
@@ -202,18 +202,18 @@ func TestIndexer_indexBatch_ModelNotAvailable(t *testing.T) {
 	store := setupTestStore(t)
 
 	// Mock server where model is not available
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := openaiModelsResponse{
-			Data: []openaiModelInfo{{ID: "other-model:latest"}},
+			Data: []openaiModelInfo{{ID: testOtherModelLatest}},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
 	embedder := NewEmbeddingClient(server.URL, "bge-m3", "")
 	embedder.HTTPClient = server.Client()
 
-	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: "10s"})
+	idx := NewIndexer(store, embedder, model.RAGConfig{PollInterval: testPollInterval10s})
 	t.Cleanup(func() { SetEmbedderHealthy(false) })
 	idx.indexBatch()
 
@@ -236,10 +236,10 @@ func TestIndexer_indexMessage_EmptyContent(t *testing.T) {
 	msg := service.UnindexedMessage{
 		ID:          1,
 		Content:     `{"blocks":[{"type":"tool_use","name":"Read","id":"t1"}]}`,
-		Role:        "assistant",
-		SessionID:   "sess-1",
-		ProjectPath: "/test",
-		Backend:     "claude",
+		Role:        testRoleAssistant,
+		SessionID:   testSession1,
+		ProjectPath: testProjectPath,
+		Backend:     testBackendClaude,
 		CreatedAt:   time.Now(),
 	}
 
@@ -261,10 +261,10 @@ func TestIndexer_indexMessage_Success(t *testing.T) {
 	msg := service.UnindexedMessage{
 		ID:          1,
 		Content:     "This is a test message with some content to index.",
-		Role:        "user",
-		SessionID:   "sess-1",
-		ProjectPath: "/test",
-		Backend:     "claude",
+		Role:        testRoleUser,
+		SessionID:   testSession1,
+		ProjectPath: testProjectPath,
+		Backend:     testBackendClaude,
 		CreatedAt:   time.Now(),
 	}
 
@@ -297,7 +297,7 @@ func TestIndexer_checkEmbedderHealth_Error(t *testing.T) {
 	store := setupTestStore(t)
 
 	// Server that returns 500 on /v1/models
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -345,11 +345,11 @@ func TestIndexer_checkEmbedderHealth_ModelNotAvailable(t *testing.T) {
 	setupIndexerDB(t)
 	store := setupTestStore(t)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := openaiModelsResponse{
-			Data: []openaiModelInfo{{ID: "other-model:latest"}},
+			Data: []openaiModelInfo{{ID: testOtherModelLatest}},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -380,13 +380,13 @@ func TestIndexer_indexNewMessages_WithMessages(t *testing.T) {
 
 	// Insert unindexed messages into SQLite
 	now := time.Now().Truncate(time.Millisecond)
-	_, err := db.Exec(`INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
+	_, err := db.ExecContext(context.Background(), `INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		"/test", "user", "Hello, this is a test message", "sess-1", "claude", now)
+		testProjectPath, testRoleUser, "Hello, this is a test message", testSession1, testBackendClaude, now)
 	require.NoError(t, err)
-	_, err = db.Exec(`INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
+	_, err = db.ExecContext(context.Background(), `INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		"/test", "assistant", `{"blocks":[{"type":"text","text":"This is the response"}]}`, "sess-1", "claude", now)
+		testProjectPath, testRoleAssistant, `{"blocks":[{"type":"text","text":"This is the response"}]}`, testSession1, testBackendClaude, now)
 	require.NoError(t, err)
 
 	idx.indexNewMessages(context.Background())
@@ -396,7 +396,7 @@ func TestIndexer_indexNewMessages_WithMessages(t *testing.T) {
 
 	// Verify messages are marked as indexed
 	var indexedCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM chat_history WHERE indexed = 1").Scan(&indexedCount)
+	err = db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM chat_history WHERE indexed = 1").Scan(&indexedCount)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, indexedCount, "messages should be marked as indexed")
 }
@@ -427,16 +427,16 @@ func TestIndexer_indexNewMessages_EmptyContentSkipped(t *testing.T) {
 	idx.embedderHealthy = true
 
 	// Insert a message with only tool_use blocks (no text content)
-	_, err := db.Exec(`INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
+	_, err := db.ExecContext(context.Background(), `INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		"/test", "assistant", `{"blocks":[{"type":"tool_use","name":"Read","id":"t1"}]}`, "sess-1", "claude", time.Now())
+		testProjectPath, testRoleAssistant, `{"blocks":[{"type":"tool_use","name":"Read","id":"t1"}]}`, testSession1, testBackendClaude, time.Now())
 	require.NoError(t, err)
 
 	idx.indexNewMessages(context.Background())
 
 	// The message should be marked indexed but no chunks should be stored
 	var indexedCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM chat_history WHERE indexed = 1").Scan(&indexedCount)
+	err = db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM chat_history WHERE indexed = 1").Scan(&indexedCount)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, indexedCount, "message should be marked indexed")
 
@@ -454,9 +454,9 @@ func TestIndexer_indexNewMessages_WithoutEmbedder(t *testing.T) {
 	idx.embedderHealthy = false // Embedder not healthy — text-only indexing
 
 	// Insert a message
-	_, err := db.Exec(`INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
+	_, err := db.ExecContext(context.Background(), `INSERT INTO chat_history (project_path, role, content, session_id, backend, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)`,
-		"/test", "user", "Text-only indexing test", "sess-1", "claude", time.Now())
+		testProjectPath, testRoleUser, "Text-only indexing test", testSession1, testBackendClaude, time.Now())
 	require.NoError(t, err)
 
 	idx.indexNewMessages(context.Background())
@@ -482,17 +482,17 @@ func TestIndexer_backfillEmbeddings_Success(t *testing.T) {
 
 	// Insert a chunk without embedding (simulating text-only indexing)
 	chunk := Chunk{
-		SessionID:          "sess-1",
+		SessionID:          testSession1,
 		MessageID:          1,
-		ChunkText:          "needs backfill",
-		ChunkTextSegmented: "needs backfill",
+		ChunkText:          testNeedsBackfill,
+		ChunkTextSegmented: testNeedsBackfill,
 		ChunkIndex:         0,
 		TokenCount:         3,
 		Embedding:          nil,
 		HasEmbedding:       false,
-		ProjectPath:        "/test",
-		Backend:            "claude",
-		Role:               "assistant",
+		ProjectPath:        testProjectPath,
+		Backend:            testBackendClaude,
+		Role:               testRoleAssistant,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk})
@@ -526,9 +526,10 @@ func TestIndexer_backfillEmbeddings_EmbeddingFails(t *testing.T) {
 
 	// Server that returns 500 on embeddings endpoint
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" {
-			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
-		} else if r.URL.Path == "/v1/embeddings" {
+		switch r.URL.Path {
+		case testV1Models:
+			_ = json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: testModelBgeM3Latest}}})
+		case testV1Embeddings:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
@@ -542,17 +543,17 @@ func TestIndexer_backfillEmbeddings_EmbeddingFails(t *testing.T) {
 
 	// Insert a chunk without embedding
 	chunk := Chunk{
-		SessionID:          "sess-1",
+		SessionID:          testSession1,
 		MessageID:          1,
-		ChunkText:          "needs backfill",
-		ChunkTextSegmented: "needs backfill",
+		ChunkText:          testNeedsBackfill,
+		ChunkTextSegmented: testNeedsBackfill,
 		ChunkIndex:         0,
 		TokenCount:         3,
 		Embedding:          nil,
 		HasEmbedding:       false,
-		ProjectPath:        "/test",
-		Backend:            "claude",
-		Role:               "assistant",
+		ProjectPath:        testProjectPath,
+		Backend:            testBackendClaude,
+		Role:               testRoleAssistant,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk})
@@ -595,9 +596,10 @@ func TestIndexer_indexMessage_EmbeddingFails(t *testing.T) {
 
 	// Server where embedding endpoint returns 500
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" {
-			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
-		} else if r.URL.Path == "/v1/embeddings" {
+		switch r.URL.Path {
+		case testV1Models:
+			_ = json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: testModelBgeM3Latest}}})
+		case testV1Embeddings:
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
@@ -612,10 +614,10 @@ func TestIndexer_indexMessage_EmbeddingFails(t *testing.T) {
 	msg := service.UnindexedMessage{
 		ID:          1,
 		Content:     "Test message when embedding fails",
-		Role:        "user",
-		SessionID:   "sess-1",
-		ProjectPath: "/test",
-		Backend:     "claude",
+		Role:        testRoleUser,
+		SessionID:   testSession1,
+		ProjectPath: testProjectPath,
+		Backend:     testBackendClaude,
 		CreatedAt:   time.Now(),
 	}
 
@@ -642,10 +644,10 @@ func TestIndexer_indexMessage_AssistantWithText(t *testing.T) {
 	msg := service.UnindexedMessage{
 		ID:          1,
 		Content:     `{"blocks":[{"type":"text","text":"Here is the answer."},{"type":"tool_use","name":"Read","id":"t1"}]}`,
-		Role:        "assistant",
-		SessionID:   "sess-1",
-		ProjectPath: "/test",
-		Backend:     "claude",
+		Role:        testRoleAssistant,
+		SessionID:   testSession1,
+		ProjectPath: testProjectPath,
+		Backend:     testBackendClaude,
 		CreatedAt:   time.Now(),
 	}
 
@@ -667,17 +669,17 @@ func TestIndexer_indexMessage_LargeMessage(t *testing.T) {
 
 	// Generate a message that will produce many chunks
 	longText := ""
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		longText += "This is sentence number that adds to the total content. "
 	}
 
 	msg := service.UnindexedMessage{
 		ID:          1,
 		Content:     longText,
-		Role:        "user",
-		SessionID:   "sess-1",
-		ProjectPath: "/test",
-		Backend:     "claude",
+		Role:        testRoleUser,
+		SessionID:   testSession1,
+		ProjectPath: testProjectPath,
+		Backend:     testBackendClaude,
 		CreatedAt:   time.Now(),
 	}
 
@@ -701,10 +703,10 @@ func TestIndexer_backfillEmbeddings_ZeroBatchSize(t *testing.T) {
 
 	// Insert a chunk without embedding
 	chunk := Chunk{
-		SessionID: "sess-1", MessageID: 1, ChunkText: "test backfill",
+		SessionID: testSession1, MessageID: 1, ChunkText: "test backfill",
 		ChunkTextSegmented: "test backfill", ChunkIndex: 0, TokenCount: 3,
 		Embedding: nil, HasEmbedding: false,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk})
@@ -729,10 +731,10 @@ func TestIndexer_backfillEmbeddings_LargeBatchSize(t *testing.T) {
 
 	// Insert a single chunk without embedding
 	chunk := Chunk{
-		SessionID: "sess-1", MessageID: 1, ChunkText: "test cap",
+		SessionID: testSession1, MessageID: 1, ChunkText: "test cap",
 		ChunkTextSegmented: "test cap", ChunkIndex: 0, TokenCount: 3,
 		Embedding: nil, HasEmbedding: false,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk})
@@ -797,11 +799,11 @@ func TestIndexer_checkEmbedderHealth_ModelNotAvailableRepeated(t *testing.T) {
 	setupIndexerDB(t)
 	store := setupTestStore(t)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		resp := openaiModelsResponse{
-			Data: []openaiModelInfo{{ID: "other-model:latest"}},
+			Data: []openaiModelInfo{{ID: testOtherModelLatest}},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -831,10 +833,10 @@ func TestIndexer_indexMessage_EmbeddingSuccessWithChunks(t *testing.T) {
 	msg := service.UnindexedMessage{
 		ID:          1,
 		Content:     "This is a test message for embedding success.",
-		Role:        "user",
-		SessionID:   "sess-1",
-		ProjectPath: "/test",
-		Backend:     "claude",
+		Role:        testRoleUser,
+		SessionID:   testSession1,
+		ProjectPath: testProjectPath,
+		Backend:     testBackendClaude,
 		CreatedAt:   time.Now(),
 	}
 
@@ -862,10 +864,10 @@ func TestIndexer_indexMessage_NoChunks(t *testing.T) {
 	msg := service.UnindexedMessage{
 		ID:          1,
 		Content:     "Hi",
-		Role:        "user",
-		SessionID:   "sess-1",
-		ProjectPath: "/test",
-		Backend:     "claude",
+		Role:        testRoleUser,
+		SessionID:   testSession1,
+		ProjectPath: testProjectPath,
+		Backend:     testBackendClaude,
 		CreatedAt:   time.Now(),
 	}
 
@@ -882,17 +884,17 @@ func TestIndexer_backfillEmbeddings_NilEmbedding(t *testing.T) {
 	// Mock server that returns nil embedding for one item
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v1/models":
-			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
-		case "/v1/embeddings":
+		case testV1Models:
+			_ = json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: testModelBgeM3Latest}}})
+		case testV1Embeddings:
 			var req openaiEmbedRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			data := make([]openaiEmbeddingData, len(req.Input))
 			for i := range req.Input {
 				data[i] = openaiEmbeddingData{Embedding: makeTestEmbedding(1024), Index: i}
 			}
 			resp := openaiEmbedResponse{Data: data}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -906,12 +908,12 @@ func TestIndexer_backfillEmbeddings_NilEmbedding(t *testing.T) {
 	idx.embedderHealthy = true
 
 	// Insert two chunks without embedding
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		chunk := Chunk{
-			SessionID: "sess-1", MessageID: int64(i + 1), ChunkText: fmt.Sprintf("text %d", i),
+			SessionID: testSession1, MessageID: int64(i + 1), ChunkText: fmt.Sprintf("text %d", i),
 			ChunkTextSegmented: fmt.Sprintf("text %d", i), ChunkIndex: 0, TokenCount: 3,
 			Embedding: nil, HasEmbedding: false,
-			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		}
 		err := store.InsertChunks([]Chunk{chunk})

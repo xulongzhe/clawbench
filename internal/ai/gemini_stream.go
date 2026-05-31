@@ -36,8 +36,8 @@ type GeminiStreamMessage struct {
 	Message  string `json:"message"`  // error message
 
 	// result event fields
-	Error  *GeminiResultError `json:"error"`  // only when status="error"
-	Stats  *GeminiStreamStats `json:"stats"`
+	Error *GeminiResultError `json:"error"` // only when status="error"
+	Stats *GeminiStreamStats `json:"stats"`
 }
 
 // GeminiResultError represents the error field in a result event
@@ -79,6 +79,8 @@ func (p *GeminiStreamParser) GetCapturedSessionID() string { return "" }
 
 // ParseLine parses a single JSON line from Gemini's stream-json output and sends
 // StreamEvent(s) to the provided channel.
+//
+//nolint:gocognit,gocyclo // complex stream parsing logic
 func (p *GeminiStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 	var msg GeminiStreamMessage
 	if err := json.Unmarshal([]byte(line), &msg); err != nil {
@@ -197,4 +199,3 @@ func buildGeminiStreamArgs(req ChatRequest) []string {
 
 	return args
 }
-

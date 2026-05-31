@@ -1,3 +1,4 @@
+// Package ai implements AI backend abstractions for streaming chat with various CLI tools.
 package ai
 
 import (
@@ -18,6 +19,8 @@ import (
 // This prevents a single thinking or text block from being fragmented into many
 // tiny blocks when events alternate, while preserving the semantic separation
 // around tool calls.
+//
+//nolint:gocognit,gocyclo // complex stream parsing logic
 func AccumulateBlock(blocks *[]model.ContentBlock, event StreamEvent) {
 	// findLastBlockOfType searches backward for the most recent block of the
 	// given type, but stops at tool_use boundaries (they are natural separators).
@@ -54,7 +57,7 @@ func AccumulateBlock(blocks *[]model.ContentBlock, event StreamEvent) {
 			// Parse tool input JSON into map
 			var input map[string]any
 			if event.Tool.Input != "" {
-				json.Unmarshal([]byte(event.Tool.Input), &input)
+				_ = json.Unmarshal([]byte(event.Tool.Input), &input)
 			}
 			if input == nil {
 				input = make(map[string]any)
@@ -62,18 +65,19 @@ func AccumulateBlock(blocks *[]model.ContentBlock, event StreamEvent) {
 			// Find existing block by tool ID and update, or append new
 			found := false
 			for i := len(*blocks) - 1; i >= 0; i-- {
-				if (*blocks)[i].Type == "tool_use" && (*blocks)[i].ID == event.Tool.ID {
-					(*blocks)[i].Input = input
-					(*blocks)[i].Done = event.Tool.Done
-					if event.Tool.Output != "" {
-						(*blocks)[i].Output = event.Tool.Output
-					}
-					if event.Tool.Status != "" {
-						(*blocks)[i].Status = event.Tool.Status
-					}
-					found = true
-					break
+				if (*blocks)[i].Type != "tool_use" || (*blocks)[i].ID != event.Tool.ID {
+					continue
 				}
+				(*blocks)[i].Input = input
+				(*blocks)[i].Done = event.Tool.Done
+				if event.Tool.Output != "" {
+					(*blocks)[i].Output = event.Tool.Output
+				}
+				if event.Tool.Status != "" {
+					(*blocks)[i].Status = event.Tool.Status
+				}
+				found = true
+				break
 			}
 			if !found {
 				*blocks = append(*blocks, model.ContentBlock{

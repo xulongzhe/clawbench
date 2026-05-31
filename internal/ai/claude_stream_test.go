@@ -684,16 +684,16 @@ func TestStreamParser_FullClaudeFlow(t *testing.T) {
 		},
 	}
 	msg3 := ClaudeStreamMessage{
-		Type:      "result",
-		SessionID: "sess-claude",
+		Type:       "result",
+		SessionID:  "sess-claude",
 		DurationMs: 5000,
-		Usage: &ClaudeStreamUsage{InputTokens: 200, OutputTokens: 150},
+		Usage:      &ClaudeStreamUsage{InputTokens: 200, OutputTokens: 150},
 		ModelUsage: map[string]ClaudeStreamModelUsage{
 			"claude-3.5-sonnet": {InputTokens: 200, OutputTokens: 150},
 		},
 	}
 
-	var lines []string
+	lines := make([]string, 0, 3)
 	for _, msg := range []ClaudeStreamMessage{msg1, msg2, msg3} {
 		data, _ := json.Marshal(msg)
 		lines = append(lines, string(data))
@@ -1036,9 +1036,9 @@ func TestStreamParser_InterleavedToolUse(t *testing.T) {
 	// Verify stop events (done=true, input accumulated correctly)
 	// Stop order: C (index 3), A (index 1), B (index 2) → events 3, 4, 5
 	stops := []struct {
-		idx        int
-		id         string
-		input      string
+		idx   int
+		id    string
+		input string
 	}{
 		{3, "toolu_C", `{"file_path":"/b.go"}`},
 		{4, "toolu_A", `{"file_path":"/a.go"}`},
@@ -1697,7 +1697,7 @@ func TestStreamParser_ResumeDedup_AssistantVerboseWithoutDelta(t *testing.T) {
 		},
 	}
 
-	var lines []string
+	lines := make([]string, 0, 2)
 	for _, msg := range []ClaudeStreamMessage{msg1, msg2} {
 		data, _ := json.Marshal(msg)
 		lines = append(lines, string(data))

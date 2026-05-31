@@ -48,9 +48,11 @@ func (b *AutoResumeBackend) ExecuteStream(ctx context.Context, req ChatRequest) 
 // If no ExitPlanMode is detected, acts as a transparent proxy.
 // The "done" event is always forwarded to the outer channel so that
 // downstream handlers can detect stream completion explicitly.
+//
+//nolint:gocognit,gocyclo // complex stream parsing logic
 func (b *AutoResumeBackend) mergeStreams(
 	ctx context.Context,
-	innerCtx context.Context,
+	innerCtx context.Context, //nolint:unparam // kept for context propagation consistency
 	innerCancel context.CancelFunc,
 	origReq ChatRequest,
 	innerCh <-chan StreamEvent,
@@ -177,7 +179,8 @@ func forwardEvent(ch chan<- StreamEvent, event StreamEvent) {
 	select {
 	case ch <- event:
 	default:
-		slog.Warn("auto_resume: event dropped — channel full",
+		slog.Warn(
+			"auto_resume: event dropped — channel full",
 			slog.String("type", event.Type),
 		)
 	}

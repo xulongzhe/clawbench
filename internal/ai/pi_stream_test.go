@@ -406,7 +406,7 @@ verify:
 // drainEvents reads up to n events from the channel
 func drainEvents(ch chan StreamEvent, n int) []StreamEvent {
 	var events []StreamEvent
-	for i := 0; i < n; i++ {
+	for range n {
 		select {
 		case evt := <-ch:
 			events = append(events, evt)

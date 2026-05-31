@@ -166,18 +166,19 @@ func EvictTTSCache(projectPath string, maxFiles int) {
 
 	// Delete the oldest files to bring count down to maxFiles
 	deleteCount := len(files) - maxFiles
-	for i := 0; i < deleteCount; i++ {
+	for i := range deleteCount {
 		absPath := filepath.Join(ttsDir, files[i].name)
 		if err := os.Remove(absPath); err != nil {
 			continue
 		}
 
 		// Remove companion .summary.txt if it exists (legacy file-based cache)
-		os.Remove(absPath + ".summary.txt")
+		_ = os.Remove(absPath + ".summary.txt")
 	}
 
 	if deleteCount > 0 {
-		slog.Info("tts cache eviction completed",
+		slog.Info(
+			"tts cache eviction completed",
 			slog.Int("deleted", deleteCount),
 			slog.Int("remaining", len(files)-deleteCount),
 			slog.Int("max", maxFiles),

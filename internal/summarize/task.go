@@ -118,7 +118,8 @@ func (t *TaskSummarizer) Summarize(ctx context.Context, text string, language st
 		return "", fmt.Errorf("task summarization returned empty output")
 	}
 
-	slog.Info("task summarization completed",
+	slog.Info(
+		"task summarization completed",
 		slog.Int("result_len", len([]rune(result))),
 	)
 

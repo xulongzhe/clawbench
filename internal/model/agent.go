@@ -1,3 +1,4 @@
+//nolint:govet // shadowed err is acceptable in sequential blocks
 package model
 
 import (
@@ -20,18 +21,18 @@ type AgentModel struct {
 
 // Agent represents an AI agent with its own system prompt, backend, and models.
 type Agent struct {
-	ID           string       `yaml:"id" json:"id"`
-	Name         string       `yaml:"name" json:"name"`
-	Icon         string       `yaml:"icon" json:"icon"`
-	Specialty    string       `yaml:"specialty" json:"specialty"`
-	Backend      string       `yaml:"backend" json:"backend"`
-	Models       []AgentModel `yaml:"models,omitempty" json:"models"`
-	Command                      string   `yaml:"command,omitempty" json:"command"`                                       // optional: custom command path for the AI backend CLI
-	ThinkingEffort               string   `yaml:"thinking_effort,omitempty" json:"thinkingEffort"`                       // agent's default thinking effort (from YAML); not modified by user preference
-	ThinkingEffortLevels         []string `yaml:"thinking_effort_levels,omitempty" json:"thinkingEffortLevels"`         // valid levels for this backend, e.g. ["low","medium","high","xhigh"]
-	PreferredModel               string   `yaml:"preferred_model,omitempty" json:"preferredModel"`                       // user's preferred model; empty = use BaseModelID()
-	PreferredThinkingEffort      string   `yaml:"preferred_thinking_effort,omitempty" json:"preferredThinkingEffort"`   // user's preferred thinking effort; empty = use ThinkingEffort
-	SystemPrompt                 string   `yaml:"system_prompt,omitempty" json:"systemPrompt"`
+	ID                      string       `yaml:"id" json:"id"`
+	Name                    string       `yaml:"name" json:"name"`
+	Icon                    string       `yaml:"icon" json:"icon"`
+	Specialty               string       `yaml:"specialty" json:"specialty"`
+	Backend                 string       `yaml:"backend" json:"backend"`
+	Models                  []AgentModel `yaml:"models,omitempty" json:"models"`
+	Command                 string       `yaml:"command,omitempty" json:"command"`                                   // optional: custom command path for the AI backend CLI
+	ThinkingEffort          string       `yaml:"thinking_effort,omitempty" json:"thinkingEffort"`                    // agent's default thinking effort (from YAML); not modified by user preference
+	ThinkingEffortLevels    []string     `yaml:"thinking_effort_levels,omitempty" json:"thinkingEffortLevels"`       // valid levels for this backend, e.g. ["low","medium","high","xhigh"]
+	PreferredModel          string       `yaml:"preferred_model,omitempty" json:"preferredModel"`                    // user's preferred model; empty = use BaseModelID()
+	PreferredThinkingEffort string       `yaml:"preferred_thinking_effort,omitempty" json:"preferredThinkingEffort"` // user's preferred thinking effort; empty = use ThinkingEffort
+	SystemPrompt            string       `yaml:"system_prompt,omitempty" json:"systemPrompt"`
 
 	// ModelsAutoDetected indicates whether Models were filled by auto-discovery
 	// (from cache) rather than user-defined in YAML. Used by AsyncRefreshModelCache
@@ -163,7 +164,8 @@ func LoadAgents(dir string) error {
 // WriteAgentYAML writes the agent's user-editable fields back to its YAML file.
 // It uses atomic write (tmp + rename) to avoid partial writes.
 // Only preferred_model and thinking_effort are written; all other fields are preserved as-is.
-// DEPRECATED: This function will be removed once agent persistence moves fully to DB.
+//
+// Deprecated: This function will be removed once agent persistence moves fully to DB.
 // It is kept temporarily for backward compatibility during migration.
 func WriteAgentYAML(agent *Agent) error {
 	if ConfigDir == "" {
@@ -203,7 +205,7 @@ func WriteAgentYAML(agent *Agent) error {
 
 	// Atomic write: tmp + rename
 	tmpPath := yamlPath + ".tmp"
-	if err := os.WriteFile(tmpPath, out, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, out, 0o644); err != nil {
 		return fmt.Errorf("write temp agent YAML %s: %w", tmpPath, err)
 	}
 	if err := os.Rename(tmpPath, yamlPath); err != nil {

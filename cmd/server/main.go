@@ -1,3 +1,4 @@
+//nolint:govet // shadowed err is standard Go pattern in sequential blocks
 package main
 
 import (
@@ -23,13 +24,13 @@ import (
 	"clawbench/internal/handler"
 	"clawbench/internal/model"
 	"clawbench/internal/platform"
+	"clawbench/internal/push"
 	"clawbench/internal/rag"
 	"clawbench/internal/service"
-	"clawbench/internal/ssh"
 	"clawbench/internal/speech"
+	"clawbench/internal/ssh"
 	"clawbench/internal/summarize"
 	"clawbench/internal/terminal"
-	"clawbench/internal/push"
 	"clawbench/internal/ws"
 )
 
@@ -116,7 +117,7 @@ func makeRestartFunc(shutdown func()) func() {
 	}
 }
 
-func main() {
+func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	// Root --help handler
 	if len(os.Args) > 1 && (os.Args[1] == "--help" || os.Args[1] == "-h") {
 		fmt.Println("ClawBench - Mobile-first AI workstation")
@@ -233,7 +234,8 @@ func main() {
 			}
 		}
 		ttsProvider = p
-		slog.Info("tts provider configured",
+		slog.Info(
+			"tts provider configured",
 			slog.String("engine", "edge"),
 			slog.String("voice", p.Voice),
 			slog.String("rate", p.Rate),
@@ -256,7 +258,8 @@ func main() {
 			p.SentenceSilence = cfg.TTS.Piper.SentenceSilence
 		}
 		ttsProvider = p
-		slog.Info("tts provider configured",
+		slog.Info(
+			"tts provider configured",
 			slog.String("engine", "piper"),
 			slog.String("model_path", p.ModelPath),
 			slog.Float64("noise_scale", p.NoiseScale),
@@ -276,7 +279,8 @@ func main() {
 		}
 		k.ModelPath, k.VoicesPath = speech.ResolveKokoroPaths(cfg.TTS.Kokoro.ModelPath, cfg.TTS.Kokoro.VoicesPath)
 		ttsProvider = k
-		slog.Info("tts provider configured",
+		slog.Info(
+			"tts provider configured",
 			slog.String("engine", "kokoro"),
 			slog.String("model_path", k.ModelPath),
 			slog.String("voices_path", k.VoicesPath),
@@ -297,7 +301,8 @@ func main() {
 			m.Voice = cfg.TTS.MossNano.Voice
 		}
 		ttsProvider = m
-		slog.Info("tts provider configured",
+		slog.Info(
+			"tts provider configured",
 			slog.String("engine", "moss-nano"),
 			slog.String("backend", m.Backend),
 			slog.String("model_dir", m.ModelDir),
@@ -319,7 +324,8 @@ func main() {
 			}
 		}
 		ttsProvider = p
-		slog.Info("tts provider configured",
+		slog.Info(
+			"tts provider configured",
 			slog.String("engine", "edge"),
 			slog.String("voice", p.Voice),
 			slog.String("rate", p.Rate),
@@ -331,7 +337,7 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to initialize file logger, logging to stderr only: %v\n", err)
 	} else {
-		defer fileHandler.Close()
+		defer func() { _ = fileHandler.Close() }()
 	}
 
 	// Log level from config (default: "info")
@@ -375,7 +381,8 @@ func main() {
 
 	// Print auto-generated password info (ISS-003d: don't log plaintext password)
 	if autoPassword != "" {
-		slog.Info("auto-generated password (no password configured)",
+		slog.Info(
+			"auto-generated password (no password configured)",
 			slog.String("file", filepath.Join(model.BinDir, ".clawbench", "auto-password")),
 		)
 		// Print to stdout for foreground mode and shell scripts to capture
@@ -425,7 +432,8 @@ func main() {
 	// Initialize SQLite database (runFromServer=true: clean up orphaned streaming messages)
 	if err := service.InitDB(true); err != nil {
 		slog.Error("failed to initialize database", slog.String("err", err.Error()))
-		os.Exit(1)
+		service.CloseDB()
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: CloseDB called explicitly above; defer is for normal path
 	}
 	defer service.CloseDB()
 
@@ -455,10 +463,11 @@ func main() {
 	summarizeBackend := cfg.Summarize.Backend
 
 	var ttsSummarizer summarize.Summarizer
-	if summarizeBackend == "simple" {
+	switch summarizeBackend {
+	case "simple":
 		ttsSummarizer = summarize.NewSimple()
 		slog.Info("tts summarizer configured", slog.String("backend", "simple"))
-	} else if summarizeBackend == "api" {
+	case "api":
 		if cfg.Summarize.API.BaseURL == "" {
 			slog.Error("summarize.backend is \"api\" but summarize.api.base_url is not configured")
 			os.Exit(1)
@@ -472,7 +481,7 @@ func main() {
 			ttsSummarizer = s
 			slog.Info("tts summarizer configured", slog.String("backend", "api"), slog.String("format", "openai"), slog.String("model", s.Model))
 		}
-	} else {
+	default:
 		s, err := summarize.NewAIBackendSummarizer(summarizeBackend)
 		if err != nil {
 			slog.Error("failed to create AI backend summarizer, falling back to simple",
@@ -573,7 +582,8 @@ func main() {
 	if cfg.Summarize.Backend != "" && cfg.Summarize.Backend != "simple" {
 		taskSummarizer, err := initTaskSummarizer(cfg)
 		if err != nil {
-			slog.Warn("failed to create task summarizer, task summaries will be disabled",
+			slog.Warn(
+				"failed to create task summarizer, task summaries will be disabled",
 				slog.String("backend", cfg.Summarize.Backend),
 				slog.String("err", err.Error()),
 			)
@@ -583,7 +593,8 @@ func main() {
 			service.SetTaskSummarizerInstance(taskSummarizer)
 			// Configure chat message auto-summarization based on config
 			service.SetChatSummaryEnabled(cfg.Summarize.IsChatSummaryEnabled())
-			slog.Info("task summarizer configured",
+			slog.Info(
+				"task summarizer configured",
 				slog.String("backend", cfg.Summarize.Backend),
 			)
 		}
@@ -610,7 +621,8 @@ func main() {
 
 	host := cfg.Host
 	addr := fmt.Sprintf("%s:%d", host, port)
-	slog.Info("server ready",
+	slog.Info(
+		"server ready",
 		slog.String("addr", addr),
 		slog.String("roots", strings.Join(model.RootPaths, ", ")),
 		slog.Bool("auth_enabled", model.SessionToken != ""),
@@ -645,14 +657,15 @@ func main() {
 				slog.Error("SSH server failed", slog.String("err", err.Error()))
 			}
 		}()
-		defer sshServer.Close()
+		defer func() { sshServer.Close() }()
 	} else {
 		slog.Info("SSH tunnel and port forwarding disabled by config")
 	}
 
 	// Initialize file watcher for auto-refresh (non-critical — continue on failure)
 	if err := service.InitFileWatcher(); err != nil {
-		slog.Warn("file watcher not available, auto-refresh disabled",
+		slog.Warn(
+			"file watcher not available, auto-refresh disabled",
 			slog.String("err", err.Error()),
 		)
 	} else {
@@ -663,8 +676,9 @@ func main() {
 	if cfg.Terminal.Enabled {
 		terminalMgr := terminal.NewManager(cfg.Terminal, port)
 		handler.SetTerminalManager(terminalMgr)
-		defer terminalMgr.Close()
-		slog.Info("terminal manager initialized",
+		defer func() { terminalMgr.Close() }()
+		slog.Info(
+			"terminal manager initialized",
 			slog.String("idle_timeout", cfg.Terminal.IdleTimeout),
 			slog.Int("buffer_lines", cfg.Terminal.BufferLines),
 		)
@@ -761,8 +775,8 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 	backend := cfg.Summarize.Backend
 	modelName := cfg.Summarize.Model
 
-	switch {
-	case backend == "simple":
+	switch backend {
+	case "simple":
 		// Simple summarizer: truncate-only, no AI call. Wrap in pipeline with PreserveMarkdown.
 		pipeline := summarize.NewPipelineWithOpts(
 			func(ctx context.Context, text, systemPrompt string, pass int) (string, error) {
@@ -773,7 +787,7 @@ func initTaskSummarizer(cfg model.Config) (*summarize.TaskSummarizer, error) {
 		)
 		return summarize.NewTaskSummarizerFromPipeline(pipeline), nil
 
-	case backend == "api":
+	case "api":
 		if cfg.Summarize.API.BaseURL == "" {
 			return nil, fmt.Errorf("summarize.backend is \"api\" but summarize.api.base_url is not configured")
 		}

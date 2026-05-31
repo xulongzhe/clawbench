@@ -332,7 +332,6 @@ func TestCodexStream_FullFlow(t *testing.T) {
 		events = append(events, ev)
 	}
 
-	// Expected: thinking, content, tool_use(started), tool_use(completed), content, metadata, done = 7
 	if len(events) != 7 {
 		t.Fatalf("expected 7 events in full flow, got %d", len(events))
 	}
@@ -390,9 +389,9 @@ func TestBuildCodexStreamArgs_NewSession(t *testing.T) {
 
 func TestBuildCodexStreamArgs_WithModel(t *testing.T) {
 	req := ChatRequest{
-		Prompt: "test",
+		Prompt:  "test",
 		WorkDir: "/tmp",
-		Model:  "MiniMax-M2.5-highspeed",
+		Model:   "MiniMax-M2.5-highspeed",
 	}
 	args := buildCodexStreamArgs(req)
 

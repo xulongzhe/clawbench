@@ -566,7 +566,7 @@ func TestContinueFromExecution_DedupPrefersActiveOverDeleted(t *testing.T) {
 	// Manually create session B (simulating a second continued session)
 	// by directly inserting into the DB with a different ID
 	sessB := "manual-continued-session-b"
-	err = service.DB.QueryRow("SELECT id FROM chat_sessions WHERE id = ?", sessB).Scan(new(string))
+	_ = service.DB.QueryRow("SELECT id FROM chat_sessions WHERE id = ?", sessB).Scan(new(string))
 	// sessB shouldn't exist yet
 	_, err = service.DB.Exec(
 		"INSERT INTO chat_sessions (id, project_path, backend, title, agent_id, agent_source, model, session_type, source_session_id, external_session_id) VALUES (?, ?, ?, ?, ?, ?, ?, 'chat', ?, ?)",
@@ -750,7 +750,8 @@ func TestContinueFromExecution_CreatedAtFormatConsistent(t *testing.T) {
 	// Verify: unread count query should return 0 for the continued session
 	// (last_read_at is set at creation time, and created_at uses the same format)
 	var unreadCount int
-	err = service.DB.QueryRow(`
+	err = service.DB.QueryRow(
+		`
 		SELECT COALESCE(unread.cnt, 0) FROM chat_sessions s
 		LEFT JOIN (
 			SELECT h.session_id, COUNT(*) AS cnt

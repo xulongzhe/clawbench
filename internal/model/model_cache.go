@@ -37,7 +37,7 @@ func WriteModelCache(dir, backend string, models []AgentModel) error {
 	if len(models) == 0 {
 		return nil
 	}
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	entry := modelCacheEntry{
@@ -48,5 +48,5 @@ func WriteModelCache(dir, backend string, models []AgentModel) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, backend+".json"), data, 0644)
+	return os.WriteFile(filepath.Join(dir, backend+".json"), data, 0o644)
 }

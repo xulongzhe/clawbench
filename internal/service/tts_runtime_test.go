@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func cleanupTTSJobs() {
@@ -122,7 +126,7 @@ func TestSendTTSEvent_FullChannel(t *testing.T) {
 	RegisterTTSJob("tts-full", cancel)
 
 	// Fill the channel buffer (capacity is 16)
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		sent := SendTTSEvent("tts-full", TTSEvent{Type: "phase", Phase: "step"})
 		assert.True(t, sent)
 	}
@@ -256,4 +260,73 @@ func TestTTSJob_FailedResultEvent(t *testing.T) {
 	received := <-job.StreamCh
 	assert.True(t, received.SynthesizeFailed)
 	assert.Equal(t, "TTS engine unavailable", received.SynthesizeError)
+}
+
+func TestEvictTTSCache_DeletesOldest(t *testing.T) {
+	dir := t.TempDir()
+	ttsDir := filepath.Join(dir, ".clawbench", "generated", "tts")
+	require.NoError(t, os.MkdirAll(ttsDir, 0o755))
+
+	// Create 5 mp3 files with ascending mtimes
+	for i := range 5 {
+		name := filepath.Join(ttsDir, fmt.Sprintf("audio-%d.mp3", i))
+		require.NoError(t, os.WriteFile(name, []byte("fake audio"), 0o644))
+		// Set mtime so they're ordered
+		mtime := time.Now().Add(-time.Duration(5-i) * time.Minute)
+		require.NoError(t, os.Chtimes(name, mtime, mtime))
+	}
+
+	// Also create a companion summary for the oldest file
+	require.NoError(t, os.WriteFile(filepath.Join(ttsDir, "audio-0.mp3.summary.txt"), []byte("summary"), 0o644))
+
+	// Evict down to 3 files (should delete 2 oldest)
+	EvictTTSCache(dir, 3)
+
+	entries, err := os.ReadDir(ttsDir)
+	require.NoError(t, err)
+	mp3Count := 0
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".mp3" {
+			mp3Count++
+		}
+	}
+	assert.Equal(t, 3, mp3Count, "should keep only 3 mp3 files")
+
+	// Oldest files should be deleted
+	_, err = os.Stat(filepath.Join(ttsDir, "audio-0.mp3"))
+	assert.True(t, os.IsNotExist(err), "audio-0.mp3 should be deleted")
+	_, err = os.Stat(filepath.Join(ttsDir, "audio-0.mp3.summary.txt"))
+	assert.True(t, os.IsNotExist(err), "companion summary should be deleted")
+}
+
+func TestEvictTTSCache_NoEvictionWhenUnderLimit(t *testing.T) {
+	dir := t.TempDir()
+	ttsDir := filepath.Join(dir, ".clawbench", "generated", "tts")
+	require.NoError(t, os.MkdirAll(ttsDir, 0o755))
+
+	require.NoError(t, os.WriteFile(filepath.Join(ttsDir, "audio.mp3"), []byte("audio"), 0o644))
+
+	EvictTTSCache(dir, 5)
+
+	entries, _ := os.ReadDir(ttsDir)
+	assert.Len(t, entries, 1, "should not evict when under limit")
+}
+
+func TestEvictTTSCache_Unlimited(t *testing.T) {
+	dir := t.TempDir()
+	ttsDir := filepath.Join(dir, ".clawbench", "generated", "tts")
+	require.NoError(t, os.MkdirAll(ttsDir, 0o755))
+
+	for i := range 10 {
+		require.NoError(t, os.WriteFile(filepath.Join(ttsDir, fmt.Sprintf("audio-%d.wav", i)), []byte("audio"), 0o644))
+	}
+
+	EvictTTSCache(dir, 0) // unlimited
+	entries, _ := os.ReadDir(ttsDir)
+	assert.Len(t, entries, 10, "should not evict when maxFiles=0")
+}
+
+func TestEvictTTSCache_NonexistentDir(t *testing.T) {
+	EvictTTSCache("/nonexistent/path/for/test", 1)
+	// Should not panic
 }

@@ -17,7 +17,7 @@ func TestServeSSHInfo_Disabled(t *testing.T) {
 	sshServerRef = nil
 	defer func() { sshServerRef = origSSH }()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", http.NoBody)
 	w := httptest.NewRecorder()
 	ServeSSHInfo(w, req)
 
@@ -54,7 +54,7 @@ func TestServeSSHInfo_Enabled(t *testing.T) {
 	sshServerRef = srv
 	defer func() { sshServerRef = origSSH }()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", http.NoBody)
 	req.Host = "myserver.com:20000"
 	w := httptest.NewRecorder()
 	ServeSSHInfo(w, req)
@@ -112,7 +112,7 @@ func TestServeSSHInfo_Enabled(t *testing.T) {
 }
 
 func TestServeSSHInfo_MethodNotAllowed(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/api/ssh/info", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/ssh/info", http.NoBody)
 	w := httptest.NewRecorder()
 	ServeSSHInfo(w, req)
 
@@ -138,7 +138,7 @@ func TestServeSSHInfo_AutoPort(t *testing.T) {
 	sshServerRef = srv
 	defer func() { sshServerRef = origSSH }()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", http.NoBody)
 	req.Host = "server:30000"
 	w := httptest.NewRecorder()
 	ServeSSHInfo(w, req)
@@ -178,7 +178,7 @@ func TestServeSSHInfo_HostFromHeader(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+			req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", http.NoBody)
 			req.Host = tt.host
 			w := httptest.NewRecorder()
 			ServeSSHInfo(w, req)
@@ -208,7 +208,7 @@ func TestServeSSHInfo_EmptyPortList(t *testing.T) {
 	sshServerRef = srv
 	defer func() { sshServerRef = origSSH }()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", http.NoBody)
 	req.Host = "server:20000"
 	w := httptest.NewRecorder()
 	ServeSSHInfo(w, req)
@@ -228,7 +228,7 @@ func TestServeSSHInfo_ConnectionStats_Disabled(t *testing.T) {
 	sshServerRef = nil
 	defer func() { sshServerRef = origSSH }()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", http.NoBody)
 	w := httptest.NewRecorder()
 	ServeSSHInfo(w, req)
 
@@ -258,7 +258,7 @@ func TestServeSSHInfo_ConnectionStats_Enabled(t *testing.T) {
 	sshServerRef = srv
 	defer func() { sshServerRef = origSSH }()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ssh/info", http.NoBody)
 	req.Host = "server:20000"
 	w := httptest.NewRecorder()
 	ServeSSHInfo(w, req)
@@ -285,8 +285,8 @@ func TestServeSSHInfo_ConnectionStats_Enabled(t *testing.T) {
 
 // helper
 func containsStr(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(sub) == 0 ||
-		(len(s) > 0 && len(sub) > 0 && findSubstr(s, sub)))
+	return len(s) >= len(sub) && (s == sub || sub == "" ||
+		(s != "" && sub != "" && findSubstr(s, sub)))
 }
 
 func findSubstr(s, sub string) bool {

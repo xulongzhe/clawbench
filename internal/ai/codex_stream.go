@@ -15,14 +15,15 @@ import (
 
 // CodexStreamMessage represents a single JSON line from `codex exec --json`
 type CodexStreamMessage struct {
-	Type     string          `json:"type"`
-	ThreadID string          `json:"thread_id,omitempty"`
-	Message  string          `json:"message,omitempty"` // error message
-	Error    *CodexError     `json:"error,omitempty"`   // turn.failed error
-	Item     *CodexItem      `json:"item,omitempty"`
-	Usage    *CodexUsage     `json:"usage,omitempty"`
+	Type     string      `json:"type"`
+	ThreadID string      `json:"thread_id,omitempty"`
+	Message  string      `json:"message,omitempty"` // error message
+	Error    *CodexError `json:"error,omitempty"`   // turn.failed error
+	Item     *CodexItem  `json:"item,omitempty"`
+	Usage    *CodexUsage `json:"usage,omitempty"`
 }
 
+// CodexError represents an error in Codex stream output.
 type CodexError struct {
 	Message string `json:"message"`
 }
@@ -30,19 +31,19 @@ type CodexError struct {
 // CodexItem represents an item in Codex stream output
 type CodexItem struct {
 	ID               string `json:"id"`
-	Type             string `json:"type"`               // "agent_message" or "command_execution"
-	Text             string `json:"text,omitempty"`     // agent_message
-	Command          string `json:"command,omitempty"`  // command_execution
+	Type             string `json:"type"`                        // "agent_message" or "command_execution"
+	Text             string `json:"text,omitempty"`              // agent_message
+	Command          string `json:"command,omitempty"`           // command_execution
 	AggregatedOutput string `json:"aggregated_output,omitempty"` // command_execution
-	ExitCode         *int   `json:"exit_code,omitempty"`        // command_execution
-	Status           string `json:"status,omitempty"`           // "in_progress" or "completed"
+	ExitCode         *int   `json:"exit_code,omitempty"`         // command_execution
+	Status           string `json:"status,omitempty"`            // "in_progress" or "completed"
 }
 
 // CodexUsage represents token usage in a turn.completed event
 type CodexUsage struct {
-	InputTokens        int `json:"input_tokens"`
-	CachedInputTokens  int `json:"cached_input_tokens"`
-	OutputTokens       int `json:"output_tokens"`
+	InputTokens       int `json:"input_tokens"`
+	CachedInputTokens int `json:"cached_input_tokens"`
+	OutputTokens      int `json:"output_tokens"`
 }
 
 // CodexStreamParser parses JSON Lines output from `codex exec --json`
@@ -56,6 +57,8 @@ func (p *CodexStreamParser) GetCapturedSessionID() string { return p.threadID }
 
 // ParseLine parses a single JSON line from Codex's --json output and sends
 // StreamEvent(s) to the provided channel.
+//
+//nolint:gocyclo // complex stream parsing logic
 func (p *CodexStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 	var msg CodexStreamMessage
 	if err := json.Unmarshal([]byte(line), &msg); err != nil {
@@ -192,6 +195,8 @@ func buildCodexStreamArgs(req ChatRequest) []string {
 //	codex
 //	<thinking block>
 //	<response content>
+//
+//nolint:gocognit,gocyclo // complex stream parsing logic
 func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessionID string, rawLines *strings.Builder) {
 	role := "" // current role: "codex" or "exec"
 	inThinking := false
@@ -327,23 +332,23 @@ func parseCodexResumeOutput(scanner *bufio.Scanner, ch chan<- StreamEvent, sessi
 			continue
 		}
 
-	// Handle exec role: command line and output
-	if role == "exec" {
-		if execCommand == "" {
-			// First line is the command summary, e.g.:
-			// "bash -c 'ls -1 /tmp | wc -l' in /tmp succeeded in 14ms:"
-			execCommand = strings.TrimSuffix(line, ":")
-			execID = fmt.Sprintf("exec-%d", execCounter)
-			execCounter++
-			emitBashToolCall(ch, execID, execCommandJSON(execCommand), "", false, nil)
-		} else {
-			if execOutput.Len() > 0 {
-				execOutput.WriteByte('\n')
+		// Handle exec role: command line and output
+		if role == "exec" {
+			if execCommand == "" {
+				// First line is the command summary, e.g.:
+				// "bash -c 'ls -1 /tmp | wc -l' in /tmp succeeded in 14ms:"
+				execCommand = strings.TrimSuffix(line, ":")
+				execID = fmt.Sprintf("exec-%d", execCounter)
+				execCounter++
+				emitBashToolCall(ch, execID, execCommandJSON(execCommand), "", false, nil)
+			} else {
+				if execOutput.Len() > 0 {
+					execOutput.WriteByte('\n')
+				}
+				execOutput.WriteString(line)
+			}
+			continue
 		}
-			execOutput.WriteString(line)
-		}
-		continue
-	}
 	}
 
 	// Flush any pending exec block at EOF
@@ -403,9 +408,7 @@ func codexBashInputJSON(command string) string { return execCommandJSON(command)
 func buildCodexResumeArgs(req ChatRequest, threadID string) []string {
 	var args []string
 
-	args = append(args, "resume")
-
-	// Resume does not support --dangerously-bypass-approvals-and-sandbox,
+	args = append(args, "resume") //nolint:gocritic // separated for readability with comment block
 	// use -c sandbox_permissions override instead.
 	// Must match the new-session sandbox level (full access), otherwise
 	// commands like Edit/Write will be silently blocked, causing the AI
@@ -437,6 +440,8 @@ func buildCodexResumeArgs(req ChatRequest, threadID string) []string {
 }
 
 // ExecuteStream runs the Codex CLI in streaming mode and returns a channel of events
+//
+//nolint:gocognit,gocyclo // complex stream parsing logic
 func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
 	// Parse command field: "codex --profile m27" -> binary="codex", baseArgs=["--profile","m27"]
 	cmdBinary := "codex"
@@ -494,7 +499,8 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 		cmd.Stderr = &stderrBuf
 	}
 
-	slog.Info("executing ai stream command",
+	slog.Info(
+		"executing ai stream command",
 		slog.String("backend", "codex"),
 		slog.String("work_dir", req.WorkDir),
 		slog.String("session_id", req.SessionID),
@@ -578,7 +584,8 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 				// Check context after parsing
 				select {
 				case <-ctx.Done():
-					slog.Warn("codex stream: context cancelled",
+					slog.Warn(
+						"codex stream: context cancelled",
 						slog.String("session_id", req.SessionID),
 					)
 					// Send raw output before returning so it's available for debugging
@@ -603,7 +610,8 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 
 		if err := cmd.Wait(); err != nil {
 			if ctx.Err() != nil {
-				slog.Warn("codex stream: command cancelled",
+				slog.Warn(
+					"codex stream: command cancelled",
 					slog.String("session_id", req.SessionID),
 					slog.String("ctx_err", ctx.Err().Error()),
 				)
@@ -616,7 +624,8 @@ func (c *CodexBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 				}
 				return
 			}
-			slog.Error("codex stream: command exited abnormally",
+			slog.Error(
+				"codex stream: command exited abnormally",
 				slog.String("session_id", req.SessionID),
 				slog.String("exit_error", err.Error()),
 			)

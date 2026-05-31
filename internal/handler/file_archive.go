@@ -17,7 +17,7 @@ const maxArchivePaths = 1000
 // ServeFileArchive handles POST /api/file/archive
 // Accepts { paths: ["rel/path1", "rel/path2"] } and streams a zip archive.
 // Paths can be files or directories; each is walked and added to the zip.
-func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
+func ServeFileArchive(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo // multi-format archive creation
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -77,12 +77,12 @@ func ServeFileArchive(w http.ResponseWriter, r *http.Request) {
 
 	// Set response headers before writing any data
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, safeName))
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, safeName))
 	w.Header().Set("Cache-Control", "no-store")
 
 	// Stream zip directly to response writer
 	zw := zip.NewWriter(w)
-	defer zw.Close()
+	defer func() { _ = zw.Close() }()
 
 	written := 0
 	for _, entry := range entries {
@@ -174,7 +174,7 @@ func addFileToZip(zw *zip.Writer, absPath, zipRelPath string, fi os.FileInfo) er
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	_, err = io.Copy(w, f)
 	return err

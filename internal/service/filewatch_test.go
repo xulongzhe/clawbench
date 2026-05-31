@@ -114,7 +114,7 @@ func TestRegisterClient_ChannelCapacity(t *testing.T) {
 	fw.mu.Unlock()
 
 	// Channel should have capacity of watchPushChSize
-	for i := 0; i < watchPushChSize; i++ {
+	for range watchPushChSize {
 		select {
 		case ch <- WatchEvent{Type: "file_change", Path: "/test"}:
 		default:
@@ -202,7 +202,7 @@ func TestUpdateWatch_SetsPaths(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.txt")
-	os.WriteFile(file, []byte("hello"), 0644)
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file)
 
@@ -243,8 +243,8 @@ func TestUpdateWatch_DiffFile(t *testing.T) {
 	dir := t.TempDir()
 	file1 := filepath.Join(dir, "a.txt")
 	file2 := filepath.Join(dir, "b.txt")
-	os.WriteFile(file1, []byte("a"), 0644)
-	os.WriteFile(file2, []byte("b"), 0644)
+	_ = os.WriteFile(file1, []byte("a"), 0o644)
+	_ = os.WriteFile(file2, []byte("b"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file1)
 	fw.UpdateWatch("c1", dir, file2)
@@ -388,7 +388,7 @@ func TestHandleFsEvent_FileWrite(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.txt")
-	os.WriteFile(file, []byte("hello"), 0644)
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file)
 
@@ -428,7 +428,7 @@ func TestHandleFsEvent_FileRename(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.txt")
-	os.WriteFile(file, []byte("hello"), 0644)
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file)
 
@@ -484,7 +484,7 @@ func TestHandleFsEvent_FileChangeOverridesDirChange(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "watched.txt")
-	os.WriteFile(file, []byte("hello"), 0644)
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file)
 
@@ -506,7 +506,7 @@ func TestHandleFsEvent_SiblingFileGivesDirChange(t *testing.T) {
 	dir := t.TempDir()
 	watchedFile := filepath.Join(dir, "watched.txt")
 	siblingFile := filepath.Join(dir, "sibling.txt")
-	os.WriteFile(watchedFile, []byte("hello"), 0644)
+	_ = os.WriteFile(watchedFile, []byte("hello"), 0o644)
 
 	fw.UpdateWatch("c1", dir, watchedFile)
 
@@ -528,7 +528,7 @@ func TestHandleFsEvent_MultipleClients(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "shared.txt")
-	os.WriteFile(file, []byte("hello"), 0644)
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file)
 	fw.UpdateWatch("c2", dir, file)
@@ -577,7 +577,7 @@ func TestDebounce_Coalescing(t *testing.T) {
 	fw.UpdateWatch("c1", dir, "")
 
 	// Fire 5 rapid events
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		fw.handleFsEvent(fsnotify.Event{
 			Name: dir,
 			Op:   fsnotify.Create,
@@ -599,7 +599,7 @@ func TestDebounce_DifferentEventTypesNotCoalesced(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.txt")
-	os.WriteFile(file, []byte("hello"), 0644)
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file)
 
@@ -777,7 +777,7 @@ func TestFireDebouncedEvent_ChannelFull(t *testing.T) {
 	fw.mu.Unlock()
 
 	// Fill the channel
-	for i := 0; i < watchPushChSize; i++ {
+	for range watchPushChSize {
 		ch <- WatchEvent{Type: "dir_change", Path: dir}
 	}
 
@@ -804,7 +804,7 @@ func TestFileWatcher_RealDirChangeEvent(t *testing.T) {
 
 	// Create a new file in the directory — this should trigger a Create event on the dir
 	newFile := filepath.Join(dir, "newfile.txt")
-	err := os.WriteFile(newFile, []byte("test"), 0644)
+	err := os.WriteFile(newFile, []byte("test"), 0o644)
 	assert.NoError(t, err)
 
 	events := collectEvents(ch, 1, 2*time.Second)
@@ -819,7 +819,7 @@ func TestFileWatcher_RealFileWriteEvent(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.txt")
-	err := os.WriteFile(file, []byte("initial"), 0644)
+	err := os.WriteFile(file, []byte("initial"), 0o644)
 	assert.NoError(t, err)
 
 	fw.UpdateWatch("c1", dir, file)
@@ -828,7 +828,7 @@ func TestFileWatcher_RealFileWriteEvent(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Modify the file
-	err = os.WriteFile(file, []byte("modified"), 0644)
+	err = os.WriteFile(file, []byte("modified"), 0o644)
 	assert.NoError(t, err)
 
 	events := collectEvents(ch, 1, 2*time.Second)
@@ -843,7 +843,7 @@ func TestFileWatcher_DebounceRealEvents(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.txt")
-	err := os.WriteFile(file, []byte("initial"), 0644)
+	err := os.WriteFile(file, []byte("initial"), 0o644)
 	assert.NoError(t, err)
 
 	fw.UpdateWatch("c1", dir, file)
@@ -851,8 +851,8 @@ func TestFileWatcher_DebounceRealEvents(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Rapid writes
-	for i := 0; i < 5; i++ {
-		os.WriteFile(file, []byte("modify"+string(rune('0'+i))), 0644)
+	for i := range 5 {
+		os.WriteFile(file, []byte("modify"+string(rune('0'+i))), 0o644)
 	}
 
 	// Wait for debounce to settle
@@ -870,7 +870,7 @@ func TestFileWatcher_MultipleClientsRealEvents(t *testing.T) {
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "shared.txt")
-	os.WriteFile(file, []byte("hello"), 0644)
+	_ = os.WriteFile(file, []byte("hello"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file)
 	fw.UpdateWatch("c2", dir, file)
@@ -878,7 +878,7 @@ func TestFileWatcher_MultipleClientsRealEvents(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Modify the file
-	os.WriteFile(file, []byte("world"), 0644)
+	_ = os.WriteFile(file, []byte("world"), 0o644)
 
 	events1 := collectEvents(ch1, 1, 2*time.Second)
 	events2 := collectEvents(ch2, 1, 2*time.Second)
@@ -896,8 +896,8 @@ func TestFileWatcher_UpdateWatchSwitchesFile(t *testing.T) {
 	dir := t.TempDir()
 	file1 := filepath.Join(dir, "a.txt")
 	file2 := filepath.Join(dir, "b.txt")
-	os.WriteFile(file1, []byte("a"), 0644)
-	os.WriteFile(file2, []byte("b"), 0644)
+	_ = os.WriteFile(file1, []byte("a"), 0o644)
+	_ = os.WriteFile(file2, []byte("b"), 0o644)
 
 	fw.UpdateWatch("c1", dir, file1)
 	time.Sleep(100 * time.Millisecond)
@@ -907,7 +907,7 @@ func TestFileWatcher_UpdateWatchSwitchesFile(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Modify file2 — should trigger file_change
-	os.WriteFile(file2, []byte("b-modified"), 0644)
+	_ = os.WriteFile(file2, []byte("b-modified"), 0o644)
 
 	events := collectEvents(ch, 1, 2*time.Second)
 	if assert.Len(t, events, 1) {
@@ -922,7 +922,7 @@ func TestFileWatcher_ConcurrentRegisterUnregister(t *testing.T) {
 	fw := setupFileWatcher(t)
 
 	var done atomic.Int32
-	for i := 0; i < 20; i++ {
+	for i := range 20 {
 		id := string(rune('a' + i))
 		go func() {
 			ch := fw.RegisterClient(id)

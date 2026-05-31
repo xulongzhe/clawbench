@@ -1,3 +1,4 @@
+//nolint:goconst,govet // JSON response field names are domain strings; shadowed ok/err is standard Go type-assertion idiom
 package handler
 
 import (
@@ -9,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +23,6 @@ import (
 	"clawbench/internal/model"
 	"clawbench/internal/service"
 	"clawbench/internal/version"
-	"net/http"
 
 	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
@@ -34,15 +35,15 @@ var configMutex sync.RWMutex
 // hotReloadFields is the set of config dot-paths that take effect immediately
 // via applyHotReloadGlobals() and do NOT require a server restart.
 var hotReloadFields = map[string]bool{
-	"chat.collapsed_height":      true,
-	"chat.initial_messages":      true,
-	"chat.page_size":             true,
+	"chat.collapsed_height":       true,
+	"chat.initial_messages":       true,
+	"chat.page_size":              true,
 	"chat.system_prompt_interval": true,
-	"session.max_count":          true,
-	"recent_projects.max_count":  true,
-	"upload.max_size_mb":        true,
-	"upload.max_files":          true,
-	"tts.max_cache_files":       true,
+	"session.max_count":           true,
+	"recent_projects.max_count":   true,
+	"upload.max_size_mb":          true,
+	"upload.max_files":            true,
+	"tts.max_cache_files":         true,
 }
 
 // restartGracePeriod is the delay before shutting down the server after a restart
@@ -74,8 +75,8 @@ type configResponse struct {
 	TTS            configTTS            `json:"tts"`
 	RAG            configRAG            `json:"rag"`
 	PortForward    configPortForward    `json:"port_forward"`
-	Push           configPush          `json:"push"`
-	Summarize      configSummarize     `json:"summarize"`
+	Push           configPush           `json:"push"`
+	Summarize      configSummarize      `json:"summarize"`
 }
 
 type configChat struct {
@@ -177,28 +178,28 @@ type configSummarize struct {
 // PatchableConfigPaths defines the whitelist of config paths that PATCH /api/config accepts.
 // Any path not in this list will be rejected with 400 Bad Request.
 var PatchableConfigPaths = map[string]bool{
-	"default_agent":                true,
-	"chat.initial_messages":        true,
-	"chat.page_size":               true,
-	"chat.collapsed_height":        true,
-	"chat.system_prompt_interval":  true,
-	"session.max_count":            true,
+	"default_agent":               true,
+	"chat.initial_messages":       true,
+	"chat.page_size":              true,
+	"chat.collapsed_height":       true,
+	"chat.system_prompt_interval": true,
+	"session.max_count":           true,
 	"recent_projects.max_count":   true,
-	"upload.max_size_mb":           true,
-	"upload.max_files":             true,
-	"terminal.enabled":             true,
-	"terminal.idle_timeout":        true,
-	"terminal.max_sessions":        true,
-	"terminal.buffer_lines":        true,
-	"tts.engine":                   true,
-	"tts.tts_model":                true,
-	"tts.format":                   true,
-	"tts.speed":                    true,
-	"tts.voice":                    true,
-	"tts.max_cache_files":          true,
-	"tts.piper.model_path":         true,
-	"tts.piper.noise_scale":        true,
-	"tts.piper.length_scale":       true,
+	"upload.max_size_mb":          true,
+	"upload.max_files":            true,
+	"terminal.enabled":            true,
+	"terminal.idle_timeout":       true,
+	"terminal.max_sessions":       true,
+	"terminal.buffer_lines":       true,
+	"tts.engine":                  true,
+	"tts.tts_model":               true,
+	"tts.format":                  true,
+	"tts.speed":                   true,
+	"tts.voice":                   true,
+	"tts.max_cache_files":         true,
+	"tts.piper.model_path":        true,
+	"tts.piper.noise_scale":       true,
+	"tts.piper.length_scale":      true,
 	"tts.piper.sentence_silence":  true,
 	"tts.kokoro.model_path":       true,
 	"tts.kokoro.voices_path":      true,
@@ -207,15 +208,15 @@ var PatchableConfigPaths = map[string]bool{
 	"tts.moss_nano.prompt_speech": true,
 	"tts.moss_nano.voice":         true,
 	"tts.moss_nano.backend":       true,
-	"rag.base_url":              true,
-	"rag.model":                 true,
-	"rag.api_key":               true,
-	"rag.chunk_size":            true,
-	"rag.search_limit":          true,
-	"rag.search_pool_size":      true,
-	"rag.retention_days":        true,
-	"port_forward.enabled":                 true,
-	"port_forward.port":                    true,
+	"rag.base_url":                true,
+	"rag.model":                   true,
+	"rag.api_key":                 true,
+	"rag.chunk_size":              true,
+	"rag.search_limit":            true,
+	"rag.search_pool_size":        true,
+	"rag.retention_days":          true,
+	"port_forward.enabled":        true,
+	"port_forward.port":           true,
 	"push.jpush.enabled":          true,
 	"push.jpush.app_key":          true,
 	"push.jpush.master_secret":    true,
@@ -310,7 +311,7 @@ func ServeConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func serveConfigGet(w http.ResponseWriter, r *http.Request) {
+func serveConfigGet(w http.ResponseWriter, _ *http.Request) {
 	configMutex.RLock()
 	cfg := model.ConfigInstance
 	configMutex.RUnlock()
@@ -407,7 +408,6 @@ func serveConfigGet(w http.ResponseWriter, r *http.Request) {
 			Backend:      cfg.TTS.MossNano.Backend,
 		}
 	}
-
 
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -515,7 +515,7 @@ func validatePatchFields(patch map[string]any, prefix string) ([]string, error) 
 	return fields, nil
 }
 
-func validatePatchValues(patch map[string]any) error {
+func validatePatchValues(patch map[string]any) error { //nolint:gocognit,gocyclo // exhaustive config validation
 	tts, ok := patch["tts"].(map[string]any)
 	if ok {
 		if engine, ok := tts["engine"].(string); ok {
@@ -724,7 +724,7 @@ func validatePatchValues(patch map[string]any) error {
 	return nil
 }
 
-func applyConfigPatch(patch map[string]any) error {
+func applyConfigPatch(patch map[string]any) error { //nolint:gocognit,gocyclo // exhaustive config patch application
 	cfg := &model.ConfigInstance
 
 	// Top-level fields
@@ -950,7 +950,7 @@ func writeConfigYAML(patch map[string]any) error {
 	tmpPath := configPath + ".tmp"
 	bakPath := configPath + ".bak"
 
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
@@ -963,7 +963,7 @@ func writeConfigYAML(patch map[string]any) error {
 		}
 	} else {
 		// No existing file — marshal the full ConfigInstance as base
-		data, err := yaml.Marshal(&model.ConfigInstance)
+		data, err := yaml.Marshal(&model.ConfigInstance) //nolint:gosec // Password field contains SHA-256 hash, not plaintext
 		if err != nil {
 			return fmt.Errorf("failed to marshal initial config: %w", err)
 		}
@@ -987,12 +987,12 @@ func writeConfigYAML(patch map[string]any) error {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
 		return fmt.Errorf("failed to write temp config: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, configPath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to rename config file: %w", err)
 	}
 
@@ -1021,7 +1021,7 @@ func mergePatchIntoRaw(raw map[string]any, patch map[string]any) {
 // ServeConfigPassword handles POST /api/config/password.
 // Validates the current password, then writes the new password as a SHA-256
 // hash to config.yaml. The change takes effect after server restart.
-func ServeConfigPassword(w http.ResponseWriter, r *http.Request) {
+func ServeConfigPassword(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // password change with verification
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -1135,7 +1135,7 @@ func ServeConfigPassword(w http.ResponseWriter, r *http.Request) {
 	autoPasswordFile := filepath.Join(model.BinDir, ".clawbench", "auto-password")
 	// Read the old auto-password before deleting it (needed for API key rotation)
 	oldAutoPassword, _ := os.ReadFile(autoPasswordFile)
-	os.Remove(autoPasswordFile)
+	_ = os.Remove(autoPasswordFile)
 
 	// Rotate API key encryption: the auto-password is being removed, which changes
 	// the encryption key derivation. Re-encrypt all stored API keys with the new key
@@ -1211,7 +1211,7 @@ func IsRunningUnderSupervisor() bool {
 }
 
 // joinArgs joins command-line args into a space-separated string with proper
-// shell quoting. Single quotes within args are escaped using the '\'' idiom.
+// shell quoting. Single quotes within args are escaped using the '\” idiom.
 func joinArgs(args []string) string {
 	var buf strings.Builder
 	for i, arg := range args {
@@ -1224,7 +1224,7 @@ func joinArgs(args []string) string {
 }
 
 // shellQuote wraps a string in single quotes, escaping any embedded single
-// quotes using the '\'' idiom safe for POSIX shells.
+// quotes using the '\” idiom safe for POSIX shells.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

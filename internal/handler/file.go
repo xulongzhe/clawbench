@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -111,14 +112,14 @@ func ListFiles(w http.ResponseWriter, r *http.Request) {
 	var files []FileInfo
 	err := filepath.Walk(projectPath, func(fullPath string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // skip inaccessible files
 		}
 		if info.IsDir() {
 			return nil
 		}
 		relPath, err := filepath.Rel(projectPath, fullPath)
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // skip files with invalid relative paths
 		}
 		entryType := "file"
 		if model.IsImageFile(info.Name()) {
@@ -130,11 +131,10 @@ func ListFiles(w http.ResponseWriter, r *http.Request) {
 			Modified:  info.ModTime().Format("2006-01-02T15:04:05Z07:00"),
 			Size:      info.Size(),
 			Type:      entryType,
-		Supported: model.IsSupportedFile(info.Name()),
+			Supported: model.IsSupportedFile(info.Name()),
+		})
+		return nil
 	})
-	return nil
-})
-
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Cannot access directory"})
 		return
@@ -176,7 +176,7 @@ func GetFile(w http.ResponseWriter, r *http.Request) {
 	info, err := os.Stat(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-		writeLocalizedError(w, r, model.NotFound(nil, "FileNotFoundShort"))
+			writeLocalizedError(w, r, model.NotFound(nil, "FileNotFoundShort"))
 		} else {
 			model.WriteError(w, model.Internal(fmt.Errorf("cannot access file")))
 		}
@@ -281,7 +281,7 @@ func ServeLocalFile(w http.ResponseWriter, r *http.Request) {
 			model.WriteError(w, model.Internal(fmt.Errorf("cannot open file")))
 			return
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		http.ServeContent(w, r, fileName, info.ModTime(), f)
 		return
 	}
@@ -291,7 +291,7 @@ func ServeLocalFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeProjects handles GET (list directory) and POST (create directory) for projects.
-func ServeProjects(w http.ResponseWriter, r *http.Request) {
+func ServeProjects(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-method file/directory handler
 	switch r.Method {
 	case http.MethodPost:
 		serveProjectsCreate(w, r)
@@ -329,11 +329,8 @@ func ServeProjects(w http.ResponseWriter, r *http.Request) {
 	var absPath string
 	if filepath.IsAbs(rawPath) {
 		absPath = rawPath
-	} else {
-		// Relative path — resolve from first root
-		if len(model.RootPaths) > 0 {
-			absPath, _ = filepath.Abs(filepath.Join(model.RootPaths[0], rawPath))
-		}
+	} else if len(model.RootPaths) > 0 {
+		absPath, _ = filepath.Abs(filepath.Join(model.RootPaths[0], rawPath))
 	}
 
 	if absPath == "" {
@@ -494,8 +491,10 @@ func isNotDirError(err error) bool {
 	// Windows: ReadDir on a file returns ERROR_DIRECTORY (0x267) wrapped in PathError.
 	// We check the errno value directly because syscall.ERROR_DIRECTORY is not
 	// available on non-Windows builds.
-	if pe, ok := err.(*os.PathError); ok {
-		if errno, ok := pe.Err.(syscall.Errno); ok && errno == 0x267 {
+	pe := &os.PathError{}
+	if errors.As(err, &pe) {
+		var errno syscall.Errno
+		if errors.As(pe.Err, &errno) {
 			return true
 		}
 	}
@@ -623,7 +622,7 @@ func serveProjectsCreate(w http.ResponseWriter, r *http.Request) {
 		writeLocalizedError(w, r, model.Forbidden(nil, "AccessDenied"))
 		return
 	}
-	if err := os.Mkdir(newDirAbs, 0755); err != nil {
+	if err := os.Mkdir(newDirAbs, 0o755); err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("create directory failed: %w", err)))
 		return
 	}

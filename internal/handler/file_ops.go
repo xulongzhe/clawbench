@@ -1,3 +1,4 @@
+//nolint:govet // shadowed err is acceptable in sequential blocks
 package handler
 
 import (
@@ -104,7 +105,7 @@ func ServeFileEditLine(w http.ResponseWriter, r *http.Request) {
 	} else {
 		lines[req.LineNum-1] = req.Content
 	}
-	if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+	if err := os.WriteFile(absPath, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("cannot write file")))
 		return
 	}
@@ -155,7 +156,7 @@ func ServeFileDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeFileBatchDelete handles deleting multiple files/directories in a single request.
-func ServeFileBatchDelete(w http.ResponseWriter, r *http.Request) {
+func ServeFileBatchDelete(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // batch delete with per-item error handling
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -256,7 +257,7 @@ func ServeFileCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.WriteFile(absPath, []byte{}, 0644); err != nil {
+	if err := os.WriteFile(absPath, []byte{}, 0o644); err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("create file failed: %w", err)))
 		return
 	}
@@ -287,7 +288,7 @@ func ServeDirCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := os.MkdirAll(absPath, 0755); err != nil {
+	if err := os.MkdirAll(absPath, 0o755); err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("create directory failed: %w", err)))
 		return
 	}
@@ -455,13 +456,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
 	dstFile, err := os.Create(dst)
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	_, err = dstFile.ReadFrom(srcFile)
 	return err
@@ -469,7 +470,7 @@ func copyFile(src, dst string) error {
 
 // copyDir copies a directory recursively from src to dst.
 // Symlinks whose targets escape root paths are skipped to prevent data exfiltration.
-func copyDir(src, dst string) error {
+func copyDir(src, dst string) error { //nolint:gocognit // recursive directory copy
 	srcInfo, err := os.Stat(src)
 	if err != nil {
 		return err
@@ -549,7 +550,7 @@ func safeRemoveAll(dir string) error {
 			if linkErr == nil && !isPathUnderAnyRoot(target) {
 				// Symlink escapes root paths — remove just the symlink, don't follow it
 				slog.Warn("safeRemoveAll: symlink escapes root paths, removing symlink only", "path", path, "target", target)
-				os.Remove(path)
+				_ = os.Remove(path) //nolint:gosec // symlink validated above, root-scoped removal
 				if info.IsDir() {
 					return filepath.SkipDir
 				}
@@ -567,15 +568,10 @@ func safeRemoveAll(dir string) error {
 	// Remove paths from deepest to shallowest (bottom-up)
 	for i := len(paths) - 1; i >= 0; i-- {
 		p := paths[i]
-		info, statErr := os.Lstat(p)
-		if statErr != nil {
+		if _, err := os.Lstat(p); err != nil {
 			continue // already gone
 		}
-		if info.IsDir() {
-			os.Remove(p) // directory should be empty now
-		} else {
-			os.Remove(p)
-		}
+		_ = os.Remove(p) // file or directory
 	}
 	return nil
 }

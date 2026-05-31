@@ -15,13 +15,13 @@ import (
 
 // setupCleanupDB creates an in-memory SQLite database with the required schema
 // for cleanup tests, sets service.DB, and returns a cleanup function.
-func setupCleanupDB(t *testing.T) *sql.DB {
+func setupCleanupDB(t *testing.T) *sql.DB { //nolint:unparam // test helper: DB used implicitly via global state
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_history (
@@ -70,15 +70,15 @@ func setupCleanupDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() {
 		service.DB = origDB
 		service.DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	})
 	return db
 }
 
 // helperCreateCleanupSession creates a session for cleanup tests.
-func helperCreateCleanupSession(t *testing.T, projectPath, backend, title string) string {
+func helperCreateCleanupSession(t *testing.T, _, backend, title string) string { //nolint:unparam // test helper: projectPath always "/project" by design
 	t.Helper()
-	id, err := service.CreateSession(projectPath, backend, title, "", "", "default", "chat")
+	id, err := service.CreateSession("/project", backend, title, "", "", "default", "chat")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, id)
 	return id
@@ -301,8 +301,8 @@ func TestDeleteChunksBySessionIDs_EmptyList(t *testing.T) {
 func TestCleanup_MultipleExpiredWithRawResponses(t *testing.T) {
 	setupCleanupDB(t)
 
-	var sids []string
-	for i := 0; i < 3; i++ {
+	sids := make([]string, 0, 3)
+	for i := range 3 {
 		sid := helperCreateCleanupSession(t, "/project", "claude", fmt.Sprintf("Session %d", i))
 		msgID, _ := service.AddChatMessage("/project", "claude", sid, "assistant", fmt.Sprintf("reply %d", i), nil, false, "NewSession")
 		_ = service.DeleteSession("/project", "claude", sid)

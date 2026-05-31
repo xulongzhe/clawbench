@@ -24,8 +24,8 @@ func setupSearchDB(t *testing.T) *sql.DB {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -66,7 +66,7 @@ func setupSearchDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() {
 		service.DB = origDB
 		service.DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	})
 	return db
 }
@@ -269,9 +269,10 @@ func TestRAGSearch_EmbeddingFailsFallsBackToFTS(t *testing.T) {
 
 	// Server where embedding endpoint fails
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" {
-			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
-		} else if r.URL.Path == "/v1/embeddings" {
+		switch r.URL.Path {
+		case "/v1/models":
+			_ = json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+		case "/v1/embeddings":
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
@@ -344,9 +345,10 @@ func TestRAGSearch_VectorOnlyEmbeddingError(t *testing.T) {
 
 	// Embedding will fail
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" {
-			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
-		} else if r.URL.Path == "/v1/embeddings" {
+		switch r.URL.Path {
+		case "/v1/models":
+			_ = json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+		case "/v1/embeddings":
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
@@ -371,7 +373,7 @@ func TestGetSessionTitles_BatchFailureFallback(t *testing.T) {
 	require.NoError(t, err)
 
 	// Drop the chat_sessions table to make batch query fail
-	db.Exec("DROP TABLE chat_sessions")
+	_, _ = db.Exec("DROP TABLE chat_sessions")
 
 	// Should fall back gracefully (return empty map)
 	titles := getSessionTitles(map[string]bool{sid: true})

@@ -44,7 +44,7 @@ func (b *VeCLIBackend) Name() string { return "vecli" }
 // and stores the path in summaryMap for post-stream retrieval.
 func (b *VeCLIBackend) vecliPreStart(cmd *exec.Cmd, req ChatRequest) {
 	summaryDir := filepath.Join(model.BinDir, ".clawbench", "vecli-summary")
-	if err := os.MkdirAll(summaryDir, 0700); err != nil {
+	if err := os.MkdirAll(summaryDir, 0o700); err != nil {
 		slog.Warn("vecli: failed to create summary dir", "dir", summaryDir, "error", err)
 	}
 	// req.SessionID is guaranteed non-empty by ExecuteStream
@@ -62,6 +62,8 @@ func (b *VeCLIBackend) vecliPreStart(cmd *exec.Cmd, req ChatRequest) {
 //  3. On process exit, this wrapper reads the session-summary JSON file
 //  4. Emits metadata event (token counts, duration, model) from summary
 //  5. Emits done event
+//
+//nolint:gocognit,gocyclo // complex stream parsing logic
 func (b *VeCLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan StreamEvent, error) {
 	// VeCLI does not support resume — always start a new session
 	req.Resume = false
@@ -107,7 +109,9 @@ func (b *VeCLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 			}
 			// Clean up summary file if it exists
 			if sp, ok := b.summaryMap.LoadAndDelete(summaryKey); ok {
-				os.Remove(sp.(string))
+				if path, typeOk := sp.(string); typeOk {
+					_ = os.Remove(path)
+				}
 			}
 			return
 		}
@@ -115,13 +119,16 @@ func (b *VeCLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 		// Process exited normally — try to read session-summary for metadata
 		summaryPath, ok := b.summaryMap.LoadAndDelete(summaryKey)
 		if ok {
-			path := summaryPath.(string)
-			defer os.Remove(path)
+			path, typeOk := summaryPath.(string)
+			if !typeOk {
+				slog.Debug("vecli: summaryPath is not a string", "summaryKey", summaryKey)
+			}
+			defer func() { _ = os.Remove(path) }()
 
-			if data, err := os.ReadFile(path); err == nil {
-				summary, err := parseVeCLISessionSummary(data)
-				if err != nil {
-					slog.Debug("vecli: failed to parse session-summary", "error", err)
+			if data, readErr := os.ReadFile(path); readErr == nil {
+				summary, parseErr := parseVeCLISessionSummary(data)
+				if parseErr != nil {
+					slog.Debug("vecli: failed to parse session-summary", "error", parseErr)
 				} else {
 					meta := summary.extractMetadata(req.Model)
 					select {
@@ -130,7 +137,7 @@ func (b *VeCLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-ch
 					}
 				}
 			} else {
-				slog.Debug("vecli: session-summary file not found", "path", path, "error", err)
+				slog.Debug("vecli: session-summary file not found", "path", path, "error", readErr)
 			}
 		}
 

@@ -16,7 +16,7 @@ func TestWithLocalizer_SetsContext(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	r.Header.Set("X-Locale", "zh")
 	w := httptest.NewRecorder()
 	handler(w, r)
@@ -36,7 +36,7 @@ func TestWithLocalizer_DefaultEnglish(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	w := httptest.NewRecorder()
 	handler(w, r)
 
@@ -50,7 +50,7 @@ func TestWithLocalizer_DefaultEnglish(t *testing.T) {
 func TestGetLocalizer_FallbackWithoutMiddleware(t *testing.T) {
 	// If GetLocalizer is called without WithLocalizer middleware,
 	// it should fall back to creating a Localizer from the request
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	r.Header.Set("X-Locale", "zh")
 
 	loc := GetLocalizer(r)

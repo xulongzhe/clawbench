@@ -130,10 +130,10 @@ func TestSaveAgent_Upsert(t *testing.T) {
 
 	// Insert first time
 	agent := &model.Agent{
-		ID:       "pi",
-		Name:     "Pi",
-		Backend:  "pi",
-		Source:   "auto",
+		ID:      "pi",
+		Name:    "Pi",
+		Backend: "pi",
+		Source:  "auto",
 	}
 	err := service.SaveAgent(db, agent)
 	require.NoError(t, err)
@@ -228,12 +228,12 @@ func TestPatchAgent_ClearPreferences(t *testing.T) {
 
 	// Insert an agent with preferences
 	agent := &model.Agent{
-		ID:                    "pi",
-		Name:                  "Pi",
-		Backend:               "pi",
-		PreferredModel:        "openai/gpt-5.5",
+		ID:                      "pi",
+		Name:                    "Pi",
+		Backend:                 "pi",
+		PreferredModel:          "openai/gpt-5.5",
 		PreferredThinkingEffort: "high",
-		Source:                "setup",
+		Source:                  "setup",
 	}
 	err := service.SaveAgent(db, agent)
 	require.NoError(t, err)
@@ -262,9 +262,9 @@ func TestLoadAgentsFromDB_ModelsJSON(t *testing.T) {
 	db := setupTestDBForAgents(t)
 
 	agent := &model.Agent{
-		ID:       "pi",
-		Name:     "Pi",
-		Backend:  "pi",
+		ID:      "pi",
+		Name:    "Pi",
+		Backend: "pi",
 		Models: []model.AgentModel{
 			{ID: "minimax/MiniMax-M2.7", Name: "MiniMax-M2.7", Default: true},
 			{ID: "openai/gpt-5.5", Name: "GPT-5.5"},
@@ -308,10 +308,10 @@ func TestLoadAgentsFromDB_EmptyModelsAndLevels(t *testing.T) {
 	db := setupTestDBForAgents(t)
 
 	agent := &model.Agent{
-		ID:       "pi",
-		Name:     "Pi",
-		Backend:  "pi",
-		Source:   "auto",
+		ID:      "pi",
+		Name:    "Pi",
+		Backend: "pi",
+		Source:  "auto",
 		// Models and ThinkingEffortLevels are nil/empty
 	}
 	err := service.SaveAgent(db, agent)
@@ -396,7 +396,7 @@ func TestAgentSchemaMatchesProduction(t *testing.T) {
 
 	rows, err := db.Query("SELECT name FROM pragma_table_info('agents')")
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	foundColumns := make(map[string]bool)
 	for rows.Next() {
@@ -404,6 +404,7 @@ func TestAgentSchemaMatchesProduction(t *testing.T) {
 		require.NoError(t, rows.Scan(&name))
 		foundColumns[name] = true
 	}
+	require.NoError(t, rows.Err())
 
 	for col := range expectedColumns {
 		assert.True(t, foundColumns[col], "missing column in agents table: %s", col)
@@ -420,7 +421,7 @@ func TestAgentSchemaMatchesProduction(t *testing.T) {
 
 	rows2, err := db.Query("SELECT name FROM pragma_table_info('agent_api_keys')")
 	require.NoError(t, err)
-	defer rows2.Close()
+	defer func() { _ = rows2.Close() }()
 
 	foundKeyColumns := make(map[string]bool)
 	for rows2.Next() {
@@ -428,6 +429,7 @@ func TestAgentSchemaMatchesProduction(t *testing.T) {
 		require.NoError(t, rows2.Scan(&name))
 		foundKeyColumns[name] = true
 	}
+	require.NoError(t, rows2.Err())
 
 	for col := range expectedKeyColumns {
 		assert.True(t, foundKeyColumns[col], "missing column in agent_api_keys table: %s", col)
@@ -442,15 +444,15 @@ func TestAgentIndexes(t *testing.T) {
 	db := setupTestDBForAgents(t)
 
 	expectedIndexes := map[string]bool{
-		"idx_agents_backend":              true,
-		"idx_agents_source":               true,
-		"idx_agents_sort":                 true,
+		"idx_agents_backend":                true,
+		"idx_agents_source":                 true,
+		"idx_agents_sort":                   true,
 		"idx_agent_api_keys_agent_provider": true,
 	}
 
 	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_agent%'")
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	foundIndexes := make(map[string]bool)
 	for rows.Next() {
@@ -458,6 +460,7 @@ func TestAgentIndexes(t *testing.T) {
 		require.NoError(t, rows.Scan(&name))
 		foundIndexes[name] = true
 	}
+	require.NoError(t, rows.Err())
 
 	for idx := range expectedIndexes {
 		assert.True(t, foundIndexes[idx], "missing index: %s", idx)
@@ -469,10 +472,10 @@ func TestSaveAgent_ModelsWithSpecialChars(t *testing.T) {
 	db := setupTestDBForAgents(t)
 
 	agent := &model.Agent{
-		ID:       "pi",
-		Name:     "Pi",
-		Backend:  "pi",
-		Source:   "auto",
+		ID:      "pi",
+		Name:    "Pi",
+		Backend: "pi",
+		Source:  "auto",
 		Models: []model.AgentModel{
 			{ID: "anthropic/claude-sonnet-4-6", Name: "Claude Sonnet 4.6", Default: true},
 		},

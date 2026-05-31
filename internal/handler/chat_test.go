@@ -343,7 +343,7 @@ func TestBlocksSerialization(t *testing.T) {
 	var result struct {
 		Blocks []model.ContentBlock `json:"blocks"`
 	}
-	if err := json.Unmarshal(data, &result); err != nil {
+	if err = json.Unmarshal(data, &result); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)
 	}
 
@@ -591,7 +591,7 @@ func TestServeSessions_Get_RunningState(t *testing.T) {
 	// Build a map of session ID -> running state
 	runningMap := make(map[string]bool)
 	for _, s := range sessions {
-		session := s.(map[string]interface{})
+		session, _ := s.(map[string]interface{})
 		id, _ := session["id"].(string)
 		running, _ := session["running"].(bool)
 		runningMap[id] = running
@@ -640,7 +640,7 @@ func TestServeSessions_Post_CustomTitleAndBackend(t *testing.T) {
 	assert.Equal(t, "claude", result["backend"])
 
 	// Verify session title in DB
-	sessionID := result["sessionId"].(string)
+	sessionID, _ := result["sessionId"].(string)
 	title, err := service.GetSessionTitle(sessionID)
 	assert.NoError(t, err)
 	assert.Equal(t, "My Custom Session", title)
@@ -836,7 +836,7 @@ func TestUploadFile_ValidFile(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = part.Write([]byte("hello world"))
 	assert.NoError(t, err)
-	writer.Close()
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -861,8 +861,8 @@ func TestUploadFile_NoProjectCookie(t *testing.T) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	part, _ := writer.CreateFormFile("file", "test.txt")
-	part.Write([]byte("hello"))
-	writer.Close()
+	_, _ = part.Write([]byte("hello"))
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -890,8 +890,8 @@ func TestUploadFile_ExeExtension_Allowed(t *testing.T) {
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile("file", "malware.exe")
 	assert.NoError(t, err)
-	part.Write([]byte("evil content"))
-	writer.Close()
+	_, _ = part.Write([]byte("evil content"))
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -908,8 +908,8 @@ func TestUploadFile_BatExtension_Allowed(t *testing.T) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	part, _ := writer.CreateFormFile("file", "script.bat")
-	part.Write([]byte("@echo off"))
-	writer.Close()
+	_, _ = part.Write([]byte("@echo off"))
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1332,9 +1332,11 @@ func TestConvertAskQuestionBlocks_Deduplication(t *testing.T) {
 	// only the successfully converted XML-tag version.
 	blocks := []model.ContentBlock{
 		{Type: "text", Text: "Here is my analysis"},
-		{Type: "tool_use", Name: "AskUserQuestion", ID: "toolu_rejected", Status: "error",
+		{
+			Type: "tool_use", Name: "AskUserQuestion", ID: "toolu_rejected", Status: "error",
 			Output: "Tool AskUserQuestion not found in agent cli.", Done: true,
-			Input: map[string]any{"questions": []any{}}},
+			Input: map[string]any{"questions": []any{}},
+		},
 		{Type: "text", Text: `<ask-question>{"questions":[{"question":"Which approach?","header":"Approach","options":[{"label":"A","description":"Fast"},{"label":"B","description":"Safe"}],"multiSelect":false}]}</ask-question>`},
 		{Type: "warning", Text: "Tool AskUserQuestion not found in agent cli."},
 	}
@@ -2122,7 +2124,7 @@ func TestServeSessions_Pagination_NoLimit(t *testing.T) {
 	defer teardown()
 
 	// Create sessions
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_, err := service.CreateSession(env.ProjectDir, "codebuddy", fmt.Sprintf("session %d", i), "", "", "default", "chat")
 		assert.NoError(t, err)
 	}
@@ -2136,7 +2138,7 @@ func TestServeSessions_Pagination_NoLimit(t *testing.T) {
 
 	var result map[string]interface{}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	sessions := result["sessions"].([]interface{})
+	sessions, _ := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 5)
 	assert.Equal(t, false, result["hasMore"])
 }
@@ -2146,7 +2148,7 @@ func TestServeSessions_Pagination_WithLimit(t *testing.T) {
 	defer teardown()
 
 	// Create 5 sessions
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_, err := service.CreateSession(env.ProjectDir, "codebuddy", fmt.Sprintf("session %d", i), "", "", "default", "chat")
 		assert.NoError(t, err)
 	}
@@ -2160,7 +2162,7 @@ func TestServeSessions_Pagination_WithLimit(t *testing.T) {
 
 	var result map[string]interface{}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	sessions := result["sessions"].([]interface{})
+	sessions, _ := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 3)
 	assert.Equal(t, true, result["hasMore"])
 }
@@ -2181,7 +2183,7 @@ func TestServeSessions_Pagination_LimitExceedsTotal(t *testing.T) {
 
 	var result map[string]interface{}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	sessions := result["sessions"].([]interface{})
+	sessions, _ := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 1)
 	assert.Equal(t, false, result["hasMore"])
 }
@@ -2202,7 +2204,7 @@ func TestServeSessions_Pagination_InvalidLimit(t *testing.T) {
 
 	var result map[string]interface{}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	sessions := result["sessions"].([]interface{})
+	sessions, _ := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 1)
 	assert.Equal(t, false, result["hasMore"])
 }
@@ -2211,7 +2213,7 @@ func TestServeSessions_Pagination_ZeroLimit(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, err := service.CreateSession(env.ProjectDir, "codebuddy", fmt.Sprintf("s%d", i), "", "", "default", "chat")
 		assert.NoError(t, err)
 	}
@@ -2225,7 +2227,7 @@ func TestServeSessions_Pagination_ZeroLimit(t *testing.T) {
 
 	var result map[string]interface{}
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
-	sessions := result["sessions"].([]interface{})
+	sessions, _ := result["sessions"].([]interface{})
 	assert.Len(t, sessions, 3)
 	assert.Equal(t, false, result["hasMore"])
 }
@@ -2248,7 +2250,7 @@ func TestServeSessions_Pagination_EmptyProject(t *testing.T) {
 	if sessionsRaw == nil {
 		// null is acceptable for empty
 	} else {
-		sessions := sessionsRaw.([]interface{})
+		sessions, _ := sessionsRaw.([]interface{})
 		assert.Empty(t, sessions)
 	}
 	assert.Equal(t, false, result["hasMore"])
@@ -2307,7 +2309,7 @@ func TestBuildChatRequest_ModelOverride_FromSession(t *testing.T) {
 	assert.NoError(t, err)
 
 	// User explicitly selects a model → handler calls UpdateSessionModel
-	service.UpdateSessionModel(sessionID, "claude-sonnet-4-6")
+	_ = service.UpdateSessionModel(sessionID, "claude-sonnet-4-6")
 
 	// buildChatRequest with no modelOverride should use agent default,
 	// NOT the session model (session model is for frontend display;
@@ -2345,7 +2347,7 @@ func TestBuildChatRequestFromQueue_UsesSessionModel(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Simulate user sending a message with explicit model → handler calls UpdateSessionModel
-	service.UpdateSessionModel(sessionID, "claude-sonnet-4-6")
+	_ = service.UpdateSessionModel(sessionID, "claude-sonnet-4-6")
 
 	// buildChatRequestFromQueue should use the session model
 	qMsg := model.QueuedMessage{Text: "next message", CreatedAt: time.Now().Format(time.RFC3339)}
@@ -2372,7 +2374,7 @@ func TestServeSessions_Post_NewSessionEmptyModel(t *testing.T) {
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
 	assert.Equal(t, true, result["ok"])
 
-	sessionID := result["sessionId"].(string)
+	sessionID, _ := result["sessionId"].(string)
 	modelID := service.GetSessionModel(sessionID)
 	assert.Equal(t, "", modelID,
 		"newly created session should have empty model field for global preference resolution")
@@ -2395,7 +2397,7 @@ func TestAIChat_Get_NoSessionID_UsesLatestSession(t *testing.T) {
 	s1, _ := service.CreateSession(env.ProjectDir, "claude", "First", "claude", "", "default", "chat")
 	s2, _ := service.CreateSession(env.ProjectDir, "codebuddy", "Second", "codebuddy", "", "default", "chat")
 	// Force s2 to be more recent by setting its updated_at 1 second ahead
-	service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime(updated_at, '+1 second') WHERE id = ?", s2)
+	_, _ = service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime(updated_at, '+1 second') WHERE id = ?", s2)
 
 	// GET without session_id should use the latest session
 	req := newRequest(t, http.MethodGet, "/api/ai/chat?limit=20", nil)
@@ -2406,7 +2408,7 @@ func TestAIChat_Get_NoSessionID_UsesLatestSession(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, s2, resp["sessionId"])
 
 	// Verify s1 is NOT returned (proves it's using latest, not first)
@@ -2428,7 +2430,7 @@ func TestAIChat_Get_NoSessionID_NoSessionsCreatesNew(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.NotNil(t, resp["sessionId"], "should auto-create a session when none exist")
 	assert.NotEmpty(t, resp["sessionId"])
 }
@@ -2452,7 +2454,7 @@ func TestAIChat_Get_WithSessionID_ReturnsSessionInfo(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, sessionID, resp["sessionId"])
 	assert.Equal(t, "My Test Session", resp["sessionTitle"])
 	assert.Equal(t, "codebuddy", resp["backend"])
@@ -2484,7 +2486,7 @@ func TestAIChat_Get_SessionInfoBackendOverride(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "claude", resp["backend"])
 }
 
@@ -2499,7 +2501,7 @@ func TestAIChat_Get_NoSessionID_SessionInfoFieldsPopulated(t *testing.T) {
 	sessionID, err := service.CreateSession(env.ProjectDir, "codebuddy", "Info Session", "codebuddy", "", "default", "chat")
 	assert.NoError(t, err)
 	// Set model explicitly
-	service.UpdateSessionModel(sessionID, "glm-5.1")
+	_ = service.UpdateSessionModel(sessionID, "glm-5.1")
 
 	// GET without session_id — should find this session via GetLatestSessionID
 	req := newRequest(t, http.MethodGet, "/api/ai/chat?limit=20", nil)
@@ -2510,7 +2512,7 @@ func TestAIChat_Get_NoSessionID_SessionInfoFieldsPopulated(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, sessionID, resp["sessionId"])
 	assert.Equal(t, "Info Session", resp["sessionTitle"])
 	assert.Equal(t, "codebuddy", resp["backend"])
@@ -2555,7 +2557,7 @@ func TestAIChat_Get_NoSessionID_CreateSessionError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
 	// Prevent teardown from double-closing the already-closed db.
-	// Restore globals so teardown's db.Close() becomes a safe no-op on
+	// Restore globals so teardown's _ = db.Close() becomes a safe no-op on
 	// the original (pre-setupTestEnv) values.
 	_ = env
 	teardown()
@@ -2616,8 +2618,7 @@ func TestFinalizeStreamRun_CtxCancelled(t *testing.T) {
 		{Type: "text", Text: "hello"},
 	}
 
-	req := newRequest(t, http.MethodPost, "/api/ai/chat", bytes.NewReader([]byte(`{}`)))
-	req = withProjectCookie(req, env.ProjectDir)
+	_ = withProjectCookie(newRequest(t, http.MethodPost, "/api/ai/chat", bytes.NewReader([]byte(`{}`))), env.ProjectDir)
 
 	result := finalizeStreamRun(ctx, streamCh, env.ProjectDir, "claude", sessionID, "default", chatReq, blocks, nil, "", nil, time.Now())
 
@@ -2632,7 +2633,9 @@ func TestFinalizeStreamRun_CtxCancelled(t *testing.T) {
 // ============================================================================
 
 // TestSessionCapture_OverwritesDefault tests the handler condition:
-//   if existingExtID == "" || existingExtID == sessionID { UpdateExternalSessionID }
+//
+//	if existingExtID == "" || existingExtID == sessionID { UpdateExternalSessionID }
+//
 // When external_session_id is the default (== sessionID), a session_capture
 // event should overwrite it with the real CLI-assigned ID.
 func TestSessionCapture_OverwritesDefault(t *testing.T) {

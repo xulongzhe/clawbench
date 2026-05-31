@@ -1,3 +1,4 @@
+//nolint:noctx // DB parameter, context not applicable
 package service
 
 import (
@@ -64,7 +65,7 @@ func LoadAgentsFromDB(db *sql.DB) ([]*model.Agent, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query agents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var agents []*model.Agent
 	for rows.Next() {
@@ -159,7 +160,6 @@ func SaveAgent(db DBExec, agent *model.Agent) error {
 		agent.PreferredModel, agent.PreferredThinkingEffort,
 		agent.SystemPrompt, string(modelsJSON), modelsAutoDetected,
 		agent.Source, sortOrder)
-
 	if err != nil {
 		return fmt.Errorf("save agent %s: %w", agent.ID, err)
 	}
@@ -170,7 +170,7 @@ func SaveAgent(db DBExec, agent *model.Agent) error {
 // Returns nil even if the agent doesn't exist.
 func DeleteAgent(db *sql.DB, id string) error {
 	// Ensure foreign keys are enforced for cascade delete
-	db.Exec("PRAGMA foreign_keys = ON")
+	_, _ = db.Exec("PRAGMA foreign_keys = ON")
 	_, err := db.Exec("DELETE FROM agents WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("delete agent %s: %w", id, err)

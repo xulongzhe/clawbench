@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -22,7 +21,7 @@ const (
 	TextViaTempFile TextSource = iota
 )
 
-// SynthesizeOptions defines the behaviour of CLISpeechProvider.Synthesize.
+// SynthesizeOptions defines the behavior of CLISpeechProvider.Synthesize.
 type SynthesizeOptions struct {
 	// BinaryName is the CLI binary name as found via $PATH (e.g. "mmx", "moss-tts-nano").
 	BinaryName string
@@ -75,9 +74,9 @@ func newCLISpeechProvider(opts SynthesizeOptions) CLISpeechProvider {
 // Synthesize is the shared implementation for all CLI-based providers.
 // It handles directory creation, binary resolution, temp-file / stdin
 // text delivery, command execution, and output validation.
-func (p CLISpeechProvider) Synthesize(ctx context.Context, text string, outputPath string, language string) error {
+func (p CLISpeechProvider) Synthesize(ctx context.Context, text string, outputPath string, language string) error { //nolint:gocyclo // multi-provider CLI synthesis
 	dir := filepath.Dir(outputPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %w", dir, err)
 	}
 
@@ -118,18 +117,19 @@ func (p CLISpeechProvider) Synthesize(ctx context.Context, text string, outputPa
 			return fmt.Errorf("failed to create temp file: %w", err)
 		}
 		tmpPath := tmpFile.Name()
-		defer os.Remove(tmpPath) // clean up after synthesis
-		if _, err := io.WriteString(tmpFile, text); err != nil {
-			tmpFile.Close()
+		defer func() { _ = os.Remove(tmpPath) }() // clean up after synthesis
+		if _, err := tmpFile.WriteString(text); err != nil {
+			_ = tmpFile.Close()
 			return fmt.Errorf("failed to write temp file: %w", err)
 		}
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		textForArgs = tmpPath
 	}
 
 	args := p.opts.ExtraArgs(cliPath, textForArgs, outputPath, language)
 
-	slog.Info(p.opts.LogName+" synthesize",
+	slog.Info(
+		p.opts.LogName+" synthesize",
 		slog.String("output", outputPath),
 		slog.Int("text_len", len(text)),
 	)
@@ -150,7 +150,7 @@ func (p CLISpeechProvider) Synthesize(ctx context.Context, text string, outputPa
 	}
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s failed: %w (stderr: %s)", p.opts.LogName, err, cmd.Stderr.(*bytes.Buffer).String())
+		return fmt.Errorf("%s failed: %w (stderr: %s)", p.opts.LogName, err, func() string { b, _ := cmd.Stderr.(*bytes.Buffer); return b.String() }())
 	}
 
 	if _, err := os.Stat(outputPath); err != nil {

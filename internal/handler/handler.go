@@ -10,12 +10,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nicksnyder/go-i18n/v2/i18n"
 	i18npkg "clawbench/internal/i18n"
 	"clawbench/internal/middleware"
 	"clawbench/internal/model"
 	"clawbench/internal/platform"
 	"clawbench/internal/ws"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
 // loc returns the Localizer for the current request.
@@ -37,7 +37,7 @@ func writeLocalizedErrorf(w http.ResponseWriter, r *http.Request, status int, ms
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(model.ErrorResponse{Error: localizedMsg, Code: status, MsgKey: msgKey, Detail: detail})
+	_ = json.NewEncoder(w).Encode(model.ErrorResponse{Error: localizedMsg, Code: status, MsgKey: msgKey, Detail: detail})
 }
 
 // writeLocalizedError writes a localized AppError response.
@@ -51,7 +51,7 @@ func writeLocalizedError(w http.ResponseWriter, r *http.Request, err error) {
 		localizedMsg := T(r, appErr.Message)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(appErr.Code)
-		json.NewEncoder(w).Encode(model.ErrorResponse{Error: localizedMsg, Code: appErr.Code, MsgKey: appErr.Message})
+		_ = json.NewEncoder(w).Encode(model.ErrorResponse{Error: localizedMsg, Code: appErr.Code, MsgKey: appErr.Message})
 		return
 	}
 	writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
@@ -82,7 +82,7 @@ func requireMethod(w http.ResponseWriter, r *http.Request, methods ...string) bo
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 // decodeJSON decodes the request body into v. Writes 400 on failure.
@@ -153,7 +153,7 @@ func isPathUnderAnyRoot(absPath string) bool {
 // isPathUnderBase checks that absPath is under basePath by resolving symlinks
 // on both sides before comparing. This prevents symlink traversal attacks.
 // Both paths must be absolute.
-func isPathUnderBase(absPath, basePath string) bool {
+func isPathUnderBase(absPath, basePath string) bool { //nolint:unused // security utility
 	evalBase, err := filepath.EvalSymlinks(basePath)
 	if err != nil {
 		return false

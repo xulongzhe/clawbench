@@ -32,7 +32,7 @@ func TestTerminalConfigRouteRequiresAuth(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/config", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/config", http.NoBody)
 	req.RemoteAddr = "203.0.113.10:12345"
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -60,7 +60,7 @@ func TestTerminalWebSocketRejectsInvalidCwdBeforeUpgrade(t *testing.T) {
 		MaxBufferMB:  4,
 	}, 20000))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/terminal/ws?cwd=../../etc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/terminal/ws?cwd=../../etc", http.NoBody)
 	withProjectCookie(req, projectDir)
 	w := callHandler(TerminalWebSocket, req)
 
@@ -234,8 +234,8 @@ func TestServeQuickCommands_Create(t *testing.T) {
 
 	body := map[string]any{
 		"label":        "Build",
-		"command":     "go build ./...",
-		"hidden":      false,
+		"command":      "go build ./...",
+		"hidden":       false,
 		"auto_execute": false,
 	}
 	req := newRequest(t, http.MethodPost, "/api/terminal/quick-commands", body)
@@ -309,8 +309,8 @@ func TestServeQuickCommandByID_Update(t *testing.T) {
 
 	body := map[string]any{
 		"label":        "New",
-		"command":     "new cmd",
-		"hidden":      true,
+		"command":      "new cmd",
+		"hidden":       true,
 		"auto_execute": true,
 	}
 	req := newRequest(t, http.MethodPut, "/api/terminal/quick-commands/"+fmt.Sprint(id), body)

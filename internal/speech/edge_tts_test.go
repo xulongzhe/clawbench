@@ -66,8 +66,7 @@ func TestEdgeTTSProvider_RateSetting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &EdgeTTSProvider{
-				Voice: "zh-CN-XiaoxiaoNeural",
-				Rate:  tt.rate,
+				Rate: tt.rate,
 			}
 			assert.Equal(t, tt.rate, p.Rate)
 			isNoOp := p.Rate == "" || p.Rate == "+0%"
@@ -87,7 +86,7 @@ func TestEdgeTTSProvider_DifferentVoices(t *testing.T) {
 	}
 
 	for _, voice := range voices {
-		p := &EdgeTTSProvider{Voice: voice, Rate: "+0%"}
+		p := &EdgeTTSProvider{Voice: voice, Rate: "+0%"} //nolint:govet // test verifies Voice field
 		assert.Equal(t, voice, p.Voice)
 	}
 }
@@ -253,8 +252,8 @@ func TestEdgeTTSProvider_Synthesize_WriteError(t *testing.T) {
 	// Create output path in a read-only directory to force write error
 	tmpDir := t.TempDir()
 	readOnlyDir := filepath.Join(tmpDir, "readonly")
-	require.NoError(t, os.MkdirAll(readOnlyDir, 0555))
-	defer os.Chmod(readOnlyDir, 0755) // restore for cleanup
+	require.NoError(t, os.MkdirAll(readOnlyDir, 0o555))
+	defer os.Chmod(readOnlyDir, 0o755) // restore for cleanup
 
 	outputPath := filepath.Join(readOnlyDir, "output.mp3")
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -302,7 +301,7 @@ func startMockEdgeTTSServer(t *testing.T) *httptest.Server {
 		defer conn.Close()
 
 		// Read the two client messages (config + ssml)
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			_, _, err := conn.ReadMessage()
 			if err != nil {
 				return
@@ -406,7 +405,6 @@ func TestEdgeTTSProvider_Synthesize_RealServerTimeout(t *testing.T) {
 
 	outputPath := filepath.Join(t.TempDir(), "output.mp3")
 	err := p.Synthesize(ctx, "test", outputPath, "zh")
-
 	// This will likely fail due to timeout or network issues — that's expected
 	// The important thing is that the function exercised more code paths
 	if err != nil {

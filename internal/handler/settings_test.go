@@ -149,7 +149,7 @@ func TestServeConfig_Get_ConditionalPiperSubConfig(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	tts, _ := resp["tts"].(map[string]any)
 	assert.Contains(t, tts, "piper")
@@ -180,7 +180,7 @@ func TestServeConfig_Get_ConditionalKokoroSubConfig(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	tts, _ := resp["tts"].(map[string]any)
 	assert.Contains(t, tts, "kokoro")
@@ -209,7 +209,7 @@ func TestServeConfig_Get_ConditionalMossNanoSubConfig(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	tts, _ := resp["tts"].(map[string]any)
 	assert.Contains(t, tts, "moss_nano")
@@ -241,7 +241,7 @@ func TestServeConfig_Get_ConditionalAPISubConfig(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	summarize, _ := resp["summarize"].(map[string]any)
 	assert.Contains(t, summarize, "api")
@@ -270,7 +270,7 @@ func TestServeConfig_Get_APIMaskShortKey(t *testing.T) {
 	w := callHandler(ServeConfig, req)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	summarize, _ := resp["summarize"].(map[string]any)
 	api, _ := summarize["api"].(map[string]any)
@@ -291,7 +291,7 @@ func TestServeConfig_Get_APIMaskEmptyKey(t *testing.T) {
 	w := callHandler(ServeConfig, req)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	summarize, _ := resp["summarize"].(map[string]any)
 	api, _ := summarize["api"].(map[string]any)
@@ -594,7 +594,7 @@ func TestServeConfigRestart_Success(t *testing.T) {
 		restartCh <- struct{}{}
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", http.NoBody)
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfigRestart, req)
 
@@ -616,7 +616,7 @@ func TestServeConfigRestart_MethodNotAllowed(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/config/restart", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/config/restart", http.NoBody)
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfigRestart, req)
 
@@ -638,7 +638,7 @@ func TestServeConfig_Get_DefaultAgent(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	assert.Contains(t, resp, "default_agent")
 	assert.Equal(t, "codebuddy", resp["default_agent"])
@@ -851,8 +851,8 @@ func TestServeConfig_Patch_InvalidDefaultAgent(t *testing.T) {
 
 	// Set up agents so we can validate
 	agentsDir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test.yaml"), []byte("id: test\nname: Test\nbackend: test\n"), 0644))
+	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test.yaml"), []byte("id: test\nname: Test\nbackend: test\n"), 0o644))
 	require.NoError(t, model.LoadAgents(agentsDir))
 	defer func() { model.Agents = nil; model.AgentList = nil }()
 
@@ -1366,7 +1366,7 @@ func TestServeConfigRestart_NilRestartFunc(t *testing.T) {
 	}
 	defer func() { restartFunc = origRestartFunc }()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", http.NoBody)
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfigRestart, req)
 
@@ -1660,6 +1660,12 @@ func TestServeConfigPatch_WriteConfigYAMLError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("invalid BinDir path behavior differs on Windows")
 	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root can create directories in non-existent paths")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root can create directories in non-existent paths")
+	}
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
@@ -1746,22 +1752,14 @@ func TestServeConfigPatch_NoExistingConfig(t *testing.T) {
 // --- IsRunningUnderSupervisor ---
 
 func TestIsRunningUnderSupervisor_EnvOverride(t *testing.T) {
-	orig := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
-	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "1")
-	defer os.Setenv("CLAWBENCH_NO_SUPERVISOR", orig)
+	t.Setenv("CLAWBENCH_NO_SUPERVISOR", "1")
 
 	assert.False(t, IsRunningUnderSupervisor())
 }
 
 func TestIsRunningUnderSupervisor_InvocationID(t *testing.T) {
-	origNoSupervisor := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
-	origInvocationID := os.Getenv("INVOCATION_ID")
-	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
-	os.Setenv("INVOCATION_ID", "test-invocation-id")
-	defer func() {
-		os.Setenv("CLAWBENCH_NO_SUPERVISOR", origNoSupervisor)
-		os.Setenv("INVOCATION_ID", origInvocationID)
-	}()
+	t.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
+	t.Setenv("INVOCATION_ID", "test-invocation-id")
 
 	assert.True(t, IsRunningUnderSupervisor())
 }
@@ -1782,9 +1780,9 @@ func TestServeConfigPassword_WithAutoPasswordFile(t *testing.T) {
 
 	binDir := t.TempDir()
 	clawbenchDir := filepath.Join(binDir, ".clawbench")
-	require.NoError(t, os.MkdirAll(clawbenchDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(clawbenchDir, "auto-password"), []byte("old-auto-password"), 0644))
-	require.NoError(t, os.MkdirAll(filepath.Join(binDir, "config"), 0755))
+	require.NoError(t, os.MkdirAll(clawbenchDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(clawbenchDir, "auto-password"), []byte("old-auto-password"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(binDir, "config"), 0o755))
 
 	origBinDir := model.BinDir
 	model.BinDir = binDir
@@ -1813,7 +1811,7 @@ func TestServeConfigRestart_NilRestartFuncWarn(t *testing.T) {
 	restartFunc = nil
 	defer func() { restartFunc = origRestartFunc }()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/config/restart", http.NoBody)
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfigRestart, req)
 
@@ -1841,7 +1839,7 @@ func TestServeConfigPassword_RemoteAddrNoPort(t *testing.T) {
 	model.PasswordHash = bcryptHash
 	model.ConfigInstance = model.Config{}
 	model.BinDir = t.TempDir()
-	os.MkdirAll(filepath.Join(model.BinDir, "config"), 0755)
+	_ = os.MkdirAll(filepath.Join(model.BinDir, "config"), 0o755)
 
 	req := newRequest(t, http.MethodPost, "/api/config/password", map[string]string{
 		"current_password": password,
@@ -1866,8 +1864,8 @@ func TestServeConfigPatch_MalformedExistingConfig(t *testing.T) {
 
 	binDir := t.TempDir()
 	configDir := filepath.Join(binDir, "config")
-	require.NoError(t, os.MkdirAll(configDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("{{invalid yaml:::"), 0644))
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("{{invalid yaml:::"), 0o644))
 
 	origBinDir := model.BinDir
 	model.BinDir = binDir
@@ -2005,7 +2003,7 @@ func TestServeConfig_Get_RAGAPIKeyMasked(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	rag, _ := resp["rag"].(map[string]any)
 	assert.Equal(t, "sk-1***xyz", rag["api_key"])
@@ -2120,8 +2118,8 @@ func TestServeConfigPatch_WithExistingConfigBackup(t *testing.T) {
 
 	binDir := t.TempDir()
 	configDir := filepath.Join(binDir, "config")
-	require.NoError(t, os.MkdirAll(configDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("chat:\n  collapsed_height: 100\n"), 0644))
+	require.NoError(t, os.MkdirAll(configDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("chat:\n  collapsed_height: 100\n"), 0o644))
 
 	origBinDir := model.BinDir
 	model.BinDir = binDir

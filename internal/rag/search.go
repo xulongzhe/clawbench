@@ -23,8 +23,8 @@ type SearchParams struct {
 	Limit            int    `json:"limit"`
 	ProjectPath      string `json:"project"`
 	Backend          string `json:"backend"`
-	Role             string `json:"role"`                // Filter by role: "user" or "assistant"
-	SessionID        string `json:"session_id"`          // Limit search to this session
+	Role             string `json:"role"`               // Filter by role: "user" or "assistant"
+	SessionID        string `json:"session_id"`         // Limit search to this session
 	ExcludeSessionID string `json:"exclude_session_id"` // Exclude this session from results (e.g., current session)
 	FromTime         string `json:"from"`
 	ToTime           string `json:"to"`
@@ -41,7 +41,7 @@ type SearchResult struct {
 //   - Hybrid (vector + FTS with RRF) when both embedding API and FTS are available
 //   - Vector-only when embedding API is available but FTS is not
 //   - FTS-only when embedding API is unavailable
-func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, params SearchParams, defaultLimit int, searchPoolSize int) (*SearchResult, error) {
+func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, params SearchParams, defaultLimit int, searchPoolSize int) (*SearchResult, error) { //nolint:gocyclo // multi-mode search with fallback
 	if params.Query == "" {
 		return &SearchResult{Mode: SearchModeFTS}, nil
 	}
@@ -127,7 +127,8 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 		}
 	}
 
-	slog.Info("rag search completed",
+	slog.Info(
+		"rag search completed",
 		slog.String("query", params.Query),
 		slog.String("mode", string(mode)),
 		slog.Int("results", len(hits)),

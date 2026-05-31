@@ -70,7 +70,7 @@ func TestGenerateUUID_UniqueIDs(t *testing.T) {
 	setupUUIDTestDB(t)
 
 	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := generateUUID("", "chat_sessions", "id")
 		assert.NotEmpty(t, id)
 		assert.False(t, ids[id], "generated duplicate ID: %s", id)

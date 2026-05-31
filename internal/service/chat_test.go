@@ -107,7 +107,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_source_session ON chat_sessions(source_s
 
 // setupDB creates an in-memory SQLite database with the required schema,
 // sets service.DB, and returns a cleanup function.
-func setupDB(t *testing.T) *sql.DB {
+func setupDB(t *testing.T) *sql.DB { //nolint:unparam // test helper: DB used implicitly via global state
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")
 	assert.NoError(t, err)
@@ -140,9 +140,9 @@ func helperCreateSession(t *testing.T, projectPath, backend, title string) strin
 }
 
 // helperCreateScheduledSession creates a scheduled session and asserts success.
-func helperCreateScheduledSession(t *testing.T, projectPath, backend, title string) string {
+func helperCreateScheduledSession(t *testing.T, _, backend, title string) string {
 	t.Helper()
-	id, err := service.CreateSession(projectPath, backend, title, "", "", "default", "scheduled")
+	id, err := service.CreateSession("/project", backend, title, "", "", "default", "scheduled")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, id)
 	return id
@@ -212,7 +212,7 @@ func TestAddChatMessage_AutoTitleTruncated(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 53, utf8.RuneCountInString(title)) // 50 runes + "..."
 	runes := []rune(title)
-	assert.Equal(t, "啊", string(runes[49]))  // 50th rune is still content
+	assert.Equal(t, "啊", string(runes[49]))    // 50th rune is still content
 	assert.Equal(t, "...", string(runes[50:])) // followed by ellipsis
 }
 
@@ -1147,7 +1147,7 @@ func TestSendSessionEvent_FullChannel(t *testing.T) {
 	ch := service.RegisterSessionStream(sid)
 
 	// Fill the channel buffer
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		ok := service.SendSessionEvent(sid, ai.StreamEvent{Type: "content", Content: fmt.Sprintf("msg-%d", i)})
 		assert.True(t, ok)
 	}
@@ -1157,7 +1157,7 @@ func TestSendSessionEvent_FullChannel(t *testing.T) {
 	assert.False(t, ok)
 
 	// Drain the channel to clean up
-	for i := 0; i < 256; i++ {
+	for range 256 {
 		<-ch
 	}
 	service.UnregisterSessionStream(sid)
@@ -1261,8 +1261,8 @@ func TestGetExpiredDeletedSessions_MultipleExpired(t *testing.T) {
 	setupDB(t)
 
 	// Create multiple expired sessions
-	var expectedIDs []string
-	for i := 0; i < 3; i++ {
+	expectedIDs := make([]string, 0, 3)
+	for i := range 3 {
 		sid := helperCreateSession(t, "/project", "claude", fmt.Sprintf("Old %d", i))
 		_ = service.DeleteSession("/project", "claude", sid)
 		_, _ = service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now', '-100 days') WHERE id = ?", sid)
@@ -1337,7 +1337,7 @@ func TestPurgeDeletedData_DoesNotPurgeActiveSession(t *testing.T) {
 	sessionsPurged, messagesPurged, err := service.PurgeDeletedData([]string{sid})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), sessionsPurged) // WHERE deleted = 1 prevents purge
-	assert.Equal(t, int64(1), messagesPurged)  // messages are deleted regardless of deleted flag
+	assert.Equal(t, int64(1), messagesPurged) // messages are deleted regardless of deleted flag
 
 	// Session should still exist (wasn't soft-deleted)
 	title, err := service.GetSessionTitle(sid)
@@ -1595,7 +1595,7 @@ func TestGetSessionsPaged_LimitEqualsTotal(t *testing.T) {
 func TestGetSessionsPaged_LimitLessThanTotal_HasMore(t *testing.T) {
 	setupDB(t)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		helperCreateSession(t, "/project", "claude", fmt.Sprintf("S%d", i))
 	}
 
@@ -1609,7 +1609,7 @@ func TestGetSessionsPaged_CursorSecondPage(t *testing.T) {
 	setupDB(t)
 
 	// Create 5 sessions with staggered updated_at times
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		sid := helperCreateSession(t, "/project", "claude", fmt.Sprintf("S%d", i))
 		// Stagger updated_at so ordering is deterministic
 		_, err := service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now', ? || ' seconds') WHERE id = ?", fmt.Sprintf("-%d", (4-i)*60), sid)
@@ -1646,7 +1646,7 @@ func TestGetSessionsPaged_CursorSecondPage(t *testing.T) {
 func TestGetSessionsPaged_CursorLastPage(t *testing.T) {
 	setupDB(t)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		sid := helperCreateSession(t, "/project", "claude", fmt.Sprintf("S%d", i))
 		_, err := service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now', ? || ' seconds') WHERE id = ?", fmt.Sprintf("-%d", (4-i)*60), sid)
 		assert.NoError(t, err)
@@ -1740,8 +1740,8 @@ func TestGetSessionsPaged_AllPagesCoverAllSessions(t *testing.T) {
 	setupDB(t)
 
 	// Create 7 sessions with staggered times
-	var allIDs []string
-	for i := 0; i < 7; i++ {
+	allIDs := make([]string, 0, 7)
+	for i := range 7 {
 		sid := helperCreateSession(t, "/project", "claude", fmt.Sprintf("S%d", i))
 		allIDs = append(allIDs, sid)
 		_, err := service.DB.Exec("UPDATE chat_sessions SET updated_at = datetime('now', ? || ' seconds') WHERE id = ?", fmt.Sprintf("-%d", (6-i)*60), sid)
@@ -2544,8 +2544,8 @@ func TestGetChatHistoryPaged_LimitAndBeforeID(t *testing.T) {
 	sid := helperCreateSession(t, "/project", "claude", "Paged History")
 
 	// Add 5 messages
-	var msgIDs []int64
-	for i := 0; i < 5; i++ {
+	msgIDs := make([]int64, 0, 5)
+	for i := range 5 {
 		id, err := service.AddChatMessage("/project", "claude", sid, "user", fmt.Sprintf("msg %d", i), nil, false, "")
 		assert.NoError(t, err)
 		msgIDs = append(msgIDs, id)
@@ -2642,7 +2642,7 @@ func TestGetChatHistoryPaged_LimitOnly(t *testing.T) {
 
 	sid := helperCreateSession(t, "/project", "claude", "Paged Limit")
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		_, err := service.AddChatMessage("/project", "claude", sid, "user", fmt.Sprintf("msg %d", i), nil, false, "")
 		assert.NoError(t, err)
 	}

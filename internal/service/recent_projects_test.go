@@ -135,7 +135,7 @@ func TestAddRecentProject_PruneBeyond10(t *testing.T) {
 	setupRecentProjectsDB(t)
 
 	// Add 12 projects via the service (timestamps will be close but pruning still works)
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		dir := createTempProjectDir(t)
 		err := service.AddRecentProject(dir)
 		assert.NoError(t, err)
@@ -150,7 +150,7 @@ func TestGetRecentProjects_Limit10(t *testing.T) {
 	setupRecentProjectsDB(t)
 
 	// Add exactly 10 projects
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		dir := createTempProjectDir(t)
 		err := service.AddRecentProject(dir)
 		assert.NoError(t, err)
@@ -165,9 +165,9 @@ func TestAddRecentProject_PruneKeepsMostRecent(t *testing.T) {
 	db := setupRecentProjectsDB(t)
 
 	// Insert 10 projects with explicit timestamps
-	var dirs []string
+	dirs := make([]string, 0, 10)
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		dir := createTempProjectDir(t)
 		dirs = append(dirs, dir)
 		insertProjectWithTime(t, db, dir, baseTime.Add(time.Duration(i)*time.Second))
@@ -263,7 +263,7 @@ func TestGetRecentProjects_AllNonExistent(t *testing.T) {
 
 	// Insert only non-existent paths
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		insertProjectWithTime(t, db, fmt.Sprintf("/tmp/clawbench-nonexistent-%d-%d", time.Now().UnixNano(), i), baseTime.Add(time.Duration(i)*time.Second))
 	}
 
@@ -292,7 +292,7 @@ func TestGetRecentProjects_DeletedAfterListed(t *testing.T) {
 	assert.Equal(t, []string{dir}, paths)
 
 	// Now delete the directory on disk
-	os.RemoveAll(dir)
+	_ = os.RemoveAll(dir)
 
 	// GetRecentProjects should filter it out and clean up the database
 	paths, err = service.GetRecentProjects()
@@ -387,7 +387,7 @@ func TestGetRecentProjects_ConfigurableLimit(t *testing.T) {
 	t.Cleanup(func() { model.RecentProjectsMaxCount = origLimit })
 
 	// Add 5 projects
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		dir := createTempProjectDir(t)
 		err := service.AddRecentProject(dir)
 		assert.NoError(t, err)
@@ -407,7 +407,7 @@ func TestAddRecentProject_PruneToConfigurableLimit(t *testing.T) {
 	t.Cleanup(func() { model.RecentProjectsMaxCount = origLimit })
 
 	// Add 8 projects
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		dir := createTempProjectDir(t)
 		err := service.AddRecentProject(dir)
 		assert.NoError(t, err)
@@ -427,7 +427,7 @@ func TestGetRecentProjects_FallbackToDefaultLimit(t *testing.T) {
 	t.Cleanup(func() { model.RecentProjectsMaxCount = origLimit })
 
 	// Add 12 projects
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		dir := createTempProjectDir(t)
 		err := service.AddRecentProject(dir)
 		assert.NoError(t, err)
@@ -447,9 +447,9 @@ func TestAddRecentProject_PruneKeepsMostRecentWithCustomLimit(t *testing.T) {
 	t.Cleanup(func() { model.RecentProjectsMaxCount = origLimit })
 
 	// Insert 3 projects with explicit timestamps
-	var dirs []string
+	dirs := make([]string, 0, 3)
 	baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		dir := createTempProjectDir(t)
 		dirs = append(dirs, dir)
 		insertProjectWithTime(t, db, dir, baseTime.Add(time.Duration(i)*time.Second))

@@ -92,30 +92,23 @@ jobs:
           CGO_ENABLED: 1
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-linux ./cmd/server
+          go build -ldflags="-s -w -extldflags '-static' -X clawbench/internal/version.Version=$VERSION" -o clawbench-linux ./cmd/server
 
-      - name: Verify Linux binary
+      - name: Verify Linux binary is statically linked
         run: |
-          file clawbench-linux
-          echo "✅ Linux binary built successfully"
-
-      - name: Download Pi agent binary (Linux)
-        run: |
-          PI_VERSION="${PI_VERSION:-0.78.0}"
-          mkdir -p .clawbench/pi
-          curl -fSL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-linux-x64.tar.gz" -o pi-download.tar.gz
-          tar xzf pi-download.tar.gz -C .clawbench/pi --strip-components=1
-          chmod +x .clawbench/pi/pi
-          test -x .clawbench/pi/pi || { echo "ERROR: Pi binary not found after download"; exit 1; }
-          rm -f pi-download.tar.gz
+          if file clawbench-linux | grep -q "statically linked"; then
+            echo "✅ Linux binary is statically linked (no glibc dependency)"
+          else
+            echo "❌ Linux binary is NOT statically linked — glibc version mismatch may occur on older distros"
+            exit 1
+          fi
 
       - name: Package Linux
         run: |
-          mkdir -p pkg-linux/clawbench/.clawbench
+          mkdir -p pkg-linux/clawbench
           cp clawbench-linux pkg-linux/clawbench/clawbench
           cp -r public pkg-linux/clawbench/public
           cp -r config pkg-linux/clawbench/config
-          cp -r .clawbench/pi pkg-linux/clawbench/.clawbench/pi
           cp server.sh pkg-linux/clawbench/
           chmod +x pkg-linux/clawbench/clawbench pkg-linux/clawbench/server.sh
           cd pkg-linux && zip -r clawbench-linux-amd64.zip clawbench/
@@ -150,27 +143,13 @@ jobs:
           $VERSION = if (git describe --tags --always 2>$null) { git describe --tags --always } else { "dev" }
           go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench.exe ./cmd/server
 
-      - name: Download Pi agent binary (Windows)
-        shell: pwsh
-        run: |
-          $PI_VERSION = if ($env:PI_VERSION) { $env:PI_VERSION } else { "0.78.0" }
-          New-Item -ItemType Directory -Force -Path .clawbench/pi
-          $url = "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-windows-x64.zip"
-          Invoke-WebRequest -Uri $url -OutFile pi-download.zip
-          Expand-Archive -Path pi-download.zip -DestinationPath pi-download
-          # Windows zip has no pi/ prefix; copy contents directly into .clawbench/pi
-          Copy-Item -Recurse pi-download\* .clawbench\pi\
-          if (-not (Test-Path .clawbench\pi\pi.exe)) { Write-Error "ERROR: Pi binary not found after download"; exit 1 }
-          Remove-Item -Recurse -Force pi-download, pi-download.zip
-
       - name: Package Windows
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path pkg-windows/clawbench/.clawbench
+          New-Item -ItemType Directory -Force -Path pkg-windows/clawbench
           Copy-Item clawbench.exe pkg-windows/clawbench/
           Copy-Item -Recurse public pkg-windows/clawbench/public
           Copy-Item -Recurse config pkg-windows/clawbench/config
-          Copy-Item -Recurse .clawbench/pi pkg-windows/clawbench/.clawbench/pi
           Copy-Item server.ps1 pkg-windows/clawbench/
           Compress-Archive -Path pkg-windows/clawbench -DestinationPath pkg-windows/clawbench-windows-amd64.zip
 
@@ -204,23 +183,12 @@ jobs:
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-arm64 ./cmd/server
 
-      - name: Download Pi agent binary (macOS arm64)
-        run: |
-          PI_VERSION="${PI_VERSION:-0.78.0}"
-          mkdir -p .clawbench/pi
-          curl -fSL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-arm64.tar.gz" -o pi-download.tar.gz
-          tar xzf pi-download.tar.gz -C .clawbench/pi --strip-components=1
-          chmod +x .clawbench/pi/pi
-          test -x .clawbench/pi/pi || { echo "ERROR: Pi binary not found after download"; exit 1; }
-          rm -f pi-download.tar.gz
-
       - name: Package macOS arm64
         run: |
-          mkdir -p pkg-mac-arm64/clawbench/.clawbench
+          mkdir -p pkg-mac-arm64/clawbench
           cp clawbench-darwin-arm64 pkg-mac-arm64/clawbench/clawbench
           cp -r public pkg-mac-arm64/clawbench/public
           cp -r config pkg-mac-arm64/clawbench/config
-          cp -r .clawbench/pi pkg-mac-arm64/clawbench/.clawbench/pi
           cp server.sh pkg-mac-arm64/clawbench/
           chmod +x pkg-mac-arm64/clawbench/clawbench pkg-mac-arm64/clawbench/server.sh
           cd pkg-mac-arm64 && zip -r clawbench-darwin-arm64.zip clawbench/
@@ -258,23 +226,12 @@ jobs:
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-amd64 ./cmd/server
 
-      - name: Download Pi agent binary (macOS amd64)
-        run: |
-          PI_VERSION="${PI_VERSION:-0.78.0}"
-          mkdir -p .clawbench/pi
-          curl -fSL "https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-x64.tar.gz" -o pi-download.tar.gz
-          tar xzf pi-download.tar.gz -C .clawbench/pi --strip-components=1
-          chmod +x .clawbench/pi/pi
-          test -x .clawbench/pi/pi || { echo "ERROR: Pi binary not found after download"; exit 1; }
-          rm -f pi-download.tar.gz
-
       - name: Package macOS amd64
         run: |
-          mkdir -p pkg-mac-amd64/clawbench/.clawbench
+          mkdir -p pkg-mac-amd64/clawbench
           cp clawbench-darwin-amd64 pkg-mac-amd64/clawbench/clawbench
           cp -r public pkg-mac-amd64/clawbench/public
           cp -r config pkg-mac-amd64/clawbench/config
-          cp -r .clawbench/pi pkg-mac-amd64/clawbench/.clawbench/pi
           cp server.sh pkg-mac-amd64/clawbench/
           chmod +x pkg-mac-amd64/clawbench/clawbench pkg-mac-amd64/clawbench/server.sh
           cd pkg-mac-amd64 && zip -r clawbench-darwin-amd64.zip clawbench/

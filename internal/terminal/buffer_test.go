@@ -151,7 +151,7 @@ func TestRingBuffer_LargeDataset(t *testing.T) {
 	rb := NewRingBuffer(capacity, 65536, 4*1024*1024)
 
 	// Write more lines than capacity
-	for i := 0; i < capacity+500; i++ {
+	for range capacity + 500 {
 		rb.Write([]byte("line\n"))
 	}
 

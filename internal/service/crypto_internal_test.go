@@ -27,9 +27,9 @@ func TestReadAutoPassword_FileExists(t *testing.T) {
 	defer func() { model.BinDir = origBinDir }()
 
 	// Write auto-password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0755)
+	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("test-password-123"), 0600)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("test-password-123"), 0o600)
 	require.NoError(t, err)
 
 	password := readAutoPassword()
@@ -62,9 +62,9 @@ func TestDeriveKeyFromPassword_WithPassword(t *testing.T) {
 	defer func() { model.BinDir = origBinDir }()
 
 	// Write auto-password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0755)
+	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("my-secret-password"), 0600)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("my-secret-password"), 0o600)
 	require.NoError(t, err)
 
 	ResetEncryptionKeyCache()
@@ -92,7 +92,7 @@ func TestDeriveKeyFromPassword_NoPassword(t *testing.T) {
 func TestLoadAllAPIKeys_Empty(t *testing.T) {
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	origDB := DB
 	origDBRead := DBRead
@@ -108,7 +108,7 @@ func TestLoadAllAPIKeys_Empty(t *testing.T) {
 func TestLoadAllAPIKeys_WithKeys(t *testing.T) {
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	origDB := DB
 	origDBRead := DBRead
@@ -134,7 +134,7 @@ func TestLoadAllAPIKeys_WithKeys(t *testing.T) {
 func TestLoadAllAPIKeys_MultipleKeys(t *testing.T) {
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	origDB := DB
 	origDBRead := DBRead
@@ -158,7 +158,7 @@ func TestLoadAllAPIKeys_MultipleKeys(t *testing.T) {
 func TestLoadAllAPIKeys_CorruptKey(t *testing.T) {
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	origDB := DB
 	origDBRead := DBRead
@@ -203,9 +203,9 @@ func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
 	defer func() { model.BinDir = origBinDir }()
 
 	// Write initial password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0755)
+	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0600)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0o600)
 	require.NoError(t, err)
 
 	db, err := InitInMemoryDB()
@@ -226,7 +226,7 @@ func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
 	require.NoError(t, err)
 
 	// Update password file before rotation (as the real code does)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0600)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0o600)
 	require.NoError(t, err)
 
 	// Make the DB read-only by putting it in WAL mode and opening a second read-only connection
@@ -253,7 +253,7 @@ func TestRotateAPIKeyEncryption_SaveKeyError(t *testing.T) {
 func TestInitInMemoryDB_Success(t *testing.T) {
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Verify agents table exists
 	var count int
@@ -284,14 +284,14 @@ func TestDeriveEncryptionKey_ConcurrentAccess(t *testing.T) {
 
 	// Call DeriveEncryptionKey from multiple goroutines to test thread safety
 	done := make(chan []byte, 5)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		go func() {
 			done <- DeriveEncryptionKey()
 		}()
 	}
 
-	var keys [][]byte
-	for i := 0; i < 5; i++ {
+	keys := make([][]byte, 0, 5)
+	for range 5 {
 		keys = append(keys, <-done)
 	}
 
@@ -308,14 +308,14 @@ func TestRotateAPIKeyEncryption_WithPasswordChange(t *testing.T) {
 	defer func() { model.BinDir = origBinDir }()
 
 	// Write initial password file
-	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0755)
+	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0600)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0o600)
 	require.NoError(t, err)
 
 	db, err := InitInMemoryDB()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	origDB := DB
 	origDBRead := DBRead
@@ -334,7 +334,7 @@ func TestRotateAPIKeyEncryption_WithPasswordChange(t *testing.T) {
 	// Simulate password change: update the password file BEFORE calling RotateAPIKeyEncryption.
 	// The caller is responsible for updating the file; RotateAPIKeyEncryption decrypts with
 	// the CURRENT key (old), resets cache, then re-encrypts with the new key.
-	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0600)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0o600)
 	require.NoError(t, err)
 
 	// IMPORTANT: Do NOT reset cache before calling RotateAPIKeyEncryption.

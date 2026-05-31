@@ -1,3 +1,4 @@
+//nolint:goconst // role/status strings are domain constants
 package service
 
 import (
@@ -16,15 +17,17 @@ import (
 // Active session tracking - keyed by sessionID
 var (
 	activeSessions = make(map[string]bool)
-	activeMu      sync.Mutex
+	activeMu       sync.Mutex
 )
 
 // Session stream channel management for SSE streaming
 var sessionStreams sync.Map // map[string]chan ai.StreamEvent
 
 // Session cancel functions for aborting AI responses
-var sessionCancels sync.Map         // map[string]context.CancelFunc
-var sessionCancelReasons sync.Map   // map[string]string — "user", "disconnect"
+var (
+	sessionCancels       sync.Map // map[string]context.CancelFunc
+	sessionCancelReasons sync.Map // map[string]string — "user", "disconnect"
+)
 
 // responsePreviewMaxRunes is an alias for model.ResponsePreviewMaxRunes for local use.
 const responsePreviewMaxRunes = model.ResponsePreviewMaxRunes
@@ -305,7 +308,8 @@ func SendSessionEvent(sessionID string, event ai.StreamEvent) bool {
 			case ch <- event:
 				return true
 			default:
-				slog.Warn("session stream channel full, dropping event",
+				slog.Warn(
+					"session stream channel full, dropping event",
 					slog.String("session_id", sessionID),
 					slog.String("event_type", event.Type),
 				)

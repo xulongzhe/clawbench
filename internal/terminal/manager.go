@@ -88,12 +88,14 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request, projec
 	if sessionID != "" {
 		if s, ok := m.sessions[sessionID]; ok && s.IsRunning() {
 			session = s
-			slog.Info("terminal: reconnecting to existing session",
+			slog.Info(
+				"terminal: reconnecting to existing session",
 				slog.String("session", sessionID),
 			)
 		} else {
 			// Session expired or closed — will create a new one below
-			slog.Info("terminal: session not found, creating new",
+			slog.Info(
+				"terminal: session not found, creating new",
 				slog.String("requested_session", sessionID),
 			)
 		}
@@ -117,7 +119,7 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request, projec
 			})
 			if err == nil {
 				sendWSError(conn, ErrCodeSessionLimit, fmt.Sprintf("max sessions (%d) reached", m.maxSessions))
-				conn.Close(websocket.StatusPolicyViolation, "session limit")
+				_ = conn.Close(websocket.StatusPolicyViolation, "session limit")
 			}
 			return nil
 		}
@@ -139,7 +141,8 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request, projec
 
 		m.sessions[sid] = newSession
 		session = newSession
-		slog.Info("terminal: new session created",
+		slog.Info(
+			"terminal: new session created",
 			slog.String("session", sid),
 			slog.String("project", projectPath),
 			slog.String("cwd", cwd),
@@ -167,7 +170,7 @@ func (m *Manager) HandleWebSocket(w http.ResponseWriter, r *http.Request, projec
 	// Connect to the session (will kick any zombie client from reconnect race)
 	if err := session.Connect(conn); err != nil {
 		sendWSError(conn, ErrCodeShellFailed, err.Error())
-		conn.Close(websocket.StatusInternalError, "connect failed")
+		_ = conn.Close(websocket.StatusInternalError, "connect failed")
 		return nil
 	}
 
@@ -306,5 +309,5 @@ func sendWSError(conn *websocket.Conn, code, message string) {
 	data, _ := json.Marshal(msg)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn.Write(ctx, websocket.MessageText, data)
+	_ = conn.Write(ctx, websocket.MessageText, data)
 }

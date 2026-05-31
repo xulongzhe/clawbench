@@ -105,18 +105,18 @@ func TestScheduler_CancelExecution_Found(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	s.runningExecutions.Store("exec-1", &RunningExecution{
-		ID:         "exec-1",
-		TaskID:     1,
-		CancelFunc: cancel,
-		StartedAt:  time.Now(),
+		ID:          "exec-1",
+		TaskID:      1,
+		CancelFunc:  cancel,
+		StartedAt:   time.Now(),
 		TriggerType: "auto",
 	})
 
 	// Replace cancel with our own to detect invocation
 	s.runningExecutions.Store("exec-1", &RunningExecution{
 		ID: "exec-1", TaskID: 1,
-		CancelFunc: func() { cancelled = true; cancel() },
-		StartedAt:  time.Now(),
+		CancelFunc:  func() { cancelled = true; cancel() },
+		StartedAt:   time.Now(),
 		TriggerType: "auto",
 	})
 
@@ -308,7 +308,7 @@ func TestScheduler_TaskRunning_ConcurrentNoDuplicate(t *testing.T) {
 	claimed := make(chan int, goroutines)
 	var wg sync.WaitGroup
 
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

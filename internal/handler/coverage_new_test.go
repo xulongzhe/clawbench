@@ -67,7 +67,7 @@ func TestAddFileToZip(t *testing.T) {
 		tmpDir := t.TempDir()
 		filePath := filepath.Join(tmpDir, "test.txt")
 		content := "hello world from zip test"
-		require.NoError(t, os.WriteFile(filePath, []byte(content), 0644))
+		require.NoError(t, os.WriteFile(filePath, []byte(content), 0o644))
 
 		info, err := os.Stat(filePath)
 		require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestAddFileToZip(t *testing.T) {
 		require.NoError(t, err)
 		data, err := readAll(rc)
 		require.NoError(t, err)
-		rc.Close()
+		_ = rc.Close()
 		assert.Equal(t, content, string(data))
 	})
 
@@ -100,7 +100,7 @@ func TestAddFileToZip(t *testing.T) {
 		info := mockFileInfo{name: "ghost.txt", size: 100}
 		err := addFileToZip(zw, "/nonexistent/path/ghost.txt", "ghost.txt", info)
 		assert.Error(t, err)
-		zw.Close()
+		_ = zw.Close()
 	})
 }
 
@@ -112,7 +112,7 @@ type mockFileInfo struct {
 
 func (m mockFileInfo) Name() string       { return m.name }
 func (m mockFileInfo) Size() int64        { return m.size }
-func (m mockFileInfo) Mode() os.FileMode  { return 0644 }
+func (m mockFileInfo) Mode() os.FileMode  { return 0o644 }
 func (m mockFileInfo) ModTime() time.Time { return time.Now() }
 func (m mockFileInfo) IsDir() bool        { return false }
 func (m mockFileInfo) Sys() interface{}   { return nil }
@@ -422,9 +422,9 @@ func TestLoginLimiter_Cleanup_RemovesStaleRecords(t *testing.T) {
 	// Add a stale record (last failure was long ago, not blocked)
 	staleTime := time.Now().Add(-2 * time.Hour)
 	limiter.records["192.0.2.1"] = &ipRecord{
-		failCount:     0,
-		lastFail:      staleTime,
-		blockedUntil:  time.Time{}, // not blocked
+		failCount:    0,
+		lastFail:     staleTime,
+		blockedUntil: time.Time{}, // not blocked
 	}
 
 	// Add a recent record (should NOT be removed)
@@ -583,8 +583,8 @@ func TestServeAndroidLog_TruncatesOver200(t *testing.T) {
 	model.ConfigInstance.LogDir = tmpDir
 
 	// Create 250 entries — should be capped to 200
-	var entries []AndroidLogEntry
-	for i := 0; i < 250; i++ {
+	entries := make([]AndroidLogEntry, 0, 250)
+	for i := range 250 {
 		entries = append(entries, AndroidLogEntry{
 			Level: "I", Tag: fmt.Sprintf("Tag%d", i), Msg: fmt.Sprintf("msg%d", i), Ts: 1700000000000 + int64(i*1000),
 		})
@@ -664,7 +664,7 @@ func TestServeGitBranch_DirtyRepo(t *testing.T) {
 	initGitRepo(t, env.ProjectDir)
 	// Make it dirty by modifying a tracked file
 	existingFile := filepath.Join(env.ProjectDir, "README.md")
-	require.NoError(t, os.WriteFile(existingFile, []byte("# Modified"), 0644))
+	require.NoError(t, os.WriteFile(existingFile, []byte("# Modified"), 0o644))
 
 	req := newRequest(t, http.MethodGet, "/api/git/branch", nil)
 	withProjectCookie(req, env.ProjectDir)
@@ -887,7 +887,7 @@ func TestValidateCreatePath_RelativeDir(t *testing.T) {
 	defer teardown()
 
 	// Ensure the subdirectory exists so isPathUnderAnyRoot can resolve it
-	os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0755)
+	_ = os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0o755)
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/api/file/create", nil)
@@ -905,7 +905,7 @@ func TestValidateCreatePath_AbsDirUnderWatchDir(t *testing.T) {
 	defer teardown()
 
 	subDir := filepath.Join(env.WatchDir, "subproject")
-	os.MkdirAll(subDir, 0755)
+	_ = os.MkdirAll(subDir, 0o755)
 
 	w := httptest.NewRecorder()
 	r := newRequest(t, http.MethodPost, "/api/file/create", nil)
@@ -1031,7 +1031,7 @@ func TestCopyDir_EmptySubdirectory(t *testing.T) {
 	defer teardown()
 
 	// Create dir with an empty subdirectory
-	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "src", "emptydir"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "src", "emptydir"), 0o755))
 	createTestFile(t, env.ProjectDir, "src/file.txt", "content")
 
 	srcDir := filepath.Join(env.ProjectDir, "src")
@@ -1058,7 +1058,7 @@ func TestSafeRemoveAll_UnderWatchDir(t *testing.T) {
 	defer teardown()
 
 	targetDir := filepath.Join(env.ProjectDir, "to-remove")
-	require.NoError(t, os.MkdirAll(targetDir, 0755))
+	require.NoError(t, os.MkdirAll(targetDir, 0o755))
 	createTestFile(t, targetDir, "file.txt", "data")
 
 	err := safeRemoveAll(targetDir)
@@ -1080,13 +1080,13 @@ func TestSafeRemoveAll_SymlinkEscaping(t *testing.T) {
 	defer teardown()
 
 	targetDir := filepath.Join(env.ProjectDir, "symlink-dir")
-	require.NoError(t, os.MkdirAll(targetDir, 0755))
+	require.NoError(t, os.MkdirAll(targetDir, 0o755))
 	createTestFile(t, targetDir, "file.txt", "data")
 
 	// Create a symlink inside that points outside WatchDir
 	escapeTarget := filepath.Join(os.TempDir(), "clawbench-symlink-escape")
-	require.NoError(t, os.MkdirAll(escapeTarget, 0755))
-	defer os.RemoveAll(escapeTarget)
+	require.NoError(t, os.MkdirAll(escapeTarget, 0o755))
+	defer func() { _ = os.RemoveAll(escapeTarget) }()
 	require.NoError(t, os.Symlink(escapeTarget, filepath.Join(targetDir, "escape-link")))
 
 	err := safeRemoveAll(targetDir)
@@ -1166,7 +1166,7 @@ func TestServeProjectsCreate_AlreadyExists(t *testing.T) {
 	defer teardown()
 
 	// Create a directory with the same name first
-	os.MkdirAll(filepath.Join(env.WatchDir, "existing-project"), 0755)
+	_ = os.MkdirAll(filepath.Join(env.WatchDir, "existing-project"), 0o755)
 
 	req := newRequest(t, http.MethodPost, "/api/projects", map[string]string{
 		"name": "existing-project",
@@ -1227,7 +1227,7 @@ func TestCopyDir_SymlinkWithinWatchDir(t *testing.T) {
 
 	// Create a real file and a directory with a symlink pointing within WatchDir
 	createTestFile(t, env.ProjectDir, "realdir/target.txt", "symlink content")
-	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "srcdir"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "srcdir"), 0o755))
 	require.NoError(t, os.Symlink(filepath.Join(env.ProjectDir, "realdir"), filepath.Join(env.ProjectDir, "srcdir", "link-to-real")))
 
 	dstDir := filepath.Join(env.ProjectDir, "dstdir")
@@ -1246,9 +1246,9 @@ func TestCopyDir_SymlinkEscapingWatchDir_Skipped(t *testing.T) {
 
 	// Create a symlink that points outside WatchDir
 	escapeTarget := t.TempDir()
-	os.WriteFile(filepath.Join(escapeTarget, "secret.txt"), []byte("secret"), 0644)
+	_ = os.WriteFile(filepath.Join(escapeTarget, "secret.txt"), []byte("secret"), 0o644)
 
-	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "srcdir"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "srcdir"), 0o755))
 	require.NoError(t, os.Symlink(escapeTarget, filepath.Join(env.ProjectDir, "srcdir", "escape-link")))
 
 	dstDir := filepath.Join(env.ProjectDir, "dstdir")
@@ -1266,7 +1266,7 @@ func TestCopyDir_SymlinkEvalFails_Skipped(t *testing.T) {
 	defer teardown()
 
 	// Create a dangling symlink (target doesn't exist)
-	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "srcdir"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "srcdir"), 0o755))
 	require.NoError(t, os.Symlink("/nonexistent/path/xyz", filepath.Join(env.ProjectDir, "srcdir", "dangling")))
 
 	dstDir := filepath.Join(env.ProjectDir, "dstdir")
@@ -1290,7 +1290,7 @@ func TestCopyDir_SymlinkToDir_WithinWatchDir(t *testing.T) {
 
 	// Create a directory and a symlink pointing to it within WatchDir
 	createTestFile(t, env.ProjectDir, "realdir/nested/file.txt", "nested content")
-	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "srcdir"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(env.ProjectDir, "srcdir"), 0o755))
 	require.NoError(t, os.Symlink(filepath.Join(env.ProjectDir, "realdir"), filepath.Join(env.ProjectDir, "srcdir", "link-dir")))
 
 	dstDir := filepath.Join(env.ProjectDir, "dstdir")
@@ -1335,8 +1335,8 @@ func TestUploadFile_NoFileProvided(t *testing.T) {
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile("wrong_field", "test.txt")
 	require.NoError(t, err)
-	fmt.Fprint(part, "hello")
-	writer.Close()
+	_, _ = fmt.Fprint(part, "hello")
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1353,8 +1353,8 @@ func TestUploadFile_NoExtension(t *testing.T) {
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile("file", "noextension")
 	require.NoError(t, err)
-	fmt.Fprint(part, "hello")
-	writer.Close()
+	_, _ = fmt.Fprint(part, "hello")
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1384,8 +1384,8 @@ func TestUploadFilePost_AllExtensionsAllowed(t *testing.T) {
 			writer := multipart.NewWriter(&buf)
 			part, createErr := writer.CreateFormFile("file", tt.ext)
 			require.NoError(t, createErr)
-			fmt.Fprint(part, "content")
-			writer.Close()
+			_, _ = fmt.Fprint(part, "content")
+			_ = writer.Close()
 
 			req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 			req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1404,8 +1404,8 @@ func TestUploadFile_Success(t *testing.T) {
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile("file", "test.txt")
 	require.NoError(t, err)
-	fmt.Fprint(part, "hello world")
-	writer.Close()
+	_, _ = fmt.Fprint(part, "hello world")
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1427,15 +1427,15 @@ func TestUploadFile_FilenameCollision_SequentialNumbering(t *testing.T) {
 
 	// Pre-create the uploads directory with an existing file
 	uploadsDir := filepath.Join(env.ProjectDir, ".clawbench", "uploads")
-	require.NoError(t, os.MkdirAll(uploadsDir, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(uploadsDir, "test.txt"), []byte("existing"), 0644))
+	require.NoError(t, os.MkdirAll(uploadsDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(uploadsDir, "test.txt"), []byte("existing"), 0o644))
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile("file", "test.txt")
 	require.NoError(t, err)
-	fmt.Fprint(part, "new content")
-	writer.Close()
+	_, _ = fmt.Fprint(part, "new content")
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1458,8 +1458,8 @@ func TestUploadFile_SpacesInFilename(t *testing.T) {
 	writer := multipart.NewWriter(&buf)
 	part, err := writer.CreateFormFile("file", "my file.txt")
 	require.NoError(t, err)
-	fmt.Fprint(part, "content with spaces")
-	writer.Close()
+	_, _ = fmt.Fprint(part, "content with spaces")
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1526,7 +1526,7 @@ func TestServeQuickCommands_PostWithWhitespace(t *testing.T) {
 
 	// Labels/commands with only whitespace should be treated as empty after TrimSpace
 	body := map[string]any{
-		"label":    "  ",
+		"label":   "  ",
 		"command": "  echo hi  ",
 	}
 	req := newRequest(t, http.MethodPost, "/api/terminal/quick-commands", body)
@@ -1605,7 +1605,7 @@ func TestServeRecentProjects_Delete(t *testing.T) {
 	defer teardown()
 
 	// Add a project first
-	service.AddRecentProject("/home/user/to-delete")
+	_ = service.AddRecentProject("/home/user/to-delete")
 
 	delReq := newRequest(t, http.MethodDelete, "/api/recent-projects", map[string]string{
 		"path": "/home/user/to-delete",
@@ -1739,13 +1739,13 @@ func TestServeFileArchive_SymlinkEscapingRootPaths(t *testing.T) {
 
 	// Create a directory with a symlink pointing outside root paths
 	archiveDir := filepath.Join(env.ProjectDir, "archivedir")
-	require.NoError(t, os.MkdirAll(archiveDir, 0755))
+	require.NoError(t, os.MkdirAll(archiveDir, 0o755))
 	createTestFile(t, archiveDir, "real.txt", "real content")
 
 	escapeTarget := filepath.Join(os.TempDir(), "clawbench-archive-escape")
-	require.NoError(t, os.MkdirAll(escapeTarget, 0755))
-	defer os.RemoveAll(escapeTarget)
-	os.WriteFile(filepath.Join(escapeTarget, "secret.txt"), []byte("secret"), 0644)
+	require.NoError(t, os.MkdirAll(escapeTarget, 0o755))
+	defer func() { _ = os.RemoveAll(escapeTarget) }()
+	_ = os.WriteFile(filepath.Join(escapeTarget, "secret.txt"), []byte("secret"), 0o644)
 	require.NoError(t, os.Symlink(escapeTarget, filepath.Join(archiveDir, "escape-link")))
 
 	req := newRequest(t, http.MethodPost, "/api/file/archive", map[string]any{
@@ -1759,7 +1759,7 @@ func TestServeFileArchive_SymlinkEscapingRootPaths(t *testing.T) {
 	// Verify zip contents — should contain real.txt but NOT the escape symlink
 	reader, err := zip.NewReader(bytes.NewReader(w.Body.Bytes()), int64(w.Body.Len()))
 	require.NoError(t, err)
-	names := []string{}
+	names := make([]string, 0, len(reader.File))
 	for _, f := range reader.File {
 		names = append(names, f.Name)
 	}
@@ -1779,7 +1779,7 @@ func TestUploadFile_CustomDir_DstPathUnderRoot_Succeeds(t *testing.T) {
 	defer teardown()
 
 	subDir := filepath.Join(env.ProjectDir, "customupload")
-	require.NoError(t, os.MkdirAll(subDir, 0755))
+	require.NoError(t, os.MkdirAll(subDir, 0o755))
 
 	req := createMultipartUploadRequest(t, "test.txt", "custom content", subDir)
 	withProjectCookie(req, env.ProjectDir)
@@ -1840,7 +1840,7 @@ func TestServeProjects_RelativePathOutsideRoot(t *testing.T) {
 	defer func() { model.RootPaths = origRootPaths }()
 
 	// Create a subdirectory in the root
-	os.MkdirAll(filepath.Join(tmpDir, "subproject"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "subproject"), 0o755)
 
 	t.Run("RelativePathUnderRoot_ReturnsOK", func(t *testing.T) {
 		req := newRequest(t, http.MethodGet, "/api/projects?path=subproject", nil)
@@ -1860,7 +1860,7 @@ func TestServeProjectsCreate_RelativePath(t *testing.T) {
 	defer teardown()
 
 	// Ensure subdirectory exists for create operations
-	os.MkdirAll(filepath.Join(env.WatchDir, "subproject"), 0755)
+	_ = os.MkdirAll(filepath.Join(env.WatchDir, "subproject"), 0o755)
 
 	t.Run("AbsPathUnderRoot_Succeeds", func(t *testing.T) {
 		req := newRequest(t, http.MethodPost, "/api/projects", map[string]string{
@@ -1920,7 +1920,7 @@ func TestUploadFile_DefaultDir_OutsideRoot_Returns403(t *testing.T) {
 	require.NoError(t, err)
 	_, err = part.Write([]byte("hello"))
 	require.NoError(t, err)
-	writer.Close()
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1939,7 +1939,7 @@ func TestValidateCreatePath_RelativeDirPath_UsesProjectCookie(t *testing.T) {
 	defer teardown()
 
 	// Create a subdirectory under the project
-	os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0755)
+	_ = os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0o755)
 
 	req := newRequest(t, http.MethodPost, "/api/file/create", map[string]string{
 		"path": "subdir",
@@ -1964,7 +1964,7 @@ func TestSafeRemoveAll_SymlinkEscapingRootPaths_SkipsEscape(t *testing.T) {
 
 	// Create a directory to delete
 	deleteDir := filepath.Join(env.WatchDir, "to-delete")
-	os.MkdirAll(deleteDir, 0755)
+	_ = os.MkdirAll(deleteDir, 0o755)
 
 	// Create a file inside
 	createTestFile(t, deleteDir, "normal.txt", "content")
@@ -1973,7 +1973,7 @@ func TestSafeRemoveAll_SymlinkEscapingRootPaths_SkipsEscape(t *testing.T) {
 	outsideDir := t.TempDir()
 	createTestFile(t, outsideDir, "secret.txt", "secret")
 	linkPath := filepath.Join(deleteDir, "escape-link")
-	os.Symlink(outsideDir, linkPath)
+	_ = os.Symlink(outsideDir, linkPath)
 
 	// Delete the directory using safeRemoveAll
 	err := safeRemoveAll(deleteDir)
@@ -1997,12 +1997,12 @@ func TestCopyDir_SymlinkEscapingRootPaths_Skipped(t *testing.T) {
 	defer teardown()
 
 	srcDir := filepath.Join(env.WatchDir, "copy-src")
-	os.MkdirAll(srcDir, 0755)
+	_ = os.MkdirAll(srcDir, 0o755)
 	createTestFile(t, srcDir, "normal.txt", "content")
 
 	// Create symlink pointing outside root paths
 	outsideDir := t.TempDir()
-	os.Symlink(outsideDir, filepath.Join(srcDir, "escape-link"))
+	_ = os.Symlink(outsideDir, filepath.Join(srcDir, "escape-link"))
 
 	dstDir := filepath.Join(env.WatchDir, "copy-dst")
 

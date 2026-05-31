@@ -25,11 +25,11 @@ func setupTestDBForChatSummary(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	// Create minimal tables needed for enrichMessagesWithSummaries
-	db.Exec(`
+	_, _ = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_history (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			project_path TEXT NOT NULL,
@@ -43,7 +43,7 @@ func setupTestDBForChatSummary(t *testing.T) (*sql.DB, func()) {
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 	`)
-	db.Exec(`
+	_, _ = db.Exec(`
 		CREATE TABLE IF NOT EXISTS summaries (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			target_type TEXT NOT NULL,
@@ -198,7 +198,7 @@ func TestSetChatSummaryEnabled_ConcurrentSafe(t *testing.T) {
 	const goroutines = 20
 
 	// Concurrent writers
-	for i := 0; i < goroutines; i++ {
+	for i := range goroutines {
 		wg.Add(1)
 		go func(val bool) {
 			defer wg.Done()
@@ -207,7 +207,7 @@ func TestSetChatSummaryEnabled_ConcurrentSafe(t *testing.T) {
 	}
 
 	// Concurrent readers
-	for i := 0; i < goroutines; i++ {
+	for range goroutines {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -279,7 +279,7 @@ func TestAsyncSummarize_SaveSummaryError(t *testing.T) {
 	taskSummarizerInstance = &summarize.TaskSummarizer{Backend: mock}
 
 	// Drop the summaries table to force SaveSummary to fail
-	db.Exec("DROP TABLE summaries")
+	_, _ = db.Exec("DROP TABLE summaries")
 
 	// Long text block — will trigger SaveSummary which will fail
 	longText := strings.Repeat("这是一段较长的AI回复内容。", 30)
@@ -310,7 +310,7 @@ func TestAsyncSummarize_ShortTextSaveError(t *testing.T) {
 	taskSummarizerInstance = &summarize.TaskSummarizer{Backend: mock}
 
 	// Drop the summaries table to force SaveSummary to fail
-	db.Exec("DROP TABLE summaries")
+	_, _ = db.Exec("DROP TABLE summaries")
 
 	// Short text block — will try to save empty summary, which will fail
 	blocks := []model.ContentBlock{{Type: "text", Text: "短"}}

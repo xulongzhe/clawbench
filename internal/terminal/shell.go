@@ -1,3 +1,4 @@
+//nolint:noctx // PTY subprocess, context not applicable
 package terminal
 
 import (
@@ -37,7 +38,8 @@ func resolveShell() string {
 // The shell process is started in its own process group for clean cleanup.
 func startPTY(cwd string) (*os.File, *exec.Cmd, error) {
 	shell := resolveShell()
-	slog.Info("terminal: starting PTY",
+	slog.Info(
+		"terminal: starting PTY",
 		slog.String("shell", shell),
 		slog.String("cwd", cwd),
 	)

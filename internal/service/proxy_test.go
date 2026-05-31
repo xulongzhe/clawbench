@@ -163,7 +163,6 @@ func TestIsPortInRange(t *testing.T) {
 	}
 }
 
-
 func TestProxyRegistry_RegisterPort_Protocol(t *testing.T) {
 	r := newTestRegistry(t)
 	defer r.Stop()
@@ -378,7 +377,7 @@ func TestProxyRegistry_PortPersistence_FullLifecycle(t *testing.T) {
 	assert.True(t, isPortRegistered(r2, 4000))
 	assert.True(t, isPortRegistered(r2, 5432))
 
-	r2.UnregisterPort(4000)      // remove one
+	r2.UnregisterPort(4000)                      // remove one
 	r2.RegisterPort(9090, "", "metrics", "http") // add new
 	r2.Stop()
 
@@ -1122,14 +1121,14 @@ func TestProxyRegistry_IsPortAllowed_ConcurrentWithSetAllowedPorts(t *testing.T)
 	// Writer: rapidly changes allowed ports
 	go func() {
 		defer close(done)
-		for i := 0; i < 100; i++ {
+		for range 100 {
 			r.SetAllowedPorts("1024-65535")
 			r.SetAllowedPorts("1-65535")
 		}
 	}()
 
 	// Reader: checks IsPortAllowed concurrently (should not panic due to data race)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		_ = r.IsPortAllowed(8080)
 	}
 	<-done

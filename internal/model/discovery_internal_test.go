@@ -108,10 +108,10 @@ func TestDiscoverCodebuddyModels_ProductJSONParsing(t *testing.T) {
 	// This test works on all platforms including Windows.
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	// Create a dummy "codebuddy" file (doesn't need to be executable)
-	require.NoError(t, os.WriteFile(filepath.Join(binDir, "codebuddy"), []byte("dummy"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(binDir, "codebuddy"), []byte("dummy"), 0o755))
 
 	// Create product.cloudhosted.json in the parent directory
 	productJSON := `{
@@ -124,7 +124,7 @@ func TestDiscoverCodebuddyModels_ProductJSONParsing(t *testing.T) {
 			{"id": "hunyuan-image-v3.0", "name": "Hunyuan Image", "isDefault": false}
 		]
 	}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0o644))
 
 	// Parse the JSON directly (same logic as DiscoverCodebuddyModels)
 	data, err := os.ReadFile(filepath.Join(tmpDir, "product.cloudhosted.json"))
@@ -134,7 +134,7 @@ func TestDiscoverCodebuddyModels_ProductJSONParsing(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &product))
 	require.Len(t, product.Models, 6)
 
-	var models []AgentModel
+	models := make([]AgentModel, 0, len(product.Models))
 	for _, m := range product.Models {
 		if m.ID == "default" || m.ID == "auto" || m.ID == "hunyuan-image-v3.0" {
 			continue
@@ -163,7 +163,7 @@ func TestDiscoverCodebuddyModels_EmptyNameFallback(t *testing.T) {
 	var product codebuddyProduct
 	require.NoError(t, json.Unmarshal([]byte(productJSON), &product))
 
-	var models []AgentModel
+	models := make([]AgentModel, 0, len(product.Models))
 	for _, m := range product.Models {
 		name := m.Name
 		if name == "" {
@@ -189,7 +189,7 @@ func TestDiscoverCodebuddyModels_NoDefaultSet(t *testing.T) {
 	var product codebuddyProduct
 	require.NoError(t, json.Unmarshal([]byte(productJSON), &product))
 
-	var models []AgentModel
+	models := make([]AgentModel, 0, len(product.Models))
 	for _, m := range product.Models {
 		models = append(models, AgentModel{
 			ID:      m.ID,
@@ -228,7 +228,7 @@ func TestLoadClaudeModelOverrides_ValidFile(t *testing.T) {
 			"claude-haiku-4-5-20251001": "MiniMax-M2.5-highspeed"
 		}
 	}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0o644))
 
 	// Override claudeConfigDir to point to temp dir
 	origClaudeConfigDir := claudeConfigDir
@@ -257,7 +257,7 @@ func TestLoadClaudeModelOverrides_MissingFile(t *testing.T) {
 
 func TestLoadClaudeModelOverrides_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte("not json"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte("not json"), 0o644))
 
 	origClaudeConfigDir := claudeConfigDir
 	claudeConfigDir = func() string { return tmpDir }
@@ -270,7 +270,7 @@ func TestLoadClaudeModelOverrides_InvalidJSON(t *testing.T) {
 func TestLoadClaudeModelOverrides_NoOverridesKey(t *testing.T) {
 	tmpDir := t.TempDir()
 	settingsContent := `{"env": {"KEY": "value"}, "permissions": {}}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0o644))
 
 	origClaudeConfigDir := claudeConfigDir
 	claudeConfigDir = func() string { return tmpDir }
@@ -283,7 +283,7 @@ func TestLoadClaudeModelOverrides_NoOverridesKey(t *testing.T) {
 func TestLoadClaudeModelOverrides_EmptyOverrides(t *testing.T) {
 	tmpDir := t.TempDir()
 	settingsContent := `{"modelOverrides": {}}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0o644))
 
 	origClaudeConfigDir := claudeConfigDir
 	claudeConfigDir = func() string { return tmpDir }
@@ -301,7 +301,7 @@ func TestLoadClaudeModelOverrides_PartialMatch(t *testing.T) {
 			"claude-sonnet-4-6": "MiniMax-M2.7"
 		}
 	}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "settings.json"), []byte(settingsContent), 0o644))
 
 	origClaudeConfigDir := claudeConfigDir
 	claudeConfigDir = func() string { return tmpDir }

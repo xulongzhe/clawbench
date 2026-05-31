@@ -1,3 +1,4 @@
+//nolint:noctx,goconst,rowserrcheck // DB global and platform exec.Command calls, context not applicable; protocol/role strings are domain constants; legacy DB.Query pattern
 package service
 
 import (
@@ -24,12 +25,12 @@ import (
 
 // ProxyRegistry manages forwarded ports: registration, health checks, and auto-detection.
 type ProxyRegistry struct {
-	mu         sync.RWMutex
-	ports      map[int]*model.ForwardedPort     // key = localPort (auto-assigned, unique)
-	proxies    map[int]*proxy.ReverseProxy       // key = localPort, active HTTP reverse proxies for non-localhost targets
-	cfg        model.ProxyConfig
-	selfPort   int // ClawBench's own port, excluded from detection
-	cancel     context.CancelFunc
+	mu       sync.RWMutex
+	ports    map[int]*model.ForwardedPort // key = localPort (auto-assigned, unique)
+	proxies  map[int]*proxy.ReverseProxy  // key = localPort, active HTTP reverse proxies for non-localhost targets
+	cfg      model.ProxyConfig
+	selfPort int // ClawBench's own port, excluded from detection
+	cancel   context.CancelFunc
 }
 
 // allocateLocalPort finds an available local port for forwarding.
@@ -88,7 +89,8 @@ func NewProxyRegistry(selfPort int) *ProxyRegistry {
 	// Restore persisted ports from database
 	r.loadPortsFromDB()
 
-	slog.Info("proxy service initialized",
+	slog.Info(
+		"proxy service initialized",
 		slog.String("allowed_ports", r.cfg.AllowedPorts),
 		slog.Int("self_port", selfPort),
 		slog.Int("restored_ports", len(r.ports)),
@@ -177,7 +179,8 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 	if isNonLocalhostTarget(host) {
 		if err := r.startReverseProxy(localPort, port, host, protocol); err != nil {
 			// Log but don't fail — the port is still registered for SSH tunneling
-			slog.Warn("failed to start reverse proxy for non-localhost target",
+			slog.Warn(
+				"failed to start reverse proxy for non-localhost target",
 				slog.Int("local_port", localPort),
 				slog.Int("target_port", port),
 				slog.String("host", host),
@@ -189,7 +192,8 @@ func (r *ProxyRegistry) RegisterPort(port int, host string, name string, protoco
 	// Persist to database
 	r.savePortToDB(localPort, port, host, name, protocol)
 
-	slog.Info("proxy port registered",
+	slog.Info(
+		"proxy port registered",
 		slog.Int("local_port", localPort),
 		slog.Int("target_port", port),
 		slog.String("host", host),
@@ -259,7 +263,8 @@ func (r *ProxyRegistry) UpdatePort(localPort int, port int, host string, name st
 
 	r.savePortToDB(newLocalPort, port, host, name, protocol)
 
-	slog.Info("proxy port updated",
+	slog.Info(
+		"proxy port updated",
 		slog.Int("local_port", newLocalPort),
 		slog.Int("target_port", port),
 		slog.String("host", host),
@@ -374,7 +379,7 @@ func (r *ProxyRegistry) DetectListeningPorts() []DetectedPort {
 // classifyPort determines the protocol of a listening port.
 // Known non-HTTP ports (SSH, MySQL, Redis, etc.) are marked as "other"
 // since they cannot be forwarded through an HTTP proxy/browser.
-func classifyPort(port int, processName string) string {
+func classifyPort(port int, processName string) string { //nolint:gocyclo // multi-condition port classification
 	// Well-known non-HTTP ports
 	switch port {
 	case 22, 2222: // SSH
@@ -425,10 +430,10 @@ func detectTLS(port int) bool {
 	if err != nil {
 		return false
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	tlsConn := tls.Client(conn, &tls.Config{InsecureSkipVerify: true})
-	conn.SetDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(2 * time.Second))
 	err = tlsConn.Handshake()
 	return err == nil
 }
@@ -495,7 +500,7 @@ func checkPortActive(port int, host string) bool {
 	if err != nil {
 		return false
 	}
-	conn.Close()
+	_ = conn.Close()
 	return true
 }
 
@@ -589,7 +594,7 @@ type procInfo struct {
 
 // resolveInodeToProcess scans /proc/PID/fd/ to build a mapping from
 // socket inode numbers to process info.
-func resolveInodeToProcess() map[uint64]procInfo {
+func resolveInodeToProcess() map[uint64]procInfo { //nolint:gocognit,gocyclo // multi-source inode resolution
 	inodeMap := make(map[uint64]procInfo)
 
 	entries, err := os.ReadDir("/proc")
@@ -869,7 +874,7 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 		slog.Warn("failed to load persisted ports from DB", slog.String("err", err.Error()))
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var localPort, port int
@@ -896,7 +901,8 @@ func (r *ProxyRegistry) loadPortsFromDB() {
 		// For non-localhost targets, start an HTTP reverse proxy to rewrite Host header.
 		if isNonLocalhostTarget(host) {
 			if err := r.startReverseProxy(localPort, port, host, protocol); err != nil {
-				slog.Warn("failed to start reverse proxy on DB load",
+				slog.Warn(
+					"failed to start reverse proxy on DB load",
 					slog.Int("local_port", localPort),
 					slog.Int("target_port", port),
 					slog.String("host", host),
@@ -955,7 +961,8 @@ func (r *ProxyRegistry) startReverseProxy(localPort int, targetPort int, host st
 	go rp.Serve()
 	r.proxies[localPort] = rp
 
-	slog.Info("reverse proxy started for non-localhost target",
+	slog.Info(
+		"reverse proxy started for non-localhost target",
 		slog.Int("local_port", localPort),
 		slog.String("target", targetAddr),
 		slog.String("protocol", protocol),

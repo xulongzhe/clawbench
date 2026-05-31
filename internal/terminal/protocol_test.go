@@ -109,8 +109,8 @@ func TestServerMessage_Status(t *testing.T) {
 
 func TestServerMessage_Exit(t *testing.T) {
 	msg := ServerMessage{
-		Type:  "exit",
-		Code:  0,
+		Type: "exit",
+		Code: 0,
 	}
 	data, err := json.Marshal(msg)
 	assert.NoError(t, err)

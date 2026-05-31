@@ -47,7 +47,8 @@ func RequestLogger(next http.HandlerFunc) http.HandlerFunc {
 		reqID := GetRequestID(r.Context())
 		next.ServeHTTP(rw, r)
 		duration := time.Since(start)
-		slog.Info("http request",
+		slog.Info(
+			"http request",
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", rw.status),

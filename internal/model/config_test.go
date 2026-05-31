@@ -46,9 +46,7 @@ func TestParseSHA256Hash_Plaintext(t *testing.T) {
 }
 
 func TestParseSHA256Hash_ValidSHA256(t *testing.T) {
-	hash := "a" + string(make([]byte, 63)) // 64 chars
-	// Use a proper 64-char hex string
-	hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+	hash := "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 	result := ParseSHA256Hash("sha256:" + hash)
 	assert.Equal(t, hash, result)
 }
@@ -72,8 +70,8 @@ func TestApplyDefaults_SHA256PasswordRemovesAutoPasswordFile(t *testing.T) {
 
 	// Create a stale auto-password file
 	autoFile := filepath.Join(tmpDir, ".clawbench", "auto-password")
-	require.NoError(t, os.MkdirAll(filepath.Dir(autoFile), 0755))
-	require.NoError(t, os.WriteFile(autoFile, []byte("old-auto-password"), 0600))
+	require.NoError(t, os.MkdirAll(filepath.Dir(autoFile), 0o755))
+	require.NoError(t, os.WriteFile(autoFile, []byte("old-auto-password"), 0o600))
 
 	// Create a SHA-256 password
 	hash := sha256.Sum256([]byte("test-password" + "clawbench-salt"))
@@ -159,7 +157,7 @@ func TestPersistCookieToken_WriteFailure(t *testing.T) {
 
 	// Create .clawbench as a read-only file (not a directory) to cause WriteFile to fail
 	clawbenchDir := filepath.Join(tmpDir, ".clawbench")
-	require.NoError(t, os.WriteFile(clawbenchDir, []byte("not-a-dir"), 0600))
+	require.NoError(t, os.WriteFile(clawbenchDir, []byte("not-a-dir"), 0o600))
 
 	// Should not panic — error is silently ignored
 	PersistCookieToken("some-token")

@@ -32,8 +32,8 @@ func TestServeAgents_Get(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	agents := result["agents"].([]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	agents, _ := result["agents"].([]interface{})
 	assert.Len(t, agents, 2)
 }
 
@@ -52,8 +52,8 @@ func TestServeChatCount(t *testing.T) {
 	sid := createTestSession(t, env.ProjectDir)
 
 	// Add messages
-	service.AddChatMessage(env.ProjectDir, "claude", sid, "user", "Hello", nil, false, "NewSession")
-	service.AddChatMessage(env.ProjectDir, "claude", sid, "assistant", "Hi", nil, false, "NewSession")
+	_, _ = service.AddChatMessage(env.ProjectDir, "claude", sid, "user", "Hello", nil, false, "NewSession")
+	_, _ = service.AddChatMessage(env.ProjectDir, "claude", sid, "assistant", "Hi", nil, false, "NewSession")
 
 	req := newRequest(t, http.MethodGet, "/api/ai/chat/count?session_id="+sid, nil)
 	req = withProjectCookie(req, env.ProjectDir)
@@ -61,7 +61,7 @@ func TestServeChatCount(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, float64(2), result["count"])
 }
 
@@ -104,7 +104,7 @@ func TestServeChatMessageUpdate(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["ok"])
 }
 
@@ -124,7 +124,7 @@ func TestServeChatMessageUpdate_InvalidBody(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodPut, "/api/ai/chat/message", nil)
+	req := httptest.NewRequest(http.MethodPut, "/api/ai/chat/message", http.NoBody)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	ServeChatMessageUpdate(w, req)
@@ -158,8 +158,8 @@ func TestServeTasks_GetEmpty(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	tasks := result["tasks"].([]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	tasks, _ := result["tasks"].([]interface{})
 	assert.Empty(t, tasks)
 }
 
@@ -189,7 +189,7 @@ func TestServeTasks_Post(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["ok"])
 }
 
@@ -237,7 +237,7 @@ func TestServeTasks_PostAssistantAgent(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["ok"])
 }
 
@@ -324,7 +324,7 @@ func TestServeTaskByID_Delete(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	req := newRequest(t, http.MethodDelete, fmt.Sprintf("/api/tasks/%d", task.ID), nil)
 	req = withProjectCookie(req, env.ProjectDir)
@@ -354,7 +354,7 @@ func TestServeTaskByID_Pause(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
 		"action": "pause",
@@ -386,7 +386,7 @@ func TestServeTaskByID_Resume(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 	s.PauseTask(task.ID)
 
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
@@ -421,7 +421,7 @@ func TestServeTaskByID_Trigger_AlreadyRunning(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Simulate a running task using the public MarkTaskRunning helper (ISS-187)
 	s.MarkTaskRunning(task.ID)
@@ -526,14 +526,14 @@ func TestServeTaskByID_Executions(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Create a scheduled session + messages + task_execution
 	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Exec Task", "coder", "", "default", "scheduled")
 	assert.NoError(t, err)
-	service.AddChatMessage(env.ProjectDir, "claude", sessionID, "user", "test prompt", nil, false, "Exec Task")
-	service.AddChatMessage(env.ProjectDir, "claude", sessionID, "assistant", "test response", nil, false, "Exec Task")
-	service.AddTaskExecution(task.ID, sessionID, "manual")
+	_, _ = service.AddChatMessage(env.ProjectDir, "claude", sessionID, "user", "test prompt", nil, false, "Exec Task")
+	_, _ = service.AddChatMessage(env.ProjectDir, "claude", sessionID, "assistant", "test response", nil, false, "Exec Task")
+	_, _ = service.AddTaskExecution(task.ID, sessionID, "manual")
 
 	// Get executions
 	req := newRequest(t, http.MethodGet, fmt.Sprintf("/api/tasks/%d", task.ID)+"/executions", nil)
@@ -542,11 +542,11 @@ func TestServeTaskByID_Executions(t *testing.T) {
 	assertOK(t, w)
 
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	executions := result["executions"].([]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	executions, _ := result["executions"].([]interface{})
 	assert.Len(t, executions, 1)
 
-	exec := executions[0].(map[string]interface{})
+	exec, _ := executions[0].(map[string]interface{})
 	assert.Equal(t, sessionID, exec["sessionId"])
 	assert.Equal(t, "manual", exec["triggerType"])
 	assert.Equal(t, "running", exec["status"])
@@ -591,13 +591,13 @@ func TestServeTaskByID_Update(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
-		"action":   "update",
-		"name":     "Updated Name",
+		"action":    "update",
+		"name":      "Updated Name",
 		"cron_expr": "0 */2 * * *",
-		"prompt":   "Updated prompt",
+		"prompt":    "Updated prompt",
 	})
 	req = withProjectCookie(req, env.ProjectDir)
 	w := callHandler(ServeTaskByID, req)
@@ -610,7 +610,7 @@ func TestServeTaskByID_UpdateAssistantAgent(t *testing.T) {
 
 	// All agents are allowed for scheduled tasks
 	model.Agents = map[string]*model.Agent{
-		"coder":    {ID: "coder", Name: "Coder", Backend: "claude"},
+		"coder":     {ID: "coder", Name: "Coder", Backend: "claude"},
 		"assistant": {ID: "assistant", Name: "Assistant", Backend: "codebuddy"},
 	}
 	defer func() { model.Agents = nil }()
@@ -628,7 +628,7 @@ func TestServeTaskByID_UpdateAssistantAgent(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
 		"agent_id": "assistant",
@@ -681,7 +681,7 @@ func TestServeTaskByID_WrongProject_Get(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Try to access with a different project cookie
 	otherProject := t.TempDir()
@@ -713,7 +713,7 @@ func TestServeTaskByID_WrongProject_Delete(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	otherProject := t.TempDir()
 	req := newRequest(t, http.MethodDelete, fmt.Sprintf("/api/tasks/%d", task.ID), nil)
@@ -744,7 +744,7 @@ func TestServeTaskByID_WrongProject_Pause(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	otherProject := t.TempDir()
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
@@ -777,8 +777,8 @@ func TestServeTaskByID_WrongProject_Executions(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
-	service.AddTaskExecution(task.ID, `{"blocks":[{"type":"text","text":"result"}]}`, "manual")
+	_ = s.AddTask(task)
+	_, _ = service.AddTaskExecution(task.ID, `{"blocks":[{"type":"text","text":"result"}]}`, "manual")
 
 	otherProject := t.TempDir()
 	req := newRequest(t, http.MethodGet, fmt.Sprintf("/api/tasks/%d", task.ID)+"/executions", nil)
@@ -809,7 +809,7 @@ func TestServeTaskByID_NoProject(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// No project cookie at all → 403
 	req := newRequest(t, http.MethodGet, fmt.Sprintf("/api/tasks/%d", task.ID), nil)
@@ -824,7 +824,7 @@ func TestServeChatCount_WrongProject(t *testing.T) {
 	defer teardown()
 
 	sid := createTestSession(t, env.ProjectDir)
-	service.AddChatMessage(env.ProjectDir, "claude", sid, "user", "Hello", nil, false, "NewSession")
+	_, _ = service.AddChatMessage(env.ProjectDir, "claude", sid, "user", "Hello", nil, false, "NewSession")
 
 	// Try to count messages from another project's session
 	otherProject := t.TempDir()
@@ -892,7 +892,7 @@ func TestServeTaskByID_DeleteExecution(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Create a scheduled session and execution
 	sessionID, err := service.CreateSession(env.ProjectDir, "claude", "Exec 1", "coder", "", "default", "scheduled")
@@ -904,7 +904,7 @@ func TestServeTaskByID_DeleteExecution(t *testing.T) {
 	var execID int64
 	err = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
 	assert.NoError(t, err)
-	service.UpdateExecutionStatus(sessionID, "completed")
+	_ = service.UpdateExecutionStatus(sessionID, "completed")
 
 	// Delete the execution via API
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
@@ -917,7 +917,7 @@ func TestServeTaskByID_DeleteExecution(t *testing.T) {
 
 	// Verify execution is deleted
 	var count int
-	service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE id = ?", execID).Scan(&count)
+	_ = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE id = ?", execID).Scan(&count)
 	assert.Equal(t, 0, count)
 }
 
@@ -943,7 +943,7 @@ func TestServeTaskByID_DeleteExecution_MissingExecutionID(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
 		"action": "deleteExecution",
@@ -975,7 +975,7 @@ func TestServeTaskByID_DeleteExecution_InvalidExecutionID(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	req := newRequest(t, http.MethodPut, fmt.Sprintf("/api/tasks/%d", task.ID), map[string]any{
 		"action":      "deleteExecution",
@@ -1008,13 +1008,13 @@ func TestServeTaskByID_DeleteExecution_WrongProject(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	sessionID, _ := service.CreateSession(env.ProjectDir, "claude", "Exec", "coder", "", "default", "scheduled")
-	service.AddTaskExecution(task.ID, sessionID, "auto")
-	service.UpdateExecutionStatus(sessionID, "completed")
+	_, _ = service.AddTaskExecution(task.ID, sessionID, "auto")
+	_ = service.UpdateExecutionStatus(sessionID, "completed")
 	var execID int64
-	service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
+	_ = service.DB.QueryRow("SELECT id FROM task_executions WHERE session_id = ?", sessionID).Scan(&execID)
 
 	// Request from a different project should be forbidden
 	otherProject := t.TempDir()
@@ -1049,18 +1049,18 @@ func TestServeTaskByID_DeleteAllExecutions(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Create 2 executions (mark as completed to simulate finished executions)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		sessionID, _ := service.CreateSession(env.ProjectDir, "claude", fmt.Sprintf("Exec %d", i), "coder", "", "default", "scheduled")
-		service.AddTaskExecution(task.ID, sessionID, "auto")
-		service.UpdateExecutionStatus(sessionID, "completed")
+		_, _ = service.AddTaskExecution(task.ID, sessionID, "auto")
+		_ = service.UpdateExecutionStatus(sessionID, "completed")
 	}
 
 	// Verify 2 executions exist
 	var count int
-	service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", task.ID).Scan(&count)
+	_ = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", task.ID).Scan(&count)
 	assert.Equal(t, 2, count)
 
 	// Delete all via API
@@ -1072,7 +1072,7 @@ func TestServeTaskByID_DeleteAllExecutions(t *testing.T) {
 	assertOK(t, w)
 
 	// Verify all executions deleted
-	service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", task.ID).Scan(&count)
+	_ = service.DB.QueryRow("SELECT COUNT(*) FROM task_executions WHERE task_id = ?", task.ID).Scan(&count)
 	assert.Equal(t, 0, count)
 }
 
@@ -1100,16 +1100,16 @@ func TestServeTaskByID_Executions_WithLimit(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Create 3 completed executions
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		sessionID, err := service.CreateSession(env.ProjectDir, "claude", fmt.Sprintf("Exec %d", i), "coder", "", "default", "scheduled")
 		assert.NoError(t, err)
-		service.AddChatMessage(env.ProjectDir, "claude", sessionID, "user", fmt.Sprintf("prompt %d", i), nil, false, "Exec")
-		service.AddChatMessage(env.ProjectDir, "claude", sessionID, "assistant", fmt.Sprintf("response %d", i), nil, false, "Exec")
-		service.AddTaskExecution(task.ID, sessionID, "auto")
-		service.UpdateExecutionStatus(sessionID, "completed")
+		_, _ = service.AddChatMessage(env.ProjectDir, "claude", sessionID, "user", fmt.Sprintf("prompt %d", i), nil, false, "Exec")
+		_, _ = service.AddChatMessage(env.ProjectDir, "claude", sessionID, "assistant", fmt.Sprintf("response %d", i), nil, false, "Exec")
+		_, _ = service.AddTaskExecution(task.ID, sessionID, "auto")
+		_ = service.UpdateExecutionStatus(sessionID, "completed")
 	}
 
 	// Request with limit=2
@@ -1119,8 +1119,8 @@ func TestServeTaskByID_Executions_WithLimit(t *testing.T) {
 	assertOK(t, w)
 
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	executions := result["executions"].([]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	executions, _ := result["executions"].([]interface{})
 	assert.Len(t, executions, 2)
 	assert.Equal(t, true, result["hasMore"])
 }
@@ -1147,12 +1147,12 @@ func TestServeTaskByID_Executions_LimitNoMore(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Create only 1 execution
 	sessionID, _ := service.CreateSession(env.ProjectDir, "claude", "Exec 0", "coder", "", "default", "scheduled")
-	service.AddTaskExecution(task.ID, sessionID, "auto")
-	service.UpdateExecutionStatus(sessionID, "completed")
+	_, _ = service.AddTaskExecution(task.ID, sessionID, "auto")
+	_ = service.UpdateExecutionStatus(sessionID, "completed")
 
 	// Request with limit=5 (more than available)
 	req := newRequest(t, http.MethodGet, fmt.Sprintf("/api/tasks/%d/executions?limit=5", task.ID), nil)
@@ -1161,8 +1161,8 @@ func TestServeTaskByID_Executions_LimitNoMore(t *testing.T) {
 	assertOK(t, w)
 
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	executions := result["executions"].([]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	executions, _ := result["executions"].([]interface{})
 	assert.Len(t, executions, 1)
 	assert.Equal(t, false, result["hasMore"])
 }
@@ -1189,13 +1189,13 @@ func TestServeTaskByID_Executions_CursorPagination(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Create 5 completed executions
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		sessionID, _ := service.CreateSession(env.ProjectDir, "claude", fmt.Sprintf("Exec %d", i), "coder", "", "default", "scheduled")
-		service.AddTaskExecution(task.ID, sessionID, "auto")
-		service.UpdateExecutionStatus(sessionID, "completed")
+		_, _ = service.AddTaskExecution(task.ID, sessionID, "auto")
+		_ = service.UpdateExecutionStatus(sessionID, "completed")
 	}
 
 	// Page 1: limit=2
@@ -1205,14 +1205,14 @@ func TestServeTaskByID_Executions_CursorPagination(t *testing.T) {
 	assertOK(t, w1)
 
 	var result1 map[string]any
-	json.Unmarshal(w1.Body.Bytes(), &result1)
-	executions1 := result1["executions"].([]interface{})
+	_ = json.Unmarshal(w1.Body.Bytes(), &result1)
+	executions1, _ := result1["executions"].([]interface{})
 	assert.Len(t, executions1, 2)
 	assert.Equal(t, true, result1["hasMore"])
 
 	// Extract cursor from last item of page 1
-	lastExec1 := executions1[1].(map[string]interface{})
-	cursor := lastExec1["createdAt"].(string)
+	lastExec1, _ := executions1[1].(map[string]interface{})
+	cursor, _ := lastExec1["createdAt"].(string)
 	cursorID := fmt.Sprintf("%v", lastExec1["id"])
 
 	// Page 2: use cursor from last item of page 1
@@ -1223,8 +1223,8 @@ func TestServeTaskByID_Executions_CursorPagination(t *testing.T) {
 	assertOK(t, w2)
 
 	var result2 map[string]any
-	json.Unmarshal(w2.Body.Bytes(), &result2)
-	executions2 := result2["executions"].([]interface{})
+	_ = json.Unmarshal(w2.Body.Bytes(), &result2)
+	executions2, _ := result2["executions"].([]interface{})
 	assert.Len(t, executions2, 2)
 	assert.Equal(t, true, result2["hasMore"])
 
@@ -1233,8 +1233,8 @@ func TestServeTaskByID_Executions_CursorPagination(t *testing.T) {
 	assert.NotEqual(t, cursorID, firstExec2ID)
 
 	// Page 3: remaining item
-	lastExec2 := executions2[1].(map[string]interface{})
-	cursor2 := lastExec2["createdAt"].(string)
+	lastExec2, _ := executions2[1].(map[string]interface{})
+	cursor2, _ := lastExec2["createdAt"].(string)
 	cursorID2 := fmt.Sprintf("%v", lastExec2["id"])
 
 	req3 := newRequest(t, http.MethodGet,
@@ -1244,8 +1244,8 @@ func TestServeTaskByID_Executions_CursorPagination(t *testing.T) {
 	assertOK(t, w3)
 
 	var result3 map[string]any
-	json.Unmarshal(w3.Body.Bytes(), &result3)
-	executions3 := result3["executions"].([]interface{})
+	_ = json.Unmarshal(w3.Body.Bytes(), &result3)
+	executions3, _ := result3["executions"].([]interface{})
 	assert.Len(t, executions3, 1)
 	assert.Equal(t, false, result3["hasMore"])
 }
@@ -1272,13 +1272,13 @@ func TestServeTaskByID_Executions_NoLimitBackwardCompat(t *testing.T) {
 		Prompt:      "Test",
 		RepeatMode:  "unlimited",
 	}
-	s.AddTask(task)
+	_ = s.AddTask(task)
 
 	// Create 3 executions
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		sessionID, _ := service.CreateSession(env.ProjectDir, "claude", fmt.Sprintf("Exec %d", i), "coder", "", "default", "scheduled")
-		service.AddTaskExecution(task.ID, sessionID, "auto")
-		service.UpdateExecutionStatus(sessionID, "completed")
+		_, _ = service.AddTaskExecution(task.ID, sessionID, "auto")
+		_ = service.UpdateExecutionStatus(sessionID, "completed")
 	}
 
 	// Request without limit — should return all and no hasMore field
@@ -1288,8 +1288,8 @@ func TestServeTaskByID_Executions_NoLimitBackwardCompat(t *testing.T) {
 	assertOK(t, w)
 
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	executions := result["executions"].([]interface{})
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	executions, _ := result["executions"].([]interface{})
 	assert.Len(t, executions, 3)
 	// hasMore should NOT be present (backward compat: no limit = no pagination)
 	_, hasHasMore := result["hasMore"]
@@ -1345,7 +1345,7 @@ func TestServeTasks_Get_HasUnreadTrue(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = service.AddTaskExecution(task.ID, sessionID, "auto")
 	assert.NoError(t, err)
-	service.UpdateExecutionStatus(sessionID, "completed")
+	_ = service.UpdateExecutionStatus(sessionID, "completed")
 
 	req := newRequest(t, http.MethodGet, "/api/tasks", nil)
 	req = withProjectCookie(req, env.ProjectDir)
@@ -1353,7 +1353,7 @@ func TestServeTasks_Get_HasUnreadTrue(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["hasUnread"], "hasUnread should be true when a task has unread executions")
 }
 
@@ -1391,6 +1391,6 @@ func TestServeTasks_Get_HasUnreadFalse(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, false, result["hasUnread"], "hasUnread should be false when no tasks have unread executions")
 }

@@ -19,16 +19,16 @@ func TestServeIndex_PathTraversal(t *testing.T) {
 	// Create a temporary public directory with a known file
 	tmpDir := t.TempDir()
 	publicDir := filepath.Join(tmpDir, "public")
-	if err := os.MkdirAll(publicDir, 0755); err != nil {
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
 		t.Fatalf("failed to create public dir: %v", err)
 	}
 	// Create a secret file outside public that should NOT be accessible
 	secretFile := filepath.Join(tmpDir, "secret.txt")
-	if err := os.WriteFile(secretFile, []byte("secret data"), 0644); err != nil {
+	if err := os.WriteFile(secretFile, []byte("secret data"), 0o644); err != nil {
 		t.Fatalf("failed to write secret file: %v", err)
 	}
 	// Create a legitimate file inside public
-	if err := os.WriteFile(filepath.Join(publicDir, "index.html"), []byte("<html>ok</html>"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(publicDir, "index.html"), []byte("<html>ok</html>"), 0o644); err != nil {
 		t.Fatalf("failed to write index.html: %v", err)
 	}
 
@@ -37,7 +37,7 @@ func TestServeIndex_PathTraversal(t *testing.T) {
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("failed to chdir: %v", err)
 	}
-	defer os.Chdir(origWd)
+	defer func() { _ = os.Chdir(origWd) }()
 
 	tests := []struct {
 		name       string
@@ -68,7 +68,7 @@ func TestServeIndex_PathTraversal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			req := httptest.NewRequest(http.MethodGet, tt.path, http.NoBody)
 			w := httptest.NewRecorder()
 			ServeIndex(w, req)
 			if tt.wantStatus == http.StatusOK {
@@ -85,16 +85,16 @@ func TestServeIndex_PathTraversal(t *testing.T) {
 func TestServeIndex_PathTraversalDoesNotLeakSecret(t *testing.T) {
 	tmpDir := t.TempDir()
 	publicDir := filepath.Join(tmpDir, "public")
-	if err := os.MkdirAll(publicDir, 0755); err != nil {
+	if err := os.MkdirAll(publicDir, 0o755); err != nil {
 		t.Fatalf("failed to create public dir: %v", err)
 	}
 	// Secret file at root level
 	secretFile := filepath.Join(tmpDir, "secret.txt")
-	if err := os.WriteFile(secretFile, []byte("SECRET_CONTENT"), 0644); err != nil {
+	if err := os.WriteFile(secretFile, []byte("SECRET_CONTENT"), 0o644); err != nil {
 		t.Fatalf("failed to write secret: %v", err)
 	}
 	// index.html in public
-	if err := os.WriteFile(filepath.Join(publicDir, "index.html"), []byte("OK"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(publicDir, "index.html"), []byte("OK"), 0o644); err != nil {
 		t.Fatalf("failed to write index: %v", err)
 	}
 
@@ -102,9 +102,9 @@ func TestServeIndex_PathTraversalDoesNotLeakSecret(t *testing.T) {
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("failed to chdir: %v", err)
 	}
-	defer os.Chdir(origWd)
+	defer func() { _ = os.Chdir(origWd) }()
 
-	req := httptest.NewRequest(http.MethodGet, "/../secret.txt", nil)
+	req := httptest.NewRequest(http.MethodGet, "/../secret.txt", http.NoBody)
 	w := httptest.NewRecorder()
 	ServeIndex(w, req)
 
@@ -126,7 +126,7 @@ func TestServeChatHistory_OwnershipCheck_GET(t *testing.T) {
 
 	// Create another project directory
 	otherProject := filepath.Join(env.WatchDir, "other-project")
-	if err := os.MkdirAll(otherProject, 0755); err != nil {
+	if err = os.MkdirAll(otherProject, 0o755); err != nil {
 		t.Fatalf("failed to create other project dir: %v", err)
 	}
 
@@ -180,7 +180,7 @@ func TestServeChatHistory_OwnershipCheck_POST(t *testing.T) {
 
 	// Create another project directory
 	otherProject := filepath.Join(env.WatchDir, "other-project")
-	if err := os.MkdirAll(otherProject, 0755); err != nil {
+	if err = os.MkdirAll(otherProject, 0o755); err != nil {
 		t.Fatalf("failed to create other project dir: %v", err)
 	}
 

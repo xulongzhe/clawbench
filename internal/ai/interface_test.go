@@ -11,12 +11,12 @@ import (
 
 func TestShouldInjectSystemPrompt(t *testing.T) {
 	tests := []struct {
-		name                string
-		systemPrompt        string
-		resume              bool
-		assistantMsgCount   int
-		promptInterval      int
-		expected            bool
+		name              string
+		systemPrompt      string
+		resume            bool
+		assistantMsgCount int
+		promptInterval    int
+		expected          bool
 	}{
 		{
 			name:         "empty system prompt",
@@ -25,10 +25,10 @@ func TestShouldInjectSystemPrompt(t *testing.T) {
 			expected:     false,
 		},
 		{
-			name:          "new session with system prompt",
-			systemPrompt:  "you are helpful",
-			resume:        false,
-			expected:      true,
+			name:         "new session with system prompt",
+			systemPrompt: "you are helpful",
+			resume:       false,
+			expected:     true,
 		},
 		{
 			name:              "resume at interval boundary",

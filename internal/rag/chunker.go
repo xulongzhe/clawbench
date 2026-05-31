@@ -107,7 +107,7 @@ func ChunkText(text string, chunkSize, chunkOverlap int) []TextChunk {
 
 // findBreakPoint finds a good break point near the estimated end position.
 // Prefers paragraph breaks, then sentence endings, then whitespace.
-func findBreakPoint(runes []rune, start, end int) int {
+func findBreakPoint(runes []rune, start, end int) int { //nolint:gocyclo // multi-strategy break point search
 	// Search backwards from end for a good break point
 	searchStart := end - min(200, end-start) // Look back up to 200 runes
 	if searchStart < start {

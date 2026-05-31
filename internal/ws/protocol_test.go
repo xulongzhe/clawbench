@@ -175,7 +175,7 @@ func TestServerMessageDataWithMap(t *testing.T) {
 		Type:  "event",
 		ID:    "evt_1",
 		Event: "custom_event",
-		Data: map[string]any{"key": "value", "num": 42},
+		Data:  map[string]any{"key": "value", "num": 42},
 	}
 	data, err := json.Marshal(msg)
 	if err != nil {

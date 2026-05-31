@@ -18,7 +18,7 @@ import (
 
 // setupPersistTestEnv sets up a test environment with BinDir configured
 // so that writeConfigYAML actually writes to disk.
-func setupPersistTestEnv(t *testing.T) (*testEnv, func()) {
+func setupPersistTestEnv(t *testing.T) (*testEnv, func()) { //nolint:unparam // test helper: testEnv used implicitly via global state
 	t.Helper()
 	env, teardown := setupTestEnv(t)
 
@@ -28,7 +28,7 @@ func setupPersistTestEnv(t *testing.T) (*testEnv, func()) {
 	model.BinDir = tmpDir
 
 	// Also need config dir
-	os.MkdirAll(filepath.Join(tmpDir, "config"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "config"), 0o755)
 
 	origConfig := model.ConfigInstance
 
@@ -658,7 +658,7 @@ func TestPersist_GetMatchesDiskAfterPatch(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 
 	rag, _ := resp["rag"].(map[string]any)
 	assert.Equal(t, float64(768), rag["chunk_size"])
@@ -692,7 +692,7 @@ func TestPersist_CorruptYAMLRecovery(t *testing.T) {
 	configPath := filepath.Join(configDir, "config.yaml")
 
 	// Write corrupt YAML
-	require.NoError(t, os.WriteFile(configPath, []byte("::invalid yaml::\n  [bad"), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte("::invalid yaml::\n  [bad"), 0o644))
 
 	model.ConfigInstance = model.Config{}
 	model.ConfigInstance.Chat.CollapsedHeight = 100
@@ -712,7 +712,7 @@ func TestPersist_EmptyYAMLRecovery(t *testing.T) {
 	configPath := filepath.Join(configDir, "config.yaml")
 
 	// Write empty file
-	require.NoError(t, os.WriteFile(configPath, []byte(""), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte(""), 0o644))
 
 	model.ConfigInstance = model.Config{}
 	model.ConfigInstance.Chat.CollapsedHeight = 100
@@ -730,7 +730,7 @@ func TestPersist_MergeCreatesNestedMap(t *testing.T) {
 	// Create minimal config.yaml with no nested sections
 	configDir := filepath.Join(model.BinDir, "config")
 	configPath := filepath.Join(configDir, "config.yaml")
-	require.NoError(t, os.WriteFile(configPath, []byte("default_agent: claude\n"), 0644))
+	require.NoError(t, os.WriteFile(configPath, []byte("default_agent: claude\n"), 0o644))
 
 	model.ConfigInstance = model.Config{}
 	model.ConfigInstance.Chat.CollapsedHeight = 100
@@ -750,7 +750,7 @@ func TestPersist_CreatesConfigDir(t *testing.T) {
 
 	// Remove the config directory that setupPersistTestEnv created
 	configDir := filepath.Join(model.BinDir, "config")
-	os.RemoveAll(configDir)
+	_ = os.RemoveAll(configDir)
 
 	model.ConfigInstance = model.Config{}
 

@@ -29,9 +29,9 @@ func TestQueueHandler_Enqueue_Success(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["ok"])
-	queue := result["queue"].([]any)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 1)
 }
 
@@ -52,11 +52,11 @@ func TestQueueHandler_Enqueue_WithFilePaths(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	queue := result["queue"].([]any)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 1)
-	item := queue[0].(map[string]any)
-	filePaths := item["filePaths"].([]any)
+	item, _ := queue[0].(map[string]any)
+	filePaths, _ := item["filePaths"].([]any)
 	assert.Len(t, filePaths, 2)
 	assert.Equal(t, "/main.go", filePaths[0])
 	assert.Equal(t, "/util.go", filePaths[1])
@@ -78,11 +78,11 @@ func TestQueueHandler_Enqueue_WithFiles(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	queue := result["queue"].([]any)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 1)
-	item := queue[0].(map[string]any)
-	files := item["files"].([]any)
+	item, _ := queue[0].(map[string]any)
+	files, _ := item["files"].([]any)
 	assert.Len(t, files, 2)
 }
 
@@ -103,7 +103,7 @@ func TestQueueHandler_Enqueue_InvalidJSON(t *testing.T) {
 	defer teardown()
 
 	sessionID := "q-enqueue-badjson"
-	req := httptest.NewRequest(http.MethodPost, "/api/ai/queue?session_id="+sessionID, nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/ai/queue?session_id="+sessionID, http.NoBody)
 	req.Header.Set("Content-Type", "application/json")
 	req.AddCookie(&http.Cookie{Name: "clawbench_project", Value: env.ProjectDir})
 	w := callHandler(QueueHandler, req)
@@ -146,8 +146,8 @@ func TestQueueHandler_Get_Success(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	queue := result["queue"].([]any)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 1)
 }
 
@@ -175,7 +175,7 @@ func TestQueueHandler_Get_EmptyQueue(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	queue := result["queue"]
 	assert.NotNil(t, queue)
 }
@@ -200,7 +200,7 @@ func TestQueueHandler_Delete_ClearAll(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["ok"])
 	assert.Nil(t, service.GetQueue(sessionID))
 }
@@ -222,9 +222,9 @@ func TestQueueHandler_Delete_RemoveByIndex(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["ok"])
-	queue := result["queue"].([]any)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 2)
 }
 
@@ -277,18 +277,18 @@ func TestQueueHandler_Enqueue_FilesNoDuplicate(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	queue := result["queue"].([]any)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 1)
-	item := queue[0].(map[string]any)
+	item, _ := queue[0].(map[string]any)
 
 	// filePaths should be preserved as-is for prompt building
-	filePaths := item["filePaths"].([]any)
+	filePaths, _ := item["filePaths"].([]any)
 	assert.Len(t, filePaths, 1)
 	assert.Equal(t, "config.yaml", filePaths[0])
 
 	// files should NOT contain duplicates
-	files := item["files"].([]any)
+	files, _ := item["files"].([]any)
 	assert.Len(t, files, 1, "files should have exactly 1 entry (no duplicate), got %v", files)
 	assert.Equal(t, "config.yaml", files[0])
 }
@@ -313,13 +313,13 @@ func TestQueueHandler_Enqueue_FilesWithUploads(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	queue := result["queue"].([]any)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 1)
-	item := queue[0].(map[string]any)
+	item, _ := queue[0].(map[string]any)
 
 	// files should preserve all entries without duplication
-	files := item["files"].([]any)
+	files, _ := item["files"].([]any)
 	assert.Len(t, files, 2, "files should have 2 entries (upload + ref), got %v", files)
 	assert.Equal(t, ".clawbench/uploads/img.png", files[0])
 	assert.Equal(t, "src/main.go", files[1])
@@ -395,7 +395,7 @@ func TestQueueHandler_Enqueue_SessionBelongsToSameProject(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["ok"])
 }
 
@@ -420,8 +420,8 @@ func TestQueueHandler_Get_SessionBelongsToSameProject(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
-	queue := result["queue"].([]any)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 1)
 }
 
@@ -477,9 +477,9 @@ func TestQueueHandler_DeleteByIndex_SessionBelongsToSameProject(t *testing.T) {
 
 	assertOK(t, w)
 	var result map[string]any
-	json.Unmarshal(w.Body.Bytes(), &result)
+	_ = json.Unmarshal(w.Body.Bytes(), &result)
 	assert.Equal(t, true, result["ok"])
-	queue := result["queue"].([]any)
+	queue, _ := result["queue"].([]any)
 	assert.Len(t, queue, 2)
 }
 

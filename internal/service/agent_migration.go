@@ -1,3 +1,4 @@
+//nolint:noctx,govet // DB parameter, context not applicable; shadowed err is acceptable in sequential blocks
 package service
 
 import (
@@ -70,7 +71,7 @@ func MigrateAgentsFromYAML(db *sql.DB, agentsDir string) error {
 	if err != nil {
 		return fmt.Errorf("YAML migration: begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, agent := range agents {
 		if err := saveAgentTx(tx, agent); err != nil {
@@ -130,7 +131,6 @@ func saveAgentTx(tx *sql.Tx, agent *model.Agent) error {
 		agent.PreferredModel, agent.PreferredThinkingEffort,
 		agent.SystemPrompt, string(modelsJSON), modelsAutoDetected,
 		agent.Source, agent.SortOrder)
-
 	if err != nil {
 		return fmt.Errorf("save agent %s: %w", agent.ID, err)
 	}

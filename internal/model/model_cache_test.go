@@ -38,7 +38,7 @@ func TestModelCache_CorruptFile(t *testing.T) {
 
 	// Write garbage
 	cachePath := filepath.Join(dir, "codebuddy.json")
-	require.NoError(t, os.WriteFile(cachePath, []byte("not json"), 0644))
+	require.NoError(t, os.WriteFile(cachePath, []byte("not json"), 0o644))
 
 	// Should return nil gracefully
 	models := model.ReadModelCache(dir, "codebuddy")
@@ -84,8 +84,8 @@ func TestModelCache_WriteMkdirAllError(t *testing.T) {
 
 	parent := t.TempDir()
 	// Make parent read-only so MkdirAll fails
-	require.NoError(t, os.Chmod(parent, 0555))
-	defer os.Chmod(parent, 0755) // restore for cleanup
+	require.NoError(t, os.Chmod(parent, 0o555))
+	defer os.Chmod(parent, 0o755) // restore for cleanup
 
 	nestedDir := filepath.Join(parent, "sub", "cache")
 	err := model.WriteModelCache(nestedDir, "test", []model.AgentModel{
@@ -98,7 +98,7 @@ func TestModelCache_ReadInvalidJSON(t *testing.T) {
 	dir := t.TempDir()
 	// Write JSON that has the right structure but models is wrong type
 	cachePath := filepath.Join(dir, "bad.json")
-	require.NoError(t, os.WriteFile(cachePath, []byte(`{"updated_at":"2024-01-01","models":"not an array"}`), 0644))
+	require.NoError(t, os.WriteFile(cachePath, []byte(`{"updated_at":"2024-01-01","models":"not an array"}`), 0o644))
 
 	models := model.ReadModelCache(dir, "bad")
 	assert.Nil(t, models, "should return nil for JSON with wrong models type")

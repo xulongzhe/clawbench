@@ -32,7 +32,7 @@ func TestIsSupportedFile(t *testing.T) {
 
 func TestIsTextFile(t *testing.T) {
 	tests := []struct {
-		name string
+		name  string
 		input string
 		want  bool
 	}{
