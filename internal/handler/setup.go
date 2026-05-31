@@ -268,6 +268,7 @@ type setupVerifyRequest struct {
 // (OpenAI or Anthropic protocol based on URL path). This avoids shelling out
 // to Pi CLI which doesn't natively support arbitrary custom endpoints.
 // For built-in providers: uses the embedded Pi CLI as before.
+//nolint:gocyclo // complex verify logic with multiple provider formats
 func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
@@ -657,10 +658,10 @@ func verifyOpenAIHTTP(ctx context.Context, endpoint, apiKey, model string) error
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Drain body to reuse connection
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("API key invalid (status 401)")
@@ -702,10 +703,10 @@ func verifyAnthropicHTTP(ctx context.Context, endpoint, apiKey, model string) er
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Drain body to reuse connection
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("API key invalid (status 401)")
@@ -745,9 +746,9 @@ func validateCustomURL(customURL, apiFormat string) string {
 	detectedFormat := apiFormat
 	if detectedFormat == "" {
 		if strings.HasSuffix(parsed.Path, "/v1/messages") {
-			detectedFormat = "anthropic"
+			detectedFormat = "anthropic" //nolint:ineffassign // used in else branch below
 		} else if strings.HasSuffix(parsed.Path, "/chat/completions") {
-			detectedFormat = "openai"
+			detectedFormat = "openai" //nolint:ineffassign // used in else branch below
 		} else {
 			return "CustomURLUnrecognizedFormat"
 		}
@@ -975,7 +976,7 @@ func writePiModelsJSON(piConfigDir string, req setupCompleteRequest) {
 	modelsData["providers"] = providers
 
 	modelsJSON, _ := json.MarshalIndent(modelsData, "", "  ")
-	if err := atomicWriteFile(modelsPath, modelsJSON, 0644); err != nil {
+	if err := atomicWriteFile(modelsPath, modelsJSON, 0o644); err != nil {
 		slog.Warn("failed to write Pi models.json", "error", err)
 	}
 }

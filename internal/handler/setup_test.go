@@ -2182,7 +2182,7 @@ func TestWritePiModelsJSON_OpenAIFormat(t *testing.T) {
 	}
 
 	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
-	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+	require.NoError(t, os.MkdirAll(piConfigDir, 0o755))
 
 	writePiModelsJSON(piConfigDir, req)
 
@@ -2228,7 +2228,7 @@ func TestWritePiModelsJSON_AnthropicFormat(t *testing.T) {
 	}
 
 	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
-	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+	require.NoError(t, os.MkdirAll(piConfigDir, 0o755))
 
 	writePiModelsJSON(piConfigDir, req)
 
@@ -2266,7 +2266,7 @@ func TestWritePiModelsJSON_SameSummarizeModel(t *testing.T) {
 	}
 
 	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
-	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+	require.NoError(t, os.MkdirAll(piConfigDir, 0o755))
 
 	writePiModelsJSON(piConfigDir, req)
 
@@ -2299,7 +2299,7 @@ func TestWritePiModelsJSON_EmptySummarizeModel(t *testing.T) {
 	}
 
 	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
-	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+	require.NoError(t, os.MkdirAll(piConfigDir, 0o755))
 
 	writePiModelsJSON(piConfigDir, req)
 
@@ -2322,7 +2322,7 @@ func TestWritePiModelsJSON_MergesExisting(t *testing.T) {
 	defer os.Setenv("HOME", origHome)
 
 	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
-	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+	require.NoError(t, os.MkdirAll(piConfigDir, 0o755))
 
 	existingData := map[string]any{
 		"providers": map[string]any{
@@ -2333,7 +2333,7 @@ func TestWritePiModelsJSON_MergesExisting(t *testing.T) {
 		},
 	}
 	existingJSON, _ := json.Marshal(existingData)
-	require.NoError(t, os.WriteFile(filepath.Join(piConfigDir, "models.json"), existingJSON, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(piConfigDir, "models.json"), existingJSON, 0o644))
 
 	req := setupCompleteRequest{
 		Provider:  "openai",
