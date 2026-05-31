@@ -194,7 +194,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 - **模型选择持久化**：每个智能体的模型选择和思考档位自动保存到 localStorage，刷新/切换会话自动恢复
 - **定时任务**：AI 通过 CLI 子命令创建 Cron 调度，定时自动执行；独立标签页管理，4 级面包屑导航；频率预设（每小时/每天/每周/每月）+ 自定义 Cron 表达式；任务卡片内嵌聊天消息；执行级别已读追踪 + TTS 朗读；执行完成后自动摘要 + 完成通知（音效/震动/Toast）
 - **继续对话**：定时任务执行详情页可一键继续对话，自动复制历史消息和摘要到新会话，继承后端/智能体/模型/思考档位；会话列表中定时任务来源的会话显示紫色「定时」角标
-- **设置向导**：未安装任何 AI CLI 时，内置 Pi 智能体提供 5 步引导（欢迎 → 选择提供商 → 输入 API Key → 验证模型 → 命名智能体），支持 23 家 LLM 提供商（OpenAI、Anthropic、Google、DeepSeek、阿里通义等），API Key AES-256-GCM 加密存储，修改密码时自动轮换加密密钥
+- **设置向导**：未安装任何 AI CLI 时，内置 Pi 智能体提供 5 步引导（欢迎 → 选择提供商 → 输入 API Key → 验证模型 → 命名智能体），支持 23 家 LLM 提供商（OpenAI、Anthropic、Google、DeepSeek、阿里通义等）；支持自定义 URL 模式，可接入任意 OpenAI/Anthropic 兼容端点，自动检测 API 格式，直接 HTTP 验证（无需 Pi CLI），API Key AES-256-GCM 加密存储，修改密码时自动轮换加密密钥
 - **多会话管理**：创建、切换、删除独立会话，滑动切换
 - **滑动会话切换开关**：可在设置中开关聊天区域左右滑动切换会话，默认关闭避免滚动宽内容时误触
 - **图片上传**：支持上传图片与 AI 对话（多模态）
@@ -219,7 +219,7 @@ cp config/agents/claude.yaml.example config/agents/my-claude.yaml
 
 ### 🔊 TTS 语音朗读
 - AI 回复自动总结后朗读，边听边看
-- **5 种 TTS 引擎**：Edge TTS（免费）、MiniMax（音质最佳）、Piper / Kokoro / MOSS-Nano（本地离线）
+- **5 种 TTS 引擎**：Edge TTS（免费，原生 Go 实现，无外部依赖）、MiniMax（音质最佳）、Piper / Kokoro / MOSS-Nano（本地离线）
 - **12 种总结后端**：simple 纯清洗、mmx-cli、api（OpenAI/Anthropic 兼容）、Claude、CodeBuddy、Gemini、OpenCode、Codex、Qoder、VeCLI、DeepSeek、Pi
 - 详见 [TTS 语音合成部署指南](docs/TTS.md)
 

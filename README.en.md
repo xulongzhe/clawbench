@@ -193,7 +193,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 - **Model Selection Persistence**: Model choice and thinking effort per agent auto-saved to localStorage, restored on reload/session switch
 - **Scheduled Tasks**: AI creates Cron schedules via CLI subcommands, executes automatically; independent tab with 4-level breadcrumb navigation; task cards embedded in chat messages; frequency presets (hourly/daily/weekly/monthly) + custom cron expressions; per-execution read tracking + TTS playback; execution auto-summary + completion notification (sound/haptic/toast)
 - **Continue Conversation**: One-click continue conversation from task execution detail, auto-copies history messages and summaries to a new session, inherits backend/agent/model/thinking effort; sessions originated from scheduled tasks show a purple "Task" badge in session list
-- **Setup Wizard**: When no AI CLI is installed, the embedded Pi agent provides a 5-step guided setup (Welcome → Select Provider → Enter API Key → Verify Model → Name Agent), supporting 23 LLM providers (OpenAI, Anthropic, Google, DeepSeek, Alibaba Qwen, etc.). API keys are encrypted with AES-256-GCM and encryption keys auto-rotate on password change
+- **Setup Wizard**: When no AI CLI is installed, the embedded Pi agent provides a 5-step guided setup (Welcome → Select Provider → Enter API Key → Verify Model → Name Agent), supporting 23 LLM providers (OpenAI, Anthropic, Google, DeepSeek, Alibaba Qwen, etc.); supports custom URL mode for any OpenAI/Anthropic-compatible endpoint with auto-detected API format and direct HTTP verification (no Pi CLI needed). API keys are encrypted with AES-256-GCM and encryption keys auto-rotate on password change
 - **Multi-Session Management**: Create, switch, delete independent sessions, swipe to switch
 - **Swipe Session Toggle**: Toggle left/right swipe session switching in Settings → Chat; defaults to off to prevent accidental switches when scrolling wide content
 - **Image Upload**: Upload images for AI conversation (multimodal)
@@ -231,7 +231,7 @@ Each `.yaml.example` file contains complete configuration fields and description
 
 ### 🔊 TTS Speech Synthesis
 - Auto-summarize and read AI replies aloud, listen while reading
-- **5 TTS Engines**: Edge TTS (free), MiniMax (best quality), Piper / Kokoro / MOSS-Nano (local offline)
+- **5 TTS Engines**: Edge TTS (free, native Go implementation, no external dependency), MiniMax (best quality), Piper / Kokoro / MOSS-Nano (local offline)
 - **12 Summarization Backends**: simple (text-only cleanup), mmx-cli, api (OpenAI/Anthropic compatible), Claude, CodeBuddy, Gemini, OpenCode, Codex, Qoder, VeCLI, DeepSeek, Pi
 - See [TTS Deployment Guide](docs/TTS.en.md)
 
