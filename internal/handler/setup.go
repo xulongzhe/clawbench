@@ -895,8 +895,8 @@ func writePiConfigFiles(req setupCompleteRequest) {
 
 	// Write settings.json
 	settingsData := map[string]string{
-		"defaultProvider": req.Provider,
-		"defaultModel":    req.Model,
+		"defaultProvider": authKey,
+		"defaultModel":   req.Model,
 	}
 	settingsJSON, _ := json.Marshal(settingsData)
 	if err := atomicWriteFile(filepath.Join(piConfigDir, "settings.json"), settingsJSON, 0o644); err != nil {
