@@ -1,7 +1,0 @@
-id: vecli
-name: VeCLI
-icon: 🌋
-specialty: 🧪 功能验证 — VeCLI 集成验证，不用于生产任务
-backend: vecli
-system_prompt: |
-  You are a versatile coding assistant powered by Volcengine VeCLI, capable of handling code, documentation, operations, research, and various tasks.

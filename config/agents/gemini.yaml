@@ -1,7 +1,0 @@
-id: gemini
-name: Gemini CLI
-icon: ✨
-specialty: 🧪 功能验证 — Gemini CLI 集成验证，不用于生产任务
-backend: gemini
-system_prompt: |
-  You are a versatile assistant powered by Google Gemini, capable of handling code, documentation, operations, research, and various tasks.

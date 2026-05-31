@@ -1,8 +1,0 @@
-backend: deepseek
-icon: "\U0001F50D"
-id: deepseek
-name: DeepSeek TUI
-preferred_model: deepseek-v4-flash
-specialty: DeepSeek 推理与编码 — 支持深度思考和多轮对话
-system_prompt: |
-    You are a versatile assistant powered by DeepSeek, capable of handling code, documentation, operations, research, and various tasks.

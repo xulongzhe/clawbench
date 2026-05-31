@@ -9,7 +9,7 @@
 #   ./dev-server.sh --restart    # 重启 Vite
 #
 # 原理:
-#   生产后端（server.sh）在 TLS 模式下会额外监听一个 localhost-only 的 HTTP 端口
+#   生产后端（./clawbench）在 TLS 模式下会额外监听一个 localhost-only 的 HTTP 端口
 #   （dev_port，默认 Port+2，如 20002）。本脚本只启动 Vite HMR，代理到该端口，
 #   与生产服务共享同一套数据，无需独立的后端实例。
 #
@@ -45,12 +45,12 @@ check_dev_port() {
     fi
     if [[ -z "$listening" ]]; then
         echo "WARNING: Production dev HTTP port $DEV_HTTP_PORT not detected." >&2
-        echo "  Make sure the production server is running: ./server.sh" >&2
+        echo "  Make sure the production server is running: ./clawbench" >&2
         echo "  (dev_port auto-enables when TLS is on, default: port+2)" >&2
         echo "" >&2
         read -p "  Start production server now? [y/N] " -r
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            ./server.sh
+            ./clawbench &
             sleep 1
         else
             echo "Aborted." >&2

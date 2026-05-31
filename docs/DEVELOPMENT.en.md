@@ -15,7 +15,7 @@ unzip clawbench-linux-amd64.zip
 
 # 2. Start the server (no config file needed)
 cd clawbench
-./server.sh
+./clawbench
 ```
 
 > On first startup, a random 8-character hex password is auto-generated and saved to `.clawbench/auto-password`; it's printed to the console in a bordered box for visibility. To customize configuration, copy `config/config.example.yaml` to `config/config.yaml` and modify as needed.
@@ -27,9 +27,7 @@ Release package contents (Linux):
 | `clawbench-linux-amd64` | Backend binary |
 | `public/` | Frontend static assets (pre-built) |
 | `config/config.example.yaml` | Config template (optional) |
-| `config/agents/` | Agent configurations |
 | `dev-server.sh` | Dev debug startup script |
-| `server.sh` | Production startup script |
 
 Release package contents (Windows):
 
@@ -38,8 +36,6 @@ Release package contents (Windows):
 | `clawbench-windows-amd64.exe` | Backend binary |
 | `public/` | Frontend static assets (pre-built) |
 | `config/config.example.yaml` | Config template (optional) |
-| `config/agents/` | Agent configurations |
-| `server.ps1` | Start/stop script |
 
 ### Option 2: Build from Source
 
@@ -51,7 +47,7 @@ git clone https://github.com/xulongzhe/clawbench.git
 cd clawbench
 
 # 2. One-click build and start (no config file needed, all items have defaults)
-./build.sh && ./server.sh
+./build.sh && ./clawbench
 ```
 
 **Dev debug mode:**
@@ -70,7 +66,7 @@ cd clawbench
 ./dev-server.sh --restart
 ```
 
-**Windows (PowerShell):**
+**Windows:**
 
 ```powershell
 # 1. Clone the project
@@ -78,7 +74,7 @@ git clone https://github.com/xulongzhe/clawbench.git
 cd clawbench
 
 # 2. One-click build and start (no config file needed)
-.\build.ps1; .\server.ps1
+./build.sh; ./clawbench
 ```
 
 **Cross-compilation** (build Windows binary on Linux):
@@ -151,12 +147,9 @@ cd clawbench
 
 | Command | Description |
 |---------|-------------|
-| `./clawbench-linux-amd64` | Run directly (foreground) |
-| `./server.sh` | Start in background (port 20000) |
-| `./server.sh --fg` | Start in foreground (view live logs) |
-| `./server.sh --stop` | Stop server |
-| `./server.sh --restart` | Restart server |
-| `./server.sh --port 8080` | Specify port |
+| `./clawbench` | Run directly (foreground, default port 20000) |
+| `./clawbench --port 8080` | Specify port |
+| `./clawbench --data-dir /data/.clawbench` | Custom data directory |
 
 #### Dev Debug Mode
 
@@ -168,17 +161,6 @@ cd clawbench
 | `./dev-server.sh --restart` | Restart |
 
 > **Note**: Dev debug mode uses separate ports and database from production, so both can run simultaneously without interference.
-
-**Windows:**
-
-| Command | Description |
-|---------|-------------|
-| `.\clawbench-windows-amd64.exe` | Run directly (foreground) |
-| `.\server.ps1` | Start in background |
-| `.\server.ps1 -Foreground` | Start in foreground |
-| `.\server.ps1 -Stop` | Stop server |
-| `.\server.ps1 -Restart` | Restart server |
-| `.\server.ps1 -Port 8080` | Specify port |
 
 ---
 
@@ -300,7 +282,7 @@ Enabling HTTPS is recommended for production environments:
      cert_file: "/etc/letsencrypt/live/your-domain.com/fullchain.pem"
      key_file: "/etc/letsencrypt/live/your-domain.com/privkey.pem"
    ```
-3. **Restart server**: `./server.sh --restart`
+3. **Restart server**: Restart the `./clawbench` process
 
 ### Multi-Instance Deployment
 
@@ -308,10 +290,10 @@ ClawBench supports running multiple instances on the same server (different port
 
 ```bash
 # Instance 1: default port 20000
-./server.sh
+./clawbench
 
 # Instance 2: custom port
-./server.sh --port 20300
+./clawbench --port 20300
 ```
 
 Browsers don't distinguish cookies by port, so cookies are automatically prefixed by port (e.g. `cb20300_`) to prevent collisions between instances on the same domain. The default port 20000 uses unprefixed cookie names for backward compatibility.
@@ -381,21 +363,8 @@ Use `./dev-server.sh` to start an independent development environment:
 
 ClawBench is more than just a "chat shell" — it is a complete agent runtime platform:
 
-```
-config/agents/
-├── assistant.yaml     # All-round assistant — general Q&A, code, docs, ops
-├── codebuddy2.yaml    # Gemini (via CodeBuddy)
-├── coder.yaml         # Coding expert — complex coding, architecture design, code refactoring
-├── codex.yaml         # Codex — OpenAI Codex CLI coding assistant
-├── gemini.yaml        # Gemini CLI — Google Gemini-powered general assistant
-├── gpt54.yaml         # GPT — via CodeBuddy calling GPT models
-├── qoder.yaml         # Qoder — Alibaba coding agent, auto model routing
-├── vecli.yaml         # VeCLI — Volcengine Doubao-powered coding assistant
-└── handyman.yaml      # Handyman — scheduled tasks, simple coding, daily operations
-```
-
-- **Configurable Agents**: Each agent is defined via YAML with dedicated system prompt, model, backend, and thinking effort levels — no code changes needed
-- **Auto-Discovery**: On first startup, if `config/agents/` is empty, the system auto-scans for installed AI CLIs (claude, codebuddy, opencode, gemini, codex, qodercli, vecli, deepseek, pi) and generates minimal YAML configs for each detected backend. One-time only; existing files are never overwritten
+- **Agent Database Storage**: Each agent is stored in the database with dedicated system prompt, model, backend, and thinking effort levels — created via setup wizard or auto-discovery
+- **Auto-Discovery**: On first startup, if no agents exist in the database, the system auto-scans for installed AI CLIs (claude, codebuddy, opencode, gemini, codex, qodercli, vecli, deepseek, pi) and creates agent records in the database for each detected backend. One-time only
 - **Shared Rules**: `config/rules.md` defines common behaviors and mandatory rules for all agents (scheduled task CLI, RAG search, media handling), avoiding duplicate configuration
 - **Template Placeholder**: `{{AVAILABLE_AGENTS}}` is auto-replaced with the available agent list, facilitating inter-agent dispatching
 - **Multi-Agent Dispatching**: Different tasks match different agents; the all-round assistant handles conversations while specialized agents execute scheduled tasks
@@ -497,18 +466,6 @@ clawbench/
 │   ├── SummaryToggle.vue        # Summary toggle (button/tab modes)
 ├── config/                      # Configuration files
 │   ├── rules.md                 # Agent shared rules and CLI reference
-│   ├── agents/                  # Agent configurations
-│   │   ├── assistant.yaml       # All-round assistant
-│   │   ├── codebuddy2.yaml      # Gemini (via CodeBuddy)
-│   │   ├── coder.yaml           # Coding expert
-│   │   ├── codex.yaml           # Codex CLI
-│   │   ├── gemini.yaml          # Gemini CLI
-│   │   ├── gpt54.yaml           # GPT (via CodeBuddy)
-│   │   ├── qoder.yaml           # Qoder CLI
-│   │   ├── vecli.yaml           # VeCLI
-│   │   ├── deepseek.yaml        # DeepSeek TUI
-│   │   ├── pi.yaml              # Pi
-│   │   └── handyman.yaml        # Handyman
 ├── web/                         # Vue 3 frontend source
 │   └── src/
 │       ├── components/          # Vue components
@@ -516,11 +473,8 @@ clawbench/
 │       ├── stores/              # State management
 │       └── utils/               # Utility functions
 ├── config/config.example.yaml   # Config template
-├── build.sh                     # Build script (Linux/macOS)
-├── build.ps1                    # Build script (Windows)
-├── dev-server.sh                # Dev debug startup script (Linux/macOS)
-├── server.sh                    # Production startup script (Linux/macOS)
-├── server.ps1                   # Production startup script (Windows)
+├── build.sh                     # Build script
+├── dev-server.sh                # Dev debug startup script
 ├── Dockerfile                   # Docker image definition (Ubuntu 24.04 base)
 ├── docker-compose.yml           # Docker Compose configuration
 ├── scripts/

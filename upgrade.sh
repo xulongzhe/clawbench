@@ -42,9 +42,7 @@ PRESERVE_FILES=(
 SYNC_ENTRIES=(
     "clawbench"       # 主二进制
     "public"          # 前端静态资源
-    "server.sh"       # 启动脚本
     "scripts"         # 辅助脚本
-    "config/agents"   # Agent 配置模板
     "config/rules.md" # 规则文件
     "config/config.example.yaml" # 示例配置
 )
@@ -126,18 +124,23 @@ get_download_url() {
 # 停止 clawbench 服务
 stop_service() {
     log_info "停止 clawbench 服务..."
-    if [[ -f "${INSTALL_DIR}/server.sh" ]]; then
-        bash "${INSTALL_DIR}/server.sh" --stop 2>/dev/null || true
+    # 通过 PID 文件或端口停止
+    local pid_file="${INSTALL_DIR}/.clawbench/server.pid"
+    if [[ -f "$pid_file" ]]; then
+        local pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid"
+            sleep 1
+        fi
+        rm -f "$pid_file"
     else
-        # fallback: 通过 PID 文件或端口停止
-        local pid_file="/tmp/clawbench.pid"
-        if [[ -f "$pid_file" ]]; then
-            local pid=$(cat "$pid_file")
-            if kill -0 "$pid" 2>/dev/null; then
-                kill "$pid"
-                sleep 1
-            fi
-            rm -f "$pid_file"
+        # fallback: 通过端口停止
+        local pids=$(lsof -ti :20000 2>/dev/null || true)
+        if [[ -n "$pids" ]]; then
+            for pid in $pids; do
+                kill "$pid" 2>/dev/null || true
+            done
+            sleep 1
         fi
     fi
     # 确保端口已释放
@@ -155,10 +158,10 @@ stop_service() {
 # 启动 clawbench 服务
 start_service() {
     log_info "启动 clawbench 服务..."
-    if [[ -f "${INSTALL_DIR}/server.sh" ]]; then
-        bash "${INSTALL_DIR}/server.sh"
+    if [[ -x "${INSTALL_DIR}/clawbench" ]]; then
+        (cd "${INSTALL_DIR}" && nohup ./clawbench > /dev/null 2>&1 &)
     else
-        log_error "找不到 server.sh，请手动启动服务"
+        log_error "找不到 clawbench 二进制，请手动启动服务"
         exit 1
     fi
     log_success "服务已启动"
@@ -433,8 +436,8 @@ download_and_extract() {
         fi
     done
 
-    # 确保 server.sh 可执行
-    chmod +x "${INSTALL_DIR}/server.sh" 2>/dev/null || true
+    # 确保 clawbench 二进制可执行
+    chmod +x "${INSTALL_DIR}/clawbench" 2>/dev/null || true
     # 确保 scripts/ 下所有脚本可执行
     if [[ -d "${INSTALL_DIR}/scripts" ]]; then
         chmod +x "${INSTALL_DIR}/scripts/"*.sh 2>/dev/null || true

@@ -12,7 +12,7 @@ A: Nine CLI backends are supported: CodeBuddy, Claude Code, OpenCode, Gemini CLI
 
 **Q: How do I add a new agent?**
 
-A: Create a YAML file in the `config/agents/` directory, defining id, name, icon, specialty, backend, model, and system_prompt. Common rules go in `config/rules.md`, which is automatically injected into all agents' system prompts. The `{{AVAILABLE_AGENTS}}` placeholder is automatically replaced with the list of available agents.
+A: Create a new agent via the setup wizard in the Web UI — select an LLM provider, enter your API key, verify model access, and name your agent. Agent configs are stored in the database. Common rules go in `config/rules.md`, which is automatically injected into all agents' system prompts. The `{{AVAILABLE_AGENTS}}` placeholder is automatically replaced with the list of available agents.
 
 **Q: Do I need to configure an API Key?**
 
@@ -39,7 +39,7 @@ A: Yes. Copy the entire release directory to a different location — each copy 
 
 **Q: Do I need a config file to start?**
 
-A: No. All configuration options have default values, so you can start without `config/config.yaml`. When `password` is not configured, a random password is auto-generated and saved to `.clawbench/auto-password`; the startup script will display it. To customize, copy `config/config.example.yaml` to `config/config.yaml` and modify as needed.
+A: No. All configuration options have default values, so you can start without `config/config.yaml`. When `password` is not configured, a random password is auto-generated and saved to `.clawbench/auto-password`; it will be displayed on startup. To customize, copy `config/config.example.yaml` to `config/config.yaml` and modify as needed.
 
 **Q: What if I forget the auto-generated password?**
 
@@ -57,6 +57,6 @@ A: Back up the `.clawbench/ClawBench.db` database file in the directory alongsid
 
 A: If the release package includes the embedded Pi agent (or you built with `./build.sh --with-pi`), a setup wizard appears automatically on first launch. The wizard guides you through selecting an LLM provider (23 supported including OpenAI, Anthropic, DeepSeek, etc.), entering your API key, verifying model connectivity, and naming your agent. API keys are encrypted with AES-256-GCM and encryption keys auto-rotate on password change.
 
-**Q: What's the difference between wizard-created agents and YAML-configured agents?**
+**Q: How are agents managed?**
 
-A: Wizard-created agents are stored in the database (`agents` table), while YAML-configured agents are stored in the `config/agents/` directory. When both exist, database agents take precedence on ID collision. Wizard agent API keys are encrypted and stored in the `agent_api_keys` table; YAML agent API keys are managed by the respective CLI tools.
+A: All agents are stored in the database (`agents` table), created via setup wizard or auto-discovered on first launch. API keys are encrypted and stored in the `agent_api_keys` table (AES-256-GCM), managed automatically by the system.

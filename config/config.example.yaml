@@ -20,15 +20,15 @@
 #        （可选）复制此文件为 config.yaml：cp config/config.example.yaml config/config.yaml
 #     2. Modify values to match your environment
 #        根据实际情况修改配置项
-#     3. Start the server: ./server.sh
-#        启动服务：./server.sh
+#     3. Start the server: ./clawbench
+#        启动服务：./clawbench
 #   Windows:
 #     1. (Optional) Copy this file as config.yaml: copy config\config.example.yaml config\config.yaml
 #        （可选）复制此文件为 config.yaml：copy config\config.example.yaml config\config.yaml
 #     2. Modify values to match your environment
 #        根据实际情况修改配置项
-#     3. Start the server: .\server.ps1
-#        启动服务：.\server.ps1
+#     3. Start the server: ./clawbench
+#        启动服务：./clawbench
 # =============================================================================
 
 # Server port (default: 20000) / 服务端口（默认: 20000）
@@ -175,9 +175,9 @@ summarize:
   #   key: "sk-xxx"                                         # API key / API密钥
   #   format: "openai"                                      # "openai" (default) or "anthropic" / "openai"（默认）或 "anthropic"
 
-# Default agent (optional; leave empty to use the first agent in config/agents/ directory)
-# 默认智能体（可选，留空则使用 config/agents/ 目录下的第一个智能体）
-# Available agents depend on your config/agents/ directory / 可用智能体取决于 config/agents/ 目录
+# Default agent (optional; leave empty to use the first agent in database)
+# 默认智能体（可选，留空则使用数据库中的第一个智能体）
+# Available agents depend on your database / 可用智能体取决于数据库
 default_agent: "codebuddy"
 
 # Logging configuration (optional) / 日志配置（可选）

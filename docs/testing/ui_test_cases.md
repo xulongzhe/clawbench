@@ -6,9 +6,9 @@
 
 ## 前置条件
 
-- 服务已启动（`./server.sh` 或 `./dev-server.sh`）
+- 服务已启动（`./clawbench` 或 `./dev-server.sh`）
 - 浏览器访问对应端口（生产 20000 / 开发 20001）
-- 至少配置了一个 AI Agent（`config/agents/` 下有 YAML 文件）
+- 至少配置了一个 AI Agent（数据库中有智能体记录）
 - 项目目录为 Git 仓库（部分 Git 测试需要）
 
 ---

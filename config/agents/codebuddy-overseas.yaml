@@ -1,8 +1,0 @@
-id: codebuddy-overseas
-name: 海外版
-icon: 🔵
-specialty: CodeBuddy 海外版并行实例
-backend: codebuddy
-command: /home/xulongzhe/codebuddy2
-system_prompt: |
-  You are a versatile assistant capable of handling code, documentation, operations, research, and various tasks.

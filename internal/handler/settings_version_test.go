@@ -95,7 +95,7 @@ func TestGetBuildVersion_BuildTimeStringPreserved(t *testing.T) {
 	original := version.Version
 	defer func() { version.Version = original }()
 
-	// The build time is injected by build.sh/server.sh in dev builds
+	// The build time is injected by build.sh in dev builds
 	// and should be preserved exactly as-is
 	version.Version = "v0.30.0-33-ga636beb (2026-05-21 10:30:00)"
 	result := getBuildVersion()

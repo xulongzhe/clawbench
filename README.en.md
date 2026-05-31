@@ -125,7 +125,7 @@ Download the latest ZIP package from [GitHub Releases](https://github.com/xulong
 wget https://github.com/xulongzhe/clawbench/releases/latest/download/clawbench-linux-amd64.zip
 unzip clawbench-linux-amd64.zip
 cd clawbench
-./server.sh
+./clawbench
 ```
 
 That's it — on every startup, ClawBench automatically scans for installed AI CLI tools, generates minimal agent configs for each detected backend, and auto-discovers available models and thinking effort levels. No manual configuration needed.
@@ -141,17 +141,7 @@ Once deployed, access `http://server-ip:20000` from your phone app or mobile bro
 
 ### Customize Agents
 
-Auto-generated agent configs use minimal defaults (no model lists or thinking effort levels — these are auto-discovered at runtime). To customize model lists, system prompts, icons, etc., edit the YAML files in `config/agents/` and restart the server:
-
-```bash
-# Edit an existing agent
-vim config/agents/claude.yaml
-
-# Add a new agent (use example templates as reference)
-cp config/agents/claude.yaml.example config/agents/my-claude.yaml
-```
-
-Each `.yaml.example` file contains complete configuration fields and descriptions for that backend. They serve as reference templates only and are not auto-loaded.
+Auto-discovered agent configs use minimal defaults (no model lists or thinking effort levels — these are auto-discovered at runtime). To customize model lists, system prompts, etc., create new agents via the setup wizard in the Web UI. Agent configs are stored in the database.
 
 > For build instructions, advanced configuration, deployment, and architecture details, see **[Build & Development Guide](docs/DEVELOPMENT.en.md)**.
 

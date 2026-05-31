@@ -126,7 +126,7 @@ graph LR
 wget https://github.com/xulongzhe/clawbench/releases/latest/download/clawbench-linux-amd64.zip
 unzip clawbench-linux-amd64.zip
 cd clawbench
-./server.sh
+./clawbench
 ```
 
 就这么简单 —— 每次启动时，ClawBench 会自动扫描系统中已安装的 AI CLI 工具，为每个检测到的后端生成最小化智能体配置，并自动发现可用模型和思考档位。无需手动配置即可开始使用。
@@ -142,17 +142,7 @@ cd clawbench
 
 ### 自定义智能体
 
-自动生成的智能体配置为最小化默认值（不含模型列表和思考档位，由运行时自动发现填充）。如需自定义模型列表、系统提示词、图标等，编辑 `config/agents/` 目录下的 YAML 文件后重启服务即可：
-
-```bash
-# 编辑已有智能体
-vim config/agents/claude.yaml
-
-# 添加新的智能体（参考示例模板）
-cp config/agents/claude.yaml.example config/agents/my-claude.yaml
-```
-
-每个 `.yaml.example` 文件包含该后端的完整配置字段和说明，仅作为参考模板，不会被自动加载。
+自动发现的智能体配置为最小化默认值（不含模型列表和思考档位，由运行时自动发现填充）。如需自定义模型列表、系统提示词等，可在 Web UI 的设置向导中创建新智能体，智能体配置存储在数据库中。
 
 > 编译构建、高级配置、部署说明、架构设计等详细文档请参阅 **[编译与开发指南](docs/DEVELOPMENT.md)**。
 
