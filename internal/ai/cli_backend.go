@@ -252,6 +252,12 @@ func filterSkipNonJSON() func(string) (string, bool) {
 // and injects it as an environment variable on the CLI command. For Pi agents,
 // also adds the --provider flag so Pi knows which provider config to use.
 // If the agent has no stored API key, this is a no-op (Pi falls back to auth.json).
+//
+// For custom URL agents (customURL != ""): the provider stored in agent_api_keys
+// is the agent ID itself (e.g., "custom-agent"), and Pi uses models.json to find
+// the endpoint. We inject --provider {agentID} --api-key {key} directly.
+// For built-in providers: we inject the env var (e.g., OPENAI_API_KEY=sk-...)
+// and --provider {provider}.
 func injectAgentAPIKey(cmd *exec.Cmd, req ChatRequest) {
 	if agentAPIKeyLoader == nil {
 		return
@@ -273,17 +279,20 @@ func injectAgentAPIKey(cmd *exec.Cmd, req ChatRequest) {
 		return // No stored API key — Pi will fall back to auth.json
 	}
 
-	// Find the provider spec and inject the env var
+	// Custom URL mode: provider is the agent ID (set by setup complete).
+	// Use --provider {agentID} + --api-key so Pi reads models.json for the endpoint.
+	if customURL != "" {
+		cmd.Args = append(cmd.Args[:len(cmd.Args)-1], "--provider", provider, "--api-key", apiKey, cmd.Args[len(cmd.Args)-1])
+		slog.Debug("injected custom URL API key for agent", "agent_id", req.AgentID, "provider", provider)
+		return
+	}
+
+	// Built-in provider mode: inject env var + --provider flag
 	spec := model.FindProviderSpec(provider)
 	if spec != nil && spec.EnvVar != "" {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", spec.EnvVar, apiKey))
 		// Add --provider flag to Pi CLI args
 		cmd.Args = append(cmd.Args[:len(cmd.Args)-1], "--provider", provider, cmd.Args[len(cmd.Args)-1])
-	}
-
-	// Inject custom URL if provided
-	if customURL != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("PI_CUSTOM_URL=%s", customURL))
 	}
 
 	slog.Debug("injected API key for agent", "agent_id", req.AgentID, "provider", provider)

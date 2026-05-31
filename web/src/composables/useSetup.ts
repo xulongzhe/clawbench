@@ -47,6 +47,15 @@ export interface VerifyResponse {
     model?: string
 }
 
+export interface BackendInfo {
+    id: string
+    name: string
+    icon: string
+    specialty: string
+    default_cmd: string
+    thinking_effort_levels?: string[]
+}
+
 export interface CompleteResponse {
     success: boolean
     agent?: { id: string; name: string; [key: string]: unknown }
@@ -117,6 +126,11 @@ async function getProviders(): Promise<Provider[]> {
     return providers.value
 }
 
+async function getBackends(): Promise<BackendInfo[]> {
+    const data = await apiGet<{ backends: BackendInfo[] }>('/api/setup/backends')
+    return data.backends || []
+}
+
 async function scanModels(provider: string, customUrl: string, apiKey: string, apiFormat: string): Promise<ModelsResponse> {
     loading.value = true
     modelsError.value = ''
@@ -177,41 +191,6 @@ async function complete(config: SetupCompleteRequest): Promise<CompleteResponse>
     }
 }
 
-// ── Session storage persistence (security: API key is NOT persisted) ──
-
-const STORAGE_KEY = 'clawbench-setup-state'
-
-interface SetupWizardState {
-    step: number
-    provider: string
-    customUrl: string
-    chatModel: string
-    summarizeModel: string
-    agentName: string
-    agentId: string
-}
-
-function saveWizardState(state: SetupWizardState) {
-    try {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-    } catch { /* ignore storage errors */ }
-}
-
-function loadWizardState(): SetupWizardState | null {
-    try {
-        const raw = sessionStorage.getItem(STORAGE_KEY)
-        return raw ? JSON.parse(raw) : null
-    } catch {
-        return null
-    }
-}
-
-function clearWizardState() {
-    try {
-        sessionStorage.removeItem(STORAGE_KEY)
-    } catch { /* ignore */ }
-}
-
 // ── Exported composable ──
 
 export function useSetup() {
@@ -228,13 +207,9 @@ export function useSetup() {
         // API methods
         checkStatus,
         getProviders,
+        getBackends,
         scanModels,
         verify,
         complete,
-
-        // Persistence helpers
-        saveWizardState,
-        loadWizardState,
-        clearWizardState,
     }
 }

@@ -479,7 +479,7 @@ func TestSetupModels_OpenAIProviderHTTPFetch(t *testing.T) {
 	defer server.Close()
 
 	// Use a provider with ModelsEndpoint pointing to our mock
-	// We'll use custom_url to override the endpoint
+	// NOTE: custom_url now returns empty model list, so we test the built-in provider path instead
 	body := map[string]any{
 		"provider":   "openai",
 		"custom_url": server.URL + "/chat/completions",
@@ -494,10 +494,10 @@ func TestSetupModels_OpenAIProviderHTTPFetch(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
+	// Custom URL mode now returns empty model list
 	models := resp["models"].([]any)
-	assert.NotEmpty(t, models, "should have models from mock server")
-	hint, _ := resp["summarize_model_hint"]
-	assert.NotEmpty(t, hint)
+	assert.Empty(t, models, "custom URL mode should return empty model list")
+}
 }
 
 // TestSetupModels_KnownModelsFields tests that KnownModels entries have expected fields.
@@ -550,8 +550,9 @@ func TestSetupModels_InvalidJSON(t *testing.T) {
 
 // ---------- ServeSetupVerify extended coverage ----------
 
-// TestSetupVerify_EmptyProviderDefaultsToOpenAI tests that empty provider defaults to
-// "openai" and then fails because EmbeddedAgentPath is empty in test env.
+// TestSetupVerify_EmptyProviderDefaultsToOpenAI tests that empty provider with
+// custom_url uses HTTP verification (not Pi CLI). With a bad URL, it should
+// return 200 with success=false.
 func TestSetupVerify_EmptyProviderDefaultsToOpenAI(t *testing.T) {
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
@@ -566,8 +567,13 @@ func TestSetupVerify_EmptyProviderDefaultsToOpenAI(t *testing.T) {
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeSetupVerify, req)
 
-	// In test env, EmbeddedAgentPath() returns "" → 404 EmbeddedAgentNotFound
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	// Custom URL mode uses HTTP verification, not Pi CLI.
+	// The fake URL will fail with HTTP error → 200 {success: false}
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.False(t, resp["success"].(bool), "should fail with unreachable URL")
 }
 
 // TestSetupVerify_EmbeddedAgentNotFound tests the path where Pi binary is not found.
@@ -654,9 +660,9 @@ func TestSetupComplete_CustomURLDefaultsToOpenAI(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp["success"].(bool))
 
-	// Verify agent was created with "openai" provider's API key
+	// Verify agent was created with agent ID as provider (custom URL mode stores agent ID, not "openai")
 	var count int
-	service.DB.QueryRow("SELECT COUNT(*) FROM agent_api_keys WHERE agent_id = ? AND provider = ?", "custom-openai", "openai").Scan(&count)
+	service.DB.QueryRow("SELECT COUNT(*) FROM agent_api_keys WHERE agent_id = ? AND provider = ?", "custom-openai", "custom-openai").Scan(&count)
 	assert.Equal(t, 1, count)
 }
 
@@ -1067,29 +1073,15 @@ func TestConfigureSummarizeBackend_CustomURLOverride(t *testing.T) {
 
 // ---------- ServeSetupModels with mock server ----------
 
-// TestSetupModels_CustomURLWithMockServer tests the full HTTP fetch path
-// using a local mock server.
+// TestSetupModels_CustomURLWithMockServer tests that custom URL mode returns
+// an empty model list (user enters models manually).
 func TestSetupModels_CustomURLWithMockServer(t *testing.T) {
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
 
-	// Start a mock /v1/models server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{
-			"data": [
-				{"id": "custom-model-1", "name": "Custom Model 1"},
-				{"id": "custom-model-2-mini", "name": "Custom Model 2 Mini"}
-			]
-		}`))
-	}))
-	defer server.Close()
-
 	body := map[string]any{
 		"provider":   "",
-		"custom_url": server.URL + "/v1/chat/completions",
+		"custom_url": "https://api.example.com/v1/chat/completions",
 		"api_key":    "test-key",
 	}
 	req := newRequest(t, http.MethodPost, "/api/setup/models", body)
@@ -1101,17 +1093,15 @@ func TestSetupModels_CustomURLWithMockServer(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
+	// Custom URL mode now returns empty model list
 	models := resp["models"].([]any)
-	assert.Len(t, models, 2)
-
-	hint, _ := resp["summarize_model_hint"]
-	assert.NotEmpty(t, hint, "should have a summarize_model_hint")
+	assert.Empty(t, models, "custom URL mode should return empty model list")
 }
 
 // ---------- ServeSetupVerify with custom URL ----------
 
-// TestSetupVerify_WithCustomURL tests that custom_url is passed through
-// to the Pi CLI via PI_CUSTOM_URL env var (but still fails since no embedded Pi).
+// TestSetupVerify_WithCustomURL tests that custom_url triggers HTTP verification
+// instead of Pi CLI. With an unreachable URL, it returns success=false.
 func TestSetupVerify_WithCustomURL(t *testing.T) {
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
@@ -1126,8 +1116,12 @@ func TestSetupVerify_WithCustomURL(t *testing.T) {
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeSetupVerify, req)
 
-	// In test env, EmbeddedAgentPath() returns "" → 404
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	// Custom URL uses HTTP verification — unreachable URL → success=false
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.False(t, resp["success"].(bool), "should fail with unreachable URL")
 }
 
 // ---------- ServeSetupComplete with anthropic provider ----------
@@ -1379,8 +1373,8 @@ func TestSetupVerify_FakePiNoOutput(t *testing.T) {
 	assert.False(t, resp["success"].(bool), "should fail")
 }
 
-// TestSetupVerify_FakePiWithCustomURL tests verify with custom_url injected via
-// PI_CUSTOM_URL env var.
+// TestSetupVerify_FakePiWithCustomURL tests verify with custom_url — this now
+// uses HTTP verification instead of Pi CLI, so the fake Pi is NOT invoked.
 func TestSetupVerify_FakePiWithCustomURL(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fake Pi binary path resolution differs on Windows")
@@ -1394,6 +1388,8 @@ func TestSetupVerify_FakePiWithCustomURL(t *testing.T) {
 	_, err := os.Stat(piPath)
 	require.NoError(t, err, "fake Pi binary should exist at %s", piPath)
 
+	// Custom URL mode → HTTP verification, NOT Pi CLI
+	// The URL is unreachable, so verify should fail
 	body := map[string]any{
 		"provider":   "openai",
 		"custom_url": "https://custom.api.com/v1/chat/completions",
@@ -1408,7 +1404,7 @@ func TestSetupVerify_FakePiWithCustomURL(t *testing.T) {
 
 	var resp map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	assert.True(t, resp["success"].(bool), "should succeed with fake Pi + custom URL")
+	assert.False(t, resp["success"].(bool), "should fail with unreachable custom URL")
 }
 
 // TestSetupVerify_FakePiNoEnvVar tests verify with a provider that has no EnvVar
@@ -1770,8 +1766,12 @@ func TestSetupVerify_AnthropicCustomURL(t *testing.T) {
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeSetupVerify, req)
 
-	// In test env, EmbeddedAgentPath() returns "" → 404
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	// Custom URL mode uses HTTP verification — unreachable URL → success=false
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.False(t, resp["success"].(bool), "should fail with unreachable URL")
 }
 
 // ---------- ServeSetupComplete with custom URL anthropic ----------
@@ -1807,9 +1807,9 @@ func TestSetupComplete_CustomURLAnthropic(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp["success"].(bool))
 
-	// Verify agent was created with "anthropic" provider
+	// Verify agent was created with agent ID as provider (custom URL mode stores agent ID, not "anthropic")
 	var count int
-	service.DB.QueryRow("SELECT COUNT(*) FROM agent_api_keys WHERE agent_id = ? AND provider = ?", "custom-anthropic", "anthropic").Scan(&count)
+	service.DB.QueryRow("SELECT COUNT(*) FROM agent_api_keys WHERE agent_id = ? AND provider = ?", "custom-anthropic", "custom-anthropic").Scan(&count)
 	assert.Equal(t, 1, count)
 
 	// Verify summarize backend was configured with anthropic format

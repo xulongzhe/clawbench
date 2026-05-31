@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,6 +73,45 @@ func ServeSetupProviders(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ---------- GET /api/setup/backends ----------
+
+// ServeSetupBackends returns the list of AI backends supported by ClawBench.
+// This is used by the setup wizard to show users what CLI agents can be auto-detected.
+func ServeSetupBackends(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
+		return
+	}
+
+	type backendInfo struct {
+		ID                   string   `json:"id"`
+		Name                 string   `json:"name"`
+		Icon                 string   `json:"icon"`
+		Specialty            string   `json:"specialty"`
+		DefaultCmd           string   `json:"default_cmd"`
+		ThinkingEffortLevels []string `json:"thinking_effort_levels,omitempty"`
+	}
+
+	backends := make([]backendInfo, 0, len(model.BackendRegistry))
+	for _, spec := range model.BackendRegistry {
+		if spec.NoCLI {
+			continue // skip non-CLI backends (e.g. mock)
+		}
+		backends = append(backends, backendInfo{
+			ID:                   spec.ID,
+			Name:                 spec.Name,
+			Icon:                 spec.Icon,
+			Specialty:            spec.Specialty,
+			DefaultCmd:           spec.DefaultCmd,
+			ThinkingEffortLevels: spec.ThinkingEffortLevels,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"backends": backends,
+	})
+}
+
 // ---------- POST /api/setup/models ----------
 
 // setupModelsRequest is the request body for POST /api/setup/models.
@@ -94,28 +136,46 @@ func ServeSetupModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize: frontend sends "_custom" for custom URL mode — treat as empty
+	if req.Provider == "_custom" {
+		req.Provider = ""
+	}
+
 	// Custom URL mode: derive provider from api_format
 	if req.Provider == "" {
 		if req.CustomURL == "" {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 			return
 		}
-		// Validate custom URL format
+		// Validate custom URL format (auto-detects api_format from URL path)
 		if errKey := validateCustomURL(req.CustomURL, req.APIFormat); errKey != "" {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, errKey)
 			return
 		}
-		// Use api_format to determine the virtual provider
+		// Derive format from URL path (if api_format was auto-detected)
+		req.APIFormat = detectAPIFormat(req.CustomURL, req.APIFormat)
 		if req.APIFormat == "anthropic" {
 			req.Provider = "anthropic"
 		} else {
-			req.Provider = "openai" // default to openai-compatible
+			req.Provider = "openai"
 		}
 	}
 
 	spec := model.FindProviderSpec(req.Provider)
 	if spec == nil {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "ProviderNotFound")
+		return
+	}
+
+	// Custom URL mode: always return empty model list — the user's custom
+	// endpoint may host entirely different models from the known provider's,
+	// so auto-fetching is unreliable. Let the user enter model IDs manually.
+	if req.CustomURL != "" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"models":               []map[string]any{},
+			"summarize_model_hint": "",
+			"error":                "Custom URL mode: please enter model IDs manually.",
+		})
 		return
 	}
 
@@ -143,10 +203,6 @@ func ServeSetupModels(w http.ResponseWriter, r *http.Request) {
 
 	// OpenAI-compatible providers: call /v1/models endpoint
 	modelsEndpoint := spec.ModelsEndpoint
-	if req.CustomURL != "" {
-		// Derive models URL from custom URL: replace last path segment with /models
-		modelsEndpoint = deriveModelsURL(req.CustomURL)
-	}
 
 	if modelsEndpoint == "" {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "ModelsEndpointNotAvailable")
@@ -204,8 +260,11 @@ type setupVerifyRequest struct {
 	APIFormat string `json:"api_format"` // "openai" or "anthropic" (only for custom URL)
 }
 
-// ServeSetupVerify verifies the API key and model by sending a minimal test message
-// through the Pi CLI. Returns success/failure with a message.
+// ServeSetupVerify verifies the API key and model accessibility.
+// For custom URL mode: sends a minimal HTTP request directly to the endpoint
+// (OpenAI or Anthropic protocol based on URL path). This avoids shelling out
+// to Pi CLI which doesn't natively support arbitrary custom endpoints.
+// For built-in providers: uses the embedded Pi CLI as before.
 func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
@@ -222,14 +281,20 @@ func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize: frontend sends "_custom" for custom URL mode — treat as empty
+	if req.Provider == "_custom" {
+		req.Provider = ""
+	}
+
 	// Custom URL mode: derive provider from api_format
 	if req.Provider == "" {
-		// Validate custom URL format
+		// Validate custom URL format (auto-detects api_format from URL path)
 		if req.CustomURL != "" {
 			if errKey := validateCustomURL(req.CustomURL, req.APIFormat); errKey != "" {
 				writeLocalizedErrorf(w, r, http.StatusBadRequest, errKey)
 				return
 			}
+			req.APIFormat = detectAPIFormat(req.CustomURL, req.APIFormat)
 		}
 		if req.APIFormat == "anthropic" {
 			req.Provider = "anthropic"
@@ -244,7 +309,13 @@ func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the embedded Pi binary
+	// Custom URL mode: verify via direct HTTP request (fast, no CLI dependency)
+	if req.CustomURL != "" {
+		verifyCustomURLHTTP(w, r, req)
+		return
+	}
+
+	// Built-in provider mode: verify via Pi CLI
 	piPath := model.EmbeddedAgentPath()
 	if piPath == "" {
 		writeLocalizedErrorf(w, r, http.StatusNotFound, "EmbeddedAgentNotFound")
@@ -253,7 +324,6 @@ func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 
 	// Build Pi CLI command
 	args := []string{"-p", "--mode", "json", "--provider", req.Provider, "--model", req.Model}
-	// Try --no-tools first (safer), fall back to --tools read if not supported
 	args = append(args, "--no-tools", "ping")
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -267,11 +337,6 @@ func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%s", envVar, req.APIKey))
 	} else {
 		cmd.Env = os.Environ()
-	}
-
-	// Inject custom URL if provided
-	if req.CustomURL != "" {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("PI_CUSTOM_URL=%s", req.CustomURL))
 	}
 
 	output, err := cmd.CombinedOutput()
@@ -329,17 +394,24 @@ func ServeSetupComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Normalize: frontend sends "_custom" for custom URL mode — treat as empty
+	if req.Provider == "_custom" {
+		req.Provider = ""
+	}
+
 	// Custom URL mode: derive provider from api_format
 	if req.Provider == "" {
 		if req.CustomURL == "" {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "InvalidRequestBody")
 			return
 		}
-		// Validate custom URL format
+		// Validate custom URL format (auto-detects api_format from URL path)
 		if errKey := validateCustomURL(req.CustomURL, req.APIFormat); errKey != "" {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, errKey)
 			return
 		}
+		// Derive format from URL path (if api_format was auto-detected)
+		req.APIFormat = detectAPIFormat(req.CustomURL, req.APIFormat)
 		if req.APIFormat == "anthropic" {
 			req.Provider = "anthropic"
 		} else {
@@ -414,7 +486,13 @@ func ServeSetupComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Encrypt and store API key
-	if err := service.SaveAgentAPIKey(tx, req.AgentID, req.Provider, req.CustomURL, req.APIKey); err != nil {
+	// For custom URL mode: store provider as agent ID so injectAgentAPIKey
+	// knows to use --provider {agentID} instead of a built-in provider name.
+	apiKeyProvider := req.Provider
+	if req.CustomURL != "" {
+		apiKeyProvider = req.AgentID
+	}
+	if err := service.SaveAgentAPIKey(tx, req.AgentID, apiKeyProvider, req.CustomURL, req.APIKey); err != nil {
 		slog.Error("failed to save API key", "agent_id", req.AgentID, "error", err)
 		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
 		return
@@ -520,23 +598,186 @@ func reinitSummarizer(req setupCompleteRequest, spec *model.ProviderSpec) {
 
 // ---------- Helper functions ----------
 
-// validateCustomURL checks that a custom URL matches the expected path suffix
-// for the given API format. Returns an error message key if invalid, empty string if OK.
+// verifyCustomURLHTTP verifies a custom URL endpoint by sending a minimal
+// HTTP request directly (no Pi CLI). This is fast and works with any
+// OpenAI-compatible or Anthropic-compatible endpoint.
+func verifyCustomURLHTTP(w http.ResponseWriter, r *http.Request, req setupVerifyRequest) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	var verifyErr error
+	switch req.APIFormat {
+	case "anthropic":
+		verifyErr = verifyAnthropicHTTP(ctx, req.CustomURL, req.APIKey, req.Model)
+	default: // openai
+		verifyErr = verifyOpenAIHTTP(ctx, req.CustomURL, req.APIKey, req.Model)
+	}
+
+	if verifyErr != nil {
+		slog.Warn("setup verify (HTTP) failed", "format", req.APIFormat, "url", req.CustomURL, "model", req.Model, "error", verifyErr)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success": false,
+			"message": "验证失败：API Key 无效或模型不可用。请检查后重试。",
+			"model":   req.Model,
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "配置验证成功！智能体工作正常。",
+		"model":   req.Model,
+	})
+}
+
+// verifyOpenAIHTTP sends a minimal OpenAI Chat Completions request to verify
+// the endpoint is reachable and the API key + model are valid.
+func verifyOpenAIHTTP(ctx context.Context, endpoint, apiKey, model string) error {
+	reqBody := map[string]any{
+		"model":      model,
+		"messages":   []map[string]string{{"role": "user", "content": "ping"}},
+		"max_tokens": 5,
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Drain body to reuse connection
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("API key invalid (status 401)")
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("model %q not found (status 404)", model)
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("access denied (status 403)")
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("endpoint returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// verifyAnthropicHTTP sends a minimal Anthropic Messages request to verify
+// the endpoint is reachable and the API key + model are valid.
+func verifyAnthropicHTTP(ctx context.Context, endpoint, apiKey, model string) error {
+	reqBody := map[string]any{
+		"model":      model,
+		"messages":   []map[string]string{{"role": "user", "content": "ping"}},
+		"max_tokens": 5,
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(jsonBody))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	if apiKey != "" {
+		req.Header.Set("x-api-key", apiKey)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Drain body to reuse connection
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 512))
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("API key invalid (status 401)")
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("model %q not found (status 404)", model)
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("access denied (status 403)")
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("endpoint returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// validateCustomURL checks that a custom URL is a valid HTTP(S) URL and
+// its path suffix matches a known API format (OpenAI or Anthropic).
+// If apiFormat is empty, it is auto-detected from the URL path.
+// Returns an error message key if invalid, empty string if OK.
 func validateCustomURL(customURL, apiFormat string) string {
 	if customURL == "" {
 		return ""
 	}
-	switch apiFormat {
-	case "anthropic":
-		if !strings.HasSuffix(customURL, "/v1/messages") {
-			return "CustomURLAnthropicFormat"
+	// Parse and validate URL scheme + host
+	parsed, err := url.Parse(customURL)
+	if err != nil {
+		return "CustomURLInvalid"
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "CustomURLInvalidScheme"
+	}
+	if parsed.Host == "" {
+		return "CustomURLInvalidHost"
+	}
+	// Auto-detect format from URL path if not specified
+	detectedFormat := apiFormat
+	if detectedFormat == "" {
+		if strings.HasSuffix(parsed.Path, "/v1/messages") {
+			detectedFormat = "anthropic"
+		} else if strings.HasSuffix(parsed.Path, "/chat/completions") {
+			detectedFormat = "openai"
+		} else {
+			return "CustomURLUnrecognizedFormat"
 		}
-	default: // openai
-		if !strings.HasSuffix(customURL, "/chat/completions") {
-			return "CustomURLOpenAIFormat"
+	} else {
+		// Validate path suffix matches the declared format
+		switch detectedFormat {
+		case "anthropic":
+			if !strings.HasSuffix(parsed.Path, "/v1/messages") {
+				return "CustomURLAnthropicFormat"
+			}
+		default: // openai
+			if !strings.HasSuffix(parsed.Path, "/chat/completions") {
+				return "CustomURLOpenAIFormat"
+			}
 		}
 	}
 	return ""
+}
+
+// detectAPIFormat returns the API format based on the URL path suffix.
+// If apiFormat is already set (non-empty), it is returned as-is.
+// Otherwise, the format is auto-detected from the URL path:
+//   - ends with /v1/messages → "anthropic"
+//   - ends with /chat/completions → "openai"
+//   - otherwise → "openai" (default)
+func detectAPIFormat(customURL, apiFormat string) string {
+	if apiFormat != "" {
+		return apiFormat
+	}
+	if strings.HasSuffix(customURL, "/v1/messages") {
+		return "anthropic"
+	}
+	return "openai"
 }
 
 // deriveModelsURL replaces the last path segment of a URL with "models".
@@ -601,7 +842,8 @@ func fetchModelsFromEndpoint(endpoint, apiKey string) ([]model.ModelInfo, error)
 	return models, nil
 }
 
-// writePiConfigFiles writes Pi CLI configuration files (auth.json, settings.json).
+// writePiConfigFiles writes Pi CLI configuration files (auth.json, settings.json,
+// and models.json for custom URL mode).
 // These are best-effort writes — failures are logged but don't block setup completion.
 func writePiConfigFiles(req setupCompleteRequest, spec *model.ProviderSpec) {
 	// Determine Pi config directory
@@ -616,6 +858,12 @@ func writePiConfigFiles(req setupCompleteRequest, spec *model.ProviderSpec) {
 		return
 	}
 
+	// For custom URL mode: register a custom provider in models.json
+	// so Pi knows which endpoint to connect to and which API format to use.
+	if req.CustomURL != "" {
+		writePiModelsJSON(piConfigDir, req)
+	}
+
 	// Write auth.json — merge with existing entries using Pi's structured format
 	// Pi expects: { "provider": { "type": "api_key", "key": "..." } }
 	// NOT the old flat format: { "ENV_VAR": "..." }
@@ -624,8 +872,14 @@ func writePiConfigFiles(req setupCompleteRequest, spec *model.ProviderSpec) {
 	if existing, err := os.ReadFile(authPath); err == nil {
 		_ = json.Unmarshal(existing, &authData)
 	}
-	// Use Pi provider ID as key (e.g., "minimax-cn", "deepseek"), not EnvVar
-	authData[req.Provider] = map[string]string{
+	// Use Pi provider ID as key:
+	// - Built-in providers: e.g., "minimax-cn", "deepseek"
+	// - Custom URL: use agent ID as the custom provider name (e.g., "custom-agent")
+	authKey := req.Provider
+	if req.CustomURL != "" {
+		authKey = req.AgentID
+	}
+	authData[authKey] = map[string]string{
 		"type": "api_key",
 		"key":  req.APIKey,
 	}
@@ -636,12 +890,90 @@ func writePiConfigFiles(req setupCompleteRequest, spec *model.ProviderSpec) {
 
 	// Write settings.json
 	settingsData := map[string]string{
-		"defaultProvider": req.Provider,
+		"defaultProvider": authKey,
 		"defaultModel":   req.Model,
 	}
 	settingsJSON, _ := json.Marshal(settingsData)
 	if err := atomicWriteFile(filepath.Join(piConfigDir, "settings.json"), settingsJSON, 0644); err != nil {
 		slog.Warn("failed to write Pi settings.json", "error", err)
+	}
+}
+
+// writePiModelsJSON registers a custom provider in Pi's models.json file.
+// This tells Pi the baseUrl, API format, and model IDs for the custom endpoint.
+// The provider name is the agent ID (e.g., "custom-agent").
+func writePiModelsJSON(piConfigDir string, req setupCompleteRequest) {
+	modelsPath := filepath.Join(piConfigDir, "models.json")
+
+	// Read existing models.json
+	modelsData := make(map[string]any)
+	if existing, err := os.ReadFile(modelsPath); err == nil {
+		_ = json.Unmarshal(existing, &modelsData)
+	}
+
+	// Ensure "providers" key exists
+	providers, ok := modelsData["providers"].(map[string]any)
+	if !ok {
+		providers = make(map[string]any)
+	}
+
+	// Determine Pi API type from our api_format
+	piAPI := "openai-completions"
+	if req.APIFormat == "anthropic" {
+		piAPI = "anthropic-messages"
+	}
+
+	// Derive baseUrl from the custom URL by stripping Pi's auto-appended path suffix.
+	// Pi automatically appends path segments based on the API type:
+	//   - openai-completions: appends /chat/completions  → strip /chat/completions
+	//   - anthropic-messages: appends /v1/messages       → strip /v1/messages
+	// Examples:
+	//   "https://api.deepseek.com/v1/chat/completions"  → "https://api.deepseek.com/v1"
+	//   "https://api.minimaxi.com/anthropic/v1/messages" → "https://api.minimaxi.com/anthropic"
+	parsed, err := url.Parse(req.CustomURL)
+	baseURL := ""
+	if err == nil {
+		path := parsed.Path
+		if piAPI == "openai-completions" && strings.HasSuffix(path, "/chat/completions") {
+			path = strings.TrimSuffix(path, "/chat/completions")
+		} else if piAPI == "anthropic-messages" && strings.HasSuffix(path, "/v1/messages") {
+			path = strings.TrimSuffix(path, "/v1/messages")
+		}
+		baseURL = fmt.Sprintf("%s://%s%s", parsed.Scheme, parsed.Host, path)
+	}
+
+	// Build provider entry
+	modelEntries := []map[string]any{
+		{
+			"id":        req.Model,
+			"reasoning": false,
+			"input":     []string{"text"},
+			"cost":      map[string]float64{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+		},
+	}
+	// If summarize model is different, add it too
+	if req.SummarizeModel != "" && req.SummarizeModel != req.Model {
+		modelEntries = append(modelEntries, map[string]any{
+			"id":        req.SummarizeModel,
+			"reasoning": false,
+			"input":     []string{"text"},
+			"cost":      map[string]float64{"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
+		})
+	}
+
+	providerEntry := map[string]any{
+		"baseUrl": baseURL,
+		"api":     piAPI,
+		"apiKey":  fmt.Sprintf("$%s", req.AgentID), // env var reference — set at runtime
+		"models":  modelEntries,
+	}
+
+	providers[req.AgentID] = providerEntry
+	modelsData["providers"] = providers
+
+	modelsJSON, _ := json.MarshalIndent(modelsData, "", "  ")
+	if err := atomicWriteFile(modelsPath, modelsJSON, 0644); err != nil {
+		slog.Warn("failed to write Pi models.json", "error", err)
 	}
 }
 

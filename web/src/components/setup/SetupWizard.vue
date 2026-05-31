@@ -111,9 +111,6 @@ const {
   scanModels,
   verify: verifyApi,
   complete: completeApi,
-  saveWizardState,
-  loadWizardState,
-  clearWizardState,
 } = useSetup()
 
 // ── Wizard state ──
@@ -132,7 +129,7 @@ const agentId = ref('')
 
 // ── Async state ──
 
-const embeddedAgent = ref(false)
+const embeddedAgent = ref<boolean | null>(false)
 const agentVersion = ref('')
 const providersList = ref<{ id: string; name: string; envVar: string; apiFormat: string }[]>([])
 const modelsList = ref<{ id: string; name: string; context_length?: number; cost_tier?: string }[]>([])
@@ -159,19 +156,6 @@ const currentProviderEnvVar = computed(() => {
 
 function goToStep(n: number) {
   step.value = n
-  persistState()
-}
-
-function persistState() {
-  saveWizardState({
-    step: step.value,
-    provider: provider.value,
-    customUrl: customUrl.value,
-    chatModel: chatModel.value,
-    summarizeModel: summarizeModel.value,
-    agentName: agentName.value,
-    agentId: agentId.value,
-  })
 }
 
 // ── Step handlers ──
@@ -204,6 +188,14 @@ async function fetchModels() {
   summarizeModel.value = ''
   verifyResult.value = null
 
+  // Custom URL mode: skip model list fetch entirely.
+  // The backend returns an empty list anyway, and the API call causes
+  // a misleading red "error" box. Just show manual input fields.
+  if (provider.value === '_custom') {
+    modelsLoading.value = false
+    return
+  }
+
   try {
     const result = await scanModels(provider.value, customUrl.value, apiKey.value, apiFormat.value)
     modelsList.value = result.models || []
@@ -220,7 +212,6 @@ async function fetchModels() {
     modelsErrorMsg.value = err instanceof Error ? err.message : String(err)
   } finally {
     modelsLoading.value = false
-    persistState()
   }
 }
 
@@ -248,7 +239,6 @@ async function handleComplete() {
   completing.value = false
 
   if (result.success) {
-    clearWizardState()
     // Reload agents so the app picks up the new one
     try {
       await store.loadProject()
@@ -259,7 +249,7 @@ async function handleComplete() {
   }
 }
 
-// ── Restore state from sessionStorage on mount ──
+// ── Restore state on mount ──
 
 onMounted(async () => {
   // Check setup status
@@ -268,25 +258,13 @@ onMounted(async () => {
     embeddedAgent.value = status.embedded_agent
     agentVersion.value = status.agent_version || ''
   } catch {
-    embeddedAgent.value = false
+    embeddedAgent.value = null
   }
 
   // Load providers
   try {
     providersList.value = await getProviders()
   } catch { /* will show empty list */ }
-
-  // Restore wizard state (API key is NOT restored for security)
-  const saved = loadWizardState()
-  if (saved) {
-    step.value = saved.step || 1
-    provider.value = saved.provider || ''
-    customUrl.value = saved.customUrl || ''
-    chatModel.value = saved.chatModel || ''
-    summarizeModel.value = saved.summarizeModel || ''
-    agentName.value = saved.agentName || ''
-    agentId.value = saved.agentId || ''
-  }
 })
 
 // ── Auto-derive agentId from agentName ──
@@ -296,6 +274,16 @@ watch(agentName, (name) => {
   const expected = providerAgentNames[provider.value]?.id || ''
   if (!agentId.value || agentId.value === expected || agentId.value === name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')) {
     agentId.value = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  }
+})
+
+// ── Auto-sync summarizeModel from chatModel (custom URL mode) ──
+// When the model list is empty (custom URL), auto-fill summarize model
+// with the same value as chat model so the user doesn't have to type twice.
+// They can still override it manually.
+watch(chatModel, (model) => {
+  if (modelsList.value.length === 0 && model) {
+    summarizeModel.value = model
   }
 })
 

@@ -14,29 +14,19 @@
           v-model="customUrlModel"
           type="url"
           class="setup-input"
-          :class="{ 'setup-input--warning': urlWarning }"
-          :placeholder="apiFormatModel === 'anthropic' ? 'https://api.example.com/v1/messages' : 'https://api.example.com/v1/chat/completions'"
+          :class="{ 'setup-input--error': urlError, 'setup-input--detected': detectedFormat }"
+          placeholder="https://api.example.com/v1/chat/completions"
           autocomplete="off"
         />
       </div>
-      <div v-if="urlWarning" class="url-warning">{{ urlWarning }}</div>
-    </div>
-
-    <!-- API Format selector (only for _custom provider) -->
-    <div v-if="provider === '_custom'" class="input-group">
-      <label class="input-label">{{ t('setup.apiFormat') }}</label>
-      <div class="format-toggle">
-        <button
-          class="format-btn"
-          :class="{ 'format-btn--active': apiFormatModel === 'openai' }"
-          @click="apiFormatModel = 'openai'"
-        >OpenAI</button>
-        <button
-          class="format-btn"
-          :class="{ 'format-btn--active': apiFormatModel === 'anthropic' }"
-          @click="apiFormatModel = 'anthropic'"
-        >Anthropic</button>
+      <div v-if="detectedFormat" class="url-detected">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+          <polyline points="22 4 12 14.01 9 11.01"/>
+        </svg>
+        {{ detectedFormat === 'openai' ? 'OpenAI' : 'Anthropic' }} API
       </div>
+      <div v-if="urlError" class="url-warning">{{ urlError }}</div>
     </div>
 
     <!-- API Key input -->
@@ -133,39 +123,57 @@ const showKey = ref(false)
 const error = ref('')
 const apiKeyInputRef = ref<HTMLInputElement | null>(null)
 
-// URL format validation for custom URL
+// Auto-detect API format from URL path
 const OPENAI_SUFFIX = '/chat/completions'
 const ANTHROPIC_SUFFIX = '/v1/messages'
 
-const urlWarning = computed(() => {
+function detectFormat(url: string): '' | 'openai' | 'anthropic' {
+  if (!url.trim()) return ''
+  const trimmed = url.trim()
+  if (trimmed.endsWith(OPENAI_SUFFIX)) return 'openai'
+  if (trimmed.endsWith(ANTHROPIC_SUFFIX)) return 'anthropic'
+  return ''
+}
+
+const detectedFormat = computed(() => {
+  if (props.provider !== '_custom') return ''
+  return detectFormat(props.customUrl)
+})
+
+const urlError = computed(() => {
   if (props.provider !== '_custom' || !props.customUrl.trim()) return ''
   const url = props.customUrl.trim()
-  if (props.apiFormat === 'anthropic') {
-    if (!url.endsWith(ANTHROPIC_SUFFIX)) {
-      return t('setup.urlFormatWarning.anthropic')
+  // Scheme validation
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    return t('setup.urlError.invalidScheme')
+  }
+  // Hostname validation
+  try {
+    const parsed = new URL(url)
+    if (!parsed.hostname) {
+      return t('setup.urlError.invalidHost')
     }
-  } else {
-    if (!url.endsWith(OPENAI_SUFFIX)) {
-      return t('setup.urlFormatWarning.openai')
-    }
+  } catch {
+    return t('setup.urlError.invalidUrl')
+  }
+  // Auto-detect format from URL — error if neither suffix matches
+  const fmt = detectFormat(url)
+  if (!fmt) {
+    return t('setup.urlError.unrecognizedFormat')
   }
   return ''
 })
 
-// Auto-fix URL suffix when switching API format
-watch(() => props.apiFormat, (newFmt, oldFmt) => {
-  if (props.provider !== '_custom' || !props.customUrl.trim()) return
-  const url = props.customUrl.trim()
-  const oldSuffix = oldFmt === 'anthropic' ? ANTHROPIC_SUFFIX : OPENAI_SUFFIX
-  const newSuffix = newFmt === 'anthropic' ? ANTHROPIC_SUFFIX : OPENAI_SUFFIX
-  if (url.endsWith(oldSuffix)) {
-    emit('update:customUrl', url.slice(0, -oldSuffix.length) + newSuffix)
+// Auto-sync apiFormat when URL changes (detected from path)
+watch(detectedFormat, (fmt) => {
+  if (fmt && fmt !== props.apiFormat) {
+    emit('update:apiFormat', fmt)
   }
 })
 
 const canProceed = computed(() => {
   if (props.provider === '_custom') {
-    return props.customUrl.trim() !== '' && props.apiKey.trim() !== ''
+    return props.customUrl.trim() !== '' && props.apiKey.trim() !== '' && !urlError.value
   }
   return props.apiKey.trim() !== ''
 })
@@ -244,34 +252,28 @@ onMounted(() => {
   border-color: var(--accent-color);
 }
 
-.format-toggle {
+.setup-input--error {
+  border-color: var(--color-red, #dc2626);
+}
+
+.setup-input--detected {
+  border-color: var(--color-green, #16a34a);
+}
+
+.url-detected {
+  font-size: 11px;
+  color: var(--color-green, #16a34a);
   display: flex;
-  gap: 0;
-  border: 1.5px solid var(--border-color);
-  border-radius: var(--radius-sm, 6px);
-  overflow: hidden;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px;
 }
 
-.format-btn {
-  flex: 1;
-  padding: 7px 0;
-  border: none;
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.format-btn:first-child {
-  border-right: 1px solid var(--border-color);
-}
-
-.format-btn--active {
-  background: color-mix(in srgb, var(--accent-color) 12%, var(--bg-primary));
-  color: var(--accent-color);
-  font-weight: 600;
+.url-warning {
+  font-size: 11px;
+  color: var(--color-red, #dc2626);
+  line-height: 1.4;
+  padding: 0 2px;
 }
 
 .input-toggle {
@@ -288,16 +290,5 @@ onMounted(() => {
 
 .input-toggle:hover {
   color: var(--text-secondary);
-}
-
-.setup-input--warning {
-  border-color: #e6a817;
-}
-
-.url-warning {
-  font-size: 11px;
-  color: #c08b00;
-  line-height: 1.4;
-  padding: 0 2px;
 }
 </style>

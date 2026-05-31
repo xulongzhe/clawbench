@@ -267,6 +267,7 @@ func RegisterRoutes(mux *http.ServeMux) {
 	register("/api/agents/", middleware.Auth(ServeAgentSubRoutes))
 	register("/api/setup/status", middleware.Auth(ServeSetupStatus))
 	register("/api/setup/providers", middleware.Auth(ServeSetupProviders))
+	register("/api/setup/backends", middleware.Auth(ServeSetupBackends))
 	register("/api/setup/models", middleware.Auth(ServeSetupModels))
 	register("/api/setup/verify", middleware.Auth(ServeSetupVerify))
 	register("/api/setup/complete", middleware.Auth(ServeSetupComplete))

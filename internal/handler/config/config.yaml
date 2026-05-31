@@ -40,12 +40,12 @@ session:
     max_count: 20
 summarize:
     api:
-        agent_id: openai-pi
-        base_url: https://api.openai.com/v1/chat/completions
-        format: openai
-        key: ""
+        agent_id: custom-anthropic
+        base_url: https://api.anthropic.com/v1/messages
+        format: anthropic
+        key: sk-ant-test-key
     backend: api
-    model: gpt-4o-mini
+    model: claude-3-5-haiku-20241022
 terminal:
     buffer_lines: 0
     enabled: false
