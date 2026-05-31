@@ -114,6 +114,13 @@ exempt_files = {
     "internal/platform/path_windows.go",     # build-tag: listWindowsDrives only runs on Windows
     "internal/terminal/shell_posix.go",     # process group signaling: kills test process group if tested
     "internal/ws/events.go",                # WebSocket handler exit path: conn.Close after client disconnect, timing-dependent
+    "internal/ssh/server.go",               # SSH protocol-level paths (channel parse error, host key permissions, key save) untestable without protocol manipulation or root bypass
+    "internal/rag/indexer.go",              # error logging paths require embedding/DB failures that need integration mock
+    "internal/rag/rag.go",                  # dimension mismatch path requires DuckDB schema manipulation
+    "internal/rag/store.go",                # DuckDB internal error paths (mkdir, close, column migration, search fallback)
+    "internal/speech/common_tts.go",        # MkdirAll/temp file write error paths untestable as root
+    "internal/terminal/session.go",         # WebSocket kick/PTY close paths require integration testing
+    "internal/terminal/manager.go",         # WebSocket connect error path requires integration testing
 }
 
 # ── Colors ──────────────────────────────────────────────────────

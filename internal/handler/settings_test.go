@@ -1660,6 +1660,12 @@ func TestServeConfigPatch_WriteConfigYAMLError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("invalid BinDir path behavior differs on Windows")
 	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root can create directories in non-existent paths")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root can create directories in non-existent paths")
+	}
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 

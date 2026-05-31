@@ -1496,6 +1496,12 @@ func TestAtomicWriteFile_WriteToReadOnlyDir(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix file permissions not supported on Windows")
 	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root bypasses filesystem permissions")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root bypasses filesystem permissions")
+	}
 	tmpDir := t.TempDir()
 	readOnlyDir := filepath.Join(tmpDir, "readonly")
 	require.NoError(t, os.MkdirAll(readOnlyDir, 0o555))

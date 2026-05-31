@@ -386,6 +386,9 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		if runtime.GOOS == "windows" {
 			t.Skip("skipping read-only dir test on Windows")
 		}
+		if os.Getuid() == 0 {
+			t.Skip("skipping as root: root bypasses filesystem permissions")
+		}
 
 		env, teardown := setupTestEnv(t)
 		defer teardown()
@@ -408,6 +411,9 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		// Skip on Windows — read-only directory permissions don't prevent MkdirAll
 		if runtime.GOOS == "windows" {
 			t.Skip("skipping MkdirAll fail test on Windows")
+		}
+		if os.Getuid() == 0 {
+			t.Skip("skipping as root: root bypasses filesystem permissions")
 		}
 
 		env, teardown := setupTestEnv(t)

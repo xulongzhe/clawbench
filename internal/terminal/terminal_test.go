@@ -666,9 +666,9 @@ func dialWS(t *testing.T, url string) *websocket.Conn {
 }
 
 // readServerMessage reads a ServerMessage from the WebSocket connection.
-func readServerMessage(t *testing.T, conn *websocket.Conn, timeout time.Duration) ServerMessage { //nolint:unparam // timeout param for flexibility
+func readServerMessage(t *testing.T, conn *websocket.Conn) ServerMessage {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, data, err := conn.Read(ctx)
 	if err != nil {
@@ -697,7 +697,7 @@ func TestManager_HandleWebSocket_NewSession(t *testing.T) {
 	conn := dialWS(t, baseURL)
 
 	// Read the status message that's sent on connect
-	msg := readServerMessage(t, conn, 5*time.Second)
+	msg := readServerMessage(t, conn)
 	if msg.Type != "status" {
 		t.Fatalf("expected status message, got %q", msg.Type)
 	}
@@ -755,7 +755,7 @@ func TestManager_HandleWebSocket_ReconnectSession(t *testing.T) {
 
 	// Connect first client
 	conn1 := dialWS(t, baseURL)
-	statusMsg := readServerMessage(t, conn1, 5*time.Second)
+	statusMsg := readServerMessage(t, conn1)
 	sessionID := statusMsg.SessionID
 	if sessionID == "" {
 		t.Fatal("expected non-empty session ID")
@@ -811,7 +811,7 @@ func TestManager_HandleWebSocket_ClientInput(t *testing.T) {
 	conn := dialWS(t, baseURL)
 
 	// Read initial status message
-	_ = readServerMessage(t, conn, 5*time.Second)
+	_ = readServerMessage(t, conn)
 
 	// Send an input message
 	inputMsg := ClientMessage{Type: "input", Data: "echo hello\n"}
@@ -847,7 +847,7 @@ func TestManager_HandleWebSocket_ResizeMessage(t *testing.T) {
 	conn := dialWS(t, baseURL)
 
 	// Read initial status message
-	_ = readServerMessage(t, conn, 5*time.Second)
+	_ = readServerMessage(t, conn)
 
 	// Send a resize message
 	resizeMsg := ClientMessage{Type: "resize", Cols: 120, Rows: 40}
@@ -875,7 +875,7 @@ func TestManager_HandleWebSocket_CloseMessage(t *testing.T) {
 	conn := dialWS(t, baseURL)
 
 	// Read initial status message
-	_ = readServerMessage(t, conn, 5*time.Second)
+	_ = readServerMessage(t, conn)
 
 	// Send a close message
 	closeMsg := ClientMessage{Type: "close"}
@@ -912,7 +912,7 @@ func TestManager_HandleWebSocket_SessionLimit(t *testing.T) {
 
 	// Connect first client (fills the limit)
 	conn1 := dialWS(t, baseURL)
-	_ = readServerMessage(t, conn1, 5*time.Second)
+	_ = readServerMessage(t, conn1)
 
 	// Second connection should be rejected with session limit error
 	conn2, _, err := websocket.Dial(context.Background(), baseURL, &websocket.DialOptions{
@@ -959,7 +959,7 @@ func TestManager_HandleWebSocket_InvalidMessage(t *testing.T) {
 	conn := dialWS(t, baseURL)
 
 	// Read initial status message
-	_ = readServerMessage(t, conn, 5*time.Second)
+	_ = readServerMessage(t, conn)
 
 	// Send invalid JSON
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -995,7 +995,7 @@ func TestManager_HandleWebSocket_Disconnect(t *testing.T) {
 	conn := dialWS(t, baseURL)
 
 	// Read initial status message
-	statusMsg := readServerMessage(t, conn, 5*time.Second)
+	statusMsg := readServerMessage(t, conn)
 	sessionID := statusMsg.SessionID
 
 	// Close the WebSocket — simulates disconnect
@@ -1029,7 +1029,7 @@ func TestManager_HandleWebSocket_SessionExpiredReconnect(t *testing.T) {
 
 	// Connect and get session ID
 	conn1 := dialWS(t, baseURL)
-	statusMsg := readServerMessage(t, conn1, 5*time.Second)
+	statusMsg := readServerMessage(t, conn1)
 	sessionID := statusMsg.SessionID
 
 	// Close the connection and close the session
@@ -1042,7 +1042,7 @@ func TestManager_HandleWebSocket_SessionExpiredReconnect(t *testing.T) {
 	// Try to reconnect to the expired session — should create a new one
 	reconnectURL := baseURL + "?session=" + sessionID
 	conn2 := dialWS(t, reconnectURL)
-	msg := readServerMessage(t, conn2, 5*time.Second)
+	msg := readServerMessage(t, conn2)
 	if msg.Type != "status" {
 		t.Fatalf("expected status message, got %q", msg.Type)
 	}

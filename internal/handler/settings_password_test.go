@@ -334,6 +334,12 @@ func TestServeConfigPassword_WriteFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipping on Windows: directory permission model differs")
 	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root bypasses filesystem permissions")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("skipping as root: root bypasses filesystem permissions")
+	}
 	_, teardown := setupTestEnv(t)
 	// Reset rate limiter to avoid interference from previous tests
 	globalLoginLimiter = &loginLimiter{records: make(map[string]*ipRecord)}
