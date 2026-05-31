@@ -430,8 +430,8 @@ func main() {
 	defer service.CloseDB()
 
 	// Resolve summarize API key from agent_api_keys table if not in config.
-	// Setup wizard stores the key encrypted in agent_api_keys with key="" in config.yaml
-	// and agent_id pointing to the agent. At startup, resolve the key from DB.
+	// New setups write the key directly to config.yaml. This fallback resolves
+	// the key from DB for legacy configs that have key="" and agent_id set.
 	if cfg.Summarize.Backend == "api" && cfg.Summarize.API.Key == "" && cfg.Summarize.API.AgentID != "" {
 		if _, _, ak, err := service.LoadAgentAnyAPIKey(service.DB, cfg.Summarize.API.AgentID); err == nil && ak != "" {
 			cfg.Summarize.API.Key = ak

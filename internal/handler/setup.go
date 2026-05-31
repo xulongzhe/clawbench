@@ -464,7 +464,7 @@ func configureSummarizeBackend(req setupCompleteRequest, spec *model.ProviderSpe
 			"model":   req.SummarizeModel,
 			"api": map[string]any{
 				"base_url": chatEndpoint,
-				"key":      "", // key read from agent_api_keys at runtime
+				"key":      req.APIKey,
 				"format":   spec.APIFormat,
 				"agent_id": req.AgentID,
 			},
@@ -480,7 +480,7 @@ func configureSummarizeBackend(req setupCompleteRequest, spec *model.ProviderSpe
 	model.ConfigInstance.Summarize.Backend = "api"
 	model.ConfigInstance.Summarize.Model = req.SummarizeModel
 	model.ConfigInstance.Summarize.API.BaseURL = chatEndpoint
-	model.ConfigInstance.Summarize.API.Key = ""
+	model.ConfigInstance.Summarize.API.Key = req.APIKey
 	model.ConfigInstance.Summarize.API.Format = spec.APIFormat
 	model.ConfigInstance.Summarize.API.AgentID = req.AgentID
 
@@ -489,31 +489,14 @@ func configureSummarizeBackend(req setupCompleteRequest, spec *model.ProviderSpe
 }
 
 // reinitSummarizer creates a new OpenAISummarizer/AnthropicSummarizer from the
-// provider registry and decrypted API key, and updates the global summarizer.
+// request data and updates the global summarizer.
 func reinitSummarizer(req setupCompleteRequest, spec *model.ProviderSpec) {
 	chatEndpoint := spec.ChatEndpoint
 	if req.CustomURL != "" {
 		chatEndpoint = req.CustomURL
 	}
 
-	// Try to load API key from agent_api_keys table (encrypted store).
-	// Fall back to the raw key from the request if DB read fails.
-	apiKey := ""
-	customURL, dbKey, err := service.LoadAgentAPIKey(service.DB, req.AgentID, req.Provider)
-	if err != nil {
-		slog.Warn("failed to load API key from DB for summarize reinit, using request key",
-			"agent_id", req.AgentID, "provider", req.Provider, "error", err)
-		apiKey = req.APIKey
-	} else if dbKey != "" {
-		apiKey = dbKey
-	} else {
-		// DB returned empty key — fall back to request key
-		slog.Warn("DB returned empty API key for summarize reinit, using request key",
-			"agent_id", req.AgentID, "provider", req.Provider)
-		apiKey = req.APIKey
-	}
-	_ = customURL // not needed for summarize
-
+	apiKey := req.APIKey
 	if apiKey == "" {
 		slog.Warn("no API key available for summarize reinit", "agent_id", req.AgentID, "provider", req.Provider)
 		return

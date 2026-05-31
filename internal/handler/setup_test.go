@@ -957,9 +957,6 @@ func TestReinitSummarizer_AnthropicFormat(t *testing.T) {
 	// Save the original summarizer to restore later
 	origSummarizer := summarizer
 
-	// Insert an agent API key into DB for the reinit to read
-	require.NoError(t, service.SaveAgentAPIKey(service.DB, "anthropic-test", "anthropic", "", "sk-ant-test-key"))
-
 	req := setupCompleteRequest{
 		Provider:       "anthropic",
 		CustomURL:      "",
@@ -1011,7 +1008,7 @@ func TestReinitSummarizer_UnknownFormat(t *testing.T) {
 	assert.Equal(t, origSummarizer, summarizer)
 }
 
-// TestReinitSummarizer_NoAPIKey tests the path where API key is empty after loading.
+// TestReinitSummarizer_NoAPIKey tests the path where API key is empty.
 func TestReinitSummarizer_NoAPIKey(t *testing.T) {
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
@@ -1021,7 +1018,7 @@ func TestReinitSummarizer_NoAPIKey(t *testing.T) {
 	req := setupCompleteRequest{
 		Provider:       "openai",
 		CustomURL:      "",
-		APIKey:         "test-key",
+		APIKey:         "", // empty key
 		Model:          "gpt-4o",
 		SummarizeModel: "gpt-4o-mini",
 		AgentID:        "no-key-agent",
@@ -1030,13 +1027,10 @@ func TestReinitSummarizer_NoAPIKey(t *testing.T) {
 	spec := model.FindProviderSpec("openai")
 	require.NotNil(t, spec)
 
-	// Don't save any API key — LoadAgentAPIKey will fail, but reinitSummarizer
-	// falls back to req.APIKey, so it should still create a summarizer
 	reinitSummarizer(req, spec)
 
-	// Summarizer should have been updated (fallback to req.APIKey)
-	assert.NotNil(t, summarizer)
-	assert.NotEqual(t, origSummarizer, summarizer)
+	// Summarizer should NOT have changed (no key available)
+	assert.Equal(t, origSummarizer, summarizer)
 }
 
 // ---------- configureSummarizeBackend edge case ----------
@@ -1046,9 +1040,6 @@ func TestReinitSummarizer_NoAPIKey(t *testing.T) {
 func TestConfigureSummarizeBackend_CustomURLOverride(t *testing.T) {
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
-
-	// Set up: save an API key so reinitSummarizer can read it
-	require.NoError(t, service.SaveAgentAPIKey(service.DB, "custom-url-agent", "openai", "https://custom.api.com/v1/chat/completions", "sk-test-key"))
 
 	origSummarizer := summarizer
 	defer func() { summarizer = origSummarizer }()
@@ -1648,8 +1639,9 @@ func TestWritePiConfigFiles_AuthWriteFailure(t *testing.T) {
 
 // ---------- reinitSummarizer empty API key path ----------
 
-// TestReinitSummarizer_EmptyAPIKey tests the path where LoadAgentAPIKey returns
-// an empty apiKey string.
+// TestReinitSummarizer_EmptyAPIKey tests the path where req.APIKey is empty.
+// Since reinitSummarizer now reads directly from req.APIKey, empty key means
+// no summarizer change.
 func TestReinitSummarizer_EmptyAPIKey(t *testing.T) {
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
@@ -1657,35 +1649,26 @@ func TestReinitSummarizer_EmptyAPIKey(t *testing.T) {
 	origSummarizer := summarizer
 	defer func() { summarizer = origSummarizer }()
 
-	// Save an API key, then manually set it to empty in DB
-	require.NoError(t, service.SaveAgentAPIKey(service.DB, "empty-key-agent", "openai", "", "test-key"))
-	// Manually update the encrypted key to something that decrypts to empty
-	// Actually this is hard to do since encryption is involved.
-	// Instead, let's test the case where the agent ID doesn't match any key.
-
 	req := setupCompleteRequest{
 		Provider:       "openai",
 		CustomURL:      "",
-		APIKey:         "test-key",
+		APIKey:         "", // empty key in request
 		Model:          "gpt-4o",
 		SummarizeModel: "gpt-4o-mini",
-		AgentID:        "nonexistent-key-agent",
+		AgentID:        "empty-key-agent",
 	}
 
 	spec := model.FindProviderSpec("openai")
 	require.NotNil(t, spec)
 
-	// LoadAgentAPIKey will fail (no rows), but reinitSummarizer falls back
-	// to req.APIKey, so it should still create a summarizer
 	reinitSummarizer(req, spec)
 
-	// Summarizer should have been updated (fallback to req.APIKey)
-	assert.NotNil(t, summarizer)
-	assert.NotEqual(t, origSummarizer, summarizer)
+	// Summarizer should NOT have changed — no key available
+	assert.Equal(t, origSummarizer, summarizer)
 }
 
-// TestReinitSummarizer_NoKeyAtAll tests that when both DB key and request key
-// are empty, the summarizer is not changed.
+// TestReinitSummarizer_NoKeyAtAll tests that when request key is empty,
+// the summarizer is not changed.
 func TestReinitSummarizer_NoKeyAtAll(t *testing.T) {
 	_, teardown := setupAgentTestEnv(t)
 	defer teardown()
@@ -1696,7 +1679,7 @@ func TestReinitSummarizer_NoKeyAtAll(t *testing.T) {
 	req := setupCompleteRequest{
 		Provider:       "openai",
 		CustomURL:      "",
-		APIKey:         "", // No key in request either
+		APIKey:         "", // No key in request
 		Model:          "gpt-4o",
 		SummarizeModel: "gpt-4o-mini",
 		AgentID:        "no-key-at-all-agent",
@@ -1723,7 +1706,6 @@ func TestReinitSummarizer_CustomURL(t *testing.T) {
 	defer func() { summarizer = origSummarizer }()
 
 	customURL := "https://custom.api.com/v1/chat/completions"
-	require.NoError(t, service.SaveAgentAPIKey(service.DB, "reinit-custom-agent", "openai", customURL, "sk-test-key"))
 
 	req := setupCompleteRequest{
 		Provider:       "openai",
