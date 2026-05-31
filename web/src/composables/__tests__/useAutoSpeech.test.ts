@@ -1,9 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { extractSpeakableText, useAutoSpeech } from '@/composables/useAutoSpeech'
 
+// vi.hoisted runs before vi.mock hoisting, so the mock factory can reference it
+const { toastShowMock } = vi.hoisted(() => ({
+  toastShowMock: vi.fn(),
+}))
+
 // Mock useToast since it's used at module level
 vi.mock('@/composables/useToast', () => ({
-  useToast: () => ({ show: vi.fn() }),
+  useToast: () => ({ show: toastShowMock }),
 }))
 
 // Mock useLocale
@@ -294,5 +299,49 @@ describe('useAutoSpeech._speak — TTS body includes messageId', () => {
     const body = JSON.parse(options.body)
     expect(body.text).toBe('Test text')
     expect(body.messageId).toBeUndefined()
+  })
+})
+
+// ── Toggle toast notifications ──
+
+describe('useAutoSpeech.toggle — toast notifications', () => {
+  beforeEach(() => {
+    toastShowMock.mockClear()
+  })
+
+  it('shows disabled toast when toggling off', () => {
+    const { toggle, enabled } = useAutoSpeech()
+    // Start enabled, toggle off
+    enabled.value = true
+    toggle()
+    expect(enabled.value).toBe(false)
+    expect(toastShowMock).toHaveBeenCalledWith('autoSpeech.disabled', expect.objectContaining({ icon: '🔇' }))
+  })
+
+  it('shows enabled toast when toggling on', () => {
+    const { toggle, enabled } = useAutoSpeech()
+    // Start disabled, toggle on
+    enabled.value = false
+    toggle()
+    expect(enabled.value).toBe(true)
+    expect(toastShowMock).toHaveBeenCalledWith('autoSpeech.enabled', expect.objectContaining({ icon: '🔊' }))
+  })
+})
+
+// ── Autospeech-change event toast ──
+
+describe('useAutoSpeech — autospeech-change event toast', () => {
+  beforeEach(() => {
+    toastShowMock.mockClear()
+  })
+
+  it('shows enabled toast when event detail is true', () => {
+    window.dispatchEvent(new CustomEvent('clawbench-autospeech-change', { detail: true }))
+    expect(toastShowMock).toHaveBeenCalledWith('autoSpeech.enabled', expect.objectContaining({ icon: '🔊' }))
+  })
+
+  it('shows disabled toast when event detail is false', () => {
+    window.dispatchEvent(new CustomEvent('clawbench-autospeech-change', { detail: false }))
+    expect(toastShowMock).toHaveBeenCalledWith('autoSpeech.disabled', expect.objectContaining({ icon: '🔇' }))
   })
 })
