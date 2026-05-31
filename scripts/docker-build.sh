@@ -30,11 +30,9 @@ if [ "$1" = "--clean" ]; then
     exit 0
 fi
 
-# Ensure binary is built
-if [ ! -f "./clawbench" ]; then
-    echo "Binary not found. Running ./build.sh..."
-    ./build.sh
-fi
+# Build binary (always rebuild to pick up latest code)
+echo "Building binary..."
+./build.sh --with-pi
 
 # Prepare staging directory for Pi binary (optional)
 rm -rf docker-staging
