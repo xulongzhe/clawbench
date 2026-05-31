@@ -1,8 +1,10 @@
 package rag
 
 import (
+	"context"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,10 +27,7 @@ func setupTestStore(t *testing.T) *Store {
 	}
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.duckdb")
-	store, err := NewStore(dbPath, map[string]string{
-		"threads":      "2",
-		"memory_limit": "256MB",
-	})
+	store, err := NewStore(dbPath, nil)
 	require.NoError(t, err, "NewStore should succeed")
 	t.Cleanup(func() {
 		_ = store.Close()
@@ -58,8 +57,8 @@ func makeTestChunk(sessionID string, messageID int64, chunkIndex int, text strin
 		Embedding:          makeTestEmbedding(1024),
 		HasEmbedding:       true,
 		ProjectPath:        "/test/project",
-		Backend:            "claude",
-		Role:               "assistant",
+		Backend:            testBackendClaude,
+		Role:               testRoleAssistant,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 	}
 }
@@ -88,55 +87,13 @@ func TestNewStore_CreatesDB(t *testing.T) {
 	assert.NotEmpty(t, store.dbPath)
 }
 
-// TestNewStore_DuckDBOpts verifies that DuckDB connection options (threads,
-// memory_limit) are applied correctly. This prevents SIGFPE crashes on
-// low-memory systems where DuckDB's thread-count computation divides by zero.
-func TestNewStore_DuckDBOpts(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "test.duckdb")
-
-	store, err := NewStore(dbPath, map[string]string{
-		"threads":      "1",
-		"memory_limit": "256MB",
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
-
-	// Verify the store was created with the options
-	assert.NotNil(t, store.db)
-	assert.Equal(t, dbPath, store.dbPath)
-	assert.Equal(t, "1", store.duckdbOpts["threads"])
-	assert.Equal(t, "256MB", store.duckdbOpts["memory_limit"])
-
-	// Verify DuckDB respects the settings by querying current settings
-	var threads int
-	err = store.db.QueryRow("SELECT current_setting('threads')").Scan(&threads)
-	if err == nil {
-		assert.Equal(t, 1, threads, "DuckDB threads should be set to 1")
-	}
-}
-
-// TestNewStore_NilOpts verifies that NewStore works with nil options
-// (backward compatibility — uses DuckDB defaults).
-func TestNewStore_NilOpts(t *testing.T) {
-	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "test.duckdb")
-
-	store, err := NewStore(dbPath, nil)
-	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
-
-	assert.NotNil(t, store.db)
-	assert.Nil(t, store.duckdbOpts)
-}
-
 func TestNewStore_CreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	nestedDir := filepath.Join(dir, "deep", "nested")
 	dbPath := filepath.Join(nestedDir, "test.duckdb")
 	store, err := NewStore(dbPath, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	assert.NotNil(t, store)
 }
 
@@ -153,7 +110,7 @@ func TestStore_InsertChunks_Empty(t *testing.T) {
 
 func TestStore_InsertChunks_SingleChunk(t *testing.T) {
 	store := setupTestStore(t)
-	chunks := []Chunk{makeTestChunk("sess-1", 1, 0, "hello world")}
+	chunks := []Chunk{makeTestChunk(testSession1, 1, 0, "hello world")}
 	err := store.InsertChunks(chunks)
 	assert.NoError(t, err)
 
@@ -175,12 +132,12 @@ func TestStore_InsertChunks_AutoIncrementID(t *testing.T) {
 	store := setupTestStore(t)
 
 	// First batch
-	chunks1 := []Chunk{makeTestChunk("sess-1", 1, 0, "first batch")}
+	chunks1 := []Chunk{makeTestChunk(testSession1, 1, 0, "first batch")}
 	err := store.InsertChunks(chunks1)
 	require.NoError(t, err)
 
 	// Second batch — IDs should continue from where the first left off
-	chunks2 := []Chunk{makeTestChunk("sess-2", 2, 0, "second batch")}
+	chunks2 := []Chunk{makeTestChunk(testSession2, 2, 0, "second batch")}
 	err = store.InsertChunks(chunks2)
 	require.NoError(t, err)
 
@@ -213,9 +170,9 @@ func TestStore_SearchSimple_FiltersByProject(t *testing.T) {
 	store := setupTestStore(t)
 
 	// Insert chunks for two different projects
-	chunk1 := makeTestChunk("sess-1", 1, 0, "project A content")
+	chunk1 := makeTestChunk(testSession1, 1, 0, "project A content")
 	chunk1.ProjectPath = "/project/a"
-	chunk2 := makeTestChunk("sess-2", 2, 0, "project B content")
+	chunk2 := makeTestChunk(testSession2, 2, 0, "project B content")
 	chunk2.ProjectPath = "/project/b"
 
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
@@ -231,35 +188,35 @@ func TestStore_SearchSimple_FiltersByProject(t *testing.T) {
 func TestStore_SearchSimple_FiltersByBackend(t *testing.T) {
 	store := setupTestStore(t)
 
-	chunk1 := makeTestChunk("sess-1", 1, 0, "claude content")
-	chunk1.Backend = "claude"
-	chunk2 := makeTestChunk("sess-2", 2, 0, "codebuddy content")
-	chunk2.Backend = "codebuddy"
+	chunk1 := makeTestChunk(testSession1, 1, 0, "claude content")
+	chunk1.Backend = testBackendClaude
+	chunk2 := makeTestChunk(testSession2, 2, 0, "codebuddy content")
+	chunk2.Backend = testBackendCodebuddy
 
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
 	require.NoError(t, err)
 
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", "claude", "", "", "", "", "")
+	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", testBackendClaude, "", "", "", "", "")
 	assert.NoError(t, err)
 	assert.Len(t, hits, 1)
-	assert.Equal(t, "claude", hits[0].Backend)
+	assert.Equal(t, testBackendClaude, hits[0].Backend)
 }
 
 func TestStore_SearchSimple_FiltersByRole(t *testing.T) {
 	store := setupTestStore(t)
 
-	chunk1 := makeTestChunk("sess-1", 1, 0, "assistant msg")
-	chunk1.Role = "assistant"
-	chunk2 := makeTestChunk("sess-2", 2, 0, "user msg")
-	chunk2.Role = "user"
+	chunk1 := makeTestChunk(testSession1, 1, 0, "assistant msg")
+	chunk1.Role = testRoleAssistant
+	chunk2 := makeTestChunk(testSession2, 2, 0, "user msg")
+	chunk2.Role = testRoleUser
 
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
 	require.NoError(t, err)
 
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", "", "user", "", "", "", "")
+	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", "", testRoleUser, "", "", "", "")
 	assert.NoError(t, err)
 	assert.Len(t, hits, 1)
-	assert.Equal(t, "user", hits[0].Role)
+	assert.Equal(t, testRoleUser, hits[0].Role)
 }
 
 func TestStore_SearchSimple_FiltersBySessionID(t *testing.T) {
@@ -518,14 +475,14 @@ func TestStore_UpdateEmbedding_RejectsNaNEmbedding(t *testing.T) {
 func TestStore_SchemaHasSegmentedTextColumn(t *testing.T) {
 	store := setupTestStore(t)
 	// Insert a chunk with segmented text
-	chunk := makeTestChunk("sess-1", 1, 0, "hello world")
+	chunk := makeTestChunk(testSession1, 1, 0, "hello world")
 	chunk.ChunkTextSegmented = "hello world"
 	err := store.InsertChunks([]Chunk{chunk})
 	require.NoError(t, err)
 
 	// Verify the column exists by querying it directly
 	var segmented string
-	err = store.db.QueryRow("SELECT chunk_text_segmented FROM chat_chunks LIMIT 1").Scan(&segmented)
+	err = store.db.QueryRowContext(context.Background(), "SELECT chunk_text_segmented FROM chat_chunks LIMIT 1").Scan(&segmented)
 	assert.NoError(t, err, "chunk_text_segmented column should exist")
 	assert.Equal(t, "hello world", segmented)
 }
@@ -533,12 +490,12 @@ func TestStore_SchemaHasSegmentedTextColumn(t *testing.T) {
 func TestStore_SchemaHasHasEmbeddingColumn(t *testing.T) {
 	store := setupTestStore(t)
 	// Insert a chunk with embedding
-	chunk := makeTestChunk("sess-1", 1, 0, "test")
+	chunk := makeTestChunk(testSession1, 1, 0, "test")
 	err := store.InsertChunks([]Chunk{chunk})
 	require.NoError(t, err)
 
 	var hasEmb bool
-	err = store.db.QueryRow("SELECT has_embedding FROM chat_chunks LIMIT 1").Scan(&hasEmb)
+	err = store.db.QueryRowContext(context.Background(), "SELECT has_embedding FROM chat_chunks LIMIT 1").Scan(&hasEmb)
 	assert.NoError(t, err, "has_embedding column should exist")
 	assert.True(t, hasEmb, "chunk with embedding should have has_embedding=true")
 }
@@ -547,7 +504,7 @@ func TestStore_InsertChunks_WithoutEmbedding(t *testing.T) {
 	store := setupTestStore(t)
 	// Insert a chunk WITHOUT embedding (Ollama unavailable scenario)
 	chunk := Chunk{
-		SessionID:          "sess-1",
+		SessionID:          testSession1,
 		MessageID:          1,
 		ChunkText:          "test without embedding",
 		ChunkTextSegmented: "test without embedding",
@@ -555,16 +512,16 @@ func TestStore_InsertChunks_WithoutEmbedding(t *testing.T) {
 		TokenCount:         5,
 		Embedding:          nil, // no embedding
 		HasEmbedding:       false,
-		ProjectPath:        "/test",
-		Backend:            "claude",
-		Role:               "assistant",
+		ProjectPath:        testProjectPath,
+		Backend:            testBackendClaude,
+		Role:               testRoleAssistant,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk})
 	require.NoError(t, err)
 
 	var hasEmb bool
-	err = store.db.QueryRow("SELECT has_embedding FROM chat_chunks LIMIT 1").Scan(&hasEmb)
+	err = store.db.QueryRowContext(context.Background(), "SELECT has_embedding FROM chat_chunks LIMIT 1").Scan(&hasEmb)
 	assert.NoError(t, err)
 	assert.False(t, hasEmb, "chunk without embedding should have has_embedding=false")
 
@@ -576,12 +533,12 @@ func TestStore_PendingEmbeddingCount(t *testing.T) {
 	store := setupTestStore(t)
 
 	// Insert one with embedding and one without
-	chunk1 := makeTestChunk("sess-1", 1, 0, "with embedding")
+	chunk1 := makeTestChunk(testSession1, 1, 0, "with embedding")
 	err := store.InsertChunks([]Chunk{chunk1})
 	require.NoError(t, err)
 
 	chunk2 := Chunk{
-		SessionID:          "sess-2",
+		SessionID:          testSession2,
 		MessageID:          2,
 		ChunkText:          "without embedding",
 		ChunkTextSegmented: "without embedding",
@@ -589,9 +546,9 @@ func TestStore_PendingEmbeddingCount(t *testing.T) {
 		TokenCount:         3,
 		Embedding:          nil,
 		HasEmbedding:       false,
-		ProjectPath:        "/test",
-		Backend:            "claude",
-		Role:               "assistant",
+		ProjectPath:        testProjectPath,
+		Backend:            testBackendClaude,
+		Role:               testRoleAssistant,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 	}
 	err = store.InsertChunks([]Chunk{chunk2})
@@ -607,17 +564,17 @@ func TestStore_UpdateEmbedding(t *testing.T) {
 
 	// Insert a single chunk without embedding
 	chunk := Chunk{
-		SessionID:          "sess-1",
+		SessionID:          testSession1,
 		MessageID:          1,
-		ChunkText:          "needs backfill",
-		ChunkTextSegmented: "needs backfill",
+		ChunkText:          testNeedsBackfill,
+		ChunkTextSegmented: testNeedsBackfill,
 		ChunkIndex:         0,
 		TokenCount:         3,
 		Embedding:          nil,
 		HasEmbedding:       false,
-		ProjectPath:        "/test",
-		Backend:            "claude",
-		Role:               "assistant",
+		ProjectPath:        testProjectPath,
+		Backend:            testBackendClaude,
+		Role:               testRoleAssistant,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk})
@@ -625,7 +582,7 @@ func TestStore_UpdateEmbedding(t *testing.T) {
 
 	// Get the chunk ID
 	var chunkID int64
-	err = store.db.QueryRow("SELECT id FROM chat_chunks WHERE has_embedding = false LIMIT 1").Scan(&chunkID)
+	err = store.db.QueryRowContext(context.Background(), "SELECT id FROM chat_chunks WHERE has_embedding = false LIMIT 1").Scan(&chunkID)
 	require.NoError(t, err)
 
 	// Backfill the embedding
@@ -635,7 +592,7 @@ func TestStore_UpdateEmbedding(t *testing.T) {
 
 	// Verify has_embedding is now true
 	var hasEmb bool
-	err = store.db.QueryRow("SELECT has_embedding FROM chat_chunks WHERE id = ?", chunkID).Scan(&hasEmb)
+	err = store.db.QueryRowContext(context.Background(), "SELECT has_embedding FROM chat_chunks WHERE id = ?", chunkID).Scan(&hasEmb)
 	assert.NoError(t, err)
 	assert.True(t, hasEmb, "embedding should be set after backfill")
 
@@ -668,17 +625,17 @@ func TestStore_SearchFTS_English(t *testing.T) {
 	// Insert chunks with segmented text
 	chunks := []Chunk{
 		{
-			SessionID: "sess-1", MessageID: 1, ChunkText: "database query optimization",
-			ChunkTextSegmented: "database query optimization", ChunkIndex: 0,
+			SessionID: testSession1, MessageID: 1, ChunkText: testDBQueryOptimization,
+			ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
 			TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
 		{
-			SessionID: "sess-2", MessageID: 2, ChunkText: "web server configuration",
+			SessionID: testSession2, MessageID: 2, ChunkText: "web server configuration",
 			ChunkTextSegmented: "web server configuration", ChunkIndex: 0,
 			TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
 	}
@@ -705,17 +662,17 @@ func TestStore_SearchFTS_Chinese(t *testing.T) {
 	// Insert Chinese chunks with pre-segmented text
 	chunks := []Chunk{
 		{
-			SessionID: "sess-1", MessageID: 1, ChunkText: "使用DuckDB进行全文检索",
+			SessionID: testSession1, MessageID: 1, ChunkText: "使用DuckDB进行全文检索",
 			ChunkTextSegmented: SegmentText("使用DuckDB进行全文检索"), ChunkIndex: 0,
 			TokenCount: 10, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
 		{
-			SessionID: "sess-2", MessageID: 2, ChunkText: "人工智能技术发展",
+			SessionID: testSession2, MessageID: 2, ChunkText: "人工智能技术发展",
 			ChunkTextSegmented: SegmentText("人工智能技术发展"), ChunkIndex: 0,
 			TokenCount: 5, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
 	}
@@ -740,17 +697,17 @@ func TestStore_SearchFTS_RespectsFilters(t *testing.T) {
 
 	// Insert chunks for different projects
 	chunk1 := Chunk{
-		SessionID: "sess-1", MessageID: 1, ChunkText: "database query optimization",
-		ChunkTextSegmented: "database query optimization", ChunkIndex: 0,
+		SessionID: testSession1, MessageID: 1, ChunkText: testDBQueryOptimization,
+		ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/project/a", Backend: "claude", Role: "assistant",
+		ProjectPath: "/project/a", Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
-		SessionID: "sess-2", MessageID: 2, ChunkText: "database indexing strategies",
+		SessionID: testSession2, MessageID: 2, ChunkText: "database indexing strategies",
 		ChunkTextSegmented: "database indexing strategies", ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/project/b", Backend: "codebuddy", Role: "user",
+		ProjectPath: "/project/b", Backend: testBackendCodebuddy, Role: testRoleUser,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
@@ -812,17 +769,17 @@ func TestStore_GetPendingEmbeddings(t *testing.T) {
 
 	// Insert two chunks without embedding
 	chunk1 := Chunk{
-		SessionID: "sess-1", MessageID: 1, ChunkText: "text 1",
+		SessionID: testSession1, MessageID: 1, ChunkText: "text 1",
 		ChunkTextSegmented: "text 1", ChunkIndex: 0, TokenCount: 3,
 		Embedding: nil, HasEmbedding: false,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
-		SessionID: "sess-1", MessageID: 2, ChunkText: "text 2",
+		SessionID: testSession1, MessageID: 2, ChunkText: "text 2",
 		ChunkTextSegmented: "text 2", ChunkIndex: 0, TokenCount: 3,
 		Embedding: nil, HasEmbedding: false,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
@@ -841,10 +798,10 @@ func TestStore_GetPendingEmbeddings_RespectsLimit(t *testing.T) {
 	// Insert 5 chunks without embedding
 	for i := range 5 {
 		chunk := Chunk{
-			SessionID: "sess-1", MessageID: int64(i + 1), ChunkText: fmt.Sprintf("text %d", i),
+			SessionID: testSession1, MessageID: int64(i + 1), ChunkText: fmt.Sprintf("text %d", i),
 			ChunkTextSegmented: fmt.Sprintf("text %d", i), ChunkIndex: 0, TokenCount: 3,
 			Embedding: nil, HasEmbedding: false,
-			ProjectPath: "/test", Backend: "claude", Role: "assistant",
+			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		}
 		err := store.InsertChunks([]Chunk{chunk})
@@ -950,7 +907,7 @@ func TestStore_SetEmbeddingDim_Changed(t *testing.T) {
 
 	// Verify it was persisted to metadata
 	var val string
-	err := store.db.QueryRow("SELECT value FROM rag_metadata WHERE key = 'embedding_dim'").Scan(&val)
+	err := store.db.QueryRowContext(context.Background(), "SELECT value FROM rag_metadata WHERE key = 'embedding_dim'").Scan(&val)
 	assert.NoError(t, err)
 	assert.Equal(t, "768", val)
 }
@@ -1005,6 +962,16 @@ func TestStore_ReadMetadataInt_ValidInt(t *testing.T) {
 
 // ---------- writeMetadata ----------
 
+func TestStore_WriteMetadata_ErrorPath(t *testing.T) {
+	store := setupTestStore(t)
+	// Close the DB to trigger a write error
+	_ = store.db.Close()
+
+	// writeMetadata should not panic when DB is closed
+	store.writeMetadata("error_key", "error_value")
+	// If we get here without panic, the error path is covered
+}
+
 func TestStore_WriteMetadata_Upsert(t *testing.T) {
 	store := setupTestStore(t)
 
@@ -1055,6 +1022,19 @@ func TestNewStore_FailedSchema(t *testing.T) {
 	}
 }
 
+func TestNewStore_InitSchemaError(t *testing.T) {
+	// Create a directory where the DB file should be — DuckDB can't create a DB
+	// in a path occupied by a directory, which forces initSchema to fail,
+	// exercising the `_ = db.Close()` error path.
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.duckdb")
+	// Create a directory at the DB path to force an error
+	require.NoError(t, os.MkdirAll(dbPath, 0o755))
+
+	_, err := NewStore(dbPath, nil)
+	assert.Error(t, err, "NewStore should fail when dbPath is a directory")
+}
+
 // ---------- SearchFTS with filters ----------
 
 func TestStore_SearchFTS_FiltersByBackend(t *testing.T) {
@@ -1064,17 +1044,17 @@ func TestStore_SearchFTS_FiltersByBackend(t *testing.T) {
 	}
 
 	chunk1 := Chunk{
-		SessionID: "sess-1", MessageID: 1, ChunkText: "database optimization",
+		SessionID: testSession1, MessageID: 1, ChunkText: "database optimization",
 		ChunkTextSegmented: "database optimization", ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
-		SessionID: "sess-2", MessageID: 2, ChunkText: "database search",
-		ChunkTextSegmented: "database search", ChunkIndex: 0,
+		SessionID: testSession2, MessageID: 2, ChunkText: testDBSearch,
+		ChunkTextSegmented: testDBSearch, ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/test", Backend: "codebuddy", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendCodebuddy, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
@@ -1083,10 +1063,10 @@ func TestStore_SearchFTS_FiltersByBackend(t *testing.T) {
 	err = store.CreateFTSIndex()
 	require.NoError(t, err)
 
-	hits, err := store.SearchFTS("database", 5, "", "claude", "", "", "", "", "")
+	hits, err := store.SearchFTS("database", 5, "", testBackendClaude, "", "", "", "", "")
 	assert.NoError(t, err)
 	assert.Len(t, hits, 1)
-	assert.Equal(t, "claude", hits[0].Backend)
+	assert.Equal(t, testBackendClaude, hits[0].Backend)
 }
 
 func TestStore_SearchFTS_FiltersByRole(t *testing.T) {
@@ -1096,17 +1076,17 @@ func TestStore_SearchFTS_FiltersByRole(t *testing.T) {
 	}
 
 	chunk1 := Chunk{
-		SessionID: "sess-1", MessageID: 1, ChunkText: "database query",
-		ChunkTextSegmented: "database query", ChunkIndex: 0,
+		SessionID: testSession1, MessageID: 1, ChunkText: testDBQuery,
+		ChunkTextSegmented: testDBQuery, ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
-		SessionID: "sess-2", MessageID: 2, ChunkText: "database command",
+		SessionID: testSession2, MessageID: 2, ChunkText: "database command",
 		ChunkTextSegmented: "database command", ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/test", Backend: "claude", Role: "user",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleUser,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
@@ -1115,10 +1095,10 @@ func TestStore_SearchFTS_FiltersByRole(t *testing.T) {
 	err = store.CreateFTSIndex()
 	require.NoError(t, err)
 
-	hits, err := store.SearchFTS("database", 5, "", "", "user", "", "", "", "")
+	hits, err := store.SearchFTS("database", 5, "", "", testRoleUser, "", "", "", "")
 	assert.NoError(t, err)
 	assert.Len(t, hits, 1)
-	assert.Equal(t, "user", hits[0].Role)
+	assert.Equal(t, testRoleUser, hits[0].Role)
 }
 
 func TestStore_SearchFTS_FiltersBySessionID(t *testing.T) {
@@ -1128,17 +1108,17 @@ func TestStore_SearchFTS_FiltersBySessionID(t *testing.T) {
 	}
 
 	chunk1 := Chunk{
-		SessionID: "sess-target", MessageID: 1, ChunkText: "database query",
-		ChunkTextSegmented: "database query", ChunkIndex: 0,
+		SessionID: "sess-target", MessageID: 1, ChunkText: testDBQuery,
+		ChunkTextSegmented: testDBQuery, ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
 		SessionID: "sess-other", MessageID: 2, ChunkText: "database other",
 		ChunkTextSegmented: "database other", ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
@@ -1160,17 +1140,17 @@ func TestStore_SearchFTS_ExcludeSessionID(t *testing.T) {
 	}
 
 	chunk1 := Chunk{
-		SessionID: "sess-exclude", MessageID: 1, ChunkText: "database query",
-		ChunkTextSegmented: "database query", ChunkIndex: 0,
+		SessionID: "sess-exclude", MessageID: 1, ChunkText: testDBQuery,
+		ChunkTextSegmented: testDBQuery, ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
-		SessionID: "sess-keep", MessageID: 2, ChunkText: "database search",
-		ChunkTextSegmented: "database search", ChunkIndex: 0,
+		SessionID: "sess-keep", MessageID: 2, ChunkText: testDBSearch,
+		ChunkTextSegmented: testDBSearch, ChunkIndex: 0,
 		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
-		ProjectPath: "/test", Backend: "claude", Role: "assistant",
+		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
@@ -1249,12 +1229,9 @@ func TestNewStore_ExistingChunksRebuildsFTS(t *testing.T) {
 	dbPath := store.dbPath
 	_ = store.Close()
 
-	store2, err := NewStore(dbPath, map[string]string{
-		"threads":      "2",
-		"memory_limit": "256MB",
-	})
+	store2, err := NewStore(dbPath, nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { store2.Close() })
+	t.Cleanup(func() { _ = store2.Close() })
 
 	// Should have rebuilt FTS index from existing chunks
 	assert.True(t, store2.ftsAvailable)

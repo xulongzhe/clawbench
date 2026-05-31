@@ -32,8 +32,8 @@ func TestResolveMossNanoModelDir_DefaultWithModels(t *testing.T) {
 	// Create a temp directory mimicking the default model structure
 	tmpDir := t.TempDir()
 	subDir := filepath.Join(tmpDir, "MOSS-TTS-Nano-100M-ONNX")
-	_ = os.MkdirAll(subDir, 0o755)
-	_ = os.WriteFile(filepath.Join(subDir, "browser_poc_manifest.json"), []byte("{}"), 0o644)
+	_ = os.MkdirAll(subDir, 0o750)
+	_ = os.WriteFile(filepath.Join(subDir, "browser_poc_manifest.json"), []byte("{}"), 0o600)
 
 	// Temporarily override default for testing
 	origDefault := mossNanoDefaultModelDir

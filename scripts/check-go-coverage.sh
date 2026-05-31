@@ -94,6 +94,7 @@ DIFF_THRESHOLD = 80.0
 # spawning, system-level port detection, etc.).
 exempt_files = {
     "cmd/server/main.go",                    # package main: -coverprofile empty in certain modes
+    "cmd/server/restart_unix.go",            # package main: signals own process, untestable without subprocess
     "internal/ai/cli_backend.go",            # ExecuteStream spawns CLI subprocesses
     "internal/ai/codex_stream.go",           # ExecuteStream spawns CLI subprocesses
     "internal/ai/vecli.go",                  # ExecuteStream spawns CLI subprocesses
@@ -111,6 +112,8 @@ exempt_files = {
     "internal/service/continue_conversation.go", # new diff: restoreDeletedSession/continue error paths
     "internal/platform/path_unix.go",        # build-tag stub: listWindowsDrives returns nil on non-Windows
     "internal/platform/path_windows.go",     # build-tag: listWindowsDrives only runs on Windows
+    "internal/terminal/shell_posix.go",     # process group signaling: kills test process group if tested
+    "internal/ws/events.go",                # WebSocket handler exit path: conn.Close after client disconnect, timing-dependent
 }
 
 # ── Colors ──────────────────────────────────────────────────────

@@ -25,8 +25,8 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS tts_summaries (
@@ -90,7 +90,7 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 
 // setupTestDBForQuickSend creates an in-memory SQLite database with the chat_quick_send table
 // for testing ChatQuickSend CRUD functions.
-func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) { //nolint:unparam // test helper: DB used implicitly via global state
+func setupTestDBForQuickSend(t *testing.T) func() {
 	t.Helper()
 	origDB := DB
 	origDBRead := DBRead
@@ -100,8 +100,8 @@ func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) { //nolint:unparam 
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_quick_send (
@@ -122,9 +122,9 @@ func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) { //nolint:unparam 
 	teardown := func() {
 		DB = origDB
 		DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	}
-	return db, teardown
+	return teardown
 }
 
 // ---------- Schema: session_type, task_executions columns, new indexes ----------
@@ -191,7 +191,7 @@ func getTableColumns(t *testing.T, db *sql.DB, table string) map[string]bool {
 	t.Helper()
 	rows, err := db.Query("PRAGMA table_info('" + table + "')")
 	assert.NoError(t, err)
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	cols := make(map[string]bool)
 	for rows.Next() {
@@ -252,7 +252,7 @@ func getIndexes(t *testing.T, db *sql.DB) map[string]bool {
 	t.Helper()
 	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='index'")
 	assert.NoError(t, err)
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	indexes := make(map[string]bool)
 	for rows.Next() {
@@ -426,7 +426,7 @@ func TestInitDB_CleansOrphanedStreamingJSON(t *testing.T) {
 
 	m := orphans[0]
 	var contentMap map[string]any
-	_ = json.Unmarshal([]byte(m.content), &contentMap)
+	json.Unmarshal([]byte(m.content), &contentMap)
 	contentMap["cancelled"] = true
 	blocks, _ := contentMap["blocks"].([]any)
 	blocks = append(blocks, map[string]any{
@@ -436,7 +436,7 @@ func TestInitDB_CleansOrphanedStreamingJSON(t *testing.T) {
 	})
 	contentMap["blocks"] = blocks
 	updatedContent, _ := json.Marshal(contentMap)
-	_, _ = db.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id)
+	db.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id)
 
 	var streaming int
 	var updated string
@@ -491,7 +491,7 @@ func TestInitDB_CleansOrphanedStreamingPlain(t *testing.T) {
 		}
 	}
 	updatedContent, _ := json.Marshal(contentMap)
-	_, _ = db.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id)
+	db.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id)
 
 	var streaming int
 	var updated string
@@ -581,7 +581,7 @@ func orphanCleanup(t *testing.T, db *sql.DB, isServerStartup bool) {
 	}
 	rows, err := db.Query("SELECT id, content FROM chat_history WHERE streaming = 1")
 	assert.NoError(t, err)
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	type orphanMsg struct {
 		id      int64
@@ -670,7 +670,7 @@ func TestSaveTTSSummary_Upsert(t *testing.T) {
 // ---------- ChatQuickSend CRUD ----------
 
 func TestGetChatQuickSend_Empty(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	items, err := GetChatQuickSend()
@@ -679,7 +679,7 @@ func TestGetChatQuickSend_Empty(t *testing.T) {
 }
 
 func TestAddChatQuickSend_Single(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	id, err := AddChatQuickSend("▶️ 继续", "继续")
@@ -696,7 +696,7 @@ func TestAddChatQuickSend_Single(t *testing.T) {
 }
 
 func TestAddChatQuickSend_MultipleAutoIncrement(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	id1, _ := AddChatQuickSend("继续", "继续")
@@ -716,7 +716,7 @@ func TestAddChatQuickSend_MultipleAutoIncrement(t *testing.T) {
 }
 
 func TestUpdateChatQuickSend(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	AddChatQuickSend("继续", "继续")
@@ -731,7 +731,7 @@ func TestUpdateChatQuickSend(t *testing.T) {
 }
 
 func TestUpdateChatQuickSend_Nonexistent(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	err := UpdateChatQuickSend(999, "x", "y")
@@ -739,7 +739,7 @@ func TestUpdateChatQuickSend_Nonexistent(t *testing.T) {
 }
 
 func TestDeleteChatQuickSend(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	AddChatQuickSend("继续", "继续")
@@ -754,7 +754,7 @@ func TestDeleteChatQuickSend(t *testing.T) {
 }
 
 func TestDeleteChatQuickSend_Nonexistent(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	err := DeleteChatQuickSend(999)
@@ -762,7 +762,7 @@ func TestDeleteChatQuickSend_Nonexistent(t *testing.T) {
 }
 
 func TestReorderChatQuickSend(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	AddChatQuickSend("继续", "继续") // id=1, sort_order=0
@@ -784,7 +784,7 @@ func TestReorderChatQuickSend(t *testing.T) {
 }
 
 func TestReorderChatQuickSend_EmptyIDs(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	AddChatQuickSend("继续", "继续")
@@ -797,7 +797,7 @@ func TestReorderChatQuickSend_EmptyIDs(t *testing.T) {
 }
 
 func TestReorderChatQuickSend_PartialIDs(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	AddChatQuickSend("继续", "继续") // id=1
@@ -817,7 +817,7 @@ func TestReorderChatQuickSend_PartialIDs(t *testing.T) {
 }
 
 func TestGetChatQuickSend_OrderedBySortOrder(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	AddChatQuickSend("A", "a") // sort=0
@@ -1022,8 +1022,8 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	// Create old-style table without host column and without local_port
 	// Other tables must have enough columns so InitDB's index creation succeeds
@@ -1142,7 +1142,7 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 	// Step 4: Verify existing data is preserved and local_port is backfilled
 	rows, err := DB.Query("SELECT port, local_port, host, name FROM forwarded_ports ORDER BY port")
 	assert.NoError(t, err)
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	var count int
 	for rows.Next() {
@@ -1161,7 +1161,8 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 
 // setupTestDBForSummaries creates an in-memory SQLite database with the summaries table
 // for testing SaveSummary and GetSummary.
-func setupTestDBForSummaries(t *testing.T) (*sql.DB, func()) { //nolint:unparam // test helper: DB used implicitly via global state	t.Helper()
+func setupTestDBForSummaries(t *testing.T) func() {
+	t.Helper()
 	origDB := DB
 	origDBRead := DBRead
 
@@ -1170,8 +1171,8 @@ func setupTestDBForSummaries(t *testing.T) (*sql.DB, func()) { //nolint:unparam 
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS summaries (
@@ -1192,13 +1193,13 @@ func setupTestDBForSummaries(t *testing.T) (*sql.DB, func()) { //nolint:unparam 
 	teardown := func() {
 		DB = origDB
 		DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	}
-	return db, teardown
+	return teardown
 }
 
 func TestGetSummary_NotFound(t *testing.T) {
-	_, teardown := setupTestDBForSummaries(t)
+	teardown := setupTestDBForSummaries(t)
 	defer teardown()
 
 	summary, found := GetSummary("chat_message", 42)
@@ -1207,7 +1208,7 @@ func TestGetSummary_NotFound(t *testing.T) {
 }
 
 func TestSaveSummary_AndGetSummary(t *testing.T) {
-	_, teardown := setupTestDBForSummaries(t)
+	teardown := setupTestDBForSummaries(t)
 	defer teardown()
 
 	err := SaveSummary("chat_message", 123, "This is a summary")
@@ -1219,7 +1220,7 @@ func TestSaveSummary_AndGetSummary(t *testing.T) {
 }
 
 func TestSaveSummary_ShortText(t *testing.T) {
-	_, teardown := setupTestDBForSummaries(t)
+	teardown := setupTestDBForSummaries(t)
 	defer teardown()
 
 	// Short text: save empty string
@@ -1232,7 +1233,7 @@ func TestSaveSummary_ShortText(t *testing.T) {
 }
 
 func TestSaveSummary_DifferentTargetTypes(t *testing.T) {
-	_, teardown := setupTestDBForSummaries(t)
+	teardown := setupTestDBForSummaries(t)
 	defer teardown()
 
 	// Same target_id, different target_type → different rows
@@ -1252,7 +1253,7 @@ func TestSaveSummary_DifferentTargetTypes(t *testing.T) {
 }
 
 func TestSaveSummary_Upsert(t *testing.T) {
-	_, teardown := setupTestDBForSummaries(t)
+	teardown := setupTestDBForSummaries(t)
 	defer teardown()
 
 	err := SaveSummary("chat_message", 789, "version 1")
@@ -1270,7 +1271,7 @@ func TestSaveSummary_Upsert(t *testing.T) {
 
 // setupTestDBForNewTTSSummaries creates an in-memory SQLite database with the new tts_summaries table
 // for testing GetTTSSummary and SaveTTSSummary with message_id.
-func setupTestDBForNewTTSSummaries(t *testing.T) (*sql.DB, func()) { //nolint:unparam // test helper: DB used implicitly via global state
+func setupTestDBForNewTTSSummaries(t *testing.T) func() {
 	t.Helper()
 	origDB := DB
 	origDBRead := DBRead
@@ -1280,8 +1281,8 @@ func setupTestDBForNewTTSSummaries(t *testing.T) (*sql.DB, func()) { //nolint:un
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS tts_summaries (
@@ -1301,13 +1302,13 @@ func setupTestDBForNewTTSSummaries(t *testing.T) (*sql.DB, func()) { //nolint:un
 	teardown := func() {
 		DB = origDB
 		DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	}
-	return db, teardown
+	return teardown
 }
 
 func TestGetTTSSummaryByMessageID_NotFound(t *testing.T) {
-	_, teardown := setupTestDBForNewTTSSummaries(t)
+	teardown := setupTestDBForNewTTSSummaries(t)
 	defer teardown()
 
 	summary, found := GetTTSSummaryByMessageID(42)
@@ -1316,7 +1317,7 @@ func TestGetTTSSummaryByMessageID_NotFound(t *testing.T) {
 }
 
 func TestSaveTTSSummaryByMessageID_AndGet(t *testing.T) {
-	_, teardown := setupTestDBForNewTTSSummaries(t)
+	teardown := setupTestDBForNewTTSSummaries(t)
 	defer teardown()
 
 	err := SaveTTSSummaryByMessageID(123, "TTS summary for message 123")
@@ -1328,7 +1329,7 @@ func TestSaveTTSSummaryByMessageID_AndGet(t *testing.T) {
 }
 
 func TestSaveTTSSummaryByMessageID_Upsert(t *testing.T) {
-	_, teardown := setupTestDBForNewTTSSummaries(t)
+	teardown := setupTestDBForNewTTSSummaries(t)
 	defer teardown()
 
 	err := SaveTTSSummaryByMessageID(456, "version 1")
@@ -1356,7 +1357,7 @@ func TestInitDB_TTSSummariesMigrationFromOldSchema(t *testing.T) {
 
 	// First: create a DB with the old schema (cache_key column)
 	dbPath := filepath.Join(tmpDir, ".clawbench", "clawbench.db")
-	_ = os.MkdirAll(filepath.Dir(dbPath), 0o755)
+	os.MkdirAll(filepath.Dir(dbPath), 0o755)
 
 	db, err := sql.Open("sqlite", dbPath)
 	assert.NoError(t, err)
@@ -1433,8 +1434,8 @@ func TestSchema_ExternalSessionIDBackfill_FillsEmpty(t *testing.T) {
 	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -1579,8 +1580,8 @@ func TestSchema_ExternalSessionIDBackfill_PreservesAlreadySet(t *testing.T) {
 	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	// Minimal schema to satisfy InitDB
 	_, err = db.Exec(`
@@ -1741,8 +1742,8 @@ func TestSchema_DropHistoryDeletedColumn_FromOldSchema(t *testing.T) {
 	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_history (
@@ -1887,7 +1888,7 @@ func TestSchema_DropHistoryDeletedColumn_Idempotent(t *testing.T) {
 // ---------- QuickCommand CRUD ----------
 
 // setupTestDBForQuickCommands creates an in-memory SQLite database with the terminal_quick_commands table
-func setupTestDBForQuickCommands(t *testing.T) (*sql.DB, func()) { //nolint:unparam // test helper: DB used implicitly via global state
+func setupTestDBForQuickCommands(t *testing.T) func() {
 	t.Helper()
 	origDB := DB
 	origDBRead := DBRead
@@ -1897,8 +1898,8 @@ func setupTestDBForQuickCommands(t *testing.T) (*sql.DB, func()) { //nolint:unpa
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	_, _ = db.Exec("PRAGMA journal_mode=WAL")
-	_, _ = db.Exec("PRAGMA busy_timeout=5000")
+	db.Exec("PRAGMA journal_mode=WAL")
+	db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS terminal_quick_commands (
@@ -1923,13 +1924,13 @@ func setupTestDBForQuickCommands(t *testing.T) (*sql.DB, func()) { //nolint:unpa
 	teardown := func() {
 		DB = origDB
 		DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	}
-	return db, teardown
+	return teardown
 }
 
 func TestGetQuickCommands_Empty(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	cmds, err := GetQuickCommands()
@@ -1938,7 +1939,7 @@ func TestGetQuickCommands_Empty(t *testing.T) {
 }
 
 func TestAddQuickCommand(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	id, err := AddQuickCommand("▶️ Run", "go test ./...", false, true)
@@ -1955,7 +1956,7 @@ func TestAddQuickCommand(t *testing.T) {
 }
 
 func TestAddQuickCommand_Hidden(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	id, err := AddQuickCommand("Secret", "secret-cmd", true, false)
@@ -1971,7 +1972,7 @@ func TestAddQuickCommand_Hidden(t *testing.T) {
 }
 
 func TestAddQuickCommand_AutoExecuteClearsPrevious(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	// Add first auto_execute command
@@ -1998,7 +1999,7 @@ func TestAddQuickCommand_AutoExecuteClearsPrevious(t *testing.T) {
 }
 
 func TestUpdateQuickCommand(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	AddQuickCommand("Old Label", "old cmd", false, false)
@@ -2016,7 +2017,7 @@ func TestUpdateQuickCommand(t *testing.T) {
 }
 
 func TestUpdateQuickCommand_Nonexistent(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	err := UpdateQuickCommand(999, "x", "y", false, false)
@@ -2024,7 +2025,7 @@ func TestUpdateQuickCommand_Nonexistent(t *testing.T) {
 }
 
 func TestDeleteQuickCommand(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	AddQuickCommand("A", "a", false, false)
@@ -2040,7 +2041,7 @@ func TestDeleteQuickCommand(t *testing.T) {
 }
 
 func TestDeleteQuickCommand_Nonexistent(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	err := DeleteQuickCommand(999)
@@ -2048,7 +2049,7 @@ func TestDeleteQuickCommand_Nonexistent(t *testing.T) {
 }
 
 func TestReorderQuickCommands(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	AddQuickCommand("A", "a", false, false) // id=1, sort=0
@@ -2070,7 +2071,7 @@ func TestReorderQuickCommands(t *testing.T) {
 }
 
 func TestReorderChatQuickSend_EmptyList(t *testing.T) {
-	_, teardown := setupTestDBForQuickSend(t)
+	teardown := setupTestDBForQuickSend(t)
 	defer teardown()
 
 	err := ReorderChatQuickSend([]int64{})
@@ -2080,7 +2081,7 @@ func TestReorderChatQuickSend_EmptyList(t *testing.T) {
 // ---------- ReorderQuickCommands empty IDs ----------
 
 func TestReorderQuickCommands_EmptyIDs(t *testing.T) {
-	_, teardown := setupTestDBForQuickCommands(t)
+	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()
 
 	AddQuickCommand("A", "a", false, false)

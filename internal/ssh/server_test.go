@@ -29,14 +29,14 @@ func testServerHelper(t *testing.T, password string, portReg *service.ProxyRegis
 		t.Fatalf("failed to find available port: %v", err)
 	}
 	addr := listener.Addr().String()
-	_ = listener.Close()
+	listener.Close()
 
 	_, portStr, _ := net.SplitHostPort(addr)
 	var port int
-	_, _ = fmt.Sscanf(portStr, "%d", &port)
+	fmt.Sscanf(portStr, "%d", &port)
 	srv.addr = fmt.Sprintf("127.0.0.1:%d", port)
 
-	go func() { _ = srv.ListenAndServe() }()
+	go srv.ListenAndServe()
 	t.Cleanup(func() { srv.Close() })
 
 	// Wait for server to start
@@ -45,9 +45,7 @@ func testServerHelper(t *testing.T, password string, portReg *service.ProxyRegis
 }
 
 // testSSHClient connects to an SSH server with the given credentials.
-//
-//nolint:unparam // user parameter kept for API consistency
-func testSSHClient(t *testing.T, addr, user, password string) *gossh.Client {
+func testSSHClient(t *testing.T, addr, user, password string) *gossh.Client { //nolint:unparam // user param kept for API clarity
 	t.Helper()
 	clientCfg := &gossh.ClientConfig{
 		User: user,
@@ -61,7 +59,7 @@ func testSSHClient(t *testing.T, addr, user, password string) *gossh.Client {
 	if err != nil {
 		t.Fatalf("failed to connect to SSH server %s: %v", addr, err)
 	}
-	t.Cleanup(func() { _ = client.Close() })
+	t.Cleanup(func() { client.Close() })
 	return client
 }
 
@@ -75,7 +73,7 @@ func startEchoServer(t *testing.T) int {
 	addr := listener.Addr().String()
 	_, portStr, _ := net.SplitHostPort(addr)
 	var port int
-	_, _ = fmt.Sscanf(portStr, "%d", &port)
+	fmt.Sscanf(portStr, "%d", &port)
 
 	go func() {
 		for {
@@ -84,12 +82,12 @@ func startEchoServer(t *testing.T) int {
 				return
 			}
 			go func(c net.Conn) {
-				defer func() { _ = c.Close() }()
+				defer c.Close()
 				buf := make([]byte, 4096)
 				for {
 					n, err := c.Read(buf)
 					if n > 0 {
-						_, _ = c.Write(buf[:n])
+						c.Write(buf[:n])
 					}
 					if err != nil {
 						return
@@ -98,7 +96,7 @@ func startEchoServer(t *testing.T) int {
 			}(conn)
 		}
 	}()
-	t.Cleanup(func() { _ = listener.Close() })
+	t.Cleanup(func() { listener.Close() })
 	return port
 }
 
@@ -121,7 +119,9 @@ func TestSSHServer_SHA256PasswordAuth_Success(t *testing.T) {
 	client := testSSHClient(t, srv.addr, "clawbench", "my-secret-password")
 
 	// Verify connection works
-	_ = client.Close()
+	if err := client.Close(); err != nil {
+		t.Errorf("failed to close client: %v", err)
+	}
 }
 
 func TestSSHServer_SHA256PasswordAuth_WrongPassword(t *testing.T) {
@@ -186,7 +186,9 @@ func TestSSHServerConnectAndDisconnect(t *testing.T) {
 	}
 
 	// Close and verify
-	_ = client.Close()
+	if err := client.Close(); err != nil {
+		t.Errorf("failed to close client: %v", err)
+	}
 }
 
 func TestSSHServerAuthFailure_WrongPassword(t *testing.T) {
@@ -243,7 +245,7 @@ func TestSSHPortForward_AllowedButUnregisteredPortWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected port forwarding to work for allowed-but-unregistered port %d, got: %v", echoPort, err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer conn.Close()
 
 	testMsg := []byte("hello unregistered port")
 	_, err = conn.Write(testMsg)
@@ -252,7 +254,7 @@ func TestSSHPortForward_AllowedButUnregisteredPortWorks(t *testing.T) {
 	}
 
 	buf := make([]byte, 1024)
-	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n, err := conn.Read(buf)
 	if err != nil {
 		t.Fatalf("failed to read: %v", err)
@@ -281,7 +283,7 @@ func TestSSHPortForward_DisallowedPortRejectedByTunnel(t *testing.T) {
 func TestSSHPortForward_RegisteredPortWorks(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	_, _ = portReg.RegisterPort(echoPort, "", "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -290,7 +292,7 @@ func TestSSHPortForward_RegisteredPortWorks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected port forwarding to work for registered port %d, got: %v", echoPort, err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer conn.Close()
 
 	testMsg := []byte("hello ssh tunnel")
 	_, err = conn.Write(testMsg)
@@ -299,7 +301,7 @@ func TestSSHPortForward_RegisteredPortWorks(t *testing.T) {
 	}
 
 	buf := make([]byte, 1024)
-	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n, err := conn.Read(buf)
 	if err != nil {
 		t.Fatalf("failed to read: %v", err)
@@ -315,8 +317,8 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 	// Start two echo servers
 	echoPort1 := startEchoServer(t)
 	echoPort2 := startEchoServer(t)
-	_, _ = portReg.RegisterPort(echoPort1, "", "echo1", "http")
-	_, _ = portReg.RegisterPort(echoPort2, "", "echo2", "http")
+	portReg.RegisterPort(echoPort1, "", "echo1", "http")
+	portReg.RegisterPort(echoPort2, "", "echo2", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -326,29 +328,29 @@ func TestSSHPortForward_MultiplePorts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to forward to port %d: %v", echoPort1, err)
 	}
-	defer func() { _ = conn1.Close() }()
+	defer conn1.Close()
 
 	// Forward to port 2
 	conn2, err := client.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", echoPort2))
 	if err != nil {
 		t.Fatalf("failed to forward to port %d: %v", echoPort2, err)
 	}
-	defer func() { _ = conn2.Close() }()
+	defer conn2.Close()
 
 	// Test both connections
 	testMsg1 := []byte("port1")
-	_, _ = conn1.Write(testMsg1)
+	conn1.Write(testMsg1)
 	buf1 := make([]byte, 1024)
-	_ = conn1.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn1.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n1, _ := conn1.Read(buf1)
 	if !bytes.Equal(buf1[:n1], testMsg1) {
 		t.Errorf("port1 echo mismatch: got %q", string(buf1[:n1]))
 	}
 
 	testMsg2 := []byte("port2")
-	_, _ = conn2.Write(testMsg2)
+	conn2.Write(testMsg2)
 	buf2 := make([]byte, 1024)
-	_ = conn2.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn2.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n2, _ := conn2.Read(buf2)
 	if !bytes.Equal(buf2[:n2], testMsg2) {
 		t.Errorf("port2 echo mismatch: got %q", string(buf2[:n2]))
@@ -376,7 +378,7 @@ func TestSSHPortForward_DisallowedPortRejected(t *testing.T) {
 func TestSSHPortForward_LargeDataTransfer(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	_, _ = portReg.RegisterPort(echoPort, "", "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -385,7 +387,7 @@ func TestSSHPortForward_LargeDataTransfer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to forward: %v", err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer conn.Close()
 
 	// Send 64KB of data
 	largeMsg := make([]byte, 64*1024)
@@ -401,7 +403,7 @@ func TestSSHPortForward_LargeDataTransfer(t *testing.T) {
 	// Read back all data
 	received := make([]byte, 0, len(largeMsg))
 	buf := make([]byte, 32*1024)
-	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 	for len(received) < len(largeMsg) {
 		n, err := conn.Read(buf)
 		if n > 0 {
@@ -431,13 +433,13 @@ func TestSSHServer_HostKeyPersistence(t *testing.T) {
 	// Find port
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr := listener.Addr().String()
-	_ = listener.Close()
+	listener.Close()
 	_, portStr, _ := net.SplitHostPort(addr)
 	var port int
-	_, _ = fmt.Sscanf(portStr, "%d", &port)
+	fmt.Sscanf(portStr, "%d", &port)
 	srv1.addr = fmt.Sprintf("127.0.0.1:%d", port)
 
-	go func() { _ = srv1.ListenAndServe() }()
+	go srv1.ListenAndServe()
 	time.Sleep(100 * time.Millisecond)
 
 	fingerprint1 := srv1.Fingerprint()
@@ -452,12 +454,12 @@ func TestSSHServer_HostKeyPersistence(t *testing.T) {
 	srv2 := NewServer(model.PortForwardConfig{Enabled: true, Port: 0, HostKey: keyPath}, 0, "test", portReg)
 	listener2, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr2 := listener2.Addr().String()
-	_ = listener2.Close()
+	listener2.Close()
 	_, portStr2, _ := net.SplitHostPort(addr2)
-	_, _ = fmt.Sscanf(portStr2, "%d", &port)
+	fmt.Sscanf(portStr2, "%d", &port)
 	srv2.addr = fmt.Sprintf("127.0.0.1:%d", port)
 
-	go func() { _ = srv2.ListenAndServe() }()
+	go srv2.ListenAndServe()
 	time.Sleep(100 * time.Millisecond)
 
 	fingerprint2 := srv2.Fingerprint()
@@ -476,13 +478,13 @@ func TestSSHServer_EphemeralKeyChangesOnRestart(t *testing.T) {
 	srv1 := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr := listener.Addr().String()
-	_ = listener.Close()
+	listener.Close()
 	_, portStr, _ := net.SplitHostPort(addr)
 	var port int
-	_, _ = fmt.Sscanf(portStr, "%d", &port)
+	fmt.Sscanf(portStr, "%d", &port)
 	srv1.addr = fmt.Sprintf("127.0.0.1:%d", port)
 
-	go func() { _ = srv1.ListenAndServe() }()
+	go srv1.ListenAndServe()
 	time.Sleep(100 * time.Millisecond)
 
 	fp1 := srv1.Fingerprint()
@@ -492,12 +494,12 @@ func TestSSHServer_EphemeralKeyChangesOnRestart(t *testing.T) {
 	srv2 := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
 	listener2, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr2 := listener2.Addr().String()
-	_ = listener2.Close()
+	listener2.Close()
 	_, portStr2, _ := net.SplitHostPort(addr2)
-	_, _ = fmt.Sscanf(portStr2, "%d", &port)
+	fmt.Sscanf(portStr2, "%d", &port)
 	srv2.addr = fmt.Sprintf("127.0.0.1:%d", port)
 
-	go func() { _ = srv2.ListenAndServe() }()
+	go srv2.ListenAndServe()
 	time.Sleep(100 * time.Millisecond)
 
 	fp2 := srv2.Fingerprint()
@@ -576,7 +578,7 @@ func TestSSHServer_ConnectionStats_ClientConnected(t *testing.T) {
 	}
 
 	// Disconnect
-	_ = client.Close()
+	client.Close()
 
 	// Wait for server to detect disconnect
 	time.Sleep(200 * time.Millisecond)
@@ -604,7 +606,7 @@ func TestSSHServer_ConnectionStats_MultipleClients(t *testing.T) {
 		t.Errorf("expected ClientCount=2, got %d", stats.ClientCount)
 	}
 
-	_ = client1.Close()
+	client1.Close()
 	time.Sleep(200 * time.Millisecond)
 
 	stats = srv.ConnectionStats()
@@ -612,7 +614,7 @@ func TestSSHServer_ConnectionStats_MultipleClients(t *testing.T) {
 		t.Errorf("expected ClientCount=1 after one disconnect, got %d", stats.ClientCount)
 	}
 
-	_ = client2.Close()
+	client2.Close()
 	time.Sleep(200 * time.Millisecond)
 
 	stats = srv.ConnectionStats()
@@ -624,7 +626,7 @@ func TestSSHServer_ConnectionStats_MultipleClients(t *testing.T) {
 func TestSSHServer_ConnectionStats_ActiveChannels(t *testing.T) {
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	_, _ = portReg.RegisterPort(echoPort, "", "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -642,7 +644,7 @@ func TestSSHServer_ConnectionStats_ActiveChannels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to dial forwarded port: %v", err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer conn.Close()
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -652,7 +654,7 @@ func TestSSHServer_ConnectionStats_ActiveChannels(t *testing.T) {
 	}
 
 	// Close the forwarded connection
-	_ = conn.Close()
+	conn.Close()
 	time.Sleep(200 * time.Millisecond)
 
 	stats = srv.ConnectionStats()
@@ -677,7 +679,7 @@ func TestSSHServer_BruteForceProtection(t *testing.T) {
 			HostKeyCallback: gossh.InsecureIgnoreHostKey(),
 			Timeout:         5 * time.Second,
 		}
-		_, _ = gossh.Dial("tcp", srv.addr, clientCfg)
+		gossh.Dial("tcp", srv.addr, clientCfg)
 	}
 
 	// After 5 failures, even the correct password should be rejected (IP is blocked)
@@ -732,12 +734,12 @@ func TestSSHServer_SuccessfulAuthResetsCounter(t *testing.T) {
 			HostKeyCallback: gossh.InsecureIgnoreHostKey(),
 			Timeout:         5 * time.Second,
 		}
-		_, _ = gossh.Dial("tcp", srv.addr, clientCfg)
+		gossh.Dial("tcp", srv.addr, clientCfg)
 	}
 
 	// Successful login should reset the counter
 	client := testSSHClient(t, srv.addr, "clawbench", "correct-password")
-	_ = client.Close()
+	client.Close()
 
 	// Now 3 more failures should NOT trigger block (counter was reset)
 	for range 3 {
@@ -749,12 +751,12 @@ func TestSSHServer_SuccessfulAuthResetsCounter(t *testing.T) {
 			HostKeyCallback: gossh.InsecureIgnoreHostKey(),
 			Timeout:         5 * time.Second,
 		}
-		_, _ = gossh.Dial("tcp", srv.addr, clientCfg)
+		gossh.Dial("tcp", srv.addr, clientCfg)
 	}
 
 	// Should still be able to connect with correct password
 	client2 := testSSHClient(t, srv.addr, "clawbench", "correct-password")
-	_ = client2.Close()
+	client2.Close()
 }
 
 // --- IPv6 / JoinHostPort Tests ---
@@ -764,7 +766,7 @@ func TestSSHServer_JoinHostPort_LocalhostTarget(t *testing.T) {
 	// This tests the fix from fmt.Sprintf("127.0.0.1:%d") → net.JoinHostPort.
 	portReg := newTestRegistry(t)
 	echoPort := startEchoServer(t)
-	_, _ = portReg.RegisterPort(echoPort, "", "echo", "http")
+	portReg.RegisterPort(echoPort, "", "echo", "http")
 
 	srv := testServerHelper(t, "test-password", portReg)
 	client := testSSHClient(t, srv.addr, "clawbench", "test-password")
@@ -774,7 +776,7 @@ func TestSSHServer_JoinHostPort_LocalhostTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected port forwarding via localhost to work, got: %v", err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer conn.Close()
 
 	testMsg := []byte("hello via localhost")
 	_, err = conn.Write(testMsg)
@@ -783,7 +785,7 @@ func TestSSHServer_JoinHostPort_LocalhostTarget(t *testing.T) {
 	}
 
 	buf := make([]byte, 1024)
-	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	n, err := conn.Read(buf)
 	if err != nil {
 		t.Fatalf("failed to read: %v", err)
