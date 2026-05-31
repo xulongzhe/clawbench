@@ -268,6 +268,7 @@ type setupVerifyRequest struct {
 // (OpenAI or Anthropic protocol based on URL path). This avoids shelling out
 // to Pi CLI which doesn't natively support arbitrary custom endpoints.
 // For built-in providers: uses the embedded Pi CLI as before.
+//
 //nolint:gocyclo // complex verify logic with multiple provider formats
 func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
