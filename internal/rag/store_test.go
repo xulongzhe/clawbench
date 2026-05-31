@@ -810,20 +810,22 @@ func TestStore_RebuildFTSIfDirty(t *testing.T) {
 func TestStore_GetPendingEmbeddings(t *testing.T) {
 	store := setupTestStore(t)
 
-	// Insert two chunks without embedding
+	// Insert two chunks without embedding, with distinct timestamps
+	// to ensure deterministic ordering (ORDER BY created_at DESC, id DESC).
+	now := time.Now().Truncate(time.Millisecond)
 	chunk1 := Chunk{
 		SessionID: "sess-1", MessageID: 1, ChunkText: "text 1",
 		ChunkTextSegmented: "text 1", ChunkIndex: 0, TokenCount: 3,
 		Embedding: nil, HasEmbedding: false,
 		ProjectPath: "/test", Backend: "claude", Role: "assistant",
-		CreatedAt: time.Now().Truncate(time.Millisecond),
+		CreatedAt: now,
 	}
 	chunk2 := Chunk{
 		SessionID: "sess-1", MessageID: 2, ChunkText: "text 2",
 		ChunkTextSegmented: "text 2", ChunkIndex: 0, TokenCount: 3,
 		Embedding: nil, HasEmbedding: false,
 		ProjectPath: "/test", Backend: "claude", Role: "assistant",
-		CreatedAt: time.Now().Truncate(time.Millisecond),
+		CreatedAt: now.Add(time.Second),
 	}
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
 	require.NoError(t, err)
@@ -831,8 +833,9 @@ func TestStore_GetPendingEmbeddings(t *testing.T) {
 	pending, err := store.GetPendingEmbeddings(10)
 	assert.NoError(t, err)
 	assert.Len(t, pending, 2, "should return 2 pending chunks")
-	assert.Equal(t, "text 1", pending[0].ChunkText)
-	assert.Equal(t, "text 2", pending[1].ChunkText)
+	// chunk2 is newer → appears first (DESC order)
+	assert.Equal(t, "text 2", pending[0].ChunkText)
+	assert.Equal(t, "text 1", pending[1].ChunkText)
 }
 
 func TestStore_GetPendingEmbeddings_RespectsLimit(t *testing.T) {

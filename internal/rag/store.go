@@ -543,7 +543,7 @@ type PendingChunk struct {
 
 // GetPendingEmbeddings returns chunk IDs and texts that need embedding backfill.
 func (s *Store) GetPendingEmbeddings(limit int) ([]PendingChunk, error) {
-	rows, err := s.db.Query("SELECT id, chunk_text FROM chat_chunks WHERE COALESCE(has_embedding, false) = false ORDER BY created_at DESC LIMIT ?", limit)
+	rows, err := s.db.Query("SELECT id, chunk_text FROM chat_chunks WHERE COALESCE(has_embedding, false) = false ORDER BY created_at DESC, id DESC LIMIT ?", limit)
 	if err != nil {
 		return nil, err
 	}
