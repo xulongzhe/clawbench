@@ -257,6 +257,11 @@ export function useChatStream(options: UseChatStreamOptions) {
 
     eventSource = new EventSource(`/api/ai/chat/stream?session_id=${encodeURIComponent(sessionId)}`, { withCredentials: true })
 
+    // Capture reference to THIS EventSource instance so event handlers can
+    // safely close only the stale connection without affecting a new session's
+    // EventSource (the `eventSource` variable may be reassigned by connectStream).
+    const esRef = eventSource
+
     // Start stream timeout
     resetStreamTimeout()
 
@@ -410,6 +415,15 @@ export function useChatStream(options: UseChatStreamOptions) {
     })
 
     eventSource.addEventListener('done', () => {
+      // ISS-246: check guard() BEFORE touching shared state — if session
+      // changed, this event belongs to a stale connection and must be ignored.
+      if (!guard()) {
+        // Close only the stale EventSource that fired this event, not the
+        // shared `eventSource` variable which may point to a new session.
+        esRef.close()
+        reconnect.reset()
+        return
+      }
       if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null }
       clearToolUseTimeouts()
       disconnectStream()
@@ -440,8 +454,18 @@ export function useChatStream(options: UseChatStreamOptions) {
 
     eventSource.addEventListener('cancelled', () => {
       if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null }
+      // ISS-245/ISS-278: check guard() BEFORE disconnectStream().
+      // disconnectStream() closes the shared `eventSource` variable which may
+      // have been reassigned to a new session's EventSource. If the session
+      // changed, this cancelled event is stale — close only THIS EventSource
+      // instance (not the shared variable) and skip state mutations.
+      if (!guard()) {
+        // Close only the stale EventSource that fired this event, not the
+        // shared `eventSource` variable which may point to a new session.
+        esRef.close()
+        return
+      }
       disconnectStream()
-      if (!guard()) return
       streamingMsg.cancelled = true
       // If no content was received, add error block so the UI shows the error card instead of loading dots
       if ((!streamingMsg.blocks || streamingMsg.blocks.length === 0) && !streamingMsg.content) {
@@ -556,14 +580,21 @@ export function useChatStream(options: UseChatStreamOptions) {
     })
 
     eventSource.onerror = () => {
-      // SSE connection error — reconnect if session is still active
+      // SSE connection error — distinguish recoverable vs non-recoverable.
+      // ISS-248/ISS-279: Use EventSource readyState to detect fatal errors.
+      // CONNECTING (0) / OPEN (1) = transient, safe to reconnect.
+      // CLOSED (2) = permanent failure (e.g. 404, server shutdown), fall back.
       if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null }
+      // Use esRef (captured at connectStream time) to check readyState,
+      // since `eventSource` may have been reassigned by a new session.
+      const wasRecoverable = esRef.readyState !== EventSource.CLOSED
       disconnectStream()
-      if (currentSessionId.value && loading.value && reconnect.shouldReconnect()) {
-        // AI session likely still running on backend, reconnect SSE
+      if (wasRecoverable && currentSessionId.value && loading.value && reconnect.shouldReconnect()) {
+        // Transient error (network blip, server restart) — reconnect SSE
         reconnect.scheduleReconnect()
       } else {
-        // Too many attempts or session inactive — fall back to polling
+        // Non-recoverable error (404, 403, server shutdown) or max retries —
+        // fall back to polling which will detect the terminal state
         reconnect.reset() // Clear reconnect state before falling back to polling
         forceCleanupStreamingState()
         pollUntilDone()
