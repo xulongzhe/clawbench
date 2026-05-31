@@ -7,6 +7,7 @@ import {
   annotateFilePaths,
   verifyFilePaths,
   clearVerifiedCache,
+  openFilePath,
 } from '@/composables/useFilePathAnnotation'
 
 // Mock escapeHtml from html utils
@@ -21,7 +22,11 @@ vi.mock('@/utils/path', () => ({
 
 // Mock store
 vi.mock('@/stores/app', () => ({
-  store: { state: { projectRoot: '/home/user/project' } },
+  store: {
+    state: { projectRoot: '/home/user/project' },
+    selectFile: vi.fn(),
+    navigateToDir: vi.fn(),
+  },
 }))
 
 // Mock useLocale
@@ -1032,6 +1037,102 @@ describe('verifyFilePaths', () => {
     // The body should contain deduplicated paths
     const body = JSON.parse(mockFetch.mock.calls[0][1].body)
     expect(body.paths).toEqual(['dup.go'])
+
+    vi.unstubAllGlobals()
+  })
+})
+
+// --- openFilePath ---
+
+describe('openFilePath', () => {
+  let mockSelectFile: ReturnType<typeof vi.fn>
+  let mockNavigateToDir: ReturnType<typeof vi.fn>
+
+  beforeEach(async () => {
+    clearVerifiedCache()
+    const { store } = await import('@/stores/app')
+    mockSelectFile = store.selectFile as ReturnType<typeof vi.fn>
+    mockNavigateToDir = store.navigateToDir as ReturnType<typeof vi.fn>
+    mockSelectFile.mockClear()
+    mockNavigateToDir.mockClear()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('navigates to directory when path is a directory', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal('fetch', mockFetch)
+
+    const mockDispatchEvent = vi.fn()
+    const origDispatch = window.dispatchEvent
+    window.dispatchEvent = mockDispatchEvent
+
+    await openFilePath('src')
+
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockFetch.mock.calls[0][0]).toContain('/api/dir?path=')
+    expect(mockNavigateToDir).toHaveBeenCalledWith('src')
+    expect(mockDispatchEvent).toHaveBeenCalled()
+
+    window.dispatchEvent = origDispatch
+    vi.unstubAllGlobals()
+  })
+
+  it('selects file when path exists as a file', async () => {
+    // First fetch: /api/dir check → not ok (not a directory)
+    // Second fetch: /api/file/batch-exists → file exists
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false }) // /api/dir
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ results: { 'src/main.go': 'file' } }) }) // batch-exists
+
+    vi.stubGlobal('fetch', mockFetch)
+
+    await openFilePath('src/main.go')
+
+    expect(mockSelectFile).toHaveBeenCalledWith('src/main.go')
+
+    vi.unstubAllGlobals()
+  })
+
+  it('shows toast and does not select file when path does not exist', async () => {
+    // First fetch: /api/dir check → not ok (not a directory)
+    // Second fetch: /api/file/batch-exists → path doesn't exist
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false }) // /api/dir
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ results: { 'src/deleted/File.ts': 'none' } }) }) // batch-exists
+
+    vi.stubGlobal('fetch', mockFetch)
+
+    // Mock useToast
+    const mockShow = vi.fn()
+    vi.doMock('@/composables/useToast', () => ({
+      useToast: () => ({ show: mockShow }),
+    }))
+
+    await openFilePath('src/deleted/File.ts')
+
+    // selectFile should NOT be called for non-existent file
+    expect(mockSelectFile).not.toHaveBeenCalled()
+
+    vi.unstubAllGlobals()
+    vi.doUnmock('@/composables/useToast')
+  })
+
+  it('falls through to selectFile when batch-exists check fails (network error)', async () => {
+    // First fetch: /api/dir check → not ok
+    // Second fetch: /api/file/batch-exists → network error
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false }) // /api/dir
+      .mockRejectedValueOnce(new Error('Network error')) // batch-exists
+
+    vi.stubGlobal('fetch', mockFetch)
+
+    await openFilePath('src/main.go')
+
+    // Best-effort: selectFile should still be called
+    expect(mockSelectFile).toHaveBeenCalledWith('src/main.go')
 
     vi.unstubAllGlobals()
   })

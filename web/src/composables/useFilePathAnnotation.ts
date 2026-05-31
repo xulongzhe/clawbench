@@ -408,6 +408,8 @@ export function resolveRelativePath(href: string, baseDir: string): string {
  * Open a file or directory path.
  * If the path is a directory, navigates to it and opens the file manager.
  * If it's a file, selects it in the store.
+ * If the file doesn't exist, shows a toast and does not navigate to a potentially
+ * non-existent directory (fixes issue #166).
  */
 export async function openFilePath(resolvedPath: string): Promise<void> {
     // Check if path is a directory
@@ -420,6 +422,30 @@ export async function openFilePath(resolvedPath: string): Promise<void> {
         }
     } catch {
         // Ignore, fall through to open as file
+    }
+
+    // Before selecting the file, verify it actually exists.
+    // If it doesn't exist, avoid setting currentFile (which would trigger
+    // syncToCurrentFile to navigate to a non-existent directory).
+    try {
+        const resp = await fetch(`/api/file/batch-exists`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paths: [resolvedPath] }),
+        })
+        if (resp.ok) {
+            const data = await resp.json() as { results: Record<string, string> }
+            const type = data.results?.[resolvedPath]
+            if (type !== 'file' && type !== 'dir') {
+                // File doesn't exist — show toast and abort
+                const { useToast } = await import('@/composables/useToast')
+                const { gt } = await import('@/composables/useLocale')
+                useToast().show(gt('file.toast.fileNotFound'), { type: 'error', icon: '⚠️', duration: 2000 })
+                return
+            }
+        }
+    } catch {
+        // Batch-exists check failed — proceed with selectFile as best-effort
     }
 
     store.selectFile(resolvedPath)

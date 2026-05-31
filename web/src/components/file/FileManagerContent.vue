@@ -54,7 +54,7 @@
               <Upload :size="14" />
               <span>{{ t('file.uploadHere') }}</span>
             </button>
-            <button class="toolbar-dropdown-item" :disabled="!currentFile?.path" @click="syncToCurrentFile(); moreMenuOpen = false">
+            <button class="toolbar-dropdown-item" :disabled="!currentFile?.path || !!currentFile?.error" @click="syncToCurrentFile(); moreMenuOpen = false">
               <ArrowRightLeft :size="14" />
               <span>{{ t('file.syncToCurrentDir') }}</span>
             </button>
@@ -422,11 +422,16 @@ onUnmounted(() => document.removeEventListener('click', closeDropdowns))
 // Sync button: navigate to the directory of the currently opened file
 const isInSync = computed(() => {
     if (!props.currentFile?.path) return false
+    // Don't consider "in sync" if the file has an error (e.g. doesn't exist)
+    if (props.currentFile.error) return false
     return dirName(props.currentFile.path) === props.currentDir
 })
 
 function syncToCurrentFile() {
     if (!props.currentFile?.path) return
+    // Don't sync if the file has an error (e.g. doesn't exist) —
+    // navigating to its directory may lead to a non-existent path (issue #166)
+    if (props.currentFile.error) return
     const targetDir = dirName(props.currentFile.path)
     if (targetDir === props.currentDir) {
         if (toast) toast.show(t('file.alreadyInDir'), { icon: '📍', type: 'success', duration: 1500 })

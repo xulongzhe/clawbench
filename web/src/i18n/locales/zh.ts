@@ -454,6 +454,7 @@ export default {
       switchProjectFailed: '切换项目失败: {error}',
       switchProjectFailedShort: '切换项目失败',
       dirLoadFailed: '目录不存在或无法访问',
+      fileNotFound: '文件不存在',
       archiving: '正在打包 {n} 个文件...',
       archiveDone: '打包下载完成',
       archiveFailed: '打包失败',

@@ -454,6 +454,7 @@ export default {
       switchProjectFailed: 'Switch project failed: {error}',
       switchProjectFailedShort: 'Switch project failed',
       dirLoadFailed: 'Directory not found or inaccessible',
+      fileNotFound: 'File not found',
       archiving: 'Packing {n} items...',
       archiveDone: 'Download ready',
       archiveFailed: 'Pack failed',
