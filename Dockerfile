@@ -12,12 +12,11 @@
 FROM ubuntu:24.04
 
 # Install runtime dependencies:
-# - ca-certificates: HTTPS (LLM provider APIs)
-# - python3 + pip: edge-tts (free TTS engine)
+# - ca-certificates: HTTPS (LLM provider APIs, Edge TTS WebSocket)
+# Edge TTS is compiled into the Go binary (github.com/lib-x/edgetts) — no Python needed.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates python3 python3-pip && \
-    pip3 install --break-system-packages edge-tts && \
-    rm -rf /var/lib/apt/lists/* /root/.cache/pip
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
