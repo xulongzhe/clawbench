@@ -77,7 +77,7 @@ func TestChunkText_EmptyText(t *testing.T) {
 func TestChunkText_LongText(t *testing.T) {
 	// Generate a long text that should be split
 	longText := ""
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		longText += "This is sentence number " + string(rune('0'+i%10)) + " in the test. "
 	}
 	// Should produce multiple chunks with chunkSize=50
@@ -124,7 +124,7 @@ func TestInit_CreatesStoreAndEmbedder(t *testing.T) {
 	assert.NotNil(t, GlobalEmbedder, "GlobalEmbedder should be initialized")
 
 	// Cleanup
-	GlobalStore.Close()
+	_ = GlobalStore.Close()
 	GlobalStore = nil
 	GlobalEmbedder = nil
 }
@@ -154,7 +154,7 @@ func TestInit_DimensionMismatchResetsTable(t *testing.T) {
 	count, _ := GlobalStore.ChunkCount()
 	assert.Equal(t, 1, count)
 
-	GlobalStore.Close()
+	_ = GlobalStore.Close()
 	GlobalStore = nil
 	GlobalEmbedder = nil
 
@@ -164,7 +164,7 @@ func TestInit_DimensionMismatchResetsTable(t *testing.T) {
 	count, _ = GlobalStore.ChunkCount()
 	assert.Equal(t, 1, count, "matching dimension should not reset")
 
-	GlobalStore.Close()
+	_ = GlobalStore.Close()
 	GlobalStore = nil
 	GlobalEmbedder = nil
 }
@@ -325,7 +325,7 @@ func TestStartCleanupWorker_WithRetention(t *testing.T) {
 	assert.NotNil(t, GlobalCleanupWorker, "should start cleanup worker with positive retention")
 
 	GlobalCleanupWorker.Stop()
-	GlobalStore.Close()
+	_ = GlobalStore.Close()
 	GlobalStore = origStore
 	GlobalCleanupWorker = nil
 }
@@ -354,7 +354,7 @@ func TestInit_SegmenterWarningContinues(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, GlobalStore)
 
-	GlobalStore.Close()
+	_ = GlobalStore.Close()
 	GlobalStore = nil
 	GlobalEmbedder = nil
 }

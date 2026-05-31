@@ -15,7 +15,7 @@ const (
 //  2. Codex-style: "thinking text\n\nactual response" (no tags, \n\n separator)
 //
 // This function handles both by first checking for tags, then falling back to \n\n.
-func codexSplitThinking(text string) (thinking string, content string) {
+func codexSplitThinking(text string) (thinking, content string) {
 	// Check for MiniMax-style tags
 	openIdx := strings.Index(text, codexThinkOpen)
 	closeIdx := strings.Index(text, codexThinkClose)

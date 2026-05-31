@@ -31,7 +31,7 @@ func TestServeConfigPassword_Success(t *testing.T) {
 	model.PasswordHash = bcryptHash
 	model.ConfigInstance = model.Config{}
 	model.BinDir = t.TempDir()
-	os.MkdirAll(filepath.Join(model.BinDir, "config"), 0755)
+	_ = os.MkdirAll(filepath.Join(model.BinDir, "config"), 0o755)
 
 	req := newRequest(t, http.MethodPost, "/api/config/password", map[string]string{
 		"current_password": password,
@@ -43,7 +43,7 @@ func TestServeConfigPassword_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["needs_restart"])
 
 	// Verify config.yaml was written with sha256: prefix
@@ -77,7 +77,7 @@ func TestServeConfigPassword_WrongCurrentPassword(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "wrong_password", resp["error"])
 }
 
@@ -98,7 +98,7 @@ func TestServeConfigPassword_EmptyFields(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "empty_password", resp["error"])
 }
 
@@ -124,7 +124,7 @@ func TestServeConfigPassword_TooShort(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "password_too_short", resp["error"])
 }
 
@@ -141,7 +141,7 @@ func TestServeConfigPassword_SHA256StoredPassword(t *testing.T) {
 	model.PasswordHash = nil // No bcrypt when stored as SHA-256
 	model.ConfigInstance = model.Config{}
 	model.BinDir = t.TempDir()
-	os.MkdirAll(filepath.Join(model.BinDir, "config"), 0755)
+	_ = os.MkdirAll(filepath.Join(model.BinDir, "config"), 0o755)
 
 	req := newRequest(t, http.MethodPost, "/api/config/password", map[string]string{
 		"current_password": password,
@@ -153,7 +153,7 @@ func TestServeConfigPassword_SHA256StoredPassword(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["needs_restart"])
 
 	// Verify config.yaml was written with sha256: prefix
@@ -188,7 +188,7 @@ func TestServeConfigPassword_MethodNotAllowed(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/config/password", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/config/password", http.NoBody)
 	withAuthCookie(req, "sometoken")
 	w := callHandler(ServeConfigPassword, req)
 
@@ -200,7 +200,7 @@ func TestServeConfigPassword_InvalidJSON(t *testing.T) {
 	defer teardown()
 
 	model.SessionToken = "sometoken"
-	req := httptest.NewRequest(http.MethodPost, "/api/config/password", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/config/password", http.NoBody)
 	req.Header.Set("Content-Type", "application/json")
 	withAuthCookie(req, model.SessionToken)
 	w := callHandler(ServeConfigPassword, req)
@@ -223,7 +223,7 @@ func TestServeConfigPassword_RateLimited(t *testing.T) {
 	// Make failed requests to trigger rate limiting
 	// The global login limiter persists across tests, so count from current state
 	blocked := false
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		req := newRequest(t, http.MethodPost, "/api/config/password", map[string]string{
 			"current_password": "wrong-password",
 			"new_password":     "new-password-123",
@@ -253,7 +253,7 @@ func TestServeConfig_Get_HasPassword(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, true, resp["has_password"])
 
 	// Without password
@@ -264,7 +264,7 @@ func TestServeConfig_Get_HasPassword(t *testing.T) {
 	w = callHandler(ServeConfig, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, false, resp["has_password"])
 }
 
@@ -283,7 +283,7 @@ func TestServeConfigPassword_TooLong(t *testing.T) {
 	model.ConfigInstance = model.Config{}
 
 	longPassword := ""
-	for i := 0; i < 73; i++ {
+	for range 73 {
 		longPassword += "a"
 	}
 
@@ -297,7 +297,7 @@ func TestServeConfigPassword_TooLong(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "password_too_long", resp["error"])
 }
 
@@ -326,7 +326,7 @@ func TestServeConfigPassword_NoPasswordHash(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "wrong_password", resp["error"])
 }
 
@@ -351,11 +351,11 @@ func TestServeConfigPassword_WriteFailure(t *testing.T) {
 	origBinDir := model.BinDir
 	failDir := t.TempDir()
 	configDir := filepath.Join(failDir, "config")
-	os.MkdirAll(configDir, 0755)
-	os.Chmod(configDir, 0555)
+	_ = os.MkdirAll(configDir, 0o755)
+	_ = os.Chmod(configDir, 0o555)
 	model.BinDir = failDir
 	defer func() {
-		os.Chmod(configDir, 0755) // restore for cleanup
+		_ = os.Chmod(configDir, 0o755) // restore for cleanup
 		model.BinDir = origBinDir
 	}()
 
@@ -369,7 +369,7 @@ func TestServeConfigPassword_WriteFailure(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "write_failed", resp["error"])
 
 	// Verify in-memory config was rolled back

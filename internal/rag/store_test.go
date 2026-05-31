@@ -31,7 +31,7 @@ func setupTestStore(t *testing.T) *Store {
 	})
 	require.NoError(t, err, "NewStore should succeed")
 	t.Cleanup(func() {
-		store.Close()
+		_ = store.Close()
 	})
 	return store
 }
@@ -68,7 +68,7 @@ func makeTestChunk(sessionID string, messageID int64, chunkIndex int, text strin
 func insertTestChunks(t *testing.T, store *Store, n int) {
 	t.Helper()
 	chunks := make([]Chunk, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		chunks[i] = makeTestChunk(
 			"session-1",
 			int64(i+1),
@@ -839,7 +839,7 @@ func TestStore_GetPendingEmbeddings_RespectsLimit(t *testing.T) {
 	store := setupTestStore(t)
 
 	// Insert 5 chunks without embedding
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		chunk := Chunk{
 			SessionID: "sess-1", MessageID: int64(i + 1), ChunkText: fmt.Sprintf("text %d", i),
 			ChunkTextSegmented: fmt.Sprintf("text %d", i), ChunkIndex: 0, TokenCount: 3,
@@ -1051,7 +1051,7 @@ func TestNewStore_FailedSchema(t *testing.T) {
 		assert.Nil(t, store)
 	} else {
 		// If it succeeds, clean up
-		store.Close()
+		_ = store.Close()
 	}
 }
 
@@ -1247,7 +1247,7 @@ func TestNewStore_ExistingChunksRebuildsFTS(t *testing.T) {
 
 	// Close and reopen the store
 	dbPath := store.dbPath
-	store.Close()
+	_ = store.Close()
 
 	store2, err := NewStore(dbPath, map[string]string{
 		"threads":      "2",

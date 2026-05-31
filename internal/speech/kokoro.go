@@ -58,7 +58,7 @@ func NewKokoroProvider() *KokoroProvider {
 // Text is piped via stdin to the bridge script.
 func (p *KokoroProvider) Synthesize(ctx context.Context, text string, outputPath string, _ string) error {
 	dir := filepath.Dir(outputPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %w", dir, err)
 	}
 
@@ -107,7 +107,8 @@ func (p *KokoroProvider) Synthesize(ctx context.Context, text string, outputPath
 		"--output", outputPath,
 	}
 
-	slog.Info("kokoro synthesize",
+	slog.Info(
+		"kokoro synthesize",
 		slog.String("output", outputPath),
 		slog.String("model", p.ModelPath),
 		slog.String("voice", p.Voice),

@@ -13,7 +13,7 @@ import (
 
 func TestWithRequestID_HeaderIsSet(t *testing.T) {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 	middleware.WithRequestID(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -27,7 +27,7 @@ func TestWithRequestID_GetRequestID_ExtractsFromContext(t *testing.T) {
 	var extractedID string
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 	middleware.WithRequestID(func(w http.ResponseWriter, r *http.Request) {
 		extractedID = middleware.GetRequestID(r.Context())
@@ -46,9 +46,9 @@ func TestGetRequestID_NilContext_ReturnsEmpty(t *testing.T) {
 func TestWithRequestID_UniqueIDs(t *testing.T) {
 	ids := make(map[string]bool)
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 		middleware.WithRequestID(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)

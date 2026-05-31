@@ -1,3 +1,4 @@
+//nolint:noctx // test code
 package service
 
 import (
@@ -16,7 +17,7 @@ func InitInMemoryDB() (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 
 	if _, err := db.Exec(AgentDDL); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 

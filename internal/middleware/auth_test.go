@@ -35,7 +35,7 @@ func TestAuth_NoPassword_PassThrough(t *testing.T) {
 		model.SessionToken = ""
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 		middleware.Auth(okHandler).ServeHTTP(rec, req)
 
@@ -50,7 +50,7 @@ func TestAuth_Localhost_IPv4_BypassesAuth(t *testing.T) {
 		model.SessionToken = "valid-token"
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.RemoteAddr = "127.0.0.1:12345"
 
 		middleware.Auth(okHandler).ServeHTTP(rec, req)
@@ -64,7 +64,7 @@ func TestAuth_Localhost_IPv6_BypassesAuth(t *testing.T) {
 		model.SessionToken = "valid-token"
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.RemoteAddr = "[::1]:12345"
 
 		middleware.Auth(okHandler).ServeHTTP(rec, req)
@@ -80,7 +80,7 @@ func TestAuth_ValidCookie_PassThrough(t *testing.T) {
 		model.SessionToken = "valid-token"
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.RemoteAddr = "192.168.1.100:12345"
 		req.AddCookie(&http.Cookie{
 			Name:  model.SessionCookie,
@@ -100,7 +100,7 @@ func TestAuth_InvalidCookieValue_Returns401(t *testing.T) {
 		model.SessionToken = "valid-token"
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.RemoteAddr = "192.168.1.100:12345"
 		req.AddCookie(&http.Cookie{
 			Name:  model.SessionCookie,
@@ -118,7 +118,7 @@ func TestAuth_MissingCookie_Returns401(t *testing.T) {
 		model.SessionToken = "valid-token"
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.RemoteAddr = "192.168.1.100:12345"
 
 		middleware.Auth(okHandler).ServeHTTP(rec, req)
@@ -134,7 +134,7 @@ func TestAuth_LocalhostWithBadCookie_StillPasses(t *testing.T) {
 		model.SessionToken = "valid-token"
 
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 		req.RemoteAddr = "127.0.0.1:12345"
 		req.AddCookie(&http.Cookie{
 			Name:  model.SessionCookie,
@@ -150,7 +150,7 @@ func TestAuth_LocalhostWithBadCookie_StillPasses(t *testing.T) {
 // --- GetProjectFromCookie ---
 
 func TestGetProjectFromCookie_NormalExtraction(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.AddCookie(&http.Cookie{
 		Name:  "clawbench_project",
 		Value: "/home/user/myproject",
@@ -162,7 +162,7 @@ func TestGetProjectFromCookie_NormalExtraction(t *testing.T) {
 
 func TestGetProjectFromCookie_URLEncodedValueDecoded(t *testing.T) {
 	encoded := url.QueryEscape("/home/user/my project")
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.AddCookie(&http.Cookie{
 		Name:  "clawbench_project",
 		Value: encoded,
@@ -173,14 +173,14 @@ func TestGetProjectFromCookie_URLEncodedValueDecoded(t *testing.T) {
 }
 
 func TestGetProjectFromCookie_NoCookie_ReturnsEmpty(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 
 	result := middleware.GetProjectFromCookie(req)
 	assert.Equal(t, "", result)
 }
 
 func TestGetProjectFromCookie_EmptyValue_ReturnsEmpty(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
 	req.AddCookie(&http.Cookie{
 		Name:  "clawbench_project",
 		Value: "",

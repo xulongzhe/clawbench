@@ -67,7 +67,7 @@ func TestConvertAskQuestionBlocks_IDUsesUUID(t *testing.T) {
 						t.Errorf("expected dash at position %d in UUID, got %c (ID=%q)", i, c, b.ID)
 					}
 				default:
-					if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+					if c < '0' || c > '9' && c < 'a' || c > 'f' {
 						t.Errorf("expected hex digit at position %d in UUID, got %c (ID=%q)", i, c, b.ID)
 					}
 				}
@@ -81,7 +81,7 @@ func TestConvertAskQuestionBlocks_IDUsesUUID(t *testing.T) {
 func TestConvertAskQuestionBlocks_IDsAreUnique(t *testing.T) {
 	// Generate multiple blocks and verify that IDs are unique (UUID-based)
 	ids := make(map[string]bool)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		blocks := []model.ContentBlock{
 			{Type: "text", Text: "<ask-question>\n{\"questions\":[{\"header\":\"Pick\",\"multiSelect\":false,\"options\":[{\"label\":\"A\",\"description\":\"Option A\"}],\"question\":\"Which one?\"}]}\n</ask-question>"},
 		}

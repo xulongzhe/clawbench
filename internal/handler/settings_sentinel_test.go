@@ -14,51 +14,29 @@ import (
 // ---------- IsRunningUnderSupervisor ----------
 
 func TestIsRunningUnderSupervisor_CLAWBENCH_NO_SUPERVISOR(t *testing.T) {
-	orig := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
-	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "1")
-	defer os.Setenv("CLAWBENCH_NO_SUPERVISOR", orig)
+	t.Setenv("CLAWBENCH_NO_SUPERVISOR", "1")
 
 	assert.False(t, IsRunningUnderSupervisor(), "CLAWBENCH_NO_SUPERVISOR=1 should return false")
 }
 
 func TestIsRunningUnderSupervisor_INVOCATION_ID(t *testing.T) {
-	origNo := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
-	origInv := os.Getenv("INVOCATION_ID")
-	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
-	os.Setenv("INVOCATION_ID", "test-id")
-	defer func() {
-		os.Setenv("CLAWBENCH_NO_SUPERVISOR", origNo)
-		os.Setenv("INVOCATION_ID", origInv)
-	}()
+	t.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
+	t.Setenv("INVOCATION_ID", "test-id")
 
 	assert.True(t, IsRunningUnderSupervisor(), "INVOCATION_ID set should return true")
 }
 
 func TestIsRunningUnderSupervisor_ContainerEnv(t *testing.T) {
-	origNo := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
-	origCont := os.Getenv("container")
-	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
-	os.Setenv("container", "docker")
-	defer func() {
-		os.Setenv("CLAWBENCH_NO_SUPERVISOR", origNo)
-		os.Setenv("container", origCont)
-	}()
+	t.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
+	t.Setenv("container", "docker")
 
 	assert.True(t, IsRunningUnderSupervisor(), "container env set should return true")
 }
 
 func TestIsRunningUnderSupervisor_NoIndicators(t *testing.T) {
-	origNo := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
-	origInv := os.Getenv("INVOCATION_ID")
-	origCont := os.Getenv("container")
-	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
-	os.Setenv("INVOCATION_ID", "")
-	os.Setenv("container", "")
-	defer func() {
-		os.Setenv("CLAWBENCH_NO_SUPERVISOR", origNo)
-		os.Setenv("INVOCATION_ID", origInv)
-		os.Setenv("container", origCont)
-	}()
+	t.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
+	t.Setenv("INVOCATION_ID", "")
+	t.Setenv("container", "")
 
 	// Under normal test execution (not PID 1, no dockerenv), should be false
 	// unless running in CI with these indicators set
@@ -69,22 +47,14 @@ func TestIsRunningUnderSupervisor_NoIndicators(t *testing.T) {
 }
 
 func TestIsRunningUnderSupervisor_DockerenvFile(t *testing.T) {
-	origNo := os.Getenv("CLAWBENCH_NO_SUPERVISOR")
-	origInv := os.Getenv("INVOCATION_ID")
-	origCont := os.Getenv("container")
-	os.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
-	os.Setenv("INVOCATION_ID", "")
-	os.Setenv("container", "")
-	defer func() {
-		os.Setenv("CLAWBENCH_NO_SUPERVISOR", origNo)
-		os.Setenv("INVOCATION_ID", origInv)
-		os.Setenv("container", origCont)
-	}()
+	t.Setenv("CLAWBENCH_NO_SUPERVISOR", "")
+	t.Setenv("INVOCATION_ID", "")
+	t.Setenv("container", "")
 
 	// Create /.dockerenv temporarily
 	if os.Getuid() == 0 {
-		os.WriteFile("/.dockerenv", []byte{}, 0644)
-		defer os.Remove("/.dockerenv")
+		_ = os.WriteFile("/.dockerenv", []byte{}, 0o644)
+		defer func() { _ = os.Remove("/.dockerenv") }()
 		assert.True(t, IsRunningUnderSupervisor(), "/.dockerenv exists should return true")
 	}
 	// If not root, we can't create /.dockerenv, so just verify it doesn't panic
@@ -123,7 +93,7 @@ func TestLaunchSentinelProcess_StartsAndExits(t *testing.T) {
 		// In some environments (e.g., containers without /bin/sh), this may fail
 		t.Skipf("launchSentinel failed (expected in some environments): %v", err)
 	}
-	defer cmd.Process.Kill()
+	defer func() { _ = cmd.Process.Kill() }()
 
 	// Verify the sentinel process was started
 	if cmd.Process == nil {

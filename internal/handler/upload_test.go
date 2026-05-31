@@ -25,13 +25,13 @@ func createMultipartUploadRequest(t *testing.T, filename, content, dir string) *
 	if err != nil {
 		t.Fatalf("failed to create form file: %v", err)
 	}
-	part.Write([]byte(content))
+	_, _ = part.Write([]byte(content))
 
 	if dir != "" {
-		writer.WriteField("dir", dir)
+		_ = writer.WriteField("dir", dir)
 	}
 
-	writer.Close()
+	_ = writer.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -73,7 +73,7 @@ func TestUploadFile_DefaultDir(t *testing.T) {
 		// Empty multipart form without file field
 		var buf bytes.Buffer
 		writer := multipart.NewWriter(&buf)
-		writer.Close()
+		_ = writer.Close()
 		req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		withProjectCookie(req, env.ProjectDir)
@@ -105,8 +105,8 @@ func TestUploadFile_DefaultDir(t *testing.T) {
 		assertOK(t, w)
 
 		var result map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &result)
-		pathStr := result["path"].(string)
+		_ = json.Unmarshal(w.Body.Bytes(), &result)
+		pathStr, _ := result["path"].(string)
 		assert.Contains(t, filepath.ToSlash(pathStr), ".clawbench/uploads/evil.exe")
 	})
 
@@ -127,8 +127,8 @@ func TestUploadFile_DefaultDir(t *testing.T) {
 		assertOK(t, w2)
 
 		var result map[string]interface{}
-		json.Unmarshal(w2.Body.Bytes(), &result)
-		pathStr := result["path"].(string)
+		_ = json.Unmarshal(w2.Body.Bytes(), &result)
+		pathStr, _ := result["path"].(string)
 		assert.Contains(t, pathStr, "dup_1.txt")
 	})
 
@@ -143,8 +143,8 @@ func TestUploadFile_DefaultDir(t *testing.T) {
 		assertOK(t, w)
 
 		var result map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &result)
-		pathStr := result["path"].(string)
+		_ = json.Unmarshal(w.Body.Bytes(), &result)
+		pathStr, _ := result["path"].(string)
 		assert.Contains(t, pathStr, "my_file.txt")
 		assert.NotContains(t, pathStr, "my file.txt")
 	})
@@ -169,8 +169,8 @@ func TestUploadFile_DefaultDir(t *testing.T) {
 		writer := multipart.NewWriter(&buf)
 		part, _ := writer.CreateFormFile("file", "big.txt")
 		// Write a large content (simulated by just writing the multipart boundary)
-		part.Write(make([]byte, 100))
-		writer.Close()
+		_, _ = part.Write(make([]byte, 100))
+		_ = writer.Close()
 
 		req := httptest.NewRequest(http.MethodPost, "/api/upload/file", &buf)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -217,7 +217,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 
 		// Create a subdirectory to upload into
 		subDir := filepath.Join(env.ProjectDir, "subdir")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		req := createMultipartUploadRequest(t, "test.txt", "custom dir content", "subdir")
 		withProjectCookie(req, env.ProjectDir)
@@ -282,7 +282,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		defer teardown()
 
 		subDir := filepath.Join(env.ProjectDir, "mydir")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		// First upload
 		req1 := createMultipartUploadRequest(t, "dup.txt", "first", "mydir")
@@ -297,8 +297,8 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		assertOK(t, w2)
 
 		var result map[string]interface{}
-		json.Unmarshal(w2.Body.Bytes(), &result)
-		pathStr := result["path"].(string)
+		_ = json.Unmarshal(w2.Body.Bytes(), &result)
+		pathStr, _ := result["path"].(string)
 		assert.Contains(t, pathStr, "dup_1.txt")
 	})
 
@@ -308,7 +308,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 
 		// Create nested directory
 		nestedDir := filepath.Join(env.ProjectDir, "a", "b", "c")
-		os.MkdirAll(nestedDir, 0755)
+		_ = os.MkdirAll(nestedDir, 0o755)
 
 		req := createMultipartUploadRequest(t, "deep.txt", "deep content", "a/b/c")
 		withProjectCookie(req, env.ProjectDir)
@@ -317,8 +317,8 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		assertOK(t, w)
 
 		var result map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &result)
-		pathStr := result["path"].(string)
+		_ = json.Unmarshal(w.Body.Bytes(), &result)
+		pathStr, _ := result["path"].(string)
 		assert.Contains(t, filepath.ToSlash(pathStr), "a/b/c/deep.txt")
 	})
 
@@ -328,7 +328,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 
 		// Create a subdirectory
 		subDir := filepath.Join(env.ProjectDir, "absdir")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		// Use absolute path for dir
 		req := createMultipartUploadRequest(t, "abs.txt", "absolute path", subDir)
@@ -338,7 +338,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		assertOK(t, w)
 
 		var result map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &result)
+		_ = json.Unmarshal(w.Body.Bytes(), &result)
 		assert.Equal(t, true, result["ok"])
 	})
 
@@ -365,7 +365,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		defer teardown()
 
 		subDir := filepath.Join(env.ProjectDir, "relpathdir")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		req := createMultipartUploadRequest(t, "rel.txt", "relative", "relpathdir")
 		withProjectCookie(req, env.ProjectDir)
@@ -374,8 +374,8 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		assertOK(t, w)
 
 		var result map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &result)
-		pathStr := result["path"].(string)
+		_ = json.Unmarshal(w.Body.Bytes(), &result)
+		pathStr, _ := result["path"].(string)
 		// Should be a relative path like "relpathdir/rel.txt"
 		assert.False(t, filepath.IsAbs(pathStr))
 		assert.Contains(t, pathStr, "relpathdir")
@@ -392,9 +392,9 @@ func TestUploadFile_CustomDir(t *testing.T) {
 
 		// Create a read-only directory
 		readOnlyDir := filepath.Join(env.ProjectDir, "readonly")
-		os.MkdirAll(readOnlyDir, 0555)
+		_ = os.MkdirAll(readOnlyDir, 0o555)
 		// Ensure we can restore permissions after test
-		defer os.Chmod(readOnlyDir, 0755)
+		defer func() { _ = os.Chmod(readOnlyDir, 0o755) }()
 
 		req := createMultipartUploadRequest(t, "test.txt", "content", "readonly")
 		withProjectCookie(req, env.ProjectDir)
@@ -414,8 +414,8 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		defer teardown()
 
 		// Make the project directory read-only so MkdirAll for .clawbench/uploads/ fails
-		os.Chmod(env.ProjectDir, 0555)
-		defer os.Chmod(env.ProjectDir, 0755)
+		_ = os.Chmod(env.ProjectDir, 0o555)
+		defer func() { _ = os.Chmod(env.ProjectDir, 0o755) }()
 
 		req := createMultipartUploadRequest(t, "test.txt", "content", "")
 		withProjectCookie(req, env.ProjectDir)
@@ -436,13 +436,13 @@ func TestUploadFile_CustomDir(t *testing.T) {
 
 		// Create a real directory OUTSIDE WatchDir
 		outsideDir := filepath.Join(os.TempDir(), "clawbench_outside")
-		os.MkdirAll(outsideDir, 0755)
-		defer os.RemoveAll(outsideDir)
+		_ = os.MkdirAll(outsideDir, 0o755)
+		defer func() { _ = os.RemoveAll(outsideDir) }()
 
 		// Create a symlink INSIDE the project that points OUTSIDE
 		linkPath := filepath.Join(env.ProjectDir, "link_out")
-		os.Symlink(outsideDir, linkPath)
-		defer os.Remove(linkPath)
+		_ = os.Symlink(outsideDir, linkPath)
+		defer func() { _ = os.Remove(linkPath) }()
 
 		req := createMultipartUploadRequest(t, "test.txt", "content", "link_out")
 		withProjectCookie(req, env.ProjectDir)
@@ -459,7 +459,7 @@ func TestUploadFile_CustomDir(t *testing.T) {
 
 		// Create a subdirectory to upload into using absolute path
 		subDir := filepath.Join(env.ProjectDir, "customdir")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		req := createMultipartUploadRequest(t, "dstcheck.txt", "dst path under root", subDir)
 		withProjectCookie(req, env.ProjectDir)
@@ -468,11 +468,11 @@ func TestUploadFile_CustomDir(t *testing.T) {
 		assertOK(t, w)
 
 		var result map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &result)
+		_ = json.Unmarshal(w.Body.Bytes(), &result)
 		assert.Equal(t, true, result["ok"])
 
 		// Verify file exists on disk
-		pathStr := result["path"].(string)
+		pathStr, _ := result["path"].(string)
 		fullPath := filepath.Join(env.ProjectDir, pathStr)
 		data, err := os.ReadFile(fullPath)
 		assert.NoError(t, err)

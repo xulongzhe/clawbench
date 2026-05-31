@@ -11,12 +11,12 @@ import (
 func TestRequestLogger(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("hello"))
+		_, _ = w.Write([]byte("hello"))
 	})
 
 	wrapped := RequestLogger(handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	wrapped(rec, req)
@@ -32,7 +32,7 @@ func TestRequestLogger_CapturesStatus(t *testing.T) {
 
 	wrapped := RequestLogger(handler)
 
-	req := httptest.NewRequest(http.MethodGet, "/missing", nil)
+	req := httptest.NewRequest(http.MethodGet, "/missing", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	wrapped(rec, req)
@@ -42,12 +42,12 @@ func TestRequestLogger_CapturesStatus(t *testing.T) {
 
 func TestRequestLogger_CapturesBytesWritten(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("some response data"))
+		_, _ = w.Write([]byte("some response data"))
 	})
 
 	wrapped := RequestLogger(handler)
 
-	req := httptest.NewRequest(http.MethodPost, "/submit", nil)
+	req := httptest.NewRequest(http.MethodPost, "/submit", http.NoBody)
 	rec := httptest.NewRecorder()
 
 	wrapped(rec, req)

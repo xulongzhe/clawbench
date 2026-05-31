@@ -304,9 +304,9 @@ func TestBuildDeepSeekStreamArgsWithNoModel(t *testing.T) {
 
 func TestBuildDeepSeekStreamArgsWithResume(t *testing.T) {
 	req := ChatRequest{
-		Prompt:   "continue",
+		Prompt:    "continue",
 		SessionID: "4bf83f0f-a9b6-47b4",
-		Resume:   true,
+		Resume:    true,
 	}
 	args := buildDeepSeekStreamArgs(req)
 
@@ -388,7 +388,7 @@ func TestDeepSeekToolNameNormalization(t *testing.T) {
 		"web_search":  "WebSearch",
 		"agent_spawn": "Agent",
 		"load_skill":  "Skill",
-		"todo_write":   "TodoWrite",
+		"todo_write":  "TodoWrite",
 		"apply_patch": "Edit",
 		"git_status":  "Git",
 		"git_diff":    "Git",

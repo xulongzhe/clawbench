@@ -18,17 +18,17 @@ func TestResolveShell(t *testing.T) {
 func TestNewSessionAndClose(t *testing.T) {
 	// PTY fork may be restricted in sandboxed environments
 	cfg := TerminalConfig{
-		IdleTimeout:   "5s",
-		BufferLines:   100,
-		MaxLineBytes:  65536,
-		MaxBufferMB:   4,
+		IdleTimeout:  "5s",
+		BufferLines:  100,
+		MaxLineBytes: 65536,
+		MaxBufferMB:  4,
 	}
 
 	session, err := NewSession("/tmp", "/tmp", cfg)
 	if err != nil {
 		t.Skipf("PTY not available in this environment: %v", err)
 	}
-	defer session.Close()
+	defer func() { session.Close() }()
 
 	if session.ProjectPath() != "/tmp" {
 		t.Errorf("expected projectPath /tmp, got %s", session.ProjectPath())
@@ -43,10 +43,10 @@ func TestNewSessionAndClose(t *testing.T) {
 
 func TestSessionIdleTimeout(t *testing.T) {
 	cfg := TerminalConfig{
-		IdleTimeout:   "1s", // Very short timeout for testing
-		BufferLines:   100,
-		MaxLineBytes:  65536,
-		MaxBufferMB:   4,
+		IdleTimeout:  "1s", // Very short timeout for testing
+		BufferLines:  100,
+		MaxLineBytes: 65536,
+		MaxBufferMB:  4,
 	}
 
 	session, err := NewSession("/tmp", "/tmp", cfg)
@@ -78,7 +78,7 @@ func TestManagerCloseAllSessions(t *testing.T) {
 	}
 
 	mgr := NewManager(cfg, 20000)
-	defer mgr.Close()
+	defer func() { mgr.Close() }()
 
 	// Close with no active sessions should not panic
 	mgr.CloseAllSessions()
@@ -101,7 +101,7 @@ func TestManagerClearsSessionAfterShellExit(t *testing.T) {
 	}
 
 	mgr := NewManager(cfg, 20000)
-	defer mgr.Close()
+	defer func() { mgr.Close() }()
 
 	session, err := NewSession(cwd, cwd, mgr.Config())
 	if err != nil {
@@ -147,7 +147,7 @@ func TestManagerIsEnabled(t *testing.T) {
 	}
 
 	mgr := NewManager(cfg, 20000)
-	defer mgr.Close()
+	defer func() { mgr.Close() }()
 
 	if !mgr.IsEnabled() {
 		t.Error("expected terminal to be enabled")
@@ -162,7 +162,7 @@ func TestManagerIsEnabled(t *testing.T) {
 	}
 
 	disabledMgr := NewManager(disabledCfg, 20000)
-	defer disabledMgr.Close()
+	defer func() { disabledMgr.Close() }()
 
 	if disabledMgr.IsEnabled() {
 		t.Error("expected terminal to be disabled")
@@ -179,7 +179,7 @@ func TestManagerConfig(t *testing.T) {
 	}
 
 	mgr := NewManager(cfg, 20000)
-	defer mgr.Close()
+	defer func() { mgr.Close() }()
 
 	tc := mgr.Config()
 	if !tc.Enabled {
@@ -201,13 +201,13 @@ func TestManagerMultipleSessions(t *testing.T) {
 	}
 
 	mgr := NewManager(cfg, 20000)
-	defer mgr.Close()
+	defer func() { mgr.Close() }()
 
 	tc := mgr.Config()
 
 	// Create multiple sessions
 	ids := make(map[string]bool)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		session, err := NewSession("/tmp", "/tmp", tc)
 		if err != nil {
 			t.Skipf("PTY not available in this environment: %v", err)

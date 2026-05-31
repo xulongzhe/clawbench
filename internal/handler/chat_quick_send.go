@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -11,7 +12,7 @@ import (
 
 // ServeChatQuickSend handles GET (list) and POST (create) for chat quick-send items,
 // and PUT /reorder for batch reordering.
-func ServeChatQuickSend(w http.ResponseWriter, r *http.Request) {
+func ServeChatQuickSend(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-method quick-send handler
 	switch r.Method {
 	case http.MethodGet:
 		items, err := service.GetChatQuickSend()

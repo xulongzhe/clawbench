@@ -86,7 +86,7 @@ func TestMockAIBackend_ExecuteStream_Cancel(t *testing.T) {
 func TestMockAIBackend_CallCount(t *testing.T) {
 	m := NewMockAIBackend()
 
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		_, err := m.ExecuteStream(context.Background(), ChatRequest{Prompt: "test"})
 		require.NoError(t, err)
 	}

@@ -122,7 +122,7 @@ func TestSendTTSEvent_FullChannel(t *testing.T) {
 	RegisterTTSJob("tts-full", cancel)
 
 	// Fill the channel buffer (capacity is 16)
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		sent := SendTTSEvent("tts-full", TTSEvent{Type: "phase", Phase: "step"})
 		assert.True(t, sent)
 	}

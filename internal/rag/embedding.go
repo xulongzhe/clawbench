@@ -46,7 +46,7 @@ type openaiEmbedRequest struct {
 // openaiEmbeddingData is one item in the response "data" array.
 type openaiEmbeddingData struct {
 	Embedding []float64 `json:"embedding"`
-	Index     int        `json:"index"`
+	Index     int       `json:"index"`
 }
 
 // openaiEmbedResponse is the response body for POST /v1/embeddings.
@@ -77,7 +77,7 @@ func (c *EmbeddingClient) Embed(ctx context.Context, text string) ([]float64, er
 
 // EmbedBatch generates embeddings for multiple texts in a single API call.
 // Returns embeddings in the same order as input texts.
-func (c *EmbeddingClient) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) {
+func (c *EmbeddingClient) EmbedBatch(ctx context.Context, texts []string) ([][]float64, error) { //nolint:gocyclo // batch embedding with retry
 	if len(texts) == 0 {
 		return nil, nil
 	}
@@ -106,7 +106,7 @@ func (c *EmbeddingClient) EmbedBatch(ctx context.Context, texts []string) ([][]f
 	if err != nil {
 		return nil, fmt.Errorf("embed request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -148,7 +148,7 @@ func (c *EmbeddingClient) EmbedBatch(ctx context.Context, texts []string) ([][]f
 // Gracefully handles servers that do not implement /v1/models.
 func (c *EmbeddingClient) IsHealthy(ctx context.Context) (bool, bool, error) {
 	url := c.BaseURL + "/v1/models"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
 		return false, false, fmt.Errorf("create health request: %w", err)
 	}
@@ -160,7 +160,7 @@ func (c *EmbeddingClient) IsHealthy(ctx context.Context) (bool, bool, error) {
 	if err != nil {
 		return false, false, nil // Not reachable
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotFound {
 		// Server does not implement /v1/models (e.g. some Ollama versions)
@@ -184,7 +184,8 @@ func (c *EmbeddingClient) IsHealthy(ctx context.Context) (bool, bool, error) {
 		}
 	}
 
-	slog.Warn("embedding service reachable but model not found",
+	slog.Warn(
+		"embedding service reachable but model not found",
 		slog.String("model", c.Model),
 		slog.Int("available_models", len(modelsResp.Data)),
 	)

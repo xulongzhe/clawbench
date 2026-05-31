@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/nicksnyder/go-i18n/v2/i18n"
 	i18npkg "clawbench/internal/i18n"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
 type contextKey string

@@ -1,3 +1,4 @@
+//nolint:noctx // DB parameter, context not applicable
 package service
 
 import (
@@ -7,6 +8,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -180,7 +182,6 @@ func SaveAgentAPIKey(db DBExec, agentID, provider, customURL, apiKey string) err
 			key_nonce = excluded.key_nonce,
 			updated_at = CURRENT_TIMESTAMP
 	`, agentID, provider, customURL, encrypted, nonce)
-
 	if err != nil {
 		return fmt.Errorf("save API key for agent %s/%s: %w", agentID, provider, err)
 	}
@@ -196,7 +197,6 @@ func LoadAgentAPIKey(db *sql.DB, agentID, provider string) (customURL, apiKey st
 		FROM agent_api_keys
 		WHERE agent_id = ? AND provider = ?
 	`, agentID, provider).Scan(&customURL, &encKey, &nonce)
-
 	if err != nil {
 		return "", "", fmt.Errorf("load API key for agent %s/%s: %w", agentID, provider, err)
 	}
@@ -221,7 +221,7 @@ func LoadAgentAnyAPIKey(db *sql.DB, agentID string) (provider, customURL, apiKey
 		LIMIT 1
 	`, agentID).Scan(&provider, &customURL, &encKey, &nonce)
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", "", nil
 	}
 	if err != nil {
@@ -238,9 +238,9 @@ func LoadAgentAnyAPIKey(db *sql.DB, agentID string) (provider, customURL, apiKey
 
 // DecryptedAPIKey holds a decrypted API key loaded from the database.
 type DecryptedAPIKey struct {
-	AgentID  string
-	Provider string
-	CustomURL string
+	AgentID      string
+	Provider     string
+	CustomURL    string
 	PlaintextKey string
 }
 
@@ -250,7 +250,7 @@ func loadAllAPIKeys(db *sql.DB) ([]DecryptedAPIKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query API keys: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var keys []DecryptedAPIKey
 	for rows.Next() {
@@ -307,7 +307,7 @@ func RotateAPIKeyEncryption(db *sql.DB, oldAutoPassword string) error {
 			// CRITICAL: password was updated but re-encryption failed.
 			// Attempt rollback: restore the old auto-password
 			slog.Error("API key rotation failed, attempting rollback", "agent_id", k.AgentID, "provider", k.Provider, "error", err)
-			if writeErr := os.WriteFile(filepath.Join(model.BinDir, ".clawbench", "auto-password"), []byte(oldAutoPassword), 0600); writeErr != nil {
+			if writeErr := os.WriteFile(filepath.Join(model.BinDir, ".clawbench", "auto-password"), []byte(oldAutoPassword), 0o600); writeErr != nil {
 				slog.Error("CRITICAL: failed to rollback auto-password during key rotation", "error", writeErr)
 			}
 			ResetEncryptionKeyCache()

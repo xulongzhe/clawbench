@@ -63,10 +63,10 @@ func (m *mockSpeechProvider) Synthesize(ctx context.Context, text string, output
 		return m.synthesizeErr
 	}
 	// Create a dummy audio file at outputPath
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(outputPath, []byte("fake audio data"), 0644); err != nil {
+	if err := os.WriteFile(outputPath, []byte("fake audio data"), 0o644); err != nil {
 		return err
 	}
 	// Block until the test releases us (if configured)
@@ -111,7 +111,7 @@ func TestTTSGenerate_MethodNotAllowed(t *testing.T) {
 	_, teardown := setupTTSTest(t, mockProvider, mockSum)
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/tts/generate", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/tts/generate", http.NoBody)
 	req = withProjectCookie(req, t.TempDir())
 	w := httptest.NewRecorder()
 
@@ -285,10 +285,10 @@ func TestTTSGenerate_CacheHit(t *testing.T) {
 	absAudioPath := filepath.Join(env.ProjectDir, relAudioPath)
 
 	// Pre-create the cached file
-	if err := os.MkdirAll(filepath.Dir(absAudioPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(absAudioPath), 0o755); err != nil {
 		t.Fatalf("failed to create cache dir: %v", err)
 	}
-	if err := os.WriteFile(absAudioPath, []byte("cached audio"), 0644); err != nil {
+	if err := os.WriteFile(absAudioPath, []byte("cached audio"), 0o644); err != nil {
 		t.Fatalf("failed to write cache file: %v", err)
 	}
 
@@ -483,8 +483,8 @@ func TestTTSStream_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	var genResp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &genResp)
-	jobID := genResp["jobId"].(string)
+	_ = json.Unmarshal(w.Body.Bytes(), &genResp)
+	jobID, _ := genResp["jobId"].(string)
 
 	// Wait for the summarizing phase to be sent (ensures the goroutine is running)
 	hash := sha256.Sum256([]byte(text))
@@ -497,7 +497,7 @@ func TestTTSStream_Success(t *testing.T) {
 	// Connect to stream endpoint while the job is still alive.
 	// The mock synthesize blocks on `block`, so the goroutine won't finish
 	// and unregister the job before we connect.
-	streamReq := httptest.NewRequest(http.MethodGet, "/api/tts/stream/"+jobID, nil)
+	streamReq := httptest.NewRequest(http.MethodGet, "/api/tts/stream/"+jobID, http.NoBody)
 	streamReq = withProjectCookie(streamReq, env.ProjectDir)
 	streamW := httptest.NewRecorder()
 
@@ -524,7 +524,7 @@ func TestTTSStream_JobNotFound(t *testing.T) {
 	_, teardown := setupTTSTest(t, &mockSpeechProvider{}, &mockSummarizer{})
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/tts/stream/nonexistent", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/tts/stream/nonexistent", http.NoBody)
 	req = withProjectCookie(req, t.TempDir())
 	w := httptest.NewRecorder()
 
@@ -536,7 +536,7 @@ func TestTTSStream_MissingJobID(t *testing.T) {
 	_, teardown := setupTTSTest(t, &mockSpeechProvider{}, &mockSummarizer{})
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/tts/stream/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/tts/stream/", http.NoBody)
 	req = withProjectCookie(req, t.TempDir())
 	w := httptest.NewRecorder()
 
@@ -669,7 +669,7 @@ func TestTTSGenerate_SaveTTSSummaryByMessageID_DBError(t *testing.T) {
 	defer teardown()
 
 	// Drop the tts_summaries table to force SaveTTSSummaryByMessageID to fail
-	service.DB.Exec("DROP TABLE tts_summaries")
+	_, _ = service.DB.Exec("DROP TABLE tts_summaries")
 
 	text := "这是一段较长的AI回复内容，需要被总结为语音。包含了详细的分析和代码示例，需要提取核心要点。"
 	req := newRequest(t, http.MethodPost, "/api/tts/generate", map[string]any{"text": text, "messageId": 300})

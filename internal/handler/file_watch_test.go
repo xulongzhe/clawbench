@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,7 +36,7 @@ func (r *threadSafeRecorder) Write(data []byte) (int, error) {
 func (r *threadSafeRecorder) BodyString() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.ResponseRecorder.Body.String()
+	return r.Body.String()
 }
 
 // ---------- FileWatchSSE ----------
@@ -103,7 +103,7 @@ func TestFileWatchSSE_ConnectedEvent(t *testing.T) {
 	assert.Equal(t, "connected", events[0]["event"])
 
 	var data map[string]string
-	json.Unmarshal([]byte(events[0]["data"]), &data)
+	_ = json.Unmarshal([]byte(events[0]["data"]), &data)
 	assert.NotEmpty(t, data["clientId"])
 }
 
@@ -133,7 +133,7 @@ func TestFileWatchSSE_EmptyDirResolvesToProjectRoot(t *testing.T) {
 
 	// Verify: create a file in project root — should trigger dir_change
 	testFile := filepath.Join(env.ProjectDir, "newfile.txt")
-	os.WriteFile(testFile, []byte("test"), 0644)
+	_ = os.WriteFile(testFile, []byte("test"), 0o644)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -163,7 +163,7 @@ func TestFileWatchSSE_DirAndFileParams(t *testing.T) {
 
 	// Create a test file
 	testFile := filepath.Join(env.ProjectDir, "test.txt")
-	os.WriteFile(testFile, []byte("hello"), 0644)
+	_ = os.WriteFile(testFile, []byte("hello"), 0o644)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -182,7 +182,7 @@ func TestFileWatchSSE_DirAndFileParams(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Modify the file to verify file watch is working
-	os.WriteFile(testFile, []byte("modified"), 0644)
+	_ = os.WriteFile(testFile, []byte("modified"), 0o644)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -258,7 +258,7 @@ func TestFileWatchSSE_FileChangeEvent(t *testing.T) {
 	defer service.StopFileWatcher()
 
 	testFile := filepath.Join(env.ProjectDir, "watchme.txt")
-	os.WriteFile(testFile, []byte("initial"), 0644)
+	_ = os.WriteFile(testFile, []byte("initial"), 0o644)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -276,7 +276,7 @@ func TestFileWatchSSE_FileChangeEvent(t *testing.T) {
 
 	time.Sleep(300 * time.Millisecond)
 
-	os.WriteFile(testFile, []byte("modified"), 0644)
+	_ = os.WriteFile(testFile, []byte("modified"), 0o644)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -291,7 +291,7 @@ func TestFileWatchSSE_FileChangeEvent(t *testing.T) {
 		if e["event"] == "file_change" {
 			foundFileChange = true
 			var data map[string]string
-			json.Unmarshal([]byte(e["data"]), &data)
+			_ = json.Unmarshal([]byte(e["data"]), &data)
 			assert.Equal(t, "file_change", data["type"])
 			assert.Contains(t, data["path"], "watchme.txt")
 		}
@@ -325,7 +325,7 @@ func TestFileWatchSSE_DirChangeEvent(t *testing.T) {
 
 	// Create a new file in the directory
 	newFile := filepath.Join(env.ProjectDir, "new_in_dir.txt")
-	os.WriteFile(newFile, []byte("new"), 0644)
+	_ = os.WriteFile(newFile, []byte("new"), 0o644)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -468,7 +468,7 @@ func TestFileWatchUpdate_Success(t *testing.T) {
 
 	// Create test file
 	testFile := filepath.Join(env.ProjectDir, "update.txt")
-	os.WriteFile(testFile, []byte("hello"), 0644)
+	_ = os.WriteFile(testFile, []byte("hello"), 0o644)
 
 	// Update the watch paths
 	body := fileWatchUpdateRequest{
@@ -484,7 +484,7 @@ func TestFileWatchUpdate_Success(t *testing.T) {
 	assertJSONField(t, w, "ok", true)
 
 	// Modify the file and verify file_change comes through
-	os.WriteFile(testFile, []byte("modified"), 0644)
+	_ = os.WriteFile(testFile, []byte("modified"), 0o644)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -545,7 +545,7 @@ func TestFileWatchUpdate_EmptyDirResolvesToProjectRoot(t *testing.T) {
 
 	// Verify: create a file in project root — should trigger dir_change
 	testFile := filepath.Join(env.ProjectDir, "root_file.txt")
-	os.WriteFile(testFile, []byte("root"), 0644)
+	_ = os.WriteFile(testFile, []byte("root"), 0o644)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -587,7 +587,7 @@ func TestFileWatchUpdate_UnknownClientId(t *testing.T) {
 
 func TestNewWatchClientID_Uniqueness(t *testing.T) {
 	ids := make(map[string]bool)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		id := newWatchClientID()
 		assert.NotEmpty(t, id)
 		assert.False(t, ids[id], "client ID should be unique, got duplicate: %s", id)

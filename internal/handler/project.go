@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -25,7 +26,7 @@ func ServeRecentProjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(paths)
+		_ = json.NewEncoder(w).Encode(paths)
 
 	case http.MethodPost:
 		var req struct {
@@ -40,7 +41,7 @@ func ServeRecentProjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 
 	case http.MethodDelete:
 		var req struct {
@@ -55,7 +56,7 @@ func ServeRecentProjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 
 	default:
 		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
@@ -63,7 +64,7 @@ func ServeRecentProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeProjectSet handles GET (current project) and POST (set project).
-func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
+func ServeProjectSet(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo // multi-method project handler
 	switch r.Method {
 	case http.MethodGet:
 		cookie, err := r.Cookie("clawbench_project")
@@ -93,7 +94,7 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"path": projectPath, "homeDir": platform.UserHomeDir()})
+		_ = json.NewEncoder(w).Encode(map[string]string{"path": projectPath, "homeDir": platform.UserHomeDir()})
 
 	case http.MethodPost:
 		var req struct {
@@ -155,7 +156,7 @@ func ServeProjectSet(w http.ResponseWriter, r *http.Request) {
 			SameSite: http.SameSiteLaxMode,
 		})
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"ok": "true", "path": absPath})
+		_ = json.NewEncoder(w).Encode(map[string]string{"ok": "true", "path": absPath})
 
 	default:
 		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
@@ -171,7 +172,7 @@ func ServeRoots(w http.ResponseWriter, r *http.Request) {
 		roots = []string{platform.UserHomeDir()}
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"roots":                  roots,
 		"uploadMaxSizeMB":        model.UploadMaxSizeMB,
 		"uploadMaxFiles":         model.UploadMaxFiles,

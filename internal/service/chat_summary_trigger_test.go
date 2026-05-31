@@ -25,8 +25,8 @@ func setupTestDBForTriggerSummary(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_history (

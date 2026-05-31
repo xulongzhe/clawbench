@@ -1,3 +1,4 @@
+//nolint:goconst,govet // JSON response field names are domain strings; shadowed err is acceptable in sequential blocks
 package handler
 
 import (
@@ -13,7 +14,7 @@ import (
 )
 
 // ServeTasks handles GET (list) and POST (create) for scheduled tasks.
-func ServeTasks(w http.ResponseWriter, r *http.Request) {
+func ServeTasks(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-method task list handler
 	projectPath, ok := requireProject(w, r)
 	if !ok {
 		return
@@ -45,23 +46,23 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"tasks": tasks, "hasUnread": hasUnread})
 
 	case http.MethodPost:
-	var req struct {
-		Name       string `json:"name"`
-		CronExpr   string `json:"cron_expr"`
-		AgentID    string `json:"agent_id"`
-		Prompt     string `json:"prompt"`
-		RepeatMode string `json:"repeat_mode"`
-		MaxRuns    int    `json:"max_runs"`
-		SessionID  string `json:"session_id"`
-	}
-	if !decodeJSON(w, r, &req) {
+		var req struct {
+			Name       string `json:"name"`
+			CronExpr   string `json:"cron_expr"`
+			AgentID    string `json:"agent_id"`
+			Prompt     string `json:"prompt"`
+			RepeatMode string `json:"repeat_mode"`
+			MaxRuns    int    `json:"max_runs"`
+			SessionID  string `json:"session_id"`
+		}
+		if !decodeJSON(w, r, &req) {
 			return
 		}
 		if req.Name == "" || req.CronExpr == "" || req.AgentID == "" || req.Prompt == "" {
 			writeLocalizedErrorf(w, r, http.StatusBadRequest, "TaskFieldsRequired")
 			return
 		}
-	if req.RepeatMode == "" {
+		if req.RepeatMode == "" {
 			req.RepeatMode = "unlimited"
 		}
 
@@ -77,7 +78,7 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := service.GlobalScheduler.AddTask(task); err != nil {
-			model.WriteError(w, model.Internal(fmt.Errorf("failed to create task: %v", err)))
+			model.WriteError(w, model.Internal(fmt.Errorf("failed to create task: %w", err)))
 			return
 		}
 
@@ -93,7 +94,7 @@ func ServeTasks(w http.ResponseWriter, r *http.Request) {
 // PUT /api/tasks/{id} - update task (pause/resume)
 // DELETE /api/tasks/{id} - delete task
 // GET /api/tasks/{id}/executions - get execution history
-func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
+func ServeTaskByID(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo // multi-method task CRUD handler
 	// Require project ownership for all task operations
 	projectPath, ok := requireProject(w, r)
 	if !ok {
@@ -163,8 +164,8 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPut:
 		var req struct {
-			Action      string `json:"action"`       // "pause", "resume", "read", "trigger", "cancel", or "update"
-			ExecutionID string `json:"executionId"`  // required for "cancel"
+			Action      string `json:"action"`      // "pause", "resume", "read", "trigger", "cancel", or "update"
+			ExecutionID string `json:"executionId"` // required for "cancel"
 			Name        string `json:"name"`
 			CronExpr    string `json:"cron_expr"`
 			AgentID     string `json:"agent_id"`
@@ -312,7 +313,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 
 		// Update task
 		if err := service.GlobalScheduler.UpdateTask(task); err != nil {
-			model.WriteError(w, model.Internal(fmt.Errorf("failed to update task: %v", err)))
+			model.WriteError(w, model.Internal(fmt.Errorf("failed to update task: %w", err)))
 			return
 		}
 
@@ -343,7 +344,7 @@ func ServeTaskByID(w http.ResponseWriter, r *http.Request) {
 // It joins task_executions with chat_history to fetch the assistant content.
 // Supports cursor-based pagination: ?limit=N&cursor=timestamp&cursor_id=id
 // When limit > 0, returns { executions, hasMore }. Otherwise returns all (no hasMore).
-func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID int64, projectPath string) {
+func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID int64, projectPath string) { //nolint:gocognit,gocyclo // execution list with pagination
 	task, err := service.GetTaskByID(taskID)
 	if err != nil {
 		writeLocalizedError(w, r, model.NotFound(nil, "TaskNotFound"))
@@ -410,12 +411,12 @@ func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID int64, p
 		args = append(args, limit+1)
 	}
 
-	rows, err := service.DB.Query(query, args...)
+	rows, err := service.DB.QueryContext(r.Context(), query, args...)
 	if err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("failed to load execution history")))
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var executions []Execution
 	for rows.Next() {
@@ -446,6 +447,10 @@ func serveTaskExecutions(w http.ResponseWriter, r *http.Request, taskID int64, p
 			}
 		}
 		executions = append(executions, exec)
+	}
+	if err := rows.Err(); err != nil {
+		model.WriteError(w, model.Internal(fmt.Errorf("failed to iterate execution records")))
+		return
 	}
 
 	if executions == nil {
@@ -481,7 +486,7 @@ func serveContinueConversation(w http.ResponseWriter, r *http.Request, taskID, e
 	}
 }
 
-func serveContinueConversationCheck(w http.ResponseWriter, r *http.Request, execID int64, projectPath string) {
+func serveContinueConversationCheck(w http.ResponseWriter, r *http.Request, execID int64, _ string) {
 	exists, sessionID, err := service.CheckContinueSession(execID)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {

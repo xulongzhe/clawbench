@@ -1,3 +1,4 @@
+//nolint:govet // shadowed err is acceptable in sequential blocks
 package cli
 
 import (
@@ -247,7 +248,8 @@ func readFlagOrFile(val string, projectPath string) (string, error) {
 // where parsing stops at the first non-flag argument.
 //
 // Example: ["1", "--prompt", "hello", "--project", "/path"]
-//       → ["--prompt", "hello", "--project", "/path", "1"]
+//
+//	→ ["--prompt", "hello", "--project", "/path", "1"]
 func reorderFlagsFirst(args []string) []string {
 	var flags, positional []string
 	for i := 0; i < len(args); i++ {
@@ -453,7 +455,7 @@ func runListExec(args []string) int {
 	return 0
 }
 
-func runUpdate(args []string) int {
+func runUpdate(args []string) int { //nolint:gocyclo // multi-flag task update CLI
 	// Anti-recursion: scheduled executions cannot modify tasks either.
 	// While 'create' creates new tasks, 'update' can modify existing task
 	// prompts/crons to achieve recursive behavior (ISS-031).

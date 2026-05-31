@@ -35,8 +35,8 @@ func TestServeChatQuickSend_ListWithItems(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	service.AddChatQuickSend("继续", "继续")
-	service.AddChatQuickSend("提交", "提交")
+	_, _ = service.AddChatQuickSend("继续", "继续")
+	_, _ = service.AddChatQuickSend("提交", "提交")
 
 	req := newRequest(t, http.MethodGet, "/api/chat/quick-send", nil)
 	w := callHandler(ServeChatQuickSend, req)
@@ -102,7 +102,7 @@ func TestServeChatQuickSend_CreateLabelTooLong(t *testing.T) {
 	defer teardown()
 
 	longLabel := ""
-	for i := 0; i < 101; i++ {
+	for range 101 {
 		longLabel += "x"
 	}
 	body := map[string]any{"label": longLabel, "command": "test"}
@@ -117,7 +117,7 @@ func TestServeChatQuickSend_CreateCommandTooLong(t *testing.T) {
 	defer teardown()
 
 	longCommand := ""
-	for i := 0; i < 4097; i++ {
+	for range 4097 {
 		longCommand += "x"
 	}
 	body := map[string]any{"label": "test", "command": longCommand}
@@ -153,8 +153,8 @@ func TestServeChatQuickSend_Reorder(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	service.AddChatQuickSend("A", "a") // id=1, sort=0
-	service.AddChatQuickSend("B", "b") // id=2, sort=1
+	_, _ = service.AddChatQuickSend("A", "a") // id=1, sort=0
+	_, _ = service.AddChatQuickSend("B", "b") // id=2, sort=1
 
 	body := map[string]any{"ids": []int64{2, 1}}
 	req := newRequest(t, http.MethodPut, "/api/chat/quick-send/reorder", body)
@@ -191,7 +191,7 @@ func TestServeChatQuickSendByID_Update(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	service.AddChatQuickSend("继续", "继续")
+	_, _ = service.AddChatQuickSend("继续", "继续")
 
 	body := map[string]any{"label": "▶️ 继续", "command": "请继续"}
 	req := newRequest(t, http.MethodPut, "/api/chat/quick-send/1", body)
@@ -215,7 +215,7 @@ func TestServeChatQuickSendByID_UpdateEmptyLabel(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	service.AddChatQuickSend("继续", "继续")
+	_, _ = service.AddChatQuickSend("继续", "继续")
 
 	body := map[string]any{"label": "", "command": "test"}
 	req := newRequest(t, http.MethodPut, "/api/chat/quick-send/1", body)
@@ -241,8 +241,8 @@ func TestServeChatQuickSendByID_Delete(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	service.AddChatQuickSend("继续", "继续")
-	service.AddChatQuickSend("提交", "提交")
+	_, _ = service.AddChatQuickSend("继续", "继续")
+	_, _ = service.AddChatQuickSend("提交", "提交")
 
 	req := newRequest(t, http.MethodDelete, "/api/chat/quick-send/1", nil)
 	w := callHandler(ServeChatQuickSendByID, req)
@@ -301,7 +301,7 @@ func TestChatQuickSendRouteRequiresAuth(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/chat/quick-send", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/chat/quick-send", http.NoBody)
 	req.RemoteAddr = "203.0.113.10:12345"
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
@@ -317,8 +317,8 @@ func TestServeChatQuickSendByID_ReorderForwardedToServeChatQuickSend(t *testing.
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	service.AddChatQuickSend("A", "a")
-	service.AddChatQuickSend("B", "b")
+	_, _ = service.AddChatQuickSend("A", "a")
+	_, _ = service.AddChatQuickSend("B", "b")
 
 	body := map[string]any{"ids": []int64{2, 1}}
 	req := newRequest(t, http.MethodPut, "/api/chat/quick-send/reorder", body)

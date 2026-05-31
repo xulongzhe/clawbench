@@ -39,7 +39,7 @@ func walkPresenceMap(m map[string]any, prefix string, presence map[string]bool) 
 // presence indicates which keys were explicitly set in the config file,
 // used to distinguish "user wrote enabled: false" from "user omitted the section".
 // Returns the auto-generated password if one was created, empty string otherwise.
-func ApplyDefaults(cfg *Config, presence map[string]bool) string {
+func ApplyDefaults(cfg *Config, presence map[string]bool) string { //nolint:gocognit,gocyclo // exhaustive default application for all config fields
 	var autoPassword string
 
 	// --- Server ---
@@ -77,16 +77,13 @@ func ApplyDefaults(cfg *Config, presence map[string]bool) string {
 			}
 			cfg.Password = fmt.Sprintf("%x", b)
 			// Persist for reuse across restarts
-			os.MkdirAll(filepath.Dir(autoPasswordFile), 0755)
-			os.WriteFile(autoPasswordFile, []byte(cfg.Password), 0600)
+			_ = os.MkdirAll(filepath.Dir(autoPasswordFile), 0o755)
+			_ = os.WriteFile(autoPasswordFile, []byte(cfg.Password), 0o600)
 		}
 		autoPassword = cfg.Password
-	} else if IsSHA256Password(cfg.Password) {
-		// SHA-256 hashed password from config (set via settings API) — treat as explicitly set
-		os.Remove(autoPasswordFile)
 	} else {
-		// User explicitly set a plaintext password — remove stale auto-password file if any
-		os.Remove(autoPasswordFile)
+		// SHA-256 hashed or user-set plaintext password — remove stale auto-password file
+		_ = os.Remove(autoPasswordFile)
 	}
 
 	// --- LogDir ---

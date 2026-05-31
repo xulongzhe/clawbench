@@ -29,7 +29,7 @@ type ChatSession struct {
 	AgentID         string     `json:"agentId,omitempty"`
 	AgentSource     string     `json:"agentSource,omitempty"`
 	Model           string     `json:"model,omitempty"`
-	SessionType     string     `json:"sessionType,omitempty"` // "chat" | "scheduled"
+	SessionType     string     `json:"sessionType,omitempty"`     // "chat" | "scheduled"
 	SourceSessionID string     `json:"sourceSessionId,omitempty"` // non-empty = continued from scheduled task
 	CreatedAt       time.Time  `json:"createdAt"`
 	UpdatedAt       time.Time  `json:"updatedAt"`

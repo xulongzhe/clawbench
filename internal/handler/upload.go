@@ -1,3 +1,4 @@
+//nolint:goconst,govet // JSON response field names are domain strings; shadowed err is acceptable in sequential blocks
 package handler
 
 import (
@@ -25,7 +26,7 @@ func maxUploadSize() int64 {
 // Accepts an optional "dir" form field. When provided, the file is saved to
 // that directory (validated and resolved against the project root). When
 // omitted, the file is saved to .clawbench/uploads/ (chat attachment flow).
-func UploadFile(w http.ResponseWriter, r *http.Request) {
+func UploadFile(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-path upload handler
 	projectPath, ok := requireProject(w, r)
 	if !ok {
 		return
@@ -40,7 +41,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize())
 
 	// Parse multipart form
-	if err := r.ParseMultipartForm(maxUploadSize()); err != nil {
+	if err := r.ParseMultipartForm(maxUploadSize()); err != nil { //nolint:gosec // MaxBytesReader limits parsed size
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "FileTooLargeOrInvalid")
 		return
 	}
@@ -50,7 +51,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		writeLocalizedErrorf(w, r, http.StatusBadRequest, "NoFileProvided")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Validate file extension — all file types are allowed.
 	// This is intentional: users upload code, configs, binaries, and arbitrary
@@ -88,7 +89,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		// Default: .clawbench/uploads/
 		customDir = false
 		targetDir = filepath.Join(projectPath, ".clawbench", "uploads")
-		if err := os.MkdirAll(targetDir, 0755); err != nil {
+		if err := os.MkdirAll(targetDir, 0o755); err != nil {
 			model.WriteError(w, model.Internal(fmt.Errorf("failed to create uploads directory")))
 			return
 		}
@@ -125,11 +126,11 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 		model.WriteError(w, model.Internal(fmt.Errorf("failed to create file")))
 		return
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	// Copy file content
 	if _, err := io.Copy(dst, file); err != nil {
-		os.Remove(dstPath)
+		_ = os.Remove(dstPath)
 		model.WriteError(w, model.Internal(fmt.Errorf("failed to save file")))
 		return
 	}
@@ -147,7 +148,7 @@ func UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":   true,
 		"path": relativePath,
 	})

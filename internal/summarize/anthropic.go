@@ -100,7 +100,7 @@ func (s *AnthropicSummarizer) DoSummarizePass(ctx context.Context, text, systemP
 	if err != nil {
 		return "", fmt.Errorf("anthropic request (pass %d): %w", pass, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
@@ -124,7 +124,8 @@ func (s *AnthropicSummarizer) DoSummarizePass(ctx context.Context, text, systemP
 		return "", fmt.Errorf("anthropic (pass %d) returned empty output", pass)
 	}
 
-	slog.Info("tts summarize pass completed",
+	slog.Info(
+		"tts summarize pass completed",
 		slog.Int("pass", pass),
 		slog.String("backend", "anthropic"),
 		slog.String("model", s.Model),

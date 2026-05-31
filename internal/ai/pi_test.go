@@ -52,9 +52,9 @@ func TestBuildPiStreamArgs_NewSession(t *testing.T) {
 
 func TestBuildPiStreamArgs_ResumeSession(t *testing.T) {
 	req := ChatRequest{
-		Prompt:   "continue this",
+		Prompt:    "continue this",
 		SessionID: "sess-123",
-		Resume:   true,
+		Resume:    true,
 	}
 	args := buildPiStreamArgs(req)
 
@@ -176,9 +176,9 @@ func TestBuildPiStreamArgs_EndToEndResumeChain(t *testing.T) {
 
 	// Phase 3: Resume with the Pi-assigned session ID → --session <id>
 	resumeWithIDReq := ChatRequest{
-		Prompt:   "continue",
+		Prompt:    "continue",
 		SessionID: piSessionID,
-		Resume:   true,
+		Resume:    true,
 	}
 	resumeWithIDArgs := buildPiStreamArgs(resumeWithIDReq)
 	assert.Contains(t, resumeWithIDArgs, "--session")
@@ -191,9 +191,9 @@ func TestBuildPiStreamArgs_EndToEndResumeChain(t *testing.T) {
 	// Phase 4: Resume without a known session ID → --continue (fallback)
 	// This happens when the session_capture was missed (e.g. stream cancelled early)
 	resumeNoIDReq := ChatRequest{
-		Prompt:   "keep going",
+		Prompt:    "keep going",
 		SessionID: "",
-		Resume:   true,
+		Resume:    true,
 	}
 	resumeNoIDArgs := buildPiStreamArgs(resumeNoIDReq)
 	assert.Contains(t, resumeNoIDArgs, "--continue",

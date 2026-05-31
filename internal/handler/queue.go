@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (

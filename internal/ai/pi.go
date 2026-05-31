@@ -15,12 +15,13 @@ var piBackend = &CLIBackend{
 // Command: pi -p --mode json [flags] "prompt"
 //
 // Supported flags:
-//   --session <id>              Resume a specific session
-//   --continue                  Continue the most recent session
-//   --no-session                Start a new session (no persistence)
-//   --no-context-files          Skip AGENTS.md / CLAUDE.md discovery
-//   --append-system-prompt <text> Append to Pi's built-in system prompt
-//   --model <model>             Override model
+//
+//	--session <id>              Resume a specific session
+//	--continue                  Continue the most recent session
+//	--no-session                Start a new session (no persistence)
+//	--no-context-files          Skip AGENTS.md / CLAUDE.md discovery
+//	--append-system-prompt <text> Append to Pi's built-in system prompt
+//	--model <model>             Override model
 //
 // Working directory is set via cmd.Dir (CLIBackend sets cmd.Dir = req.WorkDir),
 // not via a CLI flag — Pi does not have a --add-dir option.
@@ -28,23 +29,20 @@ func buildPiStreamArgs(req ChatRequest) []string {
 	args := []string{"-p", "--mode", "json"}
 
 	// Session management
-	if req.Resume && req.SessionID != "" {
+	switch {
+	case req.Resume && req.SessionID != "":
 		// Resume a specific session by its Pi-assigned ID (captured via
 		// external_session_id). This allows conversation continuity.
 		args = append(args, "--session", req.SessionID)
-	} else if req.Resume {
+	case req.Resume:
 		// Resume without a known session ID — continue the most recent session.
 		args = append(args, "--continue")
-	} else if req.ScheduledExecution {
+	case req.ScheduledExecution:
 		// Scheduled tasks are independent executions — no need to persist sessions.
 		args = append(args, "--no-session")
-	} else {
-		// New interactive session: don't pass any session flag. Pi will
-		// create a persistent session and emit its ID in a "session" event,
-		// which we capture as external_session_id for future resumption.
-		// Using --no-session here would make the session ephemeral, so the
-		// captured ID would be unusable for --session resume later.
 	}
+	// Default: new interactive session without --no-session so Pi creates
+	// a persistent session whose ID can be captured for future resumption.
 
 	// Skip AGENTS.md / CLAUDE.md discovery — ClawBench injects its own rules
 	args = append(args, "--no-context-files")

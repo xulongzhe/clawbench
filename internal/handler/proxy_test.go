@@ -172,7 +172,7 @@ func TestUnregisterPort_Valid(t *testing.T) {
 
 	_, _ = service.ProxyService.RegisterPort(9090, "", "metrics", "")
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9090", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9090", http.NoBody)
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertOK(t, w)
@@ -184,7 +184,7 @@ func TestUnregisterPort_NotRegistered(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9999", nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?port=9999", http.NoBody)
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertStatus(t, w, http.StatusNotFound)
@@ -206,7 +206,7 @@ func TestUnregisterPort_InvalidQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?"+tt.query, nil)
+			req := httptest.NewRequest(http.MethodDelete, "/api/proxy/ports?"+tt.query, http.NoBody)
 			w := callHandler(ServeProxyPortAction, req)
 			assertStatus(t, w, http.StatusBadRequest)
 		})
@@ -253,7 +253,7 @@ func TestRegisterPort_MissingBody(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodPost, "/api/proxy/ports", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/proxy/ports", http.NoBody)
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertStatus(t, w, http.StatusBadRequest)
@@ -413,7 +413,7 @@ func TestUpdatePort_MissingBody(t *testing.T) {
 	teardown := setupProxyTest(t)
 	defer teardown()
 
-	req := httptest.NewRequest(http.MethodPut, "/api/proxy/ports", nil)
+	req := httptest.NewRequest(http.MethodPut, "/api/proxy/ports", http.NoBody)
 	w := callHandler(ServeProxyPortAction, req)
 
 	assertStatus(t, w, http.StatusBadRequest)

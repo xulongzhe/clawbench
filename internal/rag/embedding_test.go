@@ -54,7 +54,7 @@ func TestEmbed_Success(t *testing.T) {
 				{Embedding: makeTestEmbedding(1024), Index: 0},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -66,7 +66,7 @@ func TestEmbed_Success(t *testing.T) {
 func TestEmbed_Non200Status(t *testing.T) {
 	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("internal error"))
+		_, _ = w.Write([]byte("internal error"))
 	})
 	defer cleanup()
 
@@ -82,7 +82,7 @@ func TestEmbed_EmptyEmbedding(t *testing.T) {
 				{Embedding: []float64{}, Index: 0},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -93,7 +93,7 @@ func TestEmbed_EmptyEmbedding(t *testing.T) {
 
 func TestEmbed_InvalidJSON(t *testing.T) {
 	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	})
 	defer cleanup()
 
@@ -111,7 +111,7 @@ func TestEmbedBatch_Success(t *testing.T) {
 				{Embedding: makeTestEmbedding(1024), Index: 1},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -156,7 +156,7 @@ func TestIsHealthy_ReachableModelAvailable(t *testing.T) {
 				{ID: "llama3:latest"},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -173,7 +173,7 @@ func TestIsHealthy_ReachableModelWithPrefix(t *testing.T) {
 				{ID: "bge-m3:latest"}, // matches with HasPrefix "bge-m3:"
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -190,7 +190,7 @@ func TestIsHealthy_ReachableModelNotAvailable(t *testing.T) {
 				{ID: "llama3:latest"},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -235,7 +235,7 @@ func TestIsHealthy_404AssumesHealthy(t *testing.T) {
 
 func TestIsHealthy_InvalidJSON(t *testing.T) {
 	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+		_, _ = w.Write([]byte("not json"))
 	})
 	defer cleanup()
 
@@ -250,7 +250,7 @@ func TestEmbed_NoResultsFromBatch(t *testing.T) {
 	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
 		// Return empty data array
 		resp := openaiEmbedResponse{Data: []openaiEmbeddingData{}}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -266,7 +266,7 @@ func TestEmbedBatch_OutOfRangeIndex(t *testing.T) {
 				{Embedding: makeTestEmbedding(4), Index: 99}, // out of range
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -283,7 +283,7 @@ func TestEmbedBatch_WithAPIKey(t *testing.T) {
 				{Embedding: makeTestEmbedding(4), Index: 0},
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 	client.APIKey = "test-key"
@@ -296,7 +296,7 @@ func TestIsHealthy_WithAPIKey(t *testing.T) {
 	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
 		resp := openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 	client.APIKey = "test-key"
@@ -333,7 +333,7 @@ func TestEmbedBatch_EmptyEmbeddingAtIndex(t *testing.T) {
 				{Embedding: []float64{}, Index: 0}, // empty embedding at valid index
 			},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 
@@ -345,7 +345,7 @@ func TestEmbedBatch_EmptyEmbeddingAtIndex(t *testing.T) {
 func TestEmbedBatch_EmptyData(t *testing.T) {
 	client, cleanup := newMockEmbeddingServer(t, func(w http.ResponseWriter, r *http.Request) {
 		resp := openaiEmbedResponse{Data: []openaiEmbeddingData{}}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 	defer cleanup()
 

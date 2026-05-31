@@ -1,16 +1,17 @@
 package service
 
 import (
-	"clawbench/internal/model"
 	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"clawbench/internal/model"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	_ "modernc.org/sqlite"
 	"gopkg.in/yaml.v3"
+	_ "modernc.org/sqlite"
 )
 
 // setupTestDBForMigration creates an in-memory SQLite with agents tables for migration tests.
@@ -50,7 +51,7 @@ func TestMigrateAgentsFromYAML_HappyPath(t *testing.T) {
 		"id": "pi", "name": "Pi", "icon": "🥧",
 		"specialty": "极简编程智能体", "backend": "pi",
 		"preferred_model": "minimax-cn/MiniMax-M2.7",
-		"system_prompt": "You are a versatile assistant.",
+		"system_prompt":   "You are a versatile assistant.",
 	})
 
 	err := MigrateAgentsFromYAML(db, dir)
@@ -129,9 +130,9 @@ func TestMigrateAgentsFromYAML_InvalidYAML(t *testing.T) {
 		"id": "pi", "name": "Pi", "backend": "pi",
 	})
 	// Invalid YAML (missing id)
-	os.WriteFile(filepath.Join(dir, "invalid.yaml"), []byte("name: no-id\nbackend: test\n"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "invalid.yaml"), []byte("name: no-id\nbackend: test\n"), 0o644)
 	// Non-YAML file (should be skipped)
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not a yaml"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("not a yaml"), 0o644)
 
 	err := MigrateAgentsFromYAML(db, dir)
 	require.NoError(t, err)
@@ -150,7 +151,7 @@ func TestMigrateAgentsFromYAML_ModelsAndLevels(t *testing.T) {
 	writeAgentYAML(t, dir, "codebuddy.yaml", map[string]any{
 		"id": "codebuddy", "name": "顶梁柱", "icon": "🐛",
 		"specialty": "全栈开发助手", "backend": "codebuddy",
-		"preferred_model": "glm-5.1",
+		"preferred_model":        "glm-5.1",
 		"thinking_effort_levels": []string{"low", "medium", "high", "xhigh"},
 		"models": []map[string]any{
 			{"id": "glm-5.1", "name": "GLM-5.1", "default": true},
@@ -207,7 +208,7 @@ func TestMigrateAgentsFromYAML_DirectoryEntry(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create a subdirectory (should be skipped)
-	os.MkdirAll(filepath.Join(dir, "subdir"), 0755)
+	_ = os.MkdirAll(filepath.Join(dir, "subdir"), 0o755)
 	writeAgentYAML(t, dir, "pi.yaml", map[string]any{
 		"id": "pi", "name": "Pi", "backend": "pi",
 	})
@@ -226,7 +227,7 @@ func writeAgentYAML(t *testing.T, dir, filename string, data map[string]any) {
 	t.Helper()
 	content, err := yaml.Marshal(data)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(dir, filename), content, 0644)
+	err = os.WriteFile(filepath.Join(dir, filename), content, 0o644)
 	require.NoError(t, err)
 }
 
@@ -307,9 +308,9 @@ func TestSaveAgentTx_WithModels(t *testing.T) {
 	db := setupTestDBForMigration(t)
 
 	agent := &model.Agent{
-		ID:       "codebuddy",
-		Name:     "CodeBuddy",
-		Backend:  "codebuddy",
+		ID:      "codebuddy",
+		Name:    "CodeBuddy",
+		Backend: "codebuddy",
 		Models: []model.AgentModel{
 			{ID: "glm-5.1", Name: "GLM-5.1", Default: true},
 		},
@@ -348,7 +349,7 @@ func TestMigrateAgentsFromYAML_InvalidYAMLContent(t *testing.T) {
 	dir := t.TempDir()
 
 	// Write a YAML file with valid syntax but that can't be parsed as Agent
-	os.WriteFile(filepath.Join(dir, "bad.yaml"), []byte("id: test\nbackend: test\ninvalid_field: [broken\n"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "bad.yaml"), []byte("id: test\nbackend: test\ninvalid_field: [broken\n"), 0o644)
 
 	err := MigrateAgentsFromYAML(db, dir)
 	// Invalid YAML should be skipped (logged as warning), not error
@@ -364,9 +365,9 @@ func TestMigrateAgentsFromYAML_NonYAMLExtension(t *testing.T) {
 	dir := t.TempDir()
 
 	// Write a .yml file (should be skipped — only .yaml is processed)
-	os.WriteFile(filepath.Join(dir, "agent.yml"), []byte("id: test\nname: Test\nbackend: test\n"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "agent.yml"), []byte("id: test\nname: Test\nbackend: test\n"), 0o644)
 	// Write a .json file (should be skipped)
-	os.WriteFile(filepath.Join(dir, "agent.json"), []byte("{}"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "agent.json"), []byte("{}"), 0o644)
 
 	err := MigrateAgentsFromYAML(db, dir)
 	assert.NoError(t, err)

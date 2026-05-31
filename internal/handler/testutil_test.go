@@ -28,7 +28,7 @@ type testEnv struct {
 	WatchDir        string
 	OrigToken       string
 	OrigCookieToken string
-	OrigRootPaths    []string
+	OrigRootPaths   []string
 	OrigDB          *sql.DB
 }
 
@@ -46,7 +46,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	// symlink resolution internally, so RootPaths and path arguments can use
 	// either resolved or unresolved forms.
 	projectDir := filepath.Join(watchDir, "project")
-	os.MkdirAll(projectDir, 0755)
+	_ = os.MkdirAll(projectDir, 0o755)
 
 	// Save original globals
 	origToken := model.SessionToken
@@ -68,8 +68,8 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	// Create tables
 	_, err = db.Exec(`
@@ -199,7 +199,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 	// Register mock agents so GetDefaultAgentID() works
 	model.Agents = map[string]*model.Agent{
 		"codebuddy": {ID: "codebuddy", Name: "Test", Backend: "codebuddy", Models: []model.AgentModel{{ID: "glm-5.1", Name: "GLM 5.1", Default: true}}},
-		"claude":  {ID: "claude", Name: "Claude", Backend: "claude", Models: []model.AgentModel{{ID: "claude-sonnet-4-6", Name: "Claude Sonnet", Default: true}}},
+		"claude":    {ID: "claude", Name: "Claude", Backend: "claude", Models: []model.AgentModel{{ID: "claude-sonnet-4-6", Name: "Claude Sonnet", Default: true}}},
 	}
 	model.AgentList = []*model.Agent{model.Agents["codebuddy"], model.Agents["claude"]}
 
@@ -208,7 +208,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		WatchDir:        watchDir,
 		OrigToken:       origToken,
 		OrigCookieToken: origCookieToken,
-		OrigRootPaths:    origRootPaths,
+		OrigRootPaths:   origRootPaths,
 		OrigDB:          origDB,
 	}
 
@@ -220,7 +220,7 @@ func setupTestEnv(t *testing.T) (*testEnv, func()) {
 		model.AgentList = origAgentList
 		service.DB = origDB
 		service.DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	}
 
 	return env, teardown
@@ -254,7 +254,7 @@ func withProjectCookie(req *http.Request, projectPath string) *http.Request {
 }
 
 // withAuthCookie adds the clawbench_session cookie to the request.
-func withAuthCookie(req *http.Request, token string) *http.Request {
+func withAuthCookie(req *http.Request, token string) *http.Request { //nolint:unparam // test helper: return value unused but signature supports chaining
 	req.AddCookie(&http.Cookie{
 		Name:  model.SessionCookie,
 		Value: token,
@@ -303,10 +303,10 @@ func callHandlerWithAuth(handler http.HandlerFunc, req *http.Request) *httptest.
 func createTestFile(t *testing.T, projectDir, relPath, content string) {
 	t.Helper()
 	fullPath := filepath.Join(projectDir, relPath)
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 		t.Fatalf("failed to create directories: %v", err)
 	}
-	if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("failed to write file: %v", err)
 	}
 }

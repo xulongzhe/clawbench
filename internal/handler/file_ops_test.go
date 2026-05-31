@@ -89,7 +89,7 @@ func TestServeFileRename(t *testing.T) {
 
 		// Create a subdirectory under WatchDir to delete from
 		subDir := filepath.Join(env.WatchDir, "subproject")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 		createTestFile(t, subDir, "file.txt", "data")
 
 		req := newRequest(t, http.MethodPost, "/api/file/rename", map[string]string{
@@ -366,7 +366,7 @@ func TestServeFileDelete(t *testing.T) {
 
 		// Create a subdirectory under WatchDir to delete from
 		subDir := filepath.Join(env.WatchDir, "subproject")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 		createTestFile(t, subDir, "del.txt", "gone")
 
 		req := newRequest(t, http.MethodPost, "/api/file/delete", map[string]string{
@@ -559,7 +559,7 @@ func TestServeFileBatchDelete(t *testing.T) {
 
 		// Create files in a subdirectory under WatchDir (not under ProjectDir)
 		subDir := filepath.Join(env.WatchDir, "batchdel")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 		createTestFile(t, subDir, "absdel.txt", "abs delete me")
 
 		req := newRequest(t, http.MethodPost, "/api/file/batch-delete", map[string]interface{}{
@@ -648,7 +648,7 @@ func TestServeFileCreate(t *testing.T) {
 
 		// Create a subdirectory under WatchDir
 		subDir := filepath.Join(env.WatchDir, "abscreatedir")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/file/create", map[string]string{
 			"path": subDir,
@@ -716,7 +716,7 @@ func TestServeDirCreate(t *testing.T) {
 
 		// Create a subdirectory under WatchDir
 		subDir := filepath.Join(env.WatchDir, "absdircreate")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/dir/create", map[string]string{
 			"path": subDir,
@@ -737,7 +737,7 @@ func TestServeDirCreate(t *testing.T) {
 		defer teardown()
 
 		// Create a directory under ProjectDir to resolve relative path against
-		os.MkdirAll(filepath.Join(env.ProjectDir, "relativedir"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.ProjectDir, "relativedir"), 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/dir/create", map[string]string{
 			"path": "relativedir",
@@ -774,7 +774,7 @@ func TestServeFileMove(t *testing.T) {
 		defer teardown()
 
 		createTestFile(t, env.ProjectDir, "src.txt", "move me")
-		os.MkdirAll(filepath.Join(env.ProjectDir, "dest"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.ProjectDir, "dest"), 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/file/move", map[string]string{
 			"path": "src.txt",
@@ -937,7 +937,7 @@ func TestServeFileCopy(t *testing.T) {
 		defer teardown()
 
 		createTestFile(t, env.ProjectDir, "src.txt", "content")
-		os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/file/copy", map[string]string{
 			"path": "src.txt",
@@ -961,7 +961,7 @@ func splitLines(s string) []string {
 	}
 	result := []string{}
 	start := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if s[i] == '\n' {
 			result = append(result, s[start:i])
 			start = i + 1

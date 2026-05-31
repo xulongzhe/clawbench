@@ -333,7 +333,7 @@ func setupRAGStore(t *testing.T) *rag.Store {
 	dir := t.TempDir()
 	store, err := rag.NewStore(dir+"/test.duckdb", nil)
 	require.NoError(t, err)
-	t.Cleanup(func() { store.Close() })
+	t.Cleanup(func() { _ = store.Close() })
 	return store
 }
 
@@ -349,13 +349,13 @@ func setupWorkingMockEmbedder(t *testing.T) *rag.EmbeddingClient {
 			for i := range emb {
 				emb[i] = 0.01
 			}
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": []map[string]any{
 					{"embedding": emb, "index": 0},
 				},
 			})
 		case "/v1/models":
-			json.NewEncoder(w).Encode(map[string]any{
+			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": []map[string]any{{"id": "bge-m3"}},
 			})
 		default:

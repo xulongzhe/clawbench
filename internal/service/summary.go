@@ -41,7 +41,8 @@ func AsyncSummarize(targetType string, targetID int64, blocks []model.ContentBlo
 		if utf8.RuneCountInString(text) < summarize.ShortTextThreshold {
 			// Text too short, mark as empty (frontend shows original)
 			if err := SaveSummary(targetType, targetID, ""); err != nil {
-				slog.Warn("failed to save summary (short text)",
+				slog.Warn(
+					"failed to save summary (short text)",
 					slog.String("target_type", targetType),
 					slog.Int64("target_id", targetID),
 					slog.String("err", err.Error()),
@@ -52,7 +53,8 @@ func AsyncSummarize(targetType string, targetID int64, blocks []model.ContentBlo
 
 		summary, err := taskSummarizerInstance.Summarize(sumCtx, text, "")
 		if err != nil {
-			slog.Warn("summarization failed",
+			slog.Warn(
+				"summarization failed",
 				slog.String("target_type", targetType),
 				slog.Int64("target_id", targetID),
 				slog.String("err", err.Error()),
@@ -61,14 +63,16 @@ func AsyncSummarize(targetType string, targetID int64, blocks []model.ContentBlo
 		}
 
 		if err := SaveSummary(targetType, targetID, summary); err != nil {
-			slog.Warn("failed to save summary",
+			slog.Warn(
+				"failed to save summary",
 				slog.String("target_type", targetType),
 				slog.Int64("target_id", targetID),
 				slog.String("err", err.Error()),
 			)
 		}
 
-		slog.Info("summarization completed",
+		slog.Info(
+			"summarization completed",
 			slog.String("target_type", targetType),
 			slog.Int64("target_id", targetID),
 			slog.Int("summary_len", utf8.RuneCountInString(summary)),

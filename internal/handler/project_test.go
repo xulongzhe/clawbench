@@ -20,7 +20,7 @@ func TestServeProjectSet(t *testing.T) {
 		defer teardown()
 
 		projectPath := filepath.Join(env.WatchDir, "myproject")
-		os.MkdirAll(projectPath, 0755)
+		_ = os.MkdirAll(projectPath, 0o755)
 
 		req := newRequest(t, http.MethodGet, "/api/project", nil)
 		withProjectCookie(req, projectPath)
@@ -31,7 +31,7 @@ func TestServeProjectSet(t *testing.T) {
 		assertJSONField(t, w, "path", projectPath)
 		// homeDir should be present (non-empty on any system with a home directory)
 		var resp map[string]interface{}
-		json.Unmarshal(w.Body.Bytes(), &resp)
+		_ = json.Unmarshal(w.Body.Bytes(), &resp)
 		assert.NotEmpty(t, resp["homeDir"], "homeDir should be present in response")
 	})
 
@@ -54,7 +54,7 @@ func TestServeProjectSet(t *testing.T) {
 		defer teardown()
 
 		recentPath := filepath.Join(env.WatchDir, "recentproject")
-		os.MkdirAll(recentPath, 0755)
+		_ = os.MkdirAll(recentPath, 0o755)
 
 		// Insert a recent project directly into the DB
 		_, err := service.DB.Exec(
@@ -75,7 +75,7 @@ func TestServeProjectSet(t *testing.T) {
 		defer teardown()
 
 		projectPath := filepath.Join(env.WatchDir, "myproject")
-		os.MkdirAll(projectPath, 0755)
+		_ = os.MkdirAll(projectPath, 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/project", map[string]string{
 			"path": projectPath,
@@ -150,7 +150,7 @@ func TestServeProjectSet(t *testing.T) {
 		_, teardown := setupTestEnv(t)
 		defer teardown()
 
-		req := httptest.NewRequest(http.MethodPost, "/api/project", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/project", http.NoBody)
 		w := callHandler(ServeProjectSet, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -172,7 +172,7 @@ func TestServeProjectSet(t *testing.T) {
 
 		// Create a directory under WatchDir with a relative name
 		subDir := filepath.Join(env.WatchDir, "myproject")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/project", map[string]string{
 			"path": "myproject",
@@ -236,7 +236,7 @@ func TestServeRecentProjects(t *testing.T) {
 		defer teardown()
 
 		projectPath := filepath.Join(env.WatchDir, "proj1")
-		os.MkdirAll(projectPath, 0755)
+		_ = os.MkdirAll(projectPath, 0o755)
 		_, err := service.DB.Exec(
 			"INSERT INTO recent_projects (project_path) VALUES (?)", projectPath,
 		)
@@ -268,7 +268,7 @@ func TestServeRecentProjects(t *testing.T) {
 		_, teardown := setupTestEnv(t)
 		defer teardown()
 
-		req := httptest.NewRequest(http.MethodPost, "/api/recent-projects", nil)
+		req := httptest.NewRequest(http.MethodPost, "/api/recent-projects", http.NoBody)
 		w := callHandler(ServeRecentProjects, req)
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)

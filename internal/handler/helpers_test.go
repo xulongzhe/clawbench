@@ -17,7 +17,7 @@ import (
 
 func TestRequireMethod_Allowed(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	ok := requireMethod(w, r, http.MethodGet)
 	assert.True(t, ok)
 	assert.Empty(t, w.Body.String()) // no error written
@@ -25,20 +25,20 @@ func TestRequireMethod_Allowed(t *testing.T) {
 
 func TestRequireMethod_MultipleAllowed(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/test", nil)
+	r := httptest.NewRequest(http.MethodPost, "/test", http.NoBody)
 	ok := requireMethod(w, r, http.MethodGet, http.MethodPost)
 	assert.True(t, ok)
 }
 
 func TestRequireMethod_Denied(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodPost, "/test", nil)
+	r := httptest.NewRequest(http.MethodPost, "/test", http.NoBody)
 	ok := requireMethod(w, r, http.MethodGet)
 	assert.False(t, ok)
 	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
 
 	var resp map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "Method not allowed", resp["error"])
 }
 
@@ -52,7 +52,7 @@ func TestWriteJSON_SetsContentTypeAndStatus(t *testing.T) {
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 
 	var resp map[string]string
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "world", resp["hello"])
 }
 
@@ -96,7 +96,7 @@ func TestDecodeJSON_InvalidBody(t *testing.T) {
 func TestValidateAndResolvePath_ValidPath(t *testing.T) {
 	w := httptest.NewRecorder()
 	basePath := t.TempDir()
-	absPath, ok := validateAndResolvePath(w, httptest.NewRequest(http.MethodGet, "/", nil), basePath, "test.txt")
+	absPath, ok := validateAndResolvePath(w, httptest.NewRequest(http.MethodGet, "/", http.NoBody), basePath, "test.txt")
 	assert.True(t, ok)
 	assert.True(t, strings.HasPrefix(absPath, basePath))
 }
@@ -104,7 +104,7 @@ func TestValidateAndResolvePath_ValidPath(t *testing.T) {
 func TestValidateAndResolvePath_TraversalPath(t *testing.T) {
 	w := httptest.NewRecorder()
 	basePath := t.TempDir()
-	absPath, ok := validateAndResolvePath(w, httptest.NewRequest(http.MethodGet, "/", nil), basePath, "../../etc/passwd")
+	absPath, ok := validateAndResolvePath(w, httptest.NewRequest(http.MethodGet, "/", http.NoBody), basePath, "../../etc/passwd")
 	assert.False(t, ok)
 	assert.Empty(t, absPath)
 	assert.Equal(t, http.StatusForbidden, w.Code)
@@ -176,7 +176,7 @@ func TestResolveAgentConfig_UnknownAgent(t *testing.T) {
 
 func TestRequireSessionID_FromQueryParam(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/test?session_id=abc-123", nil)
+	r := httptest.NewRequest(http.MethodGet, "/test?session_id=abc-123", http.NoBody)
 	sessionID, ok := requireSessionID(w, r)
 	assert.True(t, ok)
 	assert.Equal(t, "abc-123", sessionID)
@@ -184,7 +184,7 @@ func TestRequireSessionID_FromQueryParam(t *testing.T) {
 
 func TestRequireSessionID_FromCookie(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	r.AddCookie(&http.Cookie{Name: "chat_session_id", Value: "cookie-session"})
 	sessionID, ok := requireSessionID(w, r)
 	assert.True(t, ok)
@@ -193,7 +193,7 @@ func TestRequireSessionID_FromCookie(t *testing.T) {
 
 func TestRequireSessionID_Missing(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	sessionID, ok := requireSessionID(w, r)
 	assert.False(t, ok)
 	assert.Empty(t, sessionID)
@@ -204,7 +204,7 @@ func TestRequireSessionID_Missing(t *testing.T) {
 
 func TestRequireProject_Valid(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	r.AddCookie(&http.Cookie{Name: "clawbench_project", Value: "/tmp"})
 	projectPath, ok := requireProject(w, r)
 	assert.True(t, ok)
@@ -213,7 +213,7 @@ func TestRequireProject_Valid(t *testing.T) {
 
 func TestRequireProject_Missing(t *testing.T) {
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	projectPath, ok := requireProject(w, r)
 	assert.False(t, ok)
 	assert.Empty(t, projectPath)
@@ -235,14 +235,14 @@ func TestHelperIntegration_MethodGuardAndWriteJSON(t *testing.T) {
 	}
 
 	// Valid request
-	r := httptest.NewRequest(http.MethodGet, "/test", nil)
+	r := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 	r.AddCookie(&http.Cookie{Name: "clawbench_project", Value: "/tmp/project"})
 	w := httptest.NewRecorder()
 	handler(w, r)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Wrong method
-	r2 := httptest.NewRequest(http.MethodPost, "/test", nil)
+	r2 := httptest.NewRequest(http.MethodPost, "/test", http.NoBody)
 	w2 := httptest.NewRecorder()
 	handler(w2, r2)
 	assert.Equal(t, http.StatusMethodNotAllowed, w2.Code)

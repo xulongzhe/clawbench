@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -32,7 +33,7 @@ func ServeAgents(w http.ResponseWriter, r *http.Request) {
 	writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
 }
 
-func serveAgentsGet(w http.ResponseWriter, r *http.Request) {
+func serveAgentsGet(w http.ResponseWriter, _ *http.Request) {
 	configMutex.RLock()
 	agents := make([]*model.Agent, len(model.AgentList))
 	copy(agents, model.AgentList)
@@ -49,7 +50,7 @@ func serveAgentsGet(w http.ResponseWriter, r *http.Request) {
 // Expects: {"id": "claude", "preferred_model": "claude-opus-4-5", "preferred_thinking_effort": "high"}
 // Only preferred_model and preferred_thinking_effort are patchable (whitelist).
 // The original thinking_effort (agent default) is never modified — scheduled tasks use it.
-func serveAgentsPatch(w http.ResponseWriter, r *http.Request) {
+func serveAgentsPatch(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo // multi-field agent patch logic
 	var patch map[string]any
 	if !decodeJSON(w, r, &patch) {
 		return

@@ -5,5 +5,5 @@ package main
 import "syscall"
 
 func selfSignalInterrupt() {
-	syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+	_ = syscall.Kill(syscall.Getpid(), syscall.SIGINT)
 }

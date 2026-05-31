@@ -42,7 +42,8 @@ func (w *CleanupWorker) Start() {
 	w.mu.Unlock()
 
 	go w.run()
-	slog.Info("rag cleanup worker started",
+	slog.Info(
+		"rag cleanup worker started",
 		slog.Int("retention_days", w.cfg.RetentionDays),
 	)
 }
@@ -126,7 +127,8 @@ func (w *CleanupWorker) cleanup() {
 		return
 	}
 
-	slog.Info("rag cleanup: purged expired data",
+	slog.Info(
+		"rag cleanup: purged expired data",
 		slog.Int64("sessions", sessionsPurged),
 		slog.Int64("messages", messagesPurged),
 		slog.Int64("chunks", chunksPurged),

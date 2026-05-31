@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -205,9 +206,8 @@ func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build Pi CLI command
-	args := []string{"-p", "--mode", "json", "--provider", req.Provider, "--model", req.Model}
-	// Try --no-tools first (safer), fall back to --tools read if not supported
-	args = append(args, "--no-tools", "ping")
+	args := make([]string, 0, 9)
+	args = append(args, "-p", "--mode", "json", "--provider", req.Provider, "--model", req.Model, "--no-tools", "ping")
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -254,18 +254,18 @@ func ServeSetupVerify(w http.ResponseWriter, r *http.Request) {
 
 // setupCompleteRequest is the request body for POST /api/setup/complete.
 type setupCompleteRequest struct {
-	Provider        string `json:"provider"`
-	CustomURL       string `json:"custom_url"`
-	APIKey          string `json:"api_key"`
-	Model           string `json:"model"`
-	SummarizeModel  string `json:"summarize_model"`
-	AgentName       string `json:"agent_name"`
-	AgentID         string `json:"agent_id"`
+	Provider       string `json:"provider"`
+	CustomURL      string `json:"custom_url"`
+	APIKey         string `json:"api_key"`
+	Model          string `json:"model"`
+	SummarizeModel string `json:"summarize_model"`
+	AgentName      string `json:"agent_name"`
+	AgentID        string `json:"agent_id"`
 }
 
 // ServeSetupComplete finalizes the setup wizard by creating the agent in the database,
 // encrypting the API key, and writing Pi config files.
-func ServeSetupComplete(w http.ResponseWriter, r *http.Request) {
+func ServeSetupComplete(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-step setup completion
 	if r.Method != http.MethodPost {
 		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
 		return
@@ -318,23 +318,23 @@ func ServeSetupComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Insert agent + API key in a DB transaction for atomicity
-	tx, err := service.DB.Begin()
+	tx, err := service.DB.BeginTx(r.Context(), nil)
 	if err != nil {
 		slog.Error("failed to begin transaction", "error", err)
 		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "InternalError")
 		return
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	agent := &model.Agent{
-		ID:              req.AgentID,
-		Name:            req.AgentName,
-		Icon:            "🥧",
-		Specialty:       "极简编程智能体",
-		Backend:         "pi",
-		Command:         piPath,
-		PreferredModel:  req.Model,
-		Source:          "setup",
+		ID:                 req.AgentID,
+		Name:               req.AgentName,
+		Icon:               "🥧",
+		Specialty:          "极简编程智能体",
+		Backend:            "pi",
+		Command:            piPath,
+		PreferredModel:     req.Model,
+		Source:             "setup",
 		ModelsAutoDetected: false,
 	}
 	if err := service.SaveAgent(tx, agent); err != nil {
@@ -469,7 +469,7 @@ func deriveModelsURL(baseURL string) string {
 func fetchModelsFromEndpoint(endpoint, apiKey string) ([]model.ModelInfo, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 
-	req, err := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(context.Background(), "GET", endpoint, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -481,7 +481,7 @@ func fetchModelsFromEndpoint(endpoint, apiKey string) ([]model.ModelInfo, error)
 	if err != nil {
 		return nil, fmt.Errorf("fetch models: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("models endpoint returned %d", resp.StatusCode)
@@ -525,7 +525,7 @@ func writePiConfigFiles(req setupCompleteRequest, spec *model.ProviderSpec) {
 		return
 	}
 	piConfigDir := filepath.Join(homeDir, ".pi", "agent")
-	if err := os.MkdirAll(piConfigDir, 0755); err != nil {
+	if err := os.MkdirAll(piConfigDir, 0o755); err != nil {
 		slog.Warn("failed to create Pi config dir", "dir", piConfigDir, "error", err)
 		return
 	}
@@ -535,17 +535,17 @@ func writePiConfigFiles(req setupCompleteRequest, spec *model.ProviderSpec) {
 		spec.EnvVar: req.APIKey,
 	}
 	authJSON, _ := json.Marshal(authData)
-	if err := atomicWriteFile(filepath.Join(piConfigDir, "auth.json"), authJSON, 0600); err != nil {
+	if err := atomicWriteFile(filepath.Join(piConfigDir, "auth.json"), authJSON, 0o600); err != nil {
 		slog.Warn("failed to write Pi auth.json", "error", err)
 	}
 
 	// Write settings.json
 	settingsData := map[string]string{
 		"defaultProvider": req.Provider,
-		"defaultModel":   req.Model,
+		"defaultModel":    req.Model,
 	}
 	settingsJSON, _ := json.Marshal(settingsData)
-	if err := atomicWriteFile(filepath.Join(piConfigDir, "settings.json"), settingsJSON, 0644); err != nil {
+	if err := atomicWriteFile(filepath.Join(piConfigDir, "settings.json"), settingsJSON, 0o644); err != nil {
 		slog.Warn("failed to write Pi settings.json", "error", err)
 	}
 }

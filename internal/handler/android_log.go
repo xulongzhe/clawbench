@@ -62,7 +62,8 @@ func ServeAndroidLog(w http.ResponseWriter, r *http.Request) {
 	for _, e := range req.Entries {
 		t := time.UnixMilli(e.Ts)
 		msg := strings.ReplaceAll(e.Msg, "\n", "\\n")
-		line := fmt.Sprintf("%s %s/%s: %s\n",
+		line := fmt.Sprintf(
+			"%s %s/%s: %s\n",
 			t.Format("2006-01-02T15:04:05.000"),
 			e.Level,
 			e.Tag,
@@ -77,17 +78,17 @@ func ServeAndroidLog(w http.ResponseWriter, r *http.Request) {
 
 	path := androidLogFilePath()
 	// Ensure directory exists
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("create log dir: %w", err)))
 		return
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644) //nolint:gosec // log file, not security-sensitive
 	if err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("open android log: %w", err)))
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := f.Write(lines); err != nil {
 		model.WriteError(w, model.Internal(fmt.Errorf("write android log: %w", err)))

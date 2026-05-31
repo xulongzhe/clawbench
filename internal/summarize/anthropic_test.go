@@ -47,7 +47,7 @@ func TestAnthropicSummarizer_APICall(t *testing.T) {
 		assert.NoError(t, err)
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []anthropicContentBlock{
 				{Type: "text", Text: "这是总结后的内容。"},
 			},
@@ -78,7 +78,7 @@ func TestAnthropicSummarizer_MultiPass(t *testing.T) {
 			text = "精简后的总结。"
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []anthropicContentBlock{
 				{Type: "text", Text: text},
 			},
@@ -98,7 +98,7 @@ func TestAnthropicSummarizer_MultiPass(t *testing.T) {
 func TestAnthropicSummarizer_ErrorStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		fmt.Fprint(w, "invalid api key")
+		_, _ = fmt.Fprint(w, "invalid api key")
 	}))
 	defer server.Close()
 
@@ -125,7 +125,7 @@ func TestAnthropicSummarizer_ConnectionRefused(t *testing.T) {
 func TestAnthropicSummarizer_EmptyResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []anthropicContentBlock{
 				{Type: "text", Text: "  "},
 			},
@@ -145,7 +145,7 @@ func TestAnthropicSummarizer_ContextCancellation(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(5 * time.Second)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []anthropicContentBlock{
 				{Type: "text", Text: "too late"},
 			},
@@ -169,7 +169,7 @@ func TestAnthropicSummarizer_NoKey(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		apiKeyHeader = r.Header.Get("x-api-key")
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []anthropicContentBlock{
 				{Type: "text", Text: "ok"},
 			},
@@ -188,7 +188,7 @@ func TestAnthropicSummarizer_NoKey(t *testing.T) {
 func TestAnthropicSummarizer_MultipleContentBlocks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(anthropicResponse{
+		_ = json.NewEncoder(w).Encode(anthropicResponse{
 			Content: []anthropicContentBlock{
 				{Type: "text", Text: "第一部分。"},
 				{Type: "text", Text: "第二部分。"},

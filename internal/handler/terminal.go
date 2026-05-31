@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -119,7 +120,7 @@ func TerminalConfigHandler(w http.ResponseWriter, r *http.Request) {
 
 // ServeQuickCommands handles GET (list) and POST (create) for quick commands,
 // and PUT /reorder for batch reordering.
-func ServeQuickCommands(w http.ResponseWriter, r *http.Request) {
+func ServeQuickCommands(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-method quick command handler
 	switch r.Method {
 	case http.MethodGet:
 		cmds, err := service.GetQuickCommands()

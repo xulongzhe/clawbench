@@ -315,7 +315,7 @@ func TestRotateAPIKeyEncryption_WithKeys(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify keys can still be decrypted after rotation
-	customURL, apiKey, err = service.LoadAgentAPIKey(db, "pi", "openai")
+	_, apiKey, err = service.LoadAgentAPIKey(db, "pi", "openai")
 	require.NoError(t, err)
 	assert.Equal(t, "sk-test-key-1", apiKey)
 

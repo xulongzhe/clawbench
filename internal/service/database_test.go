@@ -25,8 +25,8 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS tts_summaries (
@@ -90,7 +90,7 @@ func setupTestDBForTTS(t *testing.T) (*sql.DB, func()) {
 
 // setupTestDBForQuickSend creates an in-memory SQLite database with the chat_quick_send table
 // for testing ChatQuickSend CRUD functions.
-func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) {
+func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) { //nolint:unparam // test helper: DB used implicitly via global state
 	t.Helper()
 	origDB := DB
 	origDBRead := DBRead
@@ -100,8 +100,8 @@ func setupTestDBForQuickSend(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_quick_send (
@@ -191,7 +191,7 @@ func getTableColumns(t *testing.T, db *sql.DB, table string) map[string]bool {
 	t.Helper()
 	rows, err := db.Query("PRAGMA table_info('" + table + "')")
 	assert.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	cols := make(map[string]bool)
 	for rows.Next() {
@@ -203,6 +203,7 @@ func getTableColumns(t *testing.T, db *sql.DB, table string) map[string]bool {
 		assert.NoError(t, rows.Scan(&cid, &name, &typ, &notNull, &dfltVal, &pk))
 		cols[name] = true
 	}
+	assert.NoError(t, rows.Err())
 	return cols
 }
 
@@ -251,7 +252,7 @@ func getIndexes(t *testing.T, db *sql.DB) map[string]bool {
 	t.Helper()
 	rows, err := db.Query("SELECT name FROM sqlite_master WHERE type='index'")
 	assert.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	indexes := make(map[string]bool)
 	for rows.Next() {
@@ -259,6 +260,7 @@ func getIndexes(t *testing.T, db *sql.DB) map[string]bool {
 		assert.NoError(t, rows.Scan(&name))
 		indexes[name] = true
 	}
+	assert.NoError(t, rows.Err())
 	return indexes
 }
 
@@ -407,6 +409,7 @@ func TestInitDB_CleansOrphanedStreamingJSON(t *testing.T) {
 
 	rows, err := db.Query("SELECT id, content FROM chat_history WHERE streaming = 1")
 	assert.NoError(t, err)
+	defer func() { _ = rows.Close() }()
 
 	type orphanMsg struct {
 		id      int64
@@ -418,12 +421,12 @@ func TestInitDB_CleansOrphanedStreamingJSON(t *testing.T) {
 		assert.NoError(t, rows.Scan(&m.id, &m.content))
 		orphans = append(orphans, m)
 	}
-	rows.Close()
+	assert.NoError(t, rows.Err())
 	assert.Len(t, orphans, 1)
 
 	m := orphans[0]
 	var contentMap map[string]any
-	json.Unmarshal([]byte(m.content), &contentMap)
+	_ = json.Unmarshal([]byte(m.content), &contentMap)
 	contentMap["cancelled"] = true
 	blocks, _ := contentMap["blocks"].([]any)
 	blocks = append(blocks, map[string]any{
@@ -433,7 +436,7 @@ func TestInitDB_CleansOrphanedStreamingJSON(t *testing.T) {
 	})
 	contentMap["blocks"] = blocks
 	updatedContent, _ := json.Marshal(contentMap)
-	db.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id)
+	_, _ = db.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id)
 
 	var streaming int
 	var updated string
@@ -463,6 +466,7 @@ func TestInitDB_CleansOrphanedStreamingPlain(t *testing.T) {
 
 	rows, err := db.Query("SELECT id, content FROM chat_history WHERE streaming = 1")
 	assert.NoError(t, err)
+	defer func() { _ = rows.Close() }()
 
 	type orphanMsg struct {
 		id      int64
@@ -474,7 +478,7 @@ func TestInitDB_CleansOrphanedStreamingPlain(t *testing.T) {
 		assert.NoError(t, rows.Scan(&m.id, &m.content))
 		orphans = append(orphans, m)
 	}
-	rows.Close()
+	assert.NoError(t, rows.Err())
 	assert.Len(t, orphans, 1)
 
 	m := orphans[0]
@@ -487,7 +491,7 @@ func TestInitDB_CleansOrphanedStreamingPlain(t *testing.T) {
 		}
 	}
 	updatedContent, _ := json.Marshal(contentMap)
-	db.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id)
+	_, _ = db.Exec("UPDATE chat_history SET content = ?, streaming = 0 WHERE id = ?", string(updatedContent), m.id)
 
 	var streaming int
 	var updated string
@@ -577,7 +581,7 @@ func orphanCleanup(t *testing.T, db *sql.DB, isServerStartup bool) {
 	}
 	rows, err := db.Query("SELECT id, content FROM chat_history WHERE streaming = 1")
 	assert.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type orphanMsg struct {
 		id      int64
@@ -589,6 +593,7 @@ func orphanCleanup(t *testing.T, db *sql.DB, isServerStartup bool) {
 		assert.NoError(t, rows.Scan(&m.id, &m.content))
 		orphans = append(orphans, m)
 	}
+	assert.NoError(t, rows.Err())
 
 	for _, m := range orphans {
 		var contentMap map[string]any
@@ -1013,12 +1018,12 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 
 	// Step 1: Create DB with old schema (no host column, uses port as primary key)
 	dbDir := filepath.Join(tmpDir, ".clawbench")
-	assert.NoError(t, os.MkdirAll(dbDir, 0755))
+	assert.NoError(t, os.MkdirAll(dbDir, 0o755))
 	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	// Create old-style table without host column and without local_port
 	// Other tables must have enough columns so InitDB's index creation succeeds
@@ -1137,7 +1142,7 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 	// Step 4: Verify existing data is preserved and local_port is backfilled
 	rows, err := DB.Query("SELECT port, local_port, host, name FROM forwarded_ports ORDER BY port")
 	assert.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var count int
 	for rows.Next() {
@@ -1148,6 +1153,7 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 		assert.Equal(t, "", host, "host should default to empty string after migration")
 		count++
 	}
+	assert.NoError(t, rows.Err())
 	assert.Equal(t, 2, count, "should have 2 rows after migration")
 }
 
@@ -1155,8 +1161,7 @@ func TestSchema_ForwardedPortsMigration_HostColumnFromOldSchema(t *testing.T) {
 
 // setupTestDBForSummaries creates an in-memory SQLite database with the summaries table
 // for testing SaveSummary and GetSummary.
-func setupTestDBForSummaries(t *testing.T) (*sql.DB, func()) {
-	t.Helper()
+func setupTestDBForSummaries(t *testing.T) (*sql.DB, func()) { //nolint:unparam // test helper: DB used implicitly via global state	t.Helper()
 	origDB := DB
 	origDBRead := DBRead
 
@@ -1165,8 +1170,8 @@ func setupTestDBForSummaries(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS summaries (
@@ -1265,7 +1270,7 @@ func TestSaveSummary_Upsert(t *testing.T) {
 
 // setupTestDBForNewTTSSummaries creates an in-memory SQLite database with the new tts_summaries table
 // for testing GetTTSSummary and SaveTTSSummary with message_id.
-func setupTestDBForNewTTSSummaries(t *testing.T) (*sql.DB, func()) {
+func setupTestDBForNewTTSSummaries(t *testing.T) (*sql.DB, func()) { //nolint:unparam // test helper: DB used implicitly via global state
 	t.Helper()
 	origDB := DB
 	origDBRead := DBRead
@@ -1275,8 +1280,8 @@ func setupTestDBForNewTTSSummaries(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS tts_summaries (
@@ -1351,7 +1356,7 @@ func TestInitDB_TTSSummariesMigrationFromOldSchema(t *testing.T) {
 
 	// First: create a DB with the old schema (cache_key column)
 	dbPath := filepath.Join(tmpDir, ".clawbench", "clawbench.db")
-	os.MkdirAll(filepath.Dir(dbPath), 0755)
+	_ = os.MkdirAll(filepath.Dir(dbPath), 0o755)
 
 	db, err := sql.Open("sqlite", dbPath)
 	assert.NoError(t, err)
@@ -1424,12 +1429,12 @@ func TestSchema_ExternalSessionIDBackfill_FillsEmpty(t *testing.T) {
 
 	// Step 1: Create DB with schema that has external_session_id column
 	dbDir := filepath.Join(tmpDir, ".clawbench")
-	assert.NoError(t, os.MkdirAll(dbDir, 0755))
+	assert.NoError(t, os.MkdirAll(dbDir, 0o755))
 	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -1570,12 +1575,12 @@ func TestSchema_ExternalSessionIDBackfill_PreservesAlreadySet(t *testing.T) {
 	defer func() { DB = origDB; DBRead = origDBRead }()
 
 	dbDir := filepath.Join(tmpDir, ".clawbench")
-	assert.NoError(t, os.MkdirAll(dbDir, 0755))
+	assert.NoError(t, os.MkdirAll(dbDir, 0o755))
 	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	// Minimal schema to satisfy InitDB
 	_, err = db.Exec(`
@@ -1732,12 +1737,12 @@ func TestSchema_DropHistoryDeletedColumn_FromOldSchema(t *testing.T) {
 
 	// Step 1: Create DB with old schema that includes chat_history.deleted
 	dbDir := filepath.Join(tmpDir, ".clawbench")
-	assert.NoError(t, os.MkdirAll(dbDir, 0755))
+	assert.NoError(t, os.MkdirAll(dbDir, 0o755))
 	db, err := sql.Open("sqlite", filepath.Join(dbDir, "ClawBench.db"))
 	assert.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_history (
@@ -1882,7 +1887,7 @@ func TestSchema_DropHistoryDeletedColumn_Idempotent(t *testing.T) {
 // ---------- QuickCommand CRUD ----------
 
 // setupTestDBForQuickCommands creates an in-memory SQLite database with the terminal_quick_commands table
-func setupTestDBForQuickCommands(t *testing.T) (*sql.DB, func()) {
+func setupTestDBForQuickCommands(t *testing.T) (*sql.DB, func()) { //nolint:unparam // test helper: DB used implicitly via global state
 	t.Helper()
 	origDB := DB
 	origDBRead := DBRead
@@ -1892,8 +1897,8 @@ func setupTestDBForQuickCommands(t *testing.T) (*sql.DB, func()) {
 		t.Fatalf("failed to open in-memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS terminal_quick_commands (

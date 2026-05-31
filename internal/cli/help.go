@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -35,7 +36,7 @@ type CmdHelp struct {
 }
 
 // printHelp formats and prints help info to stdout.
-func printHelp(info HelpInfo) {
+func printHelp(info HelpInfo) { //nolint:gocyclo // multi-command help text generation
 	var b strings.Builder
 
 	if info.Description != "" {
@@ -142,9 +143,9 @@ func flagDisplayName(f FlagHelp) string {
 
 // parseOrHelp wraps flag.FlagSet.Parse() to handle --help and usage errors.
 // Returns true if help was printed (caller should os.Exit).
-func parseOrHelp(fs *flag.FlagSet, args []string, info *HelpInfo) bool {
+func parseOrHelp(fs *flag.FlagSet, args []string, info *HelpInfo) bool { //nolint:unparam // return value used by callers via flag state
 	err := fs.Parse(args)
-	if err == flag.ErrHelp {
+	if errors.Is(err, flag.ErrHelp) {
 		printHelp(*info)
 		os.Exit(0)
 	}

@@ -396,7 +396,8 @@ func (b *twoPhaseBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<
 
 	outCh := make(chan StreamEvent)
 
-	if idx == 0 {
+	switch {
+	case idx == 0:
 		// First stream: send events and close
 		go func() {
 			defer close(outCh)
@@ -405,13 +406,13 @@ func (b *twoPhaseBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<
 			}
 			close(b.firstDone)
 		}()
-	} else if b.secondBlocked {
+	case b.secondBlocked:
 		// Second stream: block until context cancelled
 		go func() {
 			defer close(outCh)
 			<-ctx.Done()
 		}()
-	} else {
+	default:
 		close(outCh)
 	}
 

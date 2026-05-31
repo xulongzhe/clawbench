@@ -8,10 +8,10 @@ import (
 
 // OpenCodeStreamMessage represents a single JSON line from `opencode run --format json`
 type OpenCodeStreamMessage struct {
-	Type      string          `json:"type"`       // "step_start", "text", "reasoning", "tool_use", "step_finish"
+	Type      string          `json:"type"` // "step_start", "text", "reasoning", "tool_use", "step_finish"
 	Timestamp float64         `json:"timestamp"`
 	SessionID string          `json:"sessionID"`
-	Part      json.RawMessage `json:"part"`       // Varies by type — parse separately
+	Part      json.RawMessage `json:"part"` // Varies by type — parse separately
 }
 
 // OpenCodeTextPart is the part for type="text" and type="reasoning" messages
@@ -22,7 +22,7 @@ type OpenCodeTextPart struct {
 
 // OpenCodeToolPart is the part for type="tool_use" messages
 type OpenCodeToolPart struct {
-	Type   string             `json:"type"`  // "tool"
+	Type   string             `json:"type"` // "tool"
 	Tool   string             `json:"tool"`
 	CallID string             `json:"callID"`
 	State  *OpenCodeToolState `json:"state"`
@@ -30,14 +30,14 @@ type OpenCodeToolPart struct {
 
 // OpenCodeToolState holds tool execution status and I/O
 type OpenCodeToolState struct {
-	Status string          `json:"status"`  // "completed", "running"
+	Status string          `json:"status"` // "completed", "running"
 	Input  json.RawMessage `json:"input"`
 	Output string          `json:"output"`
 }
 
 // OpenCodeFinishPart is the part for type="step_finish" messages
 type OpenCodeFinishPart struct {
-	Reason string          `json:"reason"`  // "stop" or "tool-calls"
+	Reason string          `json:"reason"` // "stop" or "tool-calls"
 	Tokens *OpenCodeTokens `json:"tokens,omitempty"`
 	Cost   float64         `json:"cost"`
 }
@@ -63,6 +63,8 @@ func (p *OpenCodeStreamParser) GetCapturedSessionID() string { return p.sessionI
 
 // ParseLine parses a single JSON line from OpenCode's stream-json output and sends
 // StreamEvent(s) to the provided channel.
+//
+//nolint:gocognit,gocyclo // complex stream parsing logic
 func (p *OpenCodeStreamParser) ParseLine(line string, ch chan<- StreamEvent) {
 	var msg OpenCodeStreamMessage
 	if err := json.Unmarshal([]byte(line), &msg); err != nil {

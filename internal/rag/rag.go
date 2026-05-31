@@ -9,11 +9,11 @@ import (
 )
 
 var (
-	GlobalStore           *Store
-	GlobalIndexer         *Indexer
-	GlobalEmbedder        *EmbeddingClient
-	GlobalCleanupWorker   *CleanupWorker
-	embedderHealthyFlag   atomic.Bool
+	GlobalStore         *Store
+	GlobalIndexer       *Indexer
+	GlobalEmbedder      *EmbeddingClient
+	GlobalCleanupWorker *CleanupWorker
+	embedderHealthyFlag atomic.Bool
 )
 
 func Init(cfg model.RAGConfig) error {
@@ -30,12 +30,13 @@ func Init(cfg model.RAGConfig) error {
 	if err != nil {
 		slog.Warn("rag: failed to check dimension, continuing", slog.String("err", err.Error()))
 	} else if mismatch {
-		slog.Warn("rag: embedding dimension mismatch, resetting table",
+		slog.Warn(
+			"rag: embedding dimension mismatch, resetting table",
 			slog.Int("existing_dim", existingDim),
 			slog.Int("expected_dim", store.embeddingDim),
 		)
 		if err := store.ResetTable(); err != nil {
-			store.Close()
+			_ = store.Close()
 			return fmt.Errorf("reset rag table: %w", err)
 		}
 	}
@@ -45,7 +46,8 @@ func Init(cfg model.RAGConfig) error {
 	GlobalStore = store
 	GlobalEmbedder = embedder
 
-	slog.Info("rag initialized",
+	slog.Info(
+		"rag initialized",
 		slog.String("base_url", cfg.BaseURL),
 		slog.String("model", cfg.Model),
 		slog.Int("chunk_size", cfg.ChunkSize),
@@ -83,7 +85,7 @@ func Shutdown() {
 		GlobalIndexer = nil
 	}
 	if GlobalStore != nil {
-		GlobalStore.Close()
+		_ = GlobalStore.Close()
 		GlobalStore = nil
 	}
 	GlobalEmbedder = nil

@@ -39,7 +39,7 @@ type authTracker struct {
 }
 
 const (
-	maxAuthFails    = 5                      // Block after this many consecutive failures
+	maxAuthFails    = 5 // Block after this many consecutive failures
 	initialBlockDur = 5 * time.Minute
 	maxBlockDur     = 1 * time.Hour
 	cleanupInterval = 10 * time.Minute
@@ -124,20 +124,20 @@ func extractIP(addr net.Addr) string {
 // It allows authenticated clients to create `-L` tunnels to forward local ports
 // to any reachable host:port (localhost, LAN, or remote).
 type Server struct {
-	mu                sync.Mutex
-	listener          net.Listener
-	hostKey           gossh.Signer
-	password          string
-	passwordIsSHA256  bool
-	portReg           *service.ProxyRegistry
-	done              chan struct{}
-	fingerprint       string
-	addr              string
-	cfg               model.PortForwardConfig
-	connCount         int
-	activeChannels    int
-	lastConnected     time.Time
-	authTracker       *authTracker
+	mu               sync.Mutex
+	listener         net.Listener
+	hostKey          gossh.Signer
+	password         string
+	passwordIsSHA256 bool
+	portReg          *service.ProxyRegistry
+	done             chan struct{}
+	fingerprint      string
+	addr             string
+	cfg              model.PortForwardConfig
+	connCount        int
+	activeChannels   int
+	lastConnected    time.Time
+	authTracker      *authTracker
 }
 
 // NewServer creates a new SSH tunnel server.
@@ -185,11 +185,9 @@ func (s *Server) ListenAndServe() error {
 						s.authTracker.reset(remoteIP)
 						return nil, nil
 					}
-				} else {
-					if subtle.ConstantTimeCompare(pass, []byte(s.password)) == 1 {
-						s.authTracker.reset(remoteIP)
-						return nil, nil
-					}
+				} else if subtle.ConstantTimeCompare(pass, []byte(s.password)) == 1 {
+					s.authTracker.reset(remoteIP)
+					return nil, nil
 				}
 			}
 
@@ -200,6 +198,7 @@ func (s *Server) ListenAndServe() error {
 	config.AddHostKey(s.hostKey)
 
 	// Start TCP listener
+	//nolint:noctx // SSH server uses net.Listener directly
 	listener, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		return fmt.Errorf("ssh: failed to listen on %s: %w", s.addr, err)
@@ -220,7 +219,8 @@ func (s *Server) ListenAndServe() error {
 		}
 	}()
 
-	slog.Info("SSH tunnel server started",
+	slog.Info(
+		"SSH tunnel server started",
 		slog.String("addr", s.addr),
 		slog.String("fingerprint", s.fingerprint),
 	)
@@ -245,7 +245,7 @@ func (s *Server) ListenAndServe() error {
 func (s *Server) Close() {
 	close(s.done)
 	if s.listener != nil {
-		s.listener.Close()
+		_ = s.listener.Close()
 	}
 	slog.Info("SSH tunnel server stopped")
 }
@@ -273,7 +273,7 @@ func (s *Server) InitHostKey() error {
 func (s *Server) Port() int {
 	_, portStr, _ := net.SplitHostPort(s.addr)
 	port := 0
-	fmt.Sscanf(portStr, "%d", &port)
+	_, _ = fmt.Sscanf(portStr, "%d", &port)
 	return port
 }
 
@@ -303,16 +303,17 @@ func (s *Server) ConnectionStats() SSHConnectionStats {
 
 // handleConn handles a single SSH connection.
 func (s *Server) handleConn(conn net.Conn, config *gossh.ServerConfig) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	sshConn, chans, reqs, err := gossh.NewServerConn(conn, config)
 	if err != nil {
 		slog.Debug("ssh: handshake failed", slog.String("err", err.Error()))
 		return
 	}
-	defer sshConn.Close()
+	defer func() { _ = sshConn.Close() }()
 
-	slog.Info("ssh: client connected",
+	slog.Info(
+		"ssh: client connected",
 		slog.String("remote", sshConn.RemoteAddr().String()),
 		slog.String("user", sshConn.User()),
 	)
@@ -336,7 +337,7 @@ func (s *Server) handleConn(conn net.Conn, config *gossh.ServerConfig) {
 	for newChannel := range chans {
 		if newChannel.ChannelType() != "direct-tcpip" {
 			slog.Debug("ssh: rejecting unknown channel type", slog.String("type", newChannel.ChannelType()))
-			newChannel.Reject(gossh.UnknownChannelType, fmt.Sprintf("unknown channel type: %s", newChannel.ChannelType()))
+			_ = newChannel.Reject(gossh.UnknownChannelType, fmt.Sprintf("unknown channel type: %s", newChannel.ChannelType()))
 			continue
 		}
 
@@ -357,7 +358,7 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 	var d directTCPIPData
 	if err := gossh.Unmarshal(newChannel.ExtraData(), &d); err != nil {
 		slog.Debug("ssh: failed to parse direct-tcpip data", slog.String("err", err.Error()))
-		newChannel.Reject(gossh.Prohibited, "failed to parse channel data")
+		_ = newChannel.Reject(gossh.Prohibited, "failed to parse channel data")
 		return
 	}
 
@@ -375,7 +376,7 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 	// reverse-proxy) is irrelevant here.
 	if s.portReg == nil || !s.portReg.IsPortAllowed(targetPort) {
 		slog.Debug("ssh: port not allowed", slog.Int("port", targetPort))
-		newChannel.Reject(gossh.Prohibited, fmt.Sprintf("port %d is not allowed", targetPort))
+		_ = newChannel.Reject(gossh.Prohibited, fmt.Sprintf("port %d is not allowed", targetPort))
 		return
 	}
 
@@ -385,7 +386,7 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 		slog.Debug("ssh: could not accept channel", slog.String("err", err.Error()))
 		return
 	}
-	defer channel.Close()
+	defer func() { _ = channel.Close() }()
 
 	s.mu.Lock()
 	s.activeChannels++
@@ -401,14 +402,16 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 
 	// Connect to the target host:port
 	targetAddr := net.JoinHostPort(targetHost, strconv.Itoa(targetPort))
+	//nolint:noctx // SSH tunnel dials target in goroutine per connection
 	backend, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		slog.Debug("ssh: backend unreachable", slog.String("target", targetAddr), slog.String("err", err.Error()))
 		return
 	}
-	defer backend.Close()
+	defer func() { _ = backend.Close() }()
 
-	slog.Debug("ssh: forwarding connection",
+	slog.Debug(
+		"ssh: forwarding connection",
 		slog.String("target", targetAddr),
 		slog.String("originator", net.JoinHostPort(d.OriginatorAddress, strconv.FormatUint(uint64(d.OriginatorPort), 10))),
 	)
@@ -419,18 +422,18 @@ func (s *Server) handleDirectTCPIP(newChannel gossh.NewChannel) {
 
 	go func() {
 		defer wg.Done()
-		io.Copy(channel, backend)
+		_, _ = io.Copy(channel, backend)
 		// Signal the SSH channel that we're done writing
 		if ch, ok := channel.(interface{ CloseWrite() error }); ok {
-			ch.CloseWrite()
+			_ = ch.CloseWrite()
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
-		io.Copy(backend, channel)
+		_, _ = io.Copy(backend, channel)
 		if tcpConn, ok := backend.(*net.TCPConn); ok {
-			tcpConn.CloseWrite()
+			_ = tcpConn.CloseWrite()
 		}
 	}()
 
@@ -453,20 +456,21 @@ func (s *Server) loadHostKey(path string) (gossh.Signer, error) {
 		// Private key files must not be readable by other users.
 		if info, statErr := os.Stat(path); statErr == nil {
 			perm := info.Mode().Perm()
-			if perm&0077 != 0 {
-				slog.Warn("ssh: host key file has overly permissive permissions, fixing",
+			if perm&0o077 != 0 {
+				slog.Warn(
+					"ssh: host key file has overly permissive permissions, fixing",
 					slog.String("path", path),
 					slog.String("mode", fmt.Sprintf("%04o", perm)),
 				)
-				if chmodErr := os.Chmod(path, 0600); chmodErr != nil {
+				if chmodErr := os.Chmod(path, 0o600); chmodErr != nil {
 					slog.Warn("ssh: could not fix host key file permissions", slog.String("err", chmodErr.Error()))
 				}
 			}
 		}
 
-		signer, err := gossh.ParsePrivateKey(data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse host key from %s: %w", path, err)
+		signer, parseErr := gossh.ParsePrivateKey(data)
+		if parseErr != nil {
+			return nil, fmt.Errorf("failed to parse host key from %s: %w", path, parseErr)
 		}
 		slog.Info("ssh: loaded host key from file", slog.String("path", path))
 		return signer, nil
@@ -497,9 +501,9 @@ func (s *Server) generateAndSaveHostKey(path string) (gossh.Signer, error) {
 		Bytes: keyBytes,
 	})
 
-	if err := os.WriteFile(path, pemData, 0600); err != nil {
+	if writeErr := os.WriteFile(path, pemData, 0o600); writeErr != nil {
 		// Can't save, fall back to ephemeral key
-		slog.Warn("ssh: could not save host key, using ephemeral key", slog.String("path", path), slog.String("err", err.Error()))
+		slog.Warn("ssh: could not save host key, using ephemeral key", slog.String("path", path), slog.String("err", writeErr.Error()))
 		return s.generateHostKey()
 	}
 

@@ -20,7 +20,7 @@ func TestListDir(t *testing.T) {
 
 		createTestFile(t, env.ProjectDir, "file1.txt", "hello")
 		createTestFile(t, env.ProjectDir, "file2.go", "package main")
-		os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0o755)
 
 		req := newRequest(t, http.MethodGet, "/api/dir", nil)
 		withProjectCookie(req, env.ProjectDir)
@@ -39,11 +39,11 @@ func TestListDir(t *testing.T) {
 		// Items should be sorted: dirs first, then files alphabetically
 		names := make([]string, len(items))
 		for i, item := range items {
-			entry := item.(map[string]interface{})
+			entry, _ := item.(map[string]interface{})
 			names[i] = entry["name"].(string)
 		}
 		expected := []string{"subdir", "file1.txt", "file2.go"}
-		sort.Strings(expected[:1]) // dirs first
+		sort.Strings(expected[:1])          // dirs first
 		assert.Equal(t, "subdir", names[0]) // dir comes first
 	})
 
@@ -107,7 +107,7 @@ func TestListDir(t *testing.T) {
 		assert.True(t, ok)
 		assert.Len(t, items, 1)
 
-		entry := items[0].(map[string]interface{})
+		entry, _ := items[0].(map[string]interface{})
 		assert.Equal(t, "nested.txt", entry["name"])
 		assert.Equal(t, "file", entry["type"])
 	})
@@ -230,7 +230,7 @@ func TestGetFile(t *testing.T) {
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
-		os.MkdirAll(filepath.Join(env.ProjectDir, "mydir"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.ProjectDir, "mydir"), 0o755)
 
 		req := newRequest(t, http.MethodGet, "/api/file/mydir", nil)
 		withProjectCookie(req, env.ProjectDir)
@@ -258,8 +258,8 @@ func TestServeLocalFile(t *testing.T) {
 			0x44, 0xAE, 0x42, 0x60, 0x82,
 		}
 		fullPath := filepath.Join(env.ProjectDir, "test.png")
-		os.MkdirAll(filepath.Dir(fullPath), 0755)
-		os.WriteFile(fullPath, pngData, 0644)
+		_ = os.MkdirAll(filepath.Dir(fullPath), 0o755)
+		_ = os.WriteFile(fullPath, pngData, 0o644)
 
 		req := newRequest(t, http.MethodGet, "/api/local-file/test.png", nil)
 		withProjectCookie(req, env.ProjectDir)
@@ -297,8 +297,8 @@ func TestServeProjects(t *testing.T) {
 		defer teardown()
 
 		// Create directories under WatchDir
-		os.MkdirAll(filepath.Join(env.WatchDir, "project1"), 0755)
-		os.MkdirAll(filepath.Join(env.WatchDir, "project2"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.WatchDir, "project1"), 0o755)
+		_ = os.MkdirAll(filepath.Join(env.WatchDir, "project2"), 0o755)
 		// Create a file (should appear too, since ListDir returns all entries)
 		createTestFile(t, env.WatchDir, "readme.md", "hello")
 
@@ -348,7 +348,7 @@ func TestServeProjects(t *testing.T) {
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
-		os.MkdirAll(filepath.Join(env.WatchDir, "myproject", "src"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.WatchDir, "myproject", "src"), 0o755)
 		createTestFile(t, env.WatchDir, "myproject/src/main.go", "package main")
 
 		req := newRequest(t, http.MethodGet, "/api/projects?path=myproject", nil)
@@ -363,7 +363,7 @@ func TestServeProjects(t *testing.T) {
 		assert.True(t, ok)
 		assert.Len(t, items, 1) // src directory
 
-		entry := items[0].(map[string]interface{})
+		entry, _ := items[0].(map[string]interface{})
 		assert.Equal(t, "src", entry["name"])
 		assert.Equal(t, "dir", entry["type"])
 	})
@@ -373,7 +373,7 @@ func TestServeProjects(t *testing.T) {
 		defer teardown()
 
 		// Create some entries in WatchDir
-		os.MkdirAll(filepath.Join(env.WatchDir, "rootdir"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.WatchDir, "rootdir"), 0o755)
 		createTestFile(t, env.WatchDir, "rootfile.txt", "root content")
 
 		// Empty path triggers root-level browsing (Unix: lists first RootPath)
@@ -397,7 +397,7 @@ func TestServeProjects(t *testing.T) {
 
 		// Create a subdirectory under WatchDir
 		subDir := filepath.Join(env.WatchDir, "abspathdir")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 		createTestFile(t, subDir, "inner.txt", "inner content")
 
 		req := newRequest(t, http.MethodGet, "/api/projects?path="+subDir, nil)
@@ -459,7 +459,7 @@ func TestServeProjects(t *testing.T) {
 		defer teardown()
 
 		subDir := filepath.Join(env.WatchDir, "sublevel")
-		os.MkdirAll(subDir, 0755)
+		_ = os.MkdirAll(subDir, 0o755)
 
 		req := newRequest(t, http.MethodGet, "/api/projects?path="+subDir, nil)
 		w := callHandler(ServeProjects, req)
@@ -527,7 +527,7 @@ func TestServeFileBatchExists(t *testing.T) {
 		env, teardown := setupTestEnv(t)
 		defer teardown()
 
-		os.MkdirAll(filepath.Join(env.ProjectDir, "src"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.ProjectDir, "src"), 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
 			"paths": []string{"src"},
@@ -617,7 +617,7 @@ func TestServeFileBatchExists(t *testing.T) {
 		defer teardown()
 
 		createTestFile(t, env.ProjectDir, "exists.txt", "hello")
-		os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0755)
+		_ = os.MkdirAll(filepath.Join(env.ProjectDir, "subdir"), 0o755)
 
 		req := newRequest(t, http.MethodPost, "/api/file/batch-exists", map[string]interface{}{
 			"paths": []string{"exists.txt", "subdir", "missing.go", "**/*.class"},
@@ -725,7 +725,7 @@ func TestServeFileBatchExists(t *testing.T) {
 
 		results, ok := result["results"].(map[string]interface{})
 		assert.True(t, ok)
-		assert.Equal(t, "none", results["*.class"])   // glob → none (no os.Stat)
+		assert.Equal(t, "none", results["*.class"])    // glob → none (no os.Stat)
 		assert.Equal(t, "file", results["test.class"]) // real path → file
 	})
 }

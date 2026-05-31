@@ -75,7 +75,8 @@ func (s *AIBackendSummarizer) DoSummarizePass(ctx context.Context, text, systemP
 		return "", fmt.Errorf("AI backend %q (pass %d) returned empty output", s.backend.Name(), pass)
 	}
 
-	slog.Info("tts summarize pass completed",
+	slog.Info(
+		"tts summarize pass completed",
 		slog.Int("pass", pass),
 		slog.String("backend", s.backend.Name()),
 		slog.Int("result_len", len([]rune(result))),

@@ -23,9 +23,9 @@ func TestNewAIBackendSummarizer_UnsupportedBackend(t *testing.T) {
 
 // mockAIBackend implements ai.AIBackend for testing
 type mockAIBackend struct {
-	name         string
-	streamCh     chan ai.StreamEvent
-	executeErr   error
+	name          string
+	streamCh      chan ai.StreamEvent
+	executeErr    error
 	executeCalled bool
 }
 
@@ -167,7 +167,7 @@ func TestAIBackendSummarizer_doSummarizePass_CancelledContext(t *testing.T) {
 
 func TestAIBackendSummarizer_ModelOverride(t *testing.T) {
 	s := &AIBackendSummarizer{
-		backend: &mockAIBackend{name: "test"},
+		backend: &mockAIBackend{name: "test"}, //nolint:govet // test setup, backend not used but verifies struct
 		Model:   "custom-model-v2",
 	}
 	assert.Equal(t, "custom-model-v2", s.Model)

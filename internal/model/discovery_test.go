@@ -65,12 +65,12 @@ func TestBackendRegistry_SpecificValues(t *testing.T) {
 
 func TestGenerateAgentYAML_Format(t *testing.T) {
 	spec := model.BackendSpec{
-		ID:         "claude",
-		Backend:    "claude",
-		DefaultCmd: "claude",
-		Name:       "Claude",
-		Icon:       "🤖",
-		Specialty:  "代码编写与推理",
+		ID:                   "claude",
+		Backend:              "claude",
+		DefaultCmd:           "claude",
+		Name:                 "Claude",
+		Icon:                 "🤖",
+		Specialty:            "代码编写与推理",
 		ThinkingEffortLevels: []string{"low", "medium", "high", "xhigh", "max"},
 	}
 
@@ -178,7 +178,7 @@ func TestDiscoverAgents_GeneratedYAMLsLoadable(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Pre-generate a known agent YAML so the test does not depend
 	// on any AI CLI being installed on the system.
@@ -192,7 +192,7 @@ func TestDiscoverAgents_GeneratedYAMLsLoadable(t *testing.T) {
 	}
 	data, err := model.GenerateAgentYAML(spec)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-loadable.yaml"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-loadable.yaml"), data, 0o644))
 
 	// LoadAgents should successfully load the generated YAMLs
 	err = model.LoadAgents(dir)
@@ -203,7 +203,7 @@ func TestDiscoverAgents_GeneratedYAMLsLoadable(t *testing.T) {
 func TestDiscoverAgents_DoesNotOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	agentsDir := filepath.Join(dir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
 
 	// Create an existing agent YAML
 	existingYAML := `id: my-custom-agent
@@ -214,7 +214,7 @@ backend: codebuddy
 models: []
 system_prompt: "I am custom"
 `
-	err := os.WriteFile(filepath.Join(agentsDir, "my-custom-agent.yaml"), []byte(existingYAML), 0644)
+	err := os.WriteFile(filepath.Join(agentsDir, "my-custom-agent.yaml"), []byte(existingYAML), 0o644)
 	require.NoError(t, err)
 
 	err = model.DiscoverAgents(agentsDir)
@@ -482,7 +482,6 @@ func TestDiscoverModels_WithRealCLI(t *testing.T) {
 	}
 }
 
-
 func TestDiscoverModels_WithEchoCLI(t *testing.T) {
 	// Test the full DiscoverModels flow using "echo" as a CLI that always exists.
 	spec := model.BackendSpec{
@@ -593,7 +592,7 @@ func TestSyncDiscoverAgents_CreatesMinimalYAML(t *testing.T) {
 func TestSyncDiscoverAgents_DoesNotOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	agentsDir := filepath.Join(dir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
 
 	// Create an existing agent YAML with custom content
 	existingYAML := `id: my-custom-agent
@@ -607,7 +606,7 @@ models:
     default: true
 system_prompt: "I am custom"
 `
-	err := os.WriteFile(filepath.Join(agentsDir, "my-custom-agent.yaml"), []byte(existingYAML), 0644)
+	err := os.WriteFile(filepath.Join(agentsDir, "my-custom-agent.yaml"), []byte(existingYAML), 0o644)
 	require.NoError(t, err)
 
 	model.SyncDiscoverAgents(agentsDir)
@@ -645,14 +644,14 @@ func TestMergeDiscoveredData_FillsEmptyModelsFromCache(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Create a minimal YAML with codebuddy backend (exists in Registry)
 	yamlContent := `id: test-merge
 name: Test Merge
 backend: codebuddy
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-merge.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-merge.yaml"), []byte(yamlContent), 0o644))
 	require.NoError(t, model.LoadAgents(dir))
 
 	agent := model.Agents["test-merge"]
@@ -683,7 +682,7 @@ func TestMergeDiscoveredData_PreservesUserModels(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Create YAML with user-defined models
 	yamlContent := `id: test-preserve
@@ -694,7 +693,7 @@ models:
     name: My Custom Model
     default: true
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-preserve.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-preserve.yaml"), []byte(yamlContent), 0o644))
 	require.NoError(t, model.LoadAgents(dir))
 
 	agent := model.Agents["test-preserve"]
@@ -725,7 +724,7 @@ func TestMergeDiscoveredData_SoftRemoveMissingCLI(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Create YAML for a backend whose CLI is NOT installed
 	yamlContent := `id: test-missing
@@ -736,7 +735,7 @@ models:
     name: Some Model
     default: true
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-missing.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-missing.yaml"), []byte(yamlContent), 0o644))
 	require.NoError(t, model.LoadAgents(dir))
 	require.Len(t, model.AgentList, 1)
 
@@ -761,14 +760,14 @@ func TestMergeDiscoveredData_KeepsAgentWithPresentCLI(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Create YAML with backend that IS present
 	yamlContent := `id: test-present
 name: Test Present
 backend: codebuddy
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-present.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-present.yaml"), []byte(yamlContent), 0o644))
 	require.NoError(t, model.LoadAgents(dir))
 	require.Len(t, model.AgentList, 1)
 
@@ -790,7 +789,7 @@ func TestMergeDiscoveredData_IgnoresYAMLThinkingEffortLevels(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Create YAML with user-defined thinking_effort_levels (should be overwritten by Registry)
 	yamlContent := `id: test-levels
@@ -800,7 +799,7 @@ thinking_effort_levels:
   - custom1
   - custom2
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-levels.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-levels.yaml"), []byte(yamlContent), 0o644))
 	require.NoError(t, model.LoadAgents(dir))
 
 	agent := model.Agents["test-levels"]
@@ -1129,11 +1128,11 @@ func TestDiscoverCodebuddyModels_ProductJSON(t *testing.T) {
 	// Create directory structure: .../bin/fake-codebuddy and .../product.cloudhosted.json
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	// Create a fake "codebuddy" script
 	fakeCLI := filepath.Join(binDir, "codebuddy")
-	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0o755))
 
 	// Create product.cloudhosted.json in the parent directory
 	productJSON := `{
@@ -1146,7 +1145,7 @@ func TestDiscoverCodebuddyModels_ProductJSON(t *testing.T) {
 			{"id": "hunyuan-image-v3.0", "name": "Hunyuan Image", "isDefault": false}
 		]
 	}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0o644))
 
 	// Add tmpDir/bin to PATH
 	origPath := os.Getenv("PATH")
@@ -1180,14 +1179,14 @@ func TestDiscoverCodebuddyModels_ProductJSON_EmptyModels(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	fakeCLI := filepath.Join(binDir, "codebuddy")
-	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0o755))
 
 	// Empty models array
 	productJSON := `{"models": []}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0o644))
 
 	origPath := os.Getenv("PATH")
 	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
@@ -1204,13 +1203,13 @@ func TestDiscoverCodebuddyModels_ProductJSON_InvalidJSON(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	fakeCLI := filepath.Join(binDir, "codebuddy")
-	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0o755))
 
 	// Invalid JSON
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte("not json"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte("not json"), 0o644))
 
 	origPath := os.Getenv("PATH")
 	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
@@ -1227,10 +1226,10 @@ func TestDiscoverCodebuddyModels_ProductJSON_NoFile(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	fakeCLI := filepath.Join(binDir, "codebuddy")
-	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0o755))
 
 	// No product.cloudhosted.json file created
 
@@ -1260,10 +1259,10 @@ func TestDiscoverCodebuddyModels_ProductJSON_NameFallback(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	fakeCLI := filepath.Join(binDir, "codebuddy")
-	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0o755))
 
 	// Model with empty name — should fall back to ID
 	productJSON := `{
@@ -1271,7 +1270,7 @@ func TestDiscoverCodebuddyModels_ProductJSON_NameFallback(t *testing.T) {
 			{"id": "glm-5.1", "name": "", "isDefault": true}
 		]
 	}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0o644))
 
 	origPath := os.Getenv("PATH")
 	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
@@ -1292,10 +1291,10 @@ func TestDiscoverCodebuddyModels_ProductJSON_NoDefault(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	fakeCLI := filepath.Join(binDir, "codebuddy")
-	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\necho ok\n"), 0o755))
 
 	// No isDefault=true on any model
 	productJSON := `{
@@ -1304,7 +1303,7 @@ func TestDiscoverCodebuddyModels_ProductJSON_NoDefault(t *testing.T) {
 			{"id": "glm-4-flash", "name": "GLM 4 Flash", "isDefault": false}
 		]
 	}`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "product.cloudhosted.json"), []byte(productJSON), 0o644))
 
 	origPath := os.Getenv("PATH")
 	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
@@ -1326,14 +1325,14 @@ func TestMergeDiscoveredData_SetsCanRefreshModels(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Create a minimal YAML with codebuddy backend (has model discovery)
 	yamlContent := `id: test-refresh
 name: Test Refresh
 backend: codebuddy
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-refresh.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-refresh.yaml"), []byte(yamlContent), 0o644))
 	require.NoError(t, model.LoadAgents(dir))
 
 	agent := model.Agents["test-refresh"]
@@ -1353,14 +1352,14 @@ func TestMergeDiscoveredData_CanRefreshModelsFalseForNoDiscovery(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	// Create a minimal YAML with gemini backend (no model discovery)
 	yamlContent := `id: test-no-refresh
 name: Test No Refresh
 backend: gemini
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-no-refresh.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-no-refresh.yaml"), []byte(yamlContent), 0o644))
 	require.NoError(t, model.LoadAgents(dir))
 
 	agent := model.Agents["test-no-refresh"]
@@ -1388,7 +1387,7 @@ func TestSyncDiscoverAgents_CreatesDirAndReturnsPresent(t *testing.T) {
 func TestSyncDiscoverAgents_DoesNotOverwriteExisting(t *testing.T) {
 	dir := t.TempDir()
 	agentsDir := filepath.Join(dir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
 
 	existingYAML := `id: my-agent
 name: My Agent
@@ -1396,7 +1395,7 @@ backend: claude
 models: []
 system_prompt: "custom prompt"
 `
-	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "my-agent.yaml"), []byte(existingYAML), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "my-agent.yaml"), []byte(existingYAML), 0o644))
 
 	present := model.SyncDiscoverAgents(agentsDir)
 	assert.NotNil(t, present)
@@ -1447,14 +1446,14 @@ func TestMergeDiscoveredData_SoftRemovesAbsentBackends(t *testing.T) {
 	})
 
 	dir := filepath.Join(t.TempDir(), "agents")
-	require.NoError(t, os.MkdirAll(dir, 0755))
+	require.NoError(t, os.MkdirAll(dir, 0o755))
 
 	yamlContent := `id: test-absent
 name: Test Absent
 backend: claude
 models: []
 `
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-absent.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "test-absent.yaml"), []byte(yamlContent), 0o644))
 	require.NoError(t, model.LoadAgents(dir))
 	require.NotEmpty(t, model.AgentList)
 
@@ -1529,7 +1528,7 @@ func TestDiscoverClaudeModels_NoInstall(t *testing.T) {
 func TestSyncDiscoverAgents_WithPreExistingYAMLs(t *testing.T) {
 	dir := t.TempDir()
 	agentsDir := filepath.Join(dir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
 
 	// Create YAML for an agent that doesn't exist
 	yamlContent := `id: test-existing
@@ -1537,7 +1536,7 @@ name: Test Existing
 backend: claude
 models: []
 `
-	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test-existing.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test-existing.yaml"), []byte(yamlContent), 0o644))
 
 	present := model.SyncDiscoverAgents(agentsDir)
 	assert.NotNil(t, present)
@@ -1548,14 +1547,14 @@ models: []
 func TestDiscoverAgents_WithExistingYAMLs(t *testing.T) {
 	dir := t.TempDir()
 	agentsDir := filepath.Join(dir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0755))
+	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
 
 	yamlContent := `id: test-existing
 name: Test Existing
 backend: claude
 models: []
 `
-	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test-existing.yaml"), []byte(yamlContent), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "test-existing.yaml"), []byte(yamlContent), 0o644))
 
 	err := model.DiscoverAgents(agentsDir)
 	require.NoError(t, err)
@@ -1575,7 +1574,7 @@ func TestDiscoverPiModels_FakeCLI_Success(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	// Create a fake "pi" script that outputs model table to stderr (like real Pi)
 	fakeCLI := filepath.Join(binDir, "pi")
@@ -1587,7 +1586,7 @@ minimax         MiniMax-M2.7                204.8K   131.1K   yes       no
 minimax-cn      MiniMax-M2.7                204.8K   131.1K   yes       no
 EOF
 `
-	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0o755))
 
 	origPath := os.Getenv("PATH")
 	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
@@ -1611,7 +1610,7 @@ func TestDiscoverPiModels_FakeCLI_EmptyOutput(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	// Create a fake "pi" script that outputs only the header (no model data)
 	fakeCLI := filepath.Join(binDir, "pi")
@@ -1620,7 +1619,7 @@ cat >&2 <<'EOF'
 provider        model                       context  max-out  thinking  images
 EOF
 `
-	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0o755))
 
 	origPath := os.Getenv("PATH")
 	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
@@ -1637,11 +1636,11 @@ func TestDiscoverPiModels_FakeCLI_CommandFails(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	// Create a fake "pi" script that exits with non-zero code
 	fakeCLI := filepath.Join(binDir, "pi")
-	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\nexit 1\n"), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte("#!/bin/sh\nexit 1\n"), 0o755))
 
 	origPath := os.Getenv("PATH")
 	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))
@@ -1668,7 +1667,7 @@ func TestDiscoverPiModels_FakeCLI_OutputToStdout(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	binDir := filepath.Join(tmpDir, "bin")
-	require.NoError(t, os.MkdirAll(binDir, 0755))
+	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
 	// Create a fake "pi" script that outputs to stdout (like the old behavior)
 	fakeCLI := filepath.Join(binDir, "pi")
@@ -1678,7 +1677,7 @@ provider        model                       context  max-out  thinking  images
 anthropic       claude-sonnet-4-6           1M       64K      yes       yes
 EOF
 `
-	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0755))
+	require.NoError(t, os.WriteFile(fakeCLI, []byte(script), 0o755))
 
 	origPath := os.Getenv("PATH")
 	require.NoError(t, os.Setenv("PATH", binDir+string(os.PathListSeparator)+origPath))

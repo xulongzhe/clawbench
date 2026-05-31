@@ -9,7 +9,7 @@ import (
 
 // Pre-compiled regexes for StripMarkdown.
 var (
-	reCodeBlock      = regexp.MustCompile("(?s)```.*?```")
+	reCodeBlock = regexp.MustCompile("(?s)```.*?```")
 	// reAskQuestion matches <ask-question>...</ask-question> blocks (including
 	// those wrapped inside markdown code fences like ```json...```).
 	// The inner content is a JSON object with a "questions" array that must be
@@ -26,19 +26,19 @@ var (
 	reHorizontalRule = regexp.MustCompile(`(?m)^[-*_]{3,}\s*$`)
 	reMultiBlank     = regexp.MustCompile(`\n{3,}`)
 	// Extended markdown patterns for thorough TTS cleaning
-	reStrikethrough  = regexp.MustCompile(`~~([^~]+)~~`)
-	reBlockquote     = regexp.MustCompile(`(?m)^>\s?`)
-	reUnorderedList  = regexp.MustCompile(`(?m)^[\s]*[-*+]\s+`)
-	reOrderedList    = regexp.MustCompile(`(?m)^[\s]*\d+\.\s+`)
-	reTaskList       = regexp.MustCompile(`(?m)^[\s]*[-*+]\s+\[[ xX]\]\s*`)
-	reTablePipe      = regexp.MustCompile(`\|`)
-	reTableDivider   = regexp.MustCompile(`(?m)^[\s|]*([-:]+[\s|:-]*)+$`)
-	reHTMLTag        = regexp.MustCompile(`<[^>]+>`)
-	reXMLTag         = regexp.MustCompile(`</?[a-zA-Z][^>]*>`)
-	reAutolink       = regexp.MustCompile(`<([^>]+)>`)
-	reFootnoteRef    = regexp.MustCompile(`\[\^[^\]]+\]`)
-	reFootnoteDef    = regexp.MustCompile(`(?m)^\[\^[^\]]+\]:\s+.*$`)
-	reEmojiShortcode = regexp.MustCompile(`:[a-zA-Z0-9_+-]+:`)
+	reStrikethrough   = regexp.MustCompile(`~~([^~]+)~~`)
+	reBlockquote      = regexp.MustCompile(`(?m)^>\s?`)
+	reUnorderedList   = regexp.MustCompile(`(?m)^[\s]*[-*+]\s+`)
+	reOrderedList     = regexp.MustCompile(`(?m)^[\s]*\d+\.\s+`)
+	reTaskList        = regexp.MustCompile(`(?m)^[\s]*[-*+]\s+\[[ xX]\]\s*`)
+	reTablePipe       = regexp.MustCompile(`\|`)
+	reTableDivider    = regexp.MustCompile(`(?m)^[\s|]*([-:]+[\s|:-]*)+$`)
+	reHTMLTag         = regexp.MustCompile(`<[^>]+>`)
+	reXMLTag          = regexp.MustCompile(`</?[a-zA-Z][^>]*>`)
+	reAutolink        = regexp.MustCompile(`<([^>]+)>`)
+	reFootnoteRef     = regexp.MustCompile(`\[\^[^\]]+\]`)
+	reFootnoteDef     = regexp.MustCompile(`(?m)^\[\^[^\]]+\]:\s+.*$`)
+	reEmojiShortcode  = regexp.MustCompile(`:[a-zA-Z0-9_+-]+:`)
 	reBackslashEscape = regexp.MustCompile(`\\([\\` + "`" + `*_{}[\]()#+\-.!|~])`)
 	// Angle-bracket URLs remaining after other stripping
 	reBareURL = regexp.MustCompile(`https?://\S+`)
@@ -136,10 +136,10 @@ type askQuestionJSON struct {
 }
 
 type askQuestionItem struct {
-	Header     string           `json:"header"`
-	Question   string           `json:"question"`
-	Options    []askQuestionOpt `json:"options"`
-	MultiSelect bool            `json:"multiSelect"`
+	Header      string           `json:"header"`
+	Question    string           `json:"question"`
+	Options     []askQuestionOpt `json:"options"`
+	MultiSelect bool             `json:"multiSelect"`
 }
 
 type askQuestionOpt struct {
@@ -172,7 +172,7 @@ func preserveAskQuestion(match string) string {
 		}
 		b.WriteString(q.Question)
 		if q.Header != "" {
-			b.WriteString(fmt.Sprintf(" (%s)", q.Header))
+			fmt.Fprintf(&b, " (%s)", q.Header)
 		}
 		if len(q.Options) > 0 {
 			b.WriteString(": ")
@@ -182,7 +182,7 @@ func preserveAskQuestion(match string) string {
 				}
 				b.WriteString(o.Label)
 				if o.Description != "" && o.Description != o.Label {
-					b.WriteString(fmt.Sprintf(" — %s", o.Description))
+					fmt.Fprintf(&b, " — %s", o.Description)
 				}
 			}
 		}

@@ -40,7 +40,7 @@ func TestCreateTask_MissingFields(t *testing.T) {
 }
 
 func TestCreateTask_ScheduledExecution(t *testing.T) {
-	os.Setenv("CLAWBENCH_SCHEDULED", "1")
+	_ = os.Setenv("CLAWBENCH_SCHEDULED", "1")
 	defer os.Unsetenv("CLAWBENCH_SCHEDULED")
 
 	exitCode := RunTaskCommand([]string{
@@ -176,7 +176,7 @@ func TestReadFlagOrFile_FileReference(t *testing.T) {
 	tmpDir := t.TempDir()
 	promptFile := filepath.Join(tmpDir, "prompt.txt")
 	content := "This is a test prompt with $VARIABLE"
-	err := os.WriteFile(promptFile, []byte(content), 0644)
+	err := os.WriteFile(promptFile, []byte(content), 0o644)
 	assert.NoError(t, err)
 
 	val, err := readFlagOrFile("@"+promptFile, tmpDir)
@@ -193,7 +193,7 @@ func TestReadFlagOrFile_FileNotFound(t *testing.T) {
 func TestReadFlagOrFile_EmptyFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	promptFile := filepath.Join(tmpDir, "empty.txt")
-	err := os.WriteFile(promptFile, []byte(""), 0644)
+	err := os.WriteFile(promptFile, []byte(""), 0o644)
 	assert.NoError(t, err)
 
 	val, err := readFlagOrFile("@"+promptFile, tmpDir)
@@ -214,7 +214,7 @@ func TestReadFlagOrFile_PathTraversal(t *testing.T) {
 	// that doesn't exist, so we create a file in the temp dir's parent instead.
 	outsideDir := filepath.Join(tmpDir, "..")
 	outsideFile := filepath.Join(outsideDir, "outside-traversal-test.txt")
-	os.WriteFile(outsideFile, []byte("secret"), 0644)
+	_ = os.WriteFile(outsideFile, []byte("secret"), 0o644)
 	t.Cleanup(func() { os.Remove(outsideFile) })
 
 	_, err := readFlagOrFile("@"+outsideFile, tmpDir)
@@ -225,9 +225,9 @@ func TestReadFlagOrFile_PathTraversal(t *testing.T) {
 func TestReadFlagOrFile_OutsideProject(t *testing.T) {
 	tmpDir := t.TempDir()
 	subDir := filepath.Join(tmpDir, "project")
-	os.MkdirAll(subDir, 0755)
+	_ = os.MkdirAll(subDir, 0o755)
 	outsideFile := filepath.Join(tmpDir, "outside.txt")
-	os.WriteFile(outsideFile, []byte("secret"), 0644)
+	_ = os.WriteFile(outsideFile, []byte("secret"), 0o644)
 
 	// Reading a file outside the project should be denied
 	_, err := readFlagOrFile("@"+outsideFile, subDir)
@@ -239,7 +239,7 @@ func TestReadFlagOrFile_InsideProject(t *testing.T) {
 	tmpDir := t.TempDir()
 	promptFile := filepath.Join(tmpDir, "prompt.txt")
 	content := "project prompt"
-	err := os.WriteFile(promptFile, []byte(content), 0644)
+	err := os.WriteFile(promptFile, []byte(content), 0o644)
 	assert.NoError(t, err)
 
 	val, err := readFlagOrFile("@"+promptFile, tmpDir)
@@ -252,7 +252,7 @@ func TestReadFlagOrFile_NoProjectRestriction(t *testing.T) {
 	tmpDir := t.TempDir()
 	promptFile := filepath.Join(tmpDir, "prompt.txt")
 	content := "any content"
-	err := os.WriteFile(promptFile, []byte(content), 0644)
+	err := os.WriteFile(promptFile, []byte(content), 0o644)
 	assert.NoError(t, err)
 
 	val, err := readFlagOrFile("@"+promptFile, "")

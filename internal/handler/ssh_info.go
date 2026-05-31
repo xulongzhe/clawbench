@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -27,13 +28,13 @@ func ServeSSHInfo(w http.ResponseWriter, r *http.Request) {
 
 	if sshServerRef == nil {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"enabled":          false,
-			"host":             "",
-			"port":             0,
-			"username":         "",
-			"fingerprint":      "",
-			"command":          "",
-			"connectionStats":  nil,
+			"enabled":         false,
+			"host":            "",
+			"port":            0,
+			"username":        "",
+			"fingerprint":     "",
+			"command":         "",
+			"connectionStats": nil,
 		})
 		return
 	}

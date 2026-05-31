@@ -57,14 +57,14 @@ PORT=3000
 DB_URL="postgres://localhost:5432/mydb"
 EMPTY_VAR=
 `
-	err := os.WriteFile(envPath, []byte(content), 0644)
+	err := os.WriteFile(envPath, []byte(content), 0o644)
 	assert.NoError(t, err)
 
 	// Clear any existing values
-	os.Unsetenv("API_KEY")
-	os.Unsetenv("PORT")
-	os.Unsetenv("DB_URL")
-	os.Unsetenv("EMPTY_VAR")
+	_ = os.Unsetenv("API_KEY")
+	_ = os.Unsetenv("PORT")
+	_ = os.Unsetenv("DB_URL")
+	_ = os.Unsetenv("EMPTY_VAR")
 
 	err = LoadDotEnv(envPath)
 	assert.NoError(t, err)
@@ -84,7 +84,7 @@ func TestLoadDotEnvInvalidLine(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")
 
-	err := os.WriteFile(envPath, []byte("INVALID_LINE_NO_EQUALS\n"), 0644)
+	err := os.WriteFile(envPath, []byte("INVALID_LINE_NO_EQUALS\n"), 0o644)
 	assert.NoError(t, err)
 
 	err = LoadDotEnv(envPath)
@@ -101,10 +101,10 @@ func TestLoadDotEnv_InheritableBySubprocess(t *testing.T) {
 	key := "CLAWBENCH_TEST_DOTENV_KEY"
 	value := "test-value-from-dotenv"
 
-	os.Unsetenv(key)
+	_ = os.Unsetenv(key)
 	t.Cleanup(func() { os.Unsetenv(key) })
 
-	err := os.WriteFile(envPath, []byte(key+"="+value+"\n"), 0644)
+	err := os.WriteFile(envPath, []byte(key+"="+value+"\n"), 0o644)
 	assert.NoError(t, err)
 
 	err = LoadDotEnv(envPath)
@@ -130,10 +130,10 @@ func TestLoadDotEnv_OverwritesExisting(t *testing.T) {
 	envPath := filepath.Join(dir, ".env")
 
 	key := "CLAWBENCH_TEST_OVERWRITE_KEY"
-	os.Setenv(key, "old-value")
+	_ = os.Setenv(key, "old-value")
 	t.Cleanup(func() { os.Unsetenv(key) })
 
-	err := os.WriteFile(envPath, []byte(key+"=new-value\n"), 0644)
+	err := os.WriteFile(envPath, []byte(key+"=new-value\n"), 0o644)
 	assert.NoError(t, err)
 
 	err = LoadDotEnv(envPath)

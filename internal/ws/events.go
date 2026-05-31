@@ -74,7 +74,7 @@ func EventsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			writeMu.Lock()
 			ctx2, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			conn.Write(ctx2, websocket.MessageText, data)
+			_ = conn.Write(ctx2, websocket.MessageText, data)
 			cancel()
 			writeMu.Unlock()
 		}
@@ -85,7 +85,7 @@ func EventsHandler(w http.ResponseWriter, r *http.Request) {
 	defer pingTicker.Stop()
 
 	// Ping goroutine
-	go func() {
+	go func() { //nolint:gosec // ping goroutine uses Background intentionally, not request-scoped
 		for range pingTicker.C {
 			writeMu.Lock()
 			pingData, _ := json.Marshal(ServerMessage{Type: "ping"})
@@ -105,7 +105,7 @@ func EventsHandler(w http.ResponseWriter, r *http.Request) {
 	// dead connections from lingering indefinitely (no client messages for 5min).
 	readClientMessages(conn, mgr, clientID)
 
-	conn.Close(websocket.StatusNormalClosure, "handler exiting")
+	_ = conn.Close(websocket.StatusNormalClosure, "handler exiting")
 }
 
 // readClientMessages reads messages from the WebSocket connection, resetting

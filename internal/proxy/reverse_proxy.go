@@ -9,7 +9,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
-	"sync"
 )
 
 // ReverseProxy is an HTTP reverse proxy that listens on a local address and
@@ -25,7 +24,6 @@ type ReverseProxy struct {
 	targetAddr string // host:port of the backend
 	targetURL  *url.URL
 	protocol   string // "http" or "https"
-	mu         sync.Mutex
 }
 
 // NewReverseProxy creates a new HTTP reverse proxy.
@@ -57,13 +55,13 @@ func NewReverseProxy(listenHost string, listenPort int, targetAddr string, proto
 	rp := &ReverseProxy{
 		targetAddr: host,
 		targetURL:  targetURL,
-		protocol:  protocol,
+		protocol:   protocol,
 	}
 
 	// Create transport with InsecureSkipVerify for self-signed certs on LAN targets
 	rp.transport = &http.Transport{
-		DialContext:       (&net.Dialer{}).DialContext,
-		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true},
+		DialContext:     (&net.Dialer{}).DialContext,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
 	// Create the httputil.ReverseProxy
@@ -123,14 +121,14 @@ func (rp *ReverseProxy) Port() int {
 	}
 	_, portStr, _ := net.SplitHostPort(rp.listener.Addr().String())
 	var port int
-	fmt.Sscanf(portStr, "%d", &port)
+	_, _ = fmt.Sscanf(portStr, "%d", &port)
 	return port
 }
 
 // Close shuts down the reverse proxy.
 func (rp *ReverseProxy) Close() {
 	if rp.server != nil {
-		rp.server.Close()
+		_ = rp.server.Close()
 	}
 }
 

@@ -1,3 +1,4 @@
+//nolint:goconst,noctx,gosec // JSON response field names are domain strings; git CLI uses exec.Command without context (args validated by isValidGitSHA/isValidGitRefName)
 package handler
 
 import (
@@ -159,7 +160,7 @@ func ServeGitProjectHistory(w http.ResponseWriter, r *http.Request) {
 
 	skip := 0
 	if s := r.URL.Query().Get("skip"); s != "" {
-		fmt.Sscanf(s, "%d", &skip)
+		_, _ = fmt.Sscanf(s, "%d", &skip)
 	}
 
 	// git log for entire project, with optional skip
@@ -310,7 +311,7 @@ func writeDiffResponse(w http.ResponseWriter, output []byte, cmdErr error) {
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"diff":  string(output),
-		"empty": len(strings.TrimSpace(string(output))) == 0,
+		"empty": strings.TrimSpace(string(output)) == "",
 	})
 }
 
@@ -447,7 +448,7 @@ type mergeFileInfo struct {
 
 // buildMergeFileGroups computes per-parent file groups for a merge commit.
 // Files changed by both parents are assigned to parent1 (the current branch).
-func buildMergeFileGroups(projectPath, sha string, parents []string) map[string]interface{} {
+func buildMergeFileGroups(projectPath, sha string, parents []string) map[string]interface{} { //nolint:gocognit // complex merge analysis
 	// Get merge-base between first two parents
 	cmd := exec.Command("git", "merge-base", parents[0], parents[1])
 	cmd.Dir = projectPath
@@ -465,15 +466,15 @@ func buildMergeFileGroups(projectPath, sha string, parents []string) map[string]
 	groups := make([]mergeFileGroup, 0, len(parents))
 
 	for i, parent := range parents {
-		cmd := exec.Command("git", "diff", "--name-status", mergeBase, parent)
-		cmd.Dir = projectPath
-		output, err := cmd.Output()
-		if err != nil {
+		diffCmd := exec.Command("git", "diff", "--name-status", mergeBase, parent)
+		diffCmd.Dir = projectPath
+		diffOutput, diffErr := diffCmd.Output()
+		if diffErr != nil {
 			continue
 		}
 
 		var files []mergeFileInfo
-		for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		for _, line := range strings.Split(strings.TrimSpace(string(diffOutput)), "\n") {
 			if line == "" {
 				continue
 			}
@@ -545,7 +546,7 @@ func buildMergeFileGroups(projectPath, sha string, parents []string) map[string]
 // For "Merge branch 'X' into Y", returns [Y, X].
 // For "Merge branch 'X'" (no into), returns ["", X].
 // Falls back to short SHA if parsing fails.
-func extractMergeLabels(projectPath, sha string, parents []string) []string {
+func extractMergeLabels(projectPath, sha string, parents []string) []string { //nolint:gocognit,gocyclo // complex merge message parsing
 	labels := make([]string, len(parents))
 
 	cmd := exec.Command("git", "log", "--format=%s", "-1", sha)
@@ -573,11 +574,8 @@ func extractMergeLabels(projectPath, sha string, parents []string) []string {
 				if len(labels) >= 2 {
 					labels[1] = src
 				}
-			} else {
-				// "Merge branch 'X'" without into
-				if len(labels) >= 2 {
-					labels[1] = src
-				}
+			} else if len(labels) >= 2 {
+				labels[1] = src
 			}
 		}
 	}
@@ -644,7 +642,7 @@ func fallbackMergeFiles(projectPath, sha string) map[string]interface{} {
 
 	mergeFiles := make([]mergeFileInfo, len(files))
 	for i, f := range files {
-		mergeFiles[i] = mergeFileInfo{Path: f.Path, Type: f.Type}
+		mergeFiles[i] = mergeFileInfo(f)
 	}
 
 	return map[string]interface{}{
@@ -744,7 +742,7 @@ func ServeGitStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isGitRepo(projectPath) {
-	writeJSON(w, http.StatusOK, map[string]bool{"isGit": false, "hasUncommitted": false})
+		writeJSON(w, http.StatusOK, map[string]bool{"isGit": false, "hasUncommitted": false})
 		return
 	}
 
@@ -762,7 +760,7 @@ func ServeGitStatus(w http.ResponseWriter, r *http.Request) {
 	cmd.Dir = projectPath
 	output, err := cmd.CombinedOutput()
 
-	hasUncommitted := err == nil && len(strings.TrimSpace(string(output))) > 0
+	hasUncommitted := err == nil && strings.TrimSpace(string(output)) != ""
 	writeJSON(w, http.StatusOK, map[string]interface{}{"isGit": true, "hasUncommitted": hasUncommitted})
 }
 
@@ -821,7 +819,7 @@ func parseGitStatusPorcelain(output string) []wtFileInfo {
 // Returns {"results": {"abc1234": {"sha":"...","msg":"...","date":"...","author":"..."}, "def5678": null}}
 // where null means the SHA is not a valid commit.
 // For valid commits, the full commit info is returned for breadcrumb display.
-func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
+func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,gocyclo // multi-commit verification loop
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -861,11 +859,10 @@ func ServeGitVerifyCommits(w http.ResponseWriter, r *http.Request) {
 
 	// Batch: use git log --no-walk=sorted to fetch all commit info in one command
 	// --ignore-missing skips invalid SHAs instead of erroring out
-	logArgs := []string{
-		"log", "--no-walk=sorted", "--ignore-missing",
+	logArgs := make([]string, 0, 5+len(body.SHAs))
+	logArgs = append(logArgs, "log", "--no-walk=sorted", "--ignore-missing",
 		"--format=%H|%P|%s|%ad|%an%d",
-		"--date=iso-strict",
-	}
+		"--date=iso-strict")
 	logArgs = append(logArgs, body.SHAs...)
 
 	logCmd := exec.Command("git", logArgs...)
@@ -932,7 +929,7 @@ func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !isGitRepo(projectPath) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{"isGit": false, "hasUncommitted": false, "files": []interface{}{}})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"isGit": false, "hasUncommitted": false, "files": []interface{}{}})
 		return
 	}
 
@@ -946,7 +943,7 @@ func ServeGitWorkingTreeFiles(w http.ResponseWriter, r *http.Request) {
 		cmd := exec.Command("git", "diff", "--name-status", "HEAD", "--", relPath)
 		cmd.Dir = projectPath
 		output, err := cmd.CombinedOutput()
-		hasUncommitted := err == nil && len(strings.TrimSpace(string(output))) > 0
+		hasUncommitted := err == nil && strings.TrimSpace(string(output)) != ""
 		// Also check untracked
 		if !hasUncommitted {
 			lsCmd := exec.Command("git", "ls-files", "--error-unmatch", relPath)
@@ -1065,9 +1062,9 @@ func parseTrackInfo(s string) (ahead, behind int) {
 	for _, part := range strings.Split(s, ", ") {
 		part = strings.TrimSpace(part)
 		if strings.HasPrefix(part, "ahead ") {
-			fmt.Sscanf(part, "ahead %d", &ahead)
+			_, _ = fmt.Sscanf(part, "ahead %d", &ahead)
 		} else if strings.HasPrefix(part, "behind ") {
-			fmt.Sscanf(part, "behind %d", &behind)
+			_, _ = fmt.Sscanf(part, "behind %d", &behind)
 		}
 	}
 	return ahead, behind
@@ -1149,8 +1146,8 @@ func ServeGitBranches(w http.ResponseWriter, r *http.Request) {
 
 	if !isGitRepo(projectPath) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"isGit":        false,
-			"branches":     []interface{}{},
+			"isGit":         false,
+			"branches":      []interface{}{},
 			"defaultBranch": "",
 			"currentBranch": "",
 		})
@@ -1191,7 +1188,7 @@ func ServeGitBranches(w http.ResponseWriter, r *http.Request) {
 			stashCount++
 		}
 	}
-	if len(strings.TrimSpace(string(stashListOut))) > 0 {
+	if strings.TrimSpace(string(stashListOut)) != "" {
 		stashCount++ // last entry has no trailing newline
 	}
 
@@ -1201,7 +1198,7 @@ func ServeGitBranches(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"isGit":         true,
 		"branches":      branches,
-		"defaultBranch":  defaultBranch,
+		"defaultBranch": defaultBranch,
 		"currentBranch": currentBranch,
 		"stashCount":    stashCount,
 	})
@@ -1288,7 +1285,7 @@ func ServeGitWorktrees(w http.ResponseWriter, r *http.Request) {
 
 	if !isGitRepo(projectPath) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"isGit":    false,
+			"isGit":     false,
 			"worktrees": []interface{}{},
 		})
 		return
@@ -1309,9 +1306,9 @@ func ServeGitWorktrees(w http.ResponseWriter, r *http.Request) {
 
 	// Check dirty status for each worktree in parallel
 	type dirtyResult struct {
-		Index         int
-		Dirty         bool
-		ChangeCount   int
+		Index        int
+		Dirty        bool
+		ChangeCount  int
 		UntrackedCnt int
 	}
 	results := make(chan dirtyResult, len(trees))
@@ -1351,7 +1348,7 @@ func ServeGitWorktrees(w http.ResponseWriter, r *http.Request) {
 		trees = []worktreeInfo{}
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"isGit":    true,
+		"isGit":     true,
 		"worktrees": trees,
 	})
 }
@@ -1361,7 +1358,7 @@ var checkoutMu sync.Mutex
 
 // ServeGitCheckout switches the current branch. Supports stash and force options.
 // POST /api/git/checkout  { "branch": string, "stash": bool, "force": bool }
-func ServeGitCheckout(w http.ResponseWriter, r *http.Request) {
+func ServeGitCheckout(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-mode git checkout
 	if !requireMethod(w, r, http.MethodPost) {
 		return
 	}
@@ -1483,9 +1480,9 @@ func ServeGitCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"success":   true,
-		"branch":    body.Branch,
-		"stashed":   stashed,
+		"success":    true,
+		"branch":     body.Branch,
+		"stashed":    stashed,
 		"stashCount": stashCount,
 	})
 }

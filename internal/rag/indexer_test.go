@@ -28,8 +28,8 @@ func setupIndexerDB(t *testing.T) *sql.DB {
 	db, err := sql.Open("sqlite", ":memory:")
 	require.NoError(t, err)
 	db.SetMaxOpenConns(1)
-	db.Exec("PRAGMA journal_mode=WAL")
-	db.Exec("PRAGMA busy_timeout=5000")
+	_, _ = db.Exec("PRAGMA journal_mode=WAL")
+	_, _ = db.Exec("PRAGMA busy_timeout=5000")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS chat_history (
@@ -70,7 +70,7 @@ func setupIndexerDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() {
 		service.DB = origDB
 		service.DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	})
 	return db
 }
@@ -85,16 +85,16 @@ func newHealthyMockEmbedder(t *testing.T) (*EmbeddingClient, func()) {
 			resp := openaiModelsResponse{
 				Data: []openaiModelInfo{{ID: "bge-m3:latest"}},
 			}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		case "/v1/embeddings":
 			var req openaiEmbedRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			data := make([]openaiEmbeddingData, len(req.Input))
 			for i := range req.Input {
 				data[i] = openaiEmbeddingData{Embedding: makeTestEmbedding(1024), Index: i}
 			}
 			resp := openaiEmbedResponse{Data: data}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -206,7 +206,7 @@ func TestIndexer_indexBatch_ModelNotAvailable(t *testing.T) {
 		resp := openaiModelsResponse{
 			Data: []openaiModelInfo{{ID: "other-model:latest"}},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -349,7 +349,7 @@ func TestIndexer_checkEmbedderHealth_ModelNotAvailable(t *testing.T) {
 		resp := openaiModelsResponse{
 			Data: []openaiModelInfo{{ID: "other-model:latest"}},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -526,9 +526,10 @@ func TestIndexer_backfillEmbeddings_EmbeddingFails(t *testing.T) {
 
 	// Server that returns 500 on embeddings endpoint
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" {
-			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
-		} else if r.URL.Path == "/v1/embeddings" {
+		switch r.URL.Path {
+		case "/v1/models":
+			_ = json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+		case "/v1/embeddings":
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
@@ -595,9 +596,10 @@ func TestIndexer_indexMessage_EmbeddingFails(t *testing.T) {
 
 	// Server where embedding endpoint returns 500
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/v1/models" {
-			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
-		} else if r.URL.Path == "/v1/embeddings" {
+		switch r.URL.Path {
+		case "/v1/models":
+			_ = json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+		case "/v1/embeddings":
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 	}))
@@ -667,7 +669,7 @@ func TestIndexer_indexMessage_LargeMessage(t *testing.T) {
 
 	// Generate a message that will produce many chunks
 	longText := ""
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		longText += "This is sentence number that adds to the total content. "
 	}
 
@@ -801,7 +803,7 @@ func TestIndexer_checkEmbedderHealth_ModelNotAvailableRepeated(t *testing.T) {
 		resp := openaiModelsResponse{
 			Data: []openaiModelInfo{{ID: "other-model:latest"}},
 		}
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
 
@@ -883,16 +885,16 @@ func TestIndexer_backfillEmbeddings_NilEmbedding(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/models":
-			json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
+			_ = json.NewEncoder(w).Encode(openaiModelsResponse{Data: []openaiModelInfo{{ID: "bge-m3:latest"}}})
 		case "/v1/embeddings":
 			var req openaiEmbedRequest
-			json.NewDecoder(r.Body).Decode(&req)
+			_ = json.NewDecoder(r.Body).Decode(&req)
 			data := make([]openaiEmbeddingData, len(req.Input))
 			for i := range req.Input {
 				data[i] = openaiEmbeddingData{Embedding: makeTestEmbedding(1024), Index: i}
 			}
 			resp := openaiEmbedResponse{Data: data}
-			json.NewEncoder(w).Encode(resp)
+			_ = json.NewEncoder(w).Encode(resp)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -906,7 +908,7 @@ func TestIndexer_backfillEmbeddings_NilEmbedding(t *testing.T) {
 	idx.embedderHealthy = true
 
 	// Insert two chunks without embedding
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		chunk := Chunk{
 			SessionID: "sess-1", MessageID: int64(i + 1), ChunkText: fmt.Sprintf("text %d", i),
 			ChunkTextSegmented: fmt.Sprintf("text %d", i), ChunkIndex: 0, TokenCount: 3,

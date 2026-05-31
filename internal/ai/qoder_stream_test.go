@@ -245,7 +245,6 @@ func TestQoderStreamParser_FullFlow(t *testing.T) {
 	for ev := range ch {
 		events = append(events, ev)
 	}
-	// thinking + content + tool_use + content + metadata + done = 6
 	assert.Len(t, events, 6)
 	assert.Equal(t, "thinking", events[0].Type)
 	assert.Equal(t, "content", events[1].Type)
@@ -280,7 +279,6 @@ func TestQoderStreamParser_MultiTurnFlow(t *testing.T) {
 	for ev := range ch {
 		events = append(events, ev)
 	}
-	// thinking + tool_use + content + thinking + content + metadata + done = 7
 	assert.Len(t, events, 7)
 	assert.Equal(t, "thinking", events[0].Type)
 	assert.Equal(t, "tool_use", events[1].Type)

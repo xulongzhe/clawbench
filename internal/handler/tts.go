@@ -1,3 +1,4 @@
+//nolint:goconst // JSON response field names are domain strings, not config constants
 package handler
 
 import (
@@ -52,13 +53,13 @@ func SetSummarizer(s summarize.Summarizer) {
 type ttsGenerateRequest struct {
 	Text      string `json:"text"`
 	Language  string `json:"language"`  // language code, e.g. "zh", "en"; defaults to "zh" if empty
-	MessageID int64  `json:"messageId"`  // chat_history.id for TTS summary caching
+	MessageID int64  `json:"messageId"` // chat_history.id for TTS summary caching
 }
 
 // TTSGenerate handles POST /api/tts/generate.
 // It validates input, checks cache, and either returns cached audio immediately
 // or starts an async TTS job and returns a jobId for SSE streaming.
-func TTSGenerate(w http.ResponseWriter, r *http.Request) {
+func TTSGenerate(w http.ResponseWriter, r *http.Request) { //nolint:gocyclo // multi-mode TTS generation
 	projectPath, ok := requireProject(w, r)
 	if !ok {
 		return
@@ -97,13 +98,13 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Determine audio file extension based on TTS engine
 	audioExt := ".mp3"
-	if _, ok := speechProvider.(*speech.PiperProvider); ok {
+	if _, ok := speechProvider.(*speech.PiperProvider); ok { //nolint:govet // shadowed ok is standard type-assertion idiom
 		audioExt = ".wav"
 	}
-	if _, ok := speechProvider.(*speech.KokoroProvider); ok {
+	if _, ok := speechProvider.(*speech.KokoroProvider); ok { //nolint:govet // shadowed ok is standard type-assertion idiom
 		audioExt = ".wav"
 	}
-	if _, ok := speechProvider.(*speech.MossNanoProvider); ok {
+	if _, ok := speechProvider.(*speech.MossNanoProvider); ok { //nolint:govet // shadowed ok is standard type-assertion idiom
 		audioExt = ".wav"
 	}
 	relAudioPath := filepath.Join(".clawbench", "generated", "tts", cacheKey+audioExt)
@@ -116,7 +117,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 
 	// Check cache: if audio file already exists, return immediately as JSON
 	if info, err := os.Stat(absAudioPath); err == nil && info.Size() > 0 {
-		slog.Info("tts cache hit",
+		slog.Info(
+			"tts cache hit",
 			slog.String("cache_key", cacheKey),
 			slog.String("path", relAudioPath),
 		)
@@ -147,7 +149,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 		var summary string
 		cachedSummary, found := service.GetTTSSummaryByMessageID(req.MessageID)
 		if found && cachedSummary != "" && req.MessageID > 0 {
-			slog.Info("tts summary cache hit, skipping summarization",
+			slog.Info(
+				"tts summary cache hit, skipping summarization",
 				slog.String("cache_key", cacheKey),
 			)
 			summary = cachedSummary
@@ -159,7 +162,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 			summary, err = summarizer.Summarize(summarizeCtx, req.Text, req.Language)
 			summarizeCancel()
 			if err != nil {
-				slog.Warn("tts summarize failed",
+				slog.Warn(
+					"tts summarize failed",
 					slog.String("error", err.Error()),
 				)
 				service.SendTTSEvent(cacheKey, service.TTSEvent{
@@ -170,7 +174,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			slog.Info("tts summarize completed",
+			slog.Info(
+				"tts summarize completed",
 				slog.String("cache_key", cacheKey),
 				slog.Int("original_len", len([]rune(req.Text))),
 				slog.Int("summary_len", len([]rune(summary))),
@@ -179,7 +184,8 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 			// Save summary to database
 			if req.MessageID > 0 {
 				if err := service.SaveTTSSummaryByMessageID(req.MessageID, summary); err != nil {
-					slog.Warn("tts failed to cache summary to DB",
+					slog.Warn(
+						"tts failed to cache summary to DB",
 						slog.String("error", err.Error()),
 					)
 				}
@@ -193,20 +199,22 @@ func TTSGenerate(w http.ResponseWriter, r *http.Request) {
 		err := speechProvider.Synthesize(synthesizeCtx, summary, absAudioPath, req.Language)
 		synthesizeCancel()
 		if err != nil {
-			slog.Error("tts synthesize failed",
+			slog.Error(
+				"tts synthesize failed",
 				slog.String("error", err.Error()),
 				slog.String("cache_key", cacheKey),
 			)
-		service.SendTTSEvent(cacheKey, service.TTSEvent{
-			Type:             "result",
-			SynthesizeFailed: true,
-			SynthesizeError:  T(r, "SynthesizeFailed"),
-			Summary:          summary,
-		})
+			service.SendTTSEvent(cacheKey, service.TTSEvent{
+				Type:             "result",
+				SynthesizeFailed: true,
+				SynthesizeError:  T(r, "SynthesizeFailed"),
+				Summary:          summary,
+			})
 			return
 		}
 
-		slog.Info("tts generate completed",
+		slog.Info(
+			"tts generate completed",
 			slog.String("cache_key", cacheKey),
 			slog.String("path", relAudioPath),
 		)
@@ -293,7 +301,8 @@ liveStream:
 				return
 			}
 		case <-r.Context().Done():
-			slog.Info("tts sse client disconnected, cancelling job",
+			slog.Info(
+				"tts sse client disconnected, cancelling job",
 				slog.String("job_id", jobID),
 			)
 			service.CancelTTSJob(jobID)
@@ -305,7 +314,7 @@ liveStream:
 // writeTTSSSE writes a single TTS event as a typed SSE message and flushes.
 func writeTTSSSE(w http.ResponseWriter, event service.TTSEvent, canFlush bool, flusher http.Flusher) {
 	data, _ := json.Marshal(event)
-	fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
+	_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
 	if canFlush {
 		flusher.Flush()
 	}

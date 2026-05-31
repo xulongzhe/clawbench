@@ -1,3 +1,4 @@
+//nolint:noctx,govet,goconst,rowserrcheck // DB global singleton, context not applicable; shadowed err is standard Go pattern; JSON/SQL field names are domain strings; legacy DB.Query pattern
 package service
 
 import (
@@ -11,7 +12,7 @@ import (
 
 	"clawbench/internal/model"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // register SQLite driver
 )
 
 var DB *sql.DB
@@ -24,9 +25,9 @@ var DBRead *sql.DB
 // When runFromServer is true (server startup), orphaned streaming messages
 // from previous crashes are cleaned up. When false (CLI subcommand), cleanup
 // is skipped because the server process may still be actively streaming.
-func InitDB(runFromServer ...bool) error {
+func InitDB(runFromServer ...bool) error { //nolint:gocognit,gocyclo // multi-table schema migration
 	dbDir := filepath.Join(model.BinDir, ".clawbench")
-	if err := os.MkdirAll(dbDir, 0755); err != nil {
+	if err := os.MkdirAll(dbDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create db directory: %w", err)
 	}
 
@@ -189,7 +190,7 @@ func InitDB(runFromServer ...bool) error {
 
 	// Schema migrations: add columns that may not exist in older databases.
 	var hasReadAt int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('task_executions') WHERE name='read_at'").Scan(&hasReadAt)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('task_executions') WHERE name='read_at'").Scan(&hasReadAt)
 	if hasReadAt == 0 {
 		if _, err := DB.Exec("ALTER TABLE task_executions ADD COLUMN read_at DATETIME"); err != nil {
 			return fmt.Errorf("failed to add read_at column: %w", err)
@@ -198,7 +199,7 @@ func InitDB(runFromServer ...bool) error {
 
 	// Migrate: add summary column for task execution summarization
 	var hasSummary int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('task_executions') WHERE name='summary'").Scan(&hasSummary)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('task_executions') WHERE name='summary'").Scan(&hasSummary)
 	if hasSummary == 0 {
 		if _, err := DB.Exec("ALTER TABLE task_executions ADD COLUMN summary TEXT"); err != nil {
 			return fmt.Errorf("failed to add summary column: %w", err)
@@ -207,7 +208,7 @@ func InitDB(runFromServer ...bool) error {
 
 	// Migrate: add source_session_id column for "continue conversation" feature
 	var hasSourceSessionID int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_sessions') WHERE name='source_session_id'").Scan(&hasSourceSessionID)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_sessions') WHERE name='source_session_id'").Scan(&hasSourceSessionID)
 	if hasSourceSessionID == 0 {
 		if _, err := DB.Exec("ALTER TABLE chat_sessions ADD COLUMN source_session_id TEXT DEFAULT NULL"); err != nil {
 			return fmt.Errorf("failed to add source_session_id column: %w", err)
@@ -232,7 +233,7 @@ func InitDB(runFromServer ...bool) error {
 
 	// Migrate: add thinking_effort column for per-session thinking effort selection
 	var hasThinkingEffort int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_sessions') WHERE name='thinking_effort'").Scan(&hasThinkingEffort)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_sessions') WHERE name='thinking_effort'").Scan(&hasThinkingEffort)
 	if hasThinkingEffort == 0 {
 		if _, err := DB.Exec("ALTER TABLE chat_sessions ADD COLUMN thinking_effort TEXT DEFAULT ''"); err != nil {
 			return fmt.Errorf("failed to add thinking_effort column: %w", err)
@@ -241,7 +242,7 @@ func InitDB(runFromServer ...bool) error {
 
 	// Migrate: add host column to forwarded_ports for custom target host
 	var hasForwardedPortHost int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('forwarded_ports') WHERE name='host'").Scan(&hasForwardedPortHost)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('forwarded_ports') WHERE name='host'").Scan(&hasForwardedPortHost)
 	if hasForwardedPortHost == 0 {
 		if _, err := DB.Exec("ALTER TABLE forwarded_ports ADD COLUMN host TEXT NOT NULL DEFAULT ''"); err != nil {
 			return fmt.Errorf("failed to add host column to forwarded_ports: %w", err)
@@ -251,7 +252,7 @@ func InitDB(runFromServer ...bool) error {
 	// Migrate: add local_port column for auto-assigned local port
 	// For existing rows, local_port = port (backward compatible)
 	var hasForwardedPortLocalPort int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('forwarded_ports') WHERE name='local_port'").Scan(&hasForwardedPortLocalPort)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('forwarded_ports') WHERE name='local_port'").Scan(&hasForwardedPortLocalPort)
 	if hasForwardedPortLocalPort == 0 {
 		if _, err := DB.Exec("ALTER TABLE forwarded_ports ADD COLUMN local_port INTEGER"); err != nil {
 			return fmt.Errorf("failed to add local_port column to forwarded_ports: %w", err)
@@ -267,15 +268,15 @@ func InitDB(runFromServer ...bool) error {
 	// so chat_history.deleted is redundant. Removing it simplifies queries
 	// and eliminates the need to restore messages when restoring a session.
 	var hasHistoryDeleted int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_history') WHERE name='deleted'").Scan(&hasHistoryDeleted)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('chat_history') WHERE name='deleted'").Scan(&hasHistoryDeleted)
 	if hasHistoryDeleted > 0 {
 		// SQLite DROP COLUMN fails if any index references the column.
 		// Drop and recreate idx_history_session_id to avoid the error.
-		DB.Exec("DROP INDEX IF EXISTS idx_history_session_id")
+		_, _ = DB.Exec("DROP INDEX IF EXISTS idx_history_session_id")
 		if _, err := DB.Exec("ALTER TABLE chat_history DROP COLUMN deleted"); err != nil {
 			return fmt.Errorf("failed to drop deleted column from chat_history: %w", err)
 		}
-		DB.Exec("CREATE INDEX IF NOT EXISTS idx_history_session_id ON chat_history(session_id, role, streaming, created_at)")
+		_, _ = DB.Exec("CREATE INDEX IF NOT EXISTS idx_history_session_id ON chat_history(session_id, role, streaming, created_at)")
 		slog.Info("dropped redundant deleted column from chat_history")
 	}
 
@@ -292,7 +293,7 @@ func InitDB(runFromServer ...bool) error {
 	// Since we don't do backward compatibility, drop the old table if it exists
 	// and recreate with the new schema.
 	var hasTTSCacheKey int
-	DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('tts_summaries') WHERE name='cache_key'").Scan(&hasTTSCacheKey)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM pragma_table_info('tts_summaries') WHERE name='cache_key'").Scan(&hasTTSCacheKey)
 	if hasTTSCacheKey > 0 {
 		// Old table exists with cache_key — drop and recreate
 		if _, err := DB.Exec("DROP TABLE tts_summaries"); err != nil {
@@ -312,7 +313,7 @@ func InitDB(runFromServer ...bool) error {
 	}
 	// Create new tts_summaries table if it doesn't exist yet (fresh install)
 	var hasTTSSummaries int
-	DB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tts_summaries'").Scan(&hasTTSSummaries)
+	_ = DB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tts_summaries'").Scan(&hasTTSSummaries)
 	if hasTTSSummaries == 0 {
 		if _, err := DB.Exec(`
 			CREATE TABLE tts_summaries (
@@ -336,8 +337,8 @@ func InitDB(runFromServer ...bool) error {
 		return fmt.Errorf("failed to open read database: %w", err)
 	}
 	DBRead.SetMaxOpenConns(2)
-	DBRead.SetMaxIdleConns(2)           // match MaxOpenConns to avoid churn
-	DBRead.SetConnMaxLifetime(0)        // unlimited — SQLite file DB, no reconnection needed
+	DBRead.SetMaxIdleConns(2)                   // match MaxOpenConns to avoid churn
+	DBRead.SetConnMaxLifetime(0)                // unlimited — SQLite file DB, no reconnection needed
 	DBRead.SetConnMaxIdleTime(30 * time.Minute) // close idle conns after 30min
 	if _, err := DBRead.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		return fmt.Errorf("failed to set read DB WAL mode: %w", err)
@@ -350,6 +351,7 @@ func InitDB(runFromServer ...bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to query orphaned streaming messages: %w", err)
 		}
+		defer func() { _ = rows.Close() }()
 		type orphanMsg struct {
 			id      int64
 			content string
@@ -358,12 +360,10 @@ func InitDB(runFromServer ...bool) error {
 		for rows.Next() {
 			var m orphanMsg
 			if err := rows.Scan(&m.id, &m.content); err != nil {
-				rows.Close()
 				return fmt.Errorf("failed to scan orphaned streaming message: %w", err)
 			}
 			orphans = append(orphans, m)
 		}
-		rows.Close()
 
 		for _, m := range orphans {
 			var contentMap map[string]any
@@ -400,10 +400,10 @@ func InitDB(runFromServer ...bool) error {
 // CloseDB closes both write and read database connections.
 func CloseDB() {
 	if DB != nil {
-		DB.Close()
+		_ = DB.Close()
 	}
 	if DBRead != nil {
-		DBRead.Close()
+		_ = DBRead.Close()
 	}
 }
 
@@ -515,11 +515,11 @@ type crudHelpers[T any, E any] struct {
 
 // list returns all rows from the helper's table ordered by sort_order.
 func (h crudHelpers[T, E]) list() ([]T, error) {
-	rows, err := DBRead.Query("SELECT " + h.scanCols + " FROM " + h.table + " ORDER BY sort_order")
+	rows, err := DBRead.Query("SELECT " + h.scanCols + " FROM " + h.table + " ORDER BY sort_order") //nolint:gosec // table/scanCols are package constants, not user input
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var items []T
 	for rows.Next() {
 		item, err := h.scanFn(rows)
@@ -538,7 +538,7 @@ func (h crudHelpers[T, E]) insert(item T) (int64, error) {
 	// without calling the closure twice.
 	label, command, sortOrder, extra := h.addFn(item)
 	if _, ok := any(extra).(quickCommandExtra); ok {
-		if _, err := DB.Exec("UPDATE " + h.table + " SET auto_execute = 0 WHERE auto_execute = 1"); err != nil {
+		if _, err := DB.Exec("UPDATE " + h.table + " SET auto_execute = 0 WHERE auto_execute = 1"); err != nil { //nolint:gosec // table is package constant
 			return 0, err
 		}
 	}
@@ -565,7 +565,7 @@ func (h crudHelpers[T, E]) insert(item T) (int64, error) {
 func (h crudHelpers[T, E]) update(id int64, item T) error {
 	label, command, _, extra := h.addFn(item)
 	if _, ok := any(extra).(quickCommandExtra); ok {
-		if _, err := DB.Exec("UPDATE "+h.table+" SET auto_execute = 0 WHERE auto_execute = 1 AND id != ?", id); err != nil {
+		if _, err := DB.Exec("UPDATE "+h.table+" SET auto_execute = 0 WHERE auto_execute = 1 AND id != ?", id); err != nil { //nolint:gosec // table is package constant
 			return err
 		}
 	}
@@ -581,19 +581,19 @@ func (h crudHelpers[T, E]) update(id int64, item T) error {
 
 // delete removes a row by id.
 func (h crudHelpers[T, E]) delete(id int64) error {
-	_, err := DB.Exec("DELETE FROM "+h.table+" WHERE id = ?", id)
+	_, err := DB.Exec("DELETE FROM "+h.table+" WHERE id = ?", id) //nolint:gosec // table is package constant
 	return err
 }
 
 // reorder updates sort_order for all rows matching the given id list.
 func (h crudHelpers[T, E]) reorder(ids []int64) error {
-	tx, err := DB.Begin()
+	tx, err := DB.Begin() //nolint:noctx // DB global, context not applicable
 	if err != nil {
 		return err
 	}
 	for i, id := range ids {
-		if _, err := tx.Exec("UPDATE "+h.table+" SET sort_order = ? WHERE id = ?", i, id); err != nil {
-			tx.Rollback()
+		if _, err := tx.Exec("UPDATE "+h.table+" SET sort_order = ? WHERE id = ?", i, id); err != nil { //nolint:gosec // table is package constant
+			_ = tx.Rollback()
 			return err
 		}
 	}

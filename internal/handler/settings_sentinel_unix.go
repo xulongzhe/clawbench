@@ -1,5 +1,6 @@
 //go:build !windows
 
+//nolint:noctx // sentinel subprocess, context not applicable
 package handler
 
 import (

@@ -21,9 +21,9 @@ type Indexer struct {
 	doneCh          chan struct{}
 	mu              sync.Mutex
 	running         bool
-	modelWarn       bool  // Whether we've warned about missing model
-	embedderHealthy bool  // Current embedding API health state
-	dimensionSynced bool  // Whether dimension has been synced from embedder to store
+	modelWarn       bool               // Whether we've warned about missing model
+	embedderHealthy bool               // Current embedding API health state
+	dimensionSynced bool               // Whether dimension has been synced from embedder to store
 	batchCancel     context.CancelFunc // cancels in-flight indexBatch on Stop
 }
 
@@ -49,7 +49,8 @@ func (idx *Indexer) Start() {
 	idx.mu.Unlock()
 
 	go idx.run()
-	slog.Info("rag indexer started",
+	slog.Info(
+		"rag indexer started",
 		slog.String("poll_interval", idx.cfg.PollInterval),
 		slog.Int("batch_size", idx.cfg.BatchSize),
 		slog.Int("chunk_size", idx.cfg.ChunkSize),
@@ -173,7 +174,8 @@ func (idx *Indexer) checkEmbedderHealth(ctx context.Context) {
 	}
 	if !modelAvailable {
 		if !idx.modelWarn {
-			slog.Warn("rag: embedding API reachable but model not available",
+			slog.Warn(
+				"rag: embedding API reachable but model not available",
 				slog.String("model", idx.cfg.Model),
 			)
 			idx.modelWarn = true
@@ -219,7 +221,8 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 	// Get total unindexed count for progress tracking
 	totalRemaining, _ := service.UnindexedCount()
 
-	slog.Info("rag: indexing batch",
+	slog.Info(
+		"rag: indexing batch",
 		slog.Int("batch_size", len(messages)),
 		slog.Int("remaining", totalRemaining),
 		slog.Bool("embedder_healthy", idx.embedderHealthy),
@@ -232,7 +235,8 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 	for _, msg := range messages {
 		msgStart := time.Now()
 		if err := idx.indexMessage(ctx, msg); err != nil {
-			slog.Error("rag: failed to index message",
+			slog.Error(
+				"rag: failed to index message",
 				slog.Int64("message_id", msg.ID),
 				slog.String("session_id", msg.SessionID),
 				slog.String("err", err.Error()),
@@ -243,7 +247,8 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 
 		// Mark message as indexed in SQLite
 		if err := service.MarkMessageIndexed(msg.ID); err != nil {
-			slog.Error("rag: failed to mark message indexed",
+			slog.Error(
+				"rag: failed to mark message indexed",
 				slog.Int64("message_id", msg.ID),
 				slog.String("err", err.Error()),
 			)
@@ -254,7 +259,8 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 			skipped++
 		} else {
 			indexed++
-			slog.Debug("rag: indexed message",
+			slog.Debug(
+				"rag: indexed message",
 				slog.Int64("message_id", msg.ID),
 				slog.String("session_id", msg.SessionID),
 				slog.String("role", msg.Role),
@@ -263,7 +269,8 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 		}
 	}
 
-	slog.Info("rag: batch complete",
+	slog.Info(
+		"rag: batch complete",
 		slog.Int("indexed", indexed),
 		slog.Int("skipped", skipped),
 		slog.Duration("elapsed", time.Since(batchStart)),
@@ -280,7 +287,8 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 	text := ExtractTextFromContent(msg.Content, msg.Role)
 	if text == "" {
 		// No text content (e.g., only tool_use blocks) — mark as indexed to skip
-		slog.Debug("rag: skipping message with no text content",
+		slog.Debug(
+			"rag: skipping message with no text content",
 			slog.Int64("message_id", msg.ID),
 			slog.String("role", msg.Role),
 		)
@@ -296,7 +304,8 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 	// Limit chunks per message to prevent runaway
 	maxChunks := 50
 	if len(textChunks) > maxChunks {
-		slog.Warn("rag: message produced too many chunks, truncating",
+		slog.Warn(
+			"rag: message produced too many chunks, truncating",
 			slog.Int64("message_id", msg.ID),
 			slog.Int("original", len(textChunks)),
 			slog.Int("truncated", maxChunks),
@@ -323,7 +332,8 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 
 	// Generate embeddings if the embedding API is healthy
 	if idx.embedderHealthy {
-		slog.Debug("rag: embedding message",
+		slog.Debug(
+			"rag: embedding message",
 			slog.Int64("message_id", msg.ID),
 			slog.Int("chunks", len(textChunks)),
 			slog.String("session_id", msg.SessionID),
@@ -337,7 +347,8 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 		embeddings, err := idx.embedder.EmbedBatch(ctx, texts)
 		if err != nil {
 			// Embedding failed — store without embedding (FTS still works)
-			slog.Warn("rag: embedding failed, storing text-only",
+			slog.Warn(
+				"rag: embedding failed, storing text-only",
 				slog.Int64("message_id", msg.ID),
 				slog.String("err", err.Error()),
 			)
@@ -411,7 +422,8 @@ func (idx *Indexer) backfillEmbeddings(ctx context.Context) {
 			continue
 		}
 		if err := idx.store.UpdateEmbedding(p.ID, embeddings[i]); err != nil {
-			slog.Error("rag: failed to backfill embedding",
+			slog.Error(
+				"rag: failed to backfill embedding",
 				slog.Int64("chunk_id", p.ID),
 				slog.String("err", err.Error()),
 			)
@@ -420,7 +432,8 @@ func (idx *Indexer) backfillEmbeddings(ctx context.Context) {
 		backfilled++
 	}
 
-	slog.Info("rag: backfill complete",
+	slog.Info(
+		"rag: backfill complete",
 		slog.Int("backfilled", backfilled),
 		slog.Int("total_pending", pending),
 	)

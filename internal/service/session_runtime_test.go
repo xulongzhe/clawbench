@@ -268,7 +268,7 @@ func TestSendSessionEvent_FullChannel(t *testing.T) {
 	RegisterSessionStream("session-full")
 
 	// Fill the channel buffer (capacity is sessionStreamBufferSize)
-	for i := 0; i < sessionStreamBufferSize; i++ {
+	for range sessionStreamBufferSize {
 		sent := SendSessionEvent("session-full", ai.StreamEvent{Type: "content", Content: "x"})
 		assert.True(t, sent)
 	}
@@ -358,7 +358,7 @@ func TestTrySetSessionRunning_Concurrent(t *testing.T) {
 	successCount := 0
 	var mu sync.Mutex
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -399,7 +399,7 @@ func TestSendSessionEvent_ConcurrentAccess(t *testing.T) {
 	var mu sync.Mutex
 
 	// Send 50 events concurrently (buffer is sessionStreamBufferSize, so most should succeed)
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()

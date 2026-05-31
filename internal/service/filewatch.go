@@ -17,8 +17,8 @@ type WatchEvent struct {
 }
 
 type watchClient struct {
-	dirPath  string        // absolute path of watched directory (may be "")
-	filePath string        // absolute path of watched file (may be "")
+	dirPath  string // absolute path of watched directory (may be "")
+	filePath string // absolute path of watched file (may be "")
 	pushCh   chan WatchEvent
 }
 
@@ -74,7 +74,7 @@ func StopFileWatcher() {
 	GlobalFileWatcher = nil
 
 	close(fw.done)
-	fw.watcher.Close()
+	_ = fw.watcher.Close()
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 	for id, c := range fw.clients {
@@ -145,7 +145,8 @@ func (fw *FileWatcher) UpdateWatch(clientID, dirPath, filePath string) {
 	oldDir := client.dirPath
 	oldFile := client.filePath
 
-	slog.Debug("UpdateWatch",
+	slog.Debug(
+		"UpdateWatch",
 		slog.String("clientId", clientID),
 		slog.String("oldDir", oldDir),
 		slog.String("oldFile", oldFile),
@@ -167,7 +168,8 @@ func (fw *FileWatcher) UpdateWatch(clientID, dirPath, filePath string) {
 		}
 		if dirPath != "" {
 			if err := fw.watcher.Add(dirPath); err != nil {
-				slog.Warn("failed to watch directory",
+				slog.Warn(
+					"failed to watch directory",
 					slog.String("path", dirPath),
 					slog.String("err", err.Error()),
 				)
@@ -182,7 +184,8 @@ func (fw *FileWatcher) UpdateWatch(clientID, dirPath, filePath string) {
 		}
 		if filePath != "" {
 			if err := fw.watcher.Add(filePath); err != nil {
-				slog.Warn("failed to watch file",
+				slog.Warn(
+					"failed to watch file",
 					slog.String("path", filePath),
 					slog.String("err", err.Error()),
 				)
@@ -241,7 +244,7 @@ func (fw *FileWatcher) eventLoop() {
 }
 
 // handleFsEvent processes a single fsnotify event, matching it to clients.
-func (fw *FileWatcher) handleFsEvent(event fsnotify.Event) {
+func (fw *FileWatcher) handleFsEvent(event fsnotify.Event) { //nolint:gocyclo // multi-event-type filesystem handler
 	fw.mu.Lock()
 	defer fw.mu.Unlock()
 
@@ -283,7 +286,8 @@ func (fw *FileWatcher) handleFsEvent(event fsnotify.Event) {
 			continue
 		}
 
-		slog.Debug("handleFsEvent matched",
+		slog.Debug(
+			"handleFsEvent matched",
 			slog.String("clientId", clientID),
 			slog.String("eventType", eventType),
 			slog.String("absPath", absPath),
@@ -329,14 +333,16 @@ func (fw *FileWatcher) fireDebouncedEvent(clientID, debounceKey string) {
 
 	select {
 	case client.pushCh <- we:
-		slog.Debug("file watch event pushed",
+		slog.Debug(
+			"file watch event pushed",
 			slog.String("clientId", clientID),
 			slog.String("type", we.Type),
 			slog.String("path", we.Path),
 		)
 	default:
 		// Channel full — drop event (client will get the next one)
-		slog.Debug("file watch push channel full, dropping event",
+		slog.Debug(
+			"file watch push channel full, dropping event",
 			slog.String("clientId", clientID),
 			slog.String("type", we.Type),
 		)

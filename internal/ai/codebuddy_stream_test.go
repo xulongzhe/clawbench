@@ -241,7 +241,6 @@ func TestCodebuddyStream_ExecuteStreamReturnsChannel(t *testing.T) {
 		SessionID: "test-session",
 		WorkDir:   "/tmp",
 	})
-
 	if err != nil {
 		// Command might fail if codebuddy is not installed — that's ok for this test
 		return

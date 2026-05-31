@@ -16,7 +16,7 @@ import (
 func newTestManager(jpush *push.JPushClient) *Manager {
 	return &Manager{
 		subscriptions: make(map[string]*ClientSubscription),
-		jpush:        jpush,
+		jpush:         jpush,
 	}
 }
 
@@ -206,7 +206,7 @@ func TestManager_BroadcastEvent_Disconnected(t *testing.T) {
 func TestManager_BroadcastEvent_JPushWhenDisconnected(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -274,7 +274,7 @@ func TestManager_BroadcastEvent_MultipleClients(t *testing.T) {
 func TestBufferEvent_MaxSize(t *testing.T) {
 	sub := &ClientSubscription{}
 
-	for i := 0; i < 60; i++ {
+	for i := range 60 {
 		sub.bufferEvent(ServerMessage{ID: string(rune('a' + i%26))})
 	}
 
@@ -498,7 +498,7 @@ func TestManager_BroadcastEvent_JPushAlert_WithSessionTitle(t *testing.T) {
 			}
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -520,9 +520,9 @@ func TestManager_BroadcastEvent_JPushAlert_WithSessionTitle(t *testing.T) {
 		ID:    "evt_1",
 		Event: "session_update",
 		Data: &SessionUpdateData{
-			SessionID:      "s1",
-			Status:         "completed",
-			HasNewMessages: true,
+			SessionID:       "s1",
+			Status:          "completed",
+			HasNewMessages:  true,
 			SessionTitle:    "帮我写一个Go HTTP服务器",
 			ResponsePreview: "AI回复的预览内容",
 		},
@@ -551,7 +551,7 @@ func TestManager_BroadcastEvent_JPushAlert_WithResponsePreview(t *testing.T) {
 			}
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -573,9 +573,9 @@ func TestManager_BroadcastEvent_JPushAlert_WithResponsePreview(t *testing.T) {
 		ID:    "evt_1",
 		Event: "session_update",
 		Data: &SessionUpdateData{
-			SessionID:      "s1",
-			Status:         "completed",
-			HasNewMessages: true,
+			SessionID:       "s1",
+			Status:          "completed",
+			HasNewMessages:  true,
 			ResponsePreview: "AI回复的预览内容",
 		},
 	}
@@ -604,7 +604,7 @@ func TestManager_BroadcastEvent_JPushAlert_TruncatesLongPreview(t *testing.T) {
 			}
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -628,10 +628,10 @@ func TestManager_BroadcastEvent_JPushAlert_TruncatesLongPreview(t *testing.T) {
 		ID:    "evt_1",
 		Event: "session_update",
 		Data: &SessionUpdateData{
-			SessionID:      "s1",
-			Status:         "completed",
-			HasNewMessages: true,
-			SessionTitle:   "测试标题",
+			SessionID:       "s1",
+			Status:          "completed",
+			HasNewMessages:  true,
+			SessionTitle:    "测试标题",
 			ResponsePreview: longPreview,
 		},
 	}
@@ -664,7 +664,7 @@ func TestManager_BroadcastEvent_JPushAlert_WithoutTitleOrPreview(t *testing.T) {
 			}
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -714,7 +714,7 @@ func TestManager_BroadcastEvent_JPushAlert_TaskUpdate(t *testing.T) {
 			}
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -736,9 +736,9 @@ func TestManager_BroadcastEvent_JPushAlert_TaskUpdate(t *testing.T) {
 		ID:    "evt_1",
 		Event: "task_update",
 		Data: &TaskUpdateData{
-			TaskID:         "t1",
-			Status:         "completed",
-			SessionTitle:   "自动修复Bug",
+			TaskID:          "t1",
+			Status:          "completed",
+			SessionTitle:    "自动修复Bug",
 			ResponsePreview: "已修复空指针异常，添加了nil检查",
 		},
 	}
@@ -757,7 +757,7 @@ func TestManager_BroadcastEvent_JPushNotSentForRunning(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pushCalled = true
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -804,7 +804,7 @@ func TestManager_BroadcastEvent_JPushSentForCompleted(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pushCalled = true
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -843,7 +843,7 @@ func TestManager_BroadcastEvent_JPushNotSentForTaskRunning(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pushCalled = true
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -882,7 +882,7 @@ func TestManager_BroadcastEvent_JPushSentForCancelled(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pushCalled = true
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -923,7 +923,7 @@ func TestManager_BroadcastEvent_JPushDedupSameRegID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pushCount++
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -981,7 +981,7 @@ func TestManager_BroadcastEvent_JPushExtras_SessionWithProjectPath(t *testing.T)
 			}
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -1037,7 +1037,7 @@ func TestManager_BroadcastEvent_JPushExtras_TaskWithSessionAndProjectPath(t *tes
 			}
 		}
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 
@@ -1088,7 +1088,7 @@ func TestManager_BroadcastEvent_JPushWhenNoWS(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pushCalled = true
 		w.WriteHeader(200)
-		w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
+		_, _ = w.Write([]byte(`{"sendno":"123","msg_id":"456"}`))
 	}))
 	defer server.Close()
 

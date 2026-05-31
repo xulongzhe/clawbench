@@ -1,10 +1,13 @@
+//nolint:noctx,govet,rowserrcheck // DB global, context not applicable; shadowed err is acceptable; legacy DB.Query pattern
 package service
 
 import (
-	"clawbench/internal/model"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
+
+	"clawbench/internal/model"
 )
 
 // restoreDeletedSession restores a soft-deleted session by setting deleted=0.
@@ -67,7 +70,7 @@ func CheckContinueSession(execID int64) (bool, string, error) {
 // In production, DB has MaxOpenConns=1 so all writes are serialized through a single
 // connection — this provides the same atomicity guarantee as BEGIN IMMEDIATE without
 // the risk of connection-pool deadlocks in test environments.
-func ContinueFromExecution(execID int64, projectPath string) (sessionID string, alreadyExists bool, err error) {
+func ContinueFromExecution(execID int64, projectPath string) (sessionID string, alreadyExists bool, err error) { //nolint:gocognit,gocyclo // multi-step session continuation with dedup
 	// 1. Get execution info
 	var sourceSessionID string
 	var taskID int64
@@ -77,7 +80,7 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 		"SELECT session_id, task_id, status, created_at FROM task_executions WHERE id = ?",
 		execID,
 	).Scan(&sourceSessionID, &taskID, &execStatus, &execCreatedAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, fmt.Errorf("execution %d not found", execID)
 	}
 	if err != nil {
@@ -96,7 +99,7 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 		"SELECT name, project_path FROM scheduled_tasks WHERE id = ?",
 		taskID,
 	).Scan(&taskName, &taskProjectPath)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, fmt.Errorf("task %d not found", taskID)
 	}
 	if err != nil {
@@ -114,7 +117,7 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 		"SELECT backend, agent_id, agent_source, model, thinking_effort, project_path, external_session_id FROM chat_sessions WHERE id = ?",
 		sourceSessionID,
 	).Scan(&backend, &agentID, &agentSource, &modelName, &thinkingEffort, &sessProjectPath, &externalSessionID)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", false, fmt.Errorf("source session %s not found", sourceSessionID)
 	}
 	if err != nil {
@@ -137,7 +140,7 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 		}
 		return existingID, true, nil
 	}
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return "", false, err
 	}
 
@@ -186,6 +189,7 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 	if err != nil {
 		return "", false, fmt.Errorf("failed to query source messages: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
 
 	type sourceMsg struct {
 		id          int64
@@ -199,12 +203,10 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 	for rows.Next() {
 		var m sourceMsg
 		if err := rows.Scan(&m.id, &m.projectPath, &m.role, &m.content, &m.files, &m.backend); err != nil {
-			rows.Close()
 			return "", false, fmt.Errorf("failed to scan source message: %w", err)
 		}
 		messages = append(messages, m)
 	}
-	rows.Close()
 
 	// Insert messages and build old ID -> new ID mapping for summaries
 	idMap := make(map[int64]int64)
@@ -227,7 +229,7 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 			"SELECT summary FROM summaries WHERE target_type = 'chat_message' AND target_id = ?",
 			oldID,
 		).Scan(&summary)
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
 		if err != nil {
@@ -241,7 +243,6 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 			return "", false, fmt.Errorf("failed to copy summary for message %d: %w", oldID, err)
 		}
 	}
-
 
 	// 10b. Copy task_execution type summary as chat_message type
 	// Scheduled sessions store their summary as target_type='task_execution', target_id=execID.
@@ -277,7 +278,6 @@ func ContinueFromExecution(execID int64, projectPath string) (sessionID string, 
 			}
 		}
 	}
-
 
 	return newSessionID, false, nil
 }

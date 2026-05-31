@@ -38,11 +38,11 @@ func setupAgentTestEnv(t *testing.T) (string, func()) {
 
 	// Set up test agents directly in DB
 	codebuddyAgent := &model.Agent{
-		ID:      "codebuddy",
-		Name:    "Test",
-		Icon:    "🤖",
+		ID:        "codebuddy",
+		Name:      "Test",
+		Icon:      "🤖",
 		Specialty: "testing",
-		Backend: "codebuddy",
+		Backend:   "codebuddy",
 		Models: []model.AgentModel{
 			{ID: "glm-5.1", Name: "GLM 5.1", Default: true},
 			{ID: "glm-4-flash", Name: "GLM 4 Flash"},
@@ -51,11 +51,11 @@ func setupAgentTestEnv(t *testing.T) (string, func()) {
 		Source:               "auto",
 	}
 	claudeAgent := &model.Agent{
-		ID:      "claude",
-		Name:    "Claude",
-		Icon:    "🧠",
+		ID:        "claude",
+		Name:      "Claude",
+		Icon:      "🧠",
 		Specialty: "reasoning",
-		Backend: "claude",
+		Backend:   "claude",
 		Models: []model.AgentModel{
 			{ID: "claude-sonnet-4-6", Name: "Claude Sonnet", Default: true},
 		},
@@ -78,7 +78,7 @@ func setupAgentTestEnv(t *testing.T) (string, func()) {
 		model.AgentList = origAgentList
 		service.DB = origDB
 		service.DBRead = origDBRead
-		db.Close()
+		_ = db.Close()
 	}
 
 	return tmpDir, teardown
@@ -315,7 +315,7 @@ func TestAgentRefreshModels_Success(t *testing.T) {
 
 	// Create model cache dir and set global
 	cacheDir := filepath.Join(tmpDir, "model-cache")
-	require.NoError(t, os.MkdirAll(cacheDir, 0755))
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
 	origCacheDir := model.ModelCacheDir
 	model.ModelCacheDir = cacheDir
 	defer func() { model.ModelCacheDir = origCacheDir }()
@@ -410,7 +410,7 @@ func TestServeAgentSubRoutes_RefreshModels(t *testing.T) {
 
 	// Create model cache dir and set global
 	cacheDir := filepath.Join(tmpDir, "model-cache")
-	require.NoError(t, os.MkdirAll(cacheDir, 0755))
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
 	origCacheDir := model.ModelCacheDir
 	model.ModelCacheDir = cacheDir
 	defer func() { model.ModelCacheDir = origCacheDir }()
@@ -554,13 +554,13 @@ func TestServeAgentRefreshModels_SaveAgentDBError(t *testing.T) {
 
 	// Create model cache dir and set global
 	cacheDir := filepath.Join(tmpDir, "model-cache")
-	require.NoError(t, os.MkdirAll(cacheDir, 0755))
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
 	origCacheDir := model.ModelCacheDir
 	model.ModelCacheDir = cacheDir
 	defer func() { model.ModelCacheDir = origCacheDir }()
 
 	// Delete agents table to cause SaveAgent to fail
-	service.DB.Exec("DROP TABLE agents")
+	_, _ = service.DB.Exec("DROP TABLE agents")
 
 	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
 	withAuthCookie(req, model.SessionToken)
@@ -667,7 +667,7 @@ func TestAgentPatch_PatchAgentDBError(t *testing.T) {
 	// Create a closed DB that will return errors on Exec
 	closedDB, err := service.InitInMemoryDB()
 	require.NoError(t, err)
-	closedDB.Close()
+	_ = closedDB.Close()
 
 	// Replace service.DB with the closed DB
 	origDB := service.DB

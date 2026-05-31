@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -80,7 +81,8 @@ func NewSession(projectPath, cwd string, cfg TerminalConfig) (*Session, error) {
 
 	// Start idle timer (will be stopped when a client connects)
 	s.idleTimer = time.AfterFunc(s.idleTimeout, func() {
-		slog.Info("terminal: session idle timeout",
+		slog.Info(
+			"terminal: session idle timeout",
 			slog.String("project", s.projectPath),
 			slog.String("session", s.id),
 		)
@@ -151,7 +153,8 @@ func (s *Session) waitProcess() {
 	err := s.cmd.Wait()
 	exitCode := 0
 	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		exitErr := &exec.ExitError{}
+		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		}
 	}
@@ -180,12 +183,13 @@ func (s *Session) waitProcess() {
 	}
 
 	if ptmx != nil {
-		ptmx.Close()
+		_ = ptmx.Close()
 	}
 	s.buffer.Reset()
 	close(s.done)
 
-	slog.Info("terminal: process exited",
+	slog.Info(
+		"terminal: process exited",
 		slog.String("project", s.projectPath),
 		slog.String("session", s.id),
 		slog.Int("exit_code", exitCode),
@@ -212,11 +216,12 @@ func (s *Session) Connect(conn *websocket.Conn) error {
 	// WebSocket's read loop hasn't exited yet (e.g. reconnect scenario).
 	// Use StatusReplaced so the old client's frontend knows not to auto-reconnect.
 	if s.wsConn != nil {
-		slog.Info("terminal: kicking existing client for new connection",
+		slog.Info(
+			"terminal: kicking existing client for new connection",
 			slog.String("session", s.id),
 		)
 		s.wsMu.Lock()
-		s.wsConn.Close(StatusReplaced, "replaced by new client")
+		_ = s.wsConn.Close(StatusReplaced, "replaced by new client")
 		s.wsMu.Unlock()
 		s.wsConn = nil
 	}
@@ -258,7 +263,7 @@ func (s *Session) Disconnect(conn *websocket.Conn) {
 	// If a new client has already connected (replaced s.wsConn), this old
 	// goroutine must not touch the new connection.
 	if s.wsConn == conn {
-		s.wsConn.Close(websocket.StatusNormalClosure, "client disconnected")
+		_ = s.wsConn.Close(websocket.StatusNormalClosure, "client disconnected")
 		s.wsConn = nil
 	}
 
@@ -279,7 +284,7 @@ func (s *Session) HandleInput(data string) error {
 		return fmt.Errorf("PTY not available")
 	}
 
-	_, err := ptmx.Write([]byte(data))
+	_, err := ptmx.WriteString(data)
 	return err
 }
 
@@ -309,7 +314,8 @@ func (s *Session) Close() {
 	s.closed = true
 	s.running = false
 
-	slog.Info("terminal: closing session",
+	slog.Info(
+		"terminal: closing session",
 		slog.String("project", s.projectPath),
 		slog.String("session", s.id),
 	)
@@ -334,7 +340,8 @@ func (s *Session) Close() {
 			select {
 			case <-s.done:
 			case <-time.After(1 * time.Second):
-				slog.Warn("terminal: process did not exit after SIGKILL",
+				slog.Warn(
+					"terminal: process did not exit after SIGKILL",
 					slog.String("project", s.projectPath),
 					slog.String("session", s.id),
 				)
@@ -344,11 +351,11 @@ func (s *Session) Close() {
 
 	s.mu.Lock()
 	if s.ptmx != nil {
-		s.ptmx.Close()
+		_ = s.ptmx.Close()
 		s.ptmx = nil
 	}
 	if s.wsConn != nil {
-		s.wsConn.Close(websocket.StatusNormalClosure, "session closed")
+		_ = s.wsConn.Close(websocket.StatusNormalClosure, "session closed")
 		s.wsConn = nil
 	}
 	s.mu.Unlock()

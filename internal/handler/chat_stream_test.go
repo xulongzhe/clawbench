@@ -187,7 +187,7 @@ func TestAIChatStream_ToolUseEvent(t *testing.T) {
 	assert.Equal(t, "Read", data["name"])
 	assert.Equal(t, "t1", data["id"])
 	assert.Equal(t, true, data["done"])
-	input := data["input"].(map[string]any)
+	input, _ := data["input"].(map[string]any)
 	assert.Equal(t, "/foo.go", input["file_path"])
 }
 
@@ -355,7 +355,7 @@ func TestAIChatStream_ToolUseEvent_EmptyInput(t *testing.T) {
 	assert.Equal(t, "tool_use", events[0]["event"])
 	var data map[string]any
 	require.NoError(t, json.Unmarshal([]byte(events[0]["data"]), &data))
-	input := data["input"].(map[string]any)
+	input, _ := data["input"].(map[string]any)
 	assert.Empty(t, input)
 }
 
@@ -593,7 +593,7 @@ func TestAIChatStream_QueueConsumeEvent(t *testing.T) {
 	var data map[string]any
 	require.NoError(t, json.Unmarshal([]byte(events[0]["data"]), &data))
 	assert.Equal(t, "hello", data["text"])
-	filePaths := data["filePaths"].([]any)
+	filePaths, _ := data["filePaths"].([]any)
 	assert.Equal(t, "/test.go", filePaths[0])
 }
 

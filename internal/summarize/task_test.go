@@ -27,10 +27,10 @@ func TestTaskSummarizer_ShortText(t *testing.T) {
 // --- TaskSummarizer long text via backend ---
 
 type mockTaskBackend struct {
-	streamCh     chan ai.StreamEvent
-	executeErr   error
+	streamCh      chan ai.StreamEvent
+	executeErr    error
 	executeCalled bool
-	capturedReq  ai.ChatRequest
+	capturedReq   ai.ChatRequest
 }
 
 func (m *mockTaskBackend) Name() string { return "mock-task-backend" }
@@ -63,7 +63,7 @@ func TestTaskSummarizer_LongText_ViaBackend(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Contains(t, result, "总结")
 	assert.Contains(t, result, "**精简**") // Markdown preserved
-	assert.Contains(t, result, "```go")     // Code block preserved
+	assert.Contains(t, result, "```go")  // Code block preserved
 	assert.True(t, mock.executeCalled)
 	assert.Equal(t, "test-model", mock.capturedReq.Model)
 	assert.Equal(t, taskSummarizePrompt, mock.capturedReq.SystemPrompt)

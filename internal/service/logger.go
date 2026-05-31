@@ -20,14 +20,14 @@ type FileHandler struct {
 	mu          sync.Mutex
 	file        *os.File
 	currentDate string
-	group       string // for WithGroup
+	group       string      // for WithGroup
 	attrs       []slog.Attr // for WithAttrs
 }
 
 // NewFileHandler creates a file handler that writes to dir/prefix-YYYY-MM-DD.log.
 // It rotates daily and removes logs older than maxDays on startup.
 func NewFileHandler(dir, prefix string, maxDays int) (*FileHandler, error) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create log dir: %w", err)
 	}
 	h := &FileHandler{
@@ -57,7 +57,7 @@ func (h *FileHandler) Handle(_ context.Context, r slog.Record) error {
 		}
 	}
 	buf := new(strings.Builder)
-	slog.NewTextHandler(buf, &h.opts).Handle(context.Background(), r)
+	_ = slog.NewTextHandler(buf, &h.opts).Handle(context.Background(), r)
 	_, err := h.file.WriteString(buf.String() + "\n")
 	return err
 }
@@ -65,41 +65,41 @@ func (h *FileHandler) Handle(_ context.Context, r slog.Record) error {
 // WithGroup implements slog.Handler
 func (h *FileHandler) WithGroup(name string) slog.Handler {
 	return &FileHandler{
-		opts:    h.opts,
-		dir:     h.dir,
-		prefix:  h.prefix,
-		maxDays: h.maxDays,
-		file:    h.file,
+		opts:        h.opts,
+		dir:         h.dir,
+		prefix:      h.prefix,
+		maxDays:     h.maxDays,
+		file:        h.file,
 		currentDate: h.currentDate,
-		group:   h.group + name + ".",
-		attrs:   h.attrs,
+		group:       h.group + name + ".",
+		attrs:       h.attrs,
 	}
 }
 
 // WithAttrs implements slog.Handler
 func (h *FileHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	newAttrs := make([]slog.Attr, len(h.attrs))
+	newAttrs := make([]slog.Attr, len(h.attrs), len(h.attrs)+len(attrs))
 	copy(newAttrs, h.attrs)
 	return &FileHandler{
-		opts:    h.opts,
-		dir:     h.dir,
-		prefix:  h.prefix,
-		maxDays: h.maxDays,
-		file:    h.file,
+		opts:        h.opts,
+		dir:         h.dir,
+		prefix:      h.prefix,
+		maxDays:     h.maxDays,
+		file:        h.file,
 		currentDate: h.currentDate,
-		group:   h.group,
-		attrs:   append(newAttrs, attrs...),
+		group:       h.group,
+		attrs:       append(newAttrs, attrs...),
 	}
 }
 
 func (h *FileHandler) rotate() error {
 	if h.file != nil {
-		h.file.Close()
+		_ = h.file.Close()
 	}
 	today := time.Now().Format("2006-01-02")
 	name := fmt.Sprintf("%s-%s.log", h.prefix, today)
 	path := filepath.Join(h.dir, name)
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644) //nolint:gosec // log file, not security-sensitive
 	if err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func (h *FileHandler) cleanup() {
 			continue
 		}
 		if info.ModTime().Before(cutoff) {
-			os.Remove(path)
+			_ = os.Remove(path)
 		}
 	}
 }
@@ -139,7 +139,7 @@ func (h *FileHandler) Write(p []byte) (int, error) {
 	defer h.mu.Unlock()
 	today := time.Now().Format("2006-01-02")
 	if today != h.currentDate {
-		h.rotate()
+		_ = h.rotate()
 	}
 	return h.file.Write(p)
 }

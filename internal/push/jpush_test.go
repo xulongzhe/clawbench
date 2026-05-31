@@ -46,7 +46,7 @@ func TestJPushClient_SendNotification_Success(t *testing.T) {
 			t.Fatalf("decode body: %v", err)
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"sendno":"1","msg_id":"12345"}`))
+		_, _ = w.Write([]byte(`{"sendno":"1","msg_id":"12345"}`))
 	}))
 	defer server.Close()
 
@@ -77,7 +77,7 @@ func TestJPushClient_SendNotification_EmptyRegID(t *testing.T) {
 func TestJPushClient_SendNotification_ServerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":{"code":1002,"message":"invalid registration id"}}`))
+		_, _ = w.Write([]byte(`{"error":{"code":1002,"message":"invalid registration id"}}`))
 	}))
 	defer server.Close()
 

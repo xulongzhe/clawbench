@@ -16,52 +16,52 @@ type PiStreamMessage struct {
 
 	// message_update event
 	AssistantMessageEvent *PiAssistantMessageEvent `json:"assistantMessageEvent,omitempty"`
-	Message               *PiMessage                `json:"message,omitempty"`
+	Message               *PiMessage               `json:"message,omitempty"`
 
 	// tool_execution_start / tool_execution_end
-	ToolCallID string    `json:"toolCallId,omitempty"`
-	ToolName   string    `json:"toolName,omitempty"`
+	ToolCallID string          `json:"toolCallId,omitempty"`
+	ToolName   string          `json:"toolName,omitempty"`
 	Args       json.RawMessage `json:"args,omitempty"`
-	Result     *PiToolResult `json:"result,omitempty"`
-	IsError    bool      `json:"isError,omitempty"`
+	Result     *PiToolResult   `json:"result,omitempty"`
+	IsError    bool            `json:"isError,omitempty"`
 }
 
 // PiAssistantMessageEvent represents the assistantMessageEvent field
 // in a message_update event from Pi.
 type PiAssistantMessageEvent struct {
-	Type         string          `json:"type"`         // "thinking_start", "thinking_delta", "thinking_end", "text_start", "text_delta", "text_end", "toolcall_start", "toolcall_delta", "toolcall_end"
-	ContentIndex int             `json:"contentIndex"` // index into the message content array
-	Delta        string          `json:"delta"`        // incremental content for thinking_delta / text_delta / toolcall_delta
-	ToolCall     *PiToolCallEnd  `json:"toolCall"`     // populated on toolcall_end
+	Type         string         `json:"type"`         // "thinking_start", "thinking_delta", "thinking_end", "text_start", "text_delta", "text_end", "toolcall_start", "toolcall_delta", "toolcall_end"
+	ContentIndex int            `json:"contentIndex"` // index into the message content array
+	Delta        string         `json:"delta"`        // incremental content for thinking_delta / text_delta / toolcall_delta
+	ToolCall     *PiToolCallEnd `json:"toolCall"`     // populated on toolcall_end
 }
 
 // PiMessage represents the message field in Pi stream events.
 type PiMessage struct {
-	Role    string          `json:"role"`              // "assistant"
-	Content json.RawMessage `json:"content,omitempty"` // array of content items (for toolcall_start/delta)
-	Usage   *PiUsage        `json:"usage,omitempty"`
-	StopReason   string `json:"stopReason,omitempty"`
-	ErrorMessage string `json:"errorMessage,omitempty"`
-	ResponseID   string `json:"responseId,omitempty"`
+	Role         string          `json:"role"`              // "assistant"
+	Content      json.RawMessage `json:"content,omitempty"` // array of content items (for toolcall_start/delta)
+	Usage        *PiUsage        `json:"usage,omitempty"`
+	StopReason   string          `json:"stopReason,omitempty"`
+	ErrorMessage string          `json:"errorMessage,omitempty"`
+	ResponseID   string          `json:"responseId,omitempty"`
 }
 
 // PiUsage represents token usage and cost information.
 type PiUsage struct {
-	Input       int       `json:"input"`
-	Output      int       `json:"output"`
-	CacheRead   int       `json:"cacheRead"`
-	CacheWrite  int       `json:"cacheWrite"`
-	TotalTokens int       `json:"totalTokens"`
-	Cost        *PiCost   `json:"cost"`
+	Input       int     `json:"input"`
+	Output      int     `json:"output"`
+	CacheRead   int     `json:"cacheRead"`
+	CacheWrite  int     `json:"cacheWrite"`
+	TotalTokens int     `json:"totalTokens"`
+	Cost        *PiCost `json:"cost"`
 }
 
 // PiCost represents cost breakdown.
 type PiCost struct {
-	Input     float64 `json:"input"`
-	Output    float64 `json:"output"`
-	CacheRead float64 `json:"cacheRead"`
+	Input      float64 `json:"input"`
+	Output     float64 `json:"output"`
+	CacheRead  float64 `json:"cacheRead"`
 	CacheWrite float64 `json:"cacheWrite"`
-	Total     float64 `json:"total"`
+	Total      float64 `json:"total"`
 }
 
 // PiToolCallEnd represents the toolCall field in a toolcall_end event.

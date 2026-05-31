@@ -297,10 +297,10 @@ func TestServeLogin_RateLimiting(t *testing.T) {
 
 	// Reset the global limiter for this test
 	globalLoginLimiter = &loginLimiter{records: make(map[string]*ipRecord)}
-	globalLoginLimiterOnce = sync.Once{} //nolint:staticcheck // reset for test
+	globalLoginLimiterOnce = sync.Once{}
 
 	// Send maxLoginFails wrong password attempts
-	for i := 0; i < maxLoginFails; i++ {
+	for range maxLoginFails {
 		req := newRequest(t, http.MethodPost, "/login", map[string]string{
 			"password": "wrongpass",
 		})
@@ -329,7 +329,7 @@ func TestServeLogin_RateLimiting_SuccessUnblocks(t *testing.T) {
 	globalLoginLimiterOnce = sync.Once{}
 
 	// Send (maxLoginFails - 1) wrong password attempts (just under the limit)
-	for i := 0; i < maxLoginFails-1; i++ {
+	for range maxLoginFails - 1 {
 		req := newRequest(t, http.MethodPost, "/login", map[string]string{
 			"password": "wrongpass",
 		})
