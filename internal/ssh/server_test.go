@@ -802,77 +802,6 @@ func TestSSHServer_JoinHostPort_LocalhostTarget(t *testing.T) {
 	}
 }
 
-// --- Auth Tracker Internal Tests ---
-
-func TestAuthTracker_IsBlocked_ExpiredBlock(t *testing.T) {
-	tracker := newAuthTracker()
-	// Simulate a blocked IP whose block has already expired
-	tracker.records["1.2.3.4"] = &ipRecord{
-		failCount:    5,
-		lastFail:     time.Now().Add(-10 * time.Minute),
-		blockedUntil: time.Now().Add(-1 * time.Minute), // expired
-	}
-	// isBlocked should return false and clear the block
-	if tracker.isBlocked("1.2.3.4") {
-		t.Error("expected isBlocked=false for expired block")
-	}
-	// After clearing, the record should have zero blockedUntil and failCount
-	rec := tracker.records["1.2.3.4"]
-	if !rec.blockedUntil.IsZero() {
-		t.Error("expected blockedUntil to be zeroed after block expiry")
-	}
-	if rec.failCount != 0 {
-		t.Error("expected failCount to be reset after block expiry")
-	}
-}
-
-func TestAuthTracker_Cleanup_ExpiredRecords(t *testing.T) {
-	tracker := newAuthTracker()
-	// Add a record that is old enough to be cleaned up (past TTL)
-	tracker.records["1.1.1.1"] = &ipRecord{
-		failCount:    1,
-		lastFail:     time.Now().Add(-31 * time.Minute), // past recordTTL
-		blockedUntil: time.Time{},                       // not currently blocked
-	}
-	// Add a record that is still within TTL
-	tracker.records["2.2.2.2"] = &ipRecord{
-		failCount:    1,
-		lastFail:     time.Now(),
-		blockedUntil: time.Time{},
-	}
-	tracker.cleanup()
-	if _, exists := tracker.records["1.1.1.1"]; exists {
-		t.Error("expected expired record to be cleaned up")
-	}
-	if _, exists := tracker.records["2.2.2.2"]; !exists {
-		t.Error("expected non-expired record to be preserved")
-	}
-}
-
-func TestAuthTracker_Cleanup_BlockedRecord(t *testing.T) {
-	tracker := newAuthTracker()
-	// Add a still-blocked record (should not be cleaned up even if lastFail is old)
-	tracker.records["3.3.3.3"] = &ipRecord{
-		failCount:    5,
-		lastFail:     time.Now().Add(-31 * time.Minute),
-		blockedUntil: time.Now().Add(5 * time.Minute), // still blocked
-	}
-	tracker.cleanup()
-	if _, exists := tracker.records["3.3.3.3"]; !exists {
-		t.Error("expected still-blocked record to be preserved")
-	}
-}
-
-func TestExtractIP_MalformedAddress(t *testing.T) {
-	// Test the error path where net.SplitHostPort fails
-	addr := &net.IPAddr{IP: net.ParseIP("1.2.3.4")}
-	result := extractIP(addr)
-	// net.IPAddr.String() returns "1.2.3.4" without a port, so SplitHostPort fails
-	if result != addr.String() {
-		t.Errorf("expected fallback to addr.String(), got %q", result)
-	}
-}
-
 // --- Host Key Error Path Tests ---
 
 func TestSSHServer_LoadHostKey_PermissivePermissions(t *testing.T) {
@@ -962,6 +891,452 @@ func TestSSHServer_UnknownChannelType(t *testing.T) {
 	if err == nil {
 		channel.Close()
 		t.Error("expected session channel to be rejected")
+	}
+}
+
+// --- Auth Tracker Comprehensive Tests ---
+
+func TestAuthTracker_NewAuthTracker(t *testing.T) {
+	tracker := newAuthTracker()
+	if tracker == nil {
+		t.Fatal("expected non-nil tracker")
+	}
+	if len(tracker.records) != 0 {
+		t.Errorf("expected empty records map, got %d entries", len(tracker.records))
+	}
+}
+
+func TestAuthTracker_IsBlocked_Empty(t *testing.T) {
+	tracker := newAuthTracker()
+	if tracker.isBlocked("1.2.3.4") {
+		t.Error("expected isBlocked=false for unknown IP")
+	}
+}
+
+func TestAuthTracker_IsBlocked_ExpiredBlock(t *testing.T) {
+	tracker := newAuthTracker()
+	tracker.records["1.2.3.4"] = &ipRecord{
+		failCount:    5,
+		lastFail:     time.Now().Add(-10 * time.Minute),
+		blockedUntil: time.Now().Add(-1 * time.Minute), // expired
+	}
+	if tracker.isBlocked("1.2.3.4") {
+		t.Error("expected isBlocked=false for expired block")
+	}
+	rec := tracker.records["1.2.3.4"]
+	if !rec.blockedUntil.IsZero() {
+		t.Error("expected blockedUntil to be zeroed after block expiry")
+	}
+	if rec.failCount != 0 {
+		t.Error("expected failCount to be reset after block expiry")
+	}
+}
+
+func TestAuthTracker_IsBlocked_ActiveBlock(t *testing.T) {
+	tracker := newAuthTracker()
+	tracker.records["1.2.3.4"] = &ipRecord{
+		failCount:    5,
+		lastFail:     time.Now(),
+		blockedUntil: time.Now().Add(5 * time.Minute), // still active
+	}
+	if !tracker.isBlocked("1.2.3.4") {
+		t.Error("expected isBlocked=true for active block")
+	}
+}
+
+func TestAuthTracker_IsBlocked_NotBlockedRecord(t *testing.T) {
+	tracker := newAuthTracker()
+	// Record exists but no block set
+	tracker.records["1.2.3.4"] = &ipRecord{
+		failCount:    2,
+		lastFail:     time.Now(),
+		blockedUntil: time.Time{},
+	}
+	if tracker.isBlocked("1.2.3.4") {
+		t.Error("expected isBlocked=false for record with no block")
+	}
+}
+
+func TestAuthTracker_RecordFailure_UnderThreshold(t *testing.T) {
+	tracker := newAuthTracker()
+	for i := range maxAuthFails - 1 {
+		tracker.recordFailure("1.2.3.4")
+		rec := tracker.records["1.2.3.4"]
+		if rec.failCount != i+1 {
+			t.Errorf("expected failCount=%d, got %d", i+1, rec.failCount)
+		}
+		if !rec.blockedUntil.IsZero() {
+			t.Error("expected no block before reaching threshold")
+		}
+	}
+}
+
+func TestAuthTracker_RecordFailure_AtThreshold(t *testing.T) {
+	tracker := newAuthTracker()
+	for range maxAuthFails {
+		tracker.recordFailure("1.2.3.4")
+	}
+	rec := tracker.records["1.2.3.4"]
+	if rec.failCount != maxAuthFails {
+		t.Errorf("expected failCount=%d, got %d", maxAuthFails, rec.failCount)
+	}
+	if rec.blockedUntil.IsZero() {
+		t.Error("expected block to be set after reaching threshold")
+	}
+	// First block should be initialBlockDur (5 minutes)
+	expectedDur := initialBlockDur
+	actualDur := rec.blockedUntil.Sub(rec.lastFail)
+	if actualDur != expectedDur {
+		t.Errorf("expected block duration=%v, got %v", expectedDur, actualDur)
+	}
+}
+
+func TestAuthTracker_RecordFailure_ExponentialBackoff(t *testing.T) {
+	tracker := newAuthTracker()
+	// First infraction: at failCount=5, block = initialBlockDur * 2^0 = 5min
+	for range maxAuthFails {
+		tracker.recordFailure("1.2.3.4")
+	}
+	rec := tracker.records["1.2.3.4"]
+	dur1 := rec.blockedUntil.Sub(rec.lastFail)
+	if dur1 != initialBlockDur {
+		t.Errorf("first block: expected %v, got %v", initialBlockDur, dur1)
+	}
+
+	// Second infraction: at failCount=10, block = initialBlockDur * 2^1 = 10min
+	for range maxAuthFails {
+		tracker.recordFailure("1.2.3.4")
+	}
+	rec = tracker.records["1.2.3.4"]
+	dur2 := rec.blockedUntil.Sub(rec.lastFail)
+	expectedDur2 := initialBlockDur * 2
+	if dur2 != expectedDur2 {
+		t.Errorf("second block: expected %v, got %v", expectedDur2, dur2)
+	}
+
+	// Third infraction: at failCount=15, block = initialBlockDur * 2^2 = 20min
+	for range maxAuthFails {
+		tracker.recordFailure("1.2.3.4")
+	}
+	rec = tracker.records["1.2.3.4"]
+	dur3 := rec.blockedUntil.Sub(rec.lastFail)
+	expectedDur3 := initialBlockDur * 4
+	if dur3 != expectedDur3 {
+		t.Errorf("third block: expected %v, got %v", expectedDur3, dur3)
+	}
+}
+
+func TestAuthTracker_RecordFailure_MaxCap(t *testing.T) {
+	tracker := newAuthTracker()
+	// Drive failCount high enough that exponential backoff exceeds maxBlockDur
+	// At failCount=50, infractions=10, dur = initialBlockDur * 2^9 = 5min * 512 = 2560min > 1hr
+	for range 50 {
+		tracker.recordFailure("1.2.3.4")
+	}
+	rec := tracker.records["1.2.3.4"]
+	dur := rec.blockedUntil.Sub(rec.lastFail)
+	if dur != maxBlockDur {
+		t.Errorf("expected block duration capped at %v, got %v", maxBlockDur, dur)
+	}
+}
+
+func TestAuthTracker_Reset(t *testing.T) {
+	tracker := newAuthTracker()
+	tracker.recordFailure("1.2.3.4")
+	tracker.recordFailure("1.2.3.4")
+
+	if _, exists := tracker.records["1.2.3.4"]; !exists {
+		t.Fatal("expected record to exist after failures")
+	}
+
+	tracker.reset("1.2.3.4")
+
+	if _, exists := tracker.records["1.2.3.4"]; exists {
+		t.Error("expected record to be deleted after reset")
+	}
+}
+
+func TestAuthTracker_Reset_NonexistentIP(t *testing.T) {
+	tracker := newAuthTracker()
+	// Should not panic on nonexistent IP
+	tracker.reset("9.9.9.9")
+}
+
+func TestAuthTracker_Cleanup_ExpiredRecords(t *testing.T) {
+	tracker := newAuthTracker()
+	tracker.records["1.1.1.1"] = &ipRecord{
+		failCount:    1,
+		lastFail:     time.Now().Add(-31 * time.Minute), // past recordTTL
+		blockedUntil: time.Time{},
+	}
+	tracker.records["2.2.2.2"] = &ipRecord{
+		failCount:    1,
+		lastFail:     time.Now(),
+		blockedUntil: time.Time{},
+	}
+	tracker.cleanup()
+	if _, exists := tracker.records["1.1.1.1"]; exists {
+		t.Error("expected expired record to be cleaned up")
+	}
+	if _, exists := tracker.records["2.2.2.2"]; !exists {
+		t.Error("expected non-expired record to be preserved")
+	}
+}
+
+func TestAuthTracker_Cleanup_BlockedRecord(t *testing.T) {
+	tracker := newAuthTracker()
+	tracker.records["3.3.3.3"] = &ipRecord{
+		failCount:    5,
+		lastFail:     time.Now().Add(-31 * time.Minute),
+		blockedUntil: time.Now().Add(5 * time.Minute), // still blocked
+	}
+	tracker.cleanup()
+	if _, exists := tracker.records["3.3.3.3"]; !exists {
+		t.Error("expected still-blocked record to be preserved")
+	}
+}
+
+func TestAuthTracker_Cleanup_ExpiredBlockOldRecord(t *testing.T) {
+	tracker := newAuthTracker()
+	// Block has expired AND lastFail is past TTL — should be removed
+	tracker.records["4.4.4.4"] = &ipRecord{
+		failCount:    5,
+		lastFail:     time.Now().Add(-31 * time.Minute),
+		blockedUntil: time.Now().Add(-1 * time.Minute), // expired block
+	}
+	tracker.cleanup()
+	if _, exists := tracker.records["4.4.4.4"]; exists {
+		t.Error("expected record with expired block and past-TTL lastFail to be cleaned up")
+	}
+}
+
+func TestExtractIP_HostPort(t *testing.T) {
+	addr := &net.TCPAddr{IP: net.ParseIP("192.168.1.1"), Port: 22}
+	result := extractIP(addr)
+	if result != "192.168.1.1" {
+		t.Errorf("expected '192.168.1.1', got %q", result)
+	}
+}
+
+func TestExtractIP_IPv6HostPort(t *testing.T) {
+	addr := &net.TCPAddr{IP: net.ParseIP("::1"), Port: 22}
+	result := extractIP(addr)
+	if result != "::1" {
+		t.Errorf("expected '::1', got %q", result)
+	}
+}
+
+func TestExtractIP_NoPort(t *testing.T) {
+	addr := &net.IPAddr{IP: net.ParseIP("1.2.3.4")}
+	result := extractIP(addr)
+	// net.IPAddr.String() has no port, SplitHostPort fails → fallback to addr.String()
+	if result != addr.String() {
+		t.Errorf("expected fallback to addr.String(), got %q", result)
+	}
+}
+
+// --- Server Utility Comprehensive Tests ---
+
+func TestNewServer_PortZeroDefaultsToMainPortPlusOne(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 20000, "test", portReg)
+	if srv.Port() != 20001 {
+		t.Errorf("expected port 20001, got %d", srv.Port())
+	}
+}
+
+func TestNewServer_ExplicitPort(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 22222}, 20000, "test", portReg)
+	if srv.Port() != 22222 {
+		t.Errorf("expected port 22222, got %d", srv.Port())
+	}
+}
+
+func TestNewServer_AuthTrackerInitialized(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+	if srv.authTracker == nil {
+		t.Error("expected authTracker to be initialized")
+	}
+}
+
+func TestNewServer_PasswordIsSHA256(t *testing.T) {
+	portReg := newTestRegistry(t)
+	sha256PW := "sha256:" + sha256Hex("mypassword")
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, sha256PW, portReg)
+	if !srv.passwordIsSHA256 {
+		t.Error("expected passwordIsSHA256=true for sha256:-prefixed password")
+	}
+
+	srv2 := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "plaintext", portReg)
+	if srv2.passwordIsSHA256 {
+		t.Error("expected passwordIsSHA256=false for plaintext password")
+	}
+}
+
+func TestServer_Port(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 12345}, 0, "test", portReg)
+	if srv.Port() != 12345 {
+		t.Errorf("expected port 12345, got %d", srv.Port())
+	}
+}
+
+func TestServer_ConnectionStats_NoConnections(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+	stats := srv.ConnectionStats()
+	if stats.Connected {
+		t.Error("expected Connected=false")
+	}
+	if stats.ClientCount != 0 {
+		t.Errorf("expected ClientCount=0, got %d", stats.ClientCount)
+	}
+	if stats.ActiveChannels != 0 {
+		t.Errorf("expected ActiveChannels=0, got %d", stats.ActiveChannels)
+	}
+	if stats.LastConnectedAt != "" {
+		t.Errorf("expected empty LastConnectedAt, got %q", stats.LastConnectedAt)
+	}
+}
+
+func TestServer_ConnectionStats_WithConnections(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+
+	// Simulate connection state
+	now := time.Now()
+	srv.mu.Lock()
+	srv.connCount = 2
+	srv.activeChannels = 3
+	srv.lastConnected = now
+	srv.mu.Unlock()
+
+	stats := srv.ConnectionStats()
+	if !stats.Connected {
+		t.Error("expected Connected=true")
+	}
+	if stats.ClientCount != 2 {
+		t.Errorf("expected ClientCount=2, got %d", stats.ClientCount)
+	}
+	if stats.ActiveChannels != 3 {
+		t.Errorf("expected ActiveChannels=3, got %d", stats.ActiveChannels)
+	}
+	if stats.LastConnectedAt != now.Format(time.RFC3339) {
+		t.Errorf("expected LastConnectedAt=%s, got %s", now.Format(time.RFC3339), stats.LastConnectedAt)
+	}
+}
+
+func TestServer_ConnectionStats_ZeroTimeNoLastConnected(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+
+	// Even with connections but zero lastConnected time
+	srv.mu.Lock()
+	srv.connCount = 1
+	srv.lastConnected = time.Time{}
+	srv.mu.Unlock()
+
+	stats := srv.ConnectionStats()
+	if stats.LastConnectedAt != "" {
+		t.Errorf("expected empty LastConnectedAt for zero time, got %q", stats.LastConnectedAt)
+	}
+}
+
+func TestServer_Fingerprint_BeforeInitHostKey(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+	if srv.Fingerprint() != "" {
+		t.Error("expected empty fingerprint before InitHostKey")
+	}
+}
+
+func TestServer_Fingerprint_AfterInitHostKey(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+	err := srv.InitHostKey()
+	if err != nil {
+		t.Fatalf("InitHostKey failed: %v", err)
+	}
+	fp := srv.Fingerprint()
+	if fp == "" {
+		t.Error("expected non-empty fingerprint after InitHostKey")
+	}
+	if !strings.HasPrefix(fp, "SHA256:") {
+		t.Errorf("expected fingerprint to start with SHA256:, got %q", fp)
+	}
+}
+
+func TestServer_InitHostKey(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+
+	err := srv.InitHostKey()
+	if err != nil {
+		t.Fatalf("InitHostKey failed: %v", err)
+	}
+	if srv.hostKey == nil {
+		t.Error("expected hostKey to be set after InitHostKey")
+	}
+	if srv.fingerprint == "" {
+		t.Error("expected fingerprint to be set after InitHostKey")
+	}
+}
+
+func TestServer_InitHostKey_Idempotent(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+
+	err := srv.InitHostKey()
+	if err != nil {
+		t.Fatalf("first InitHostKey failed: %v", err)
+	}
+	_ = srv.Fingerprint()
+
+	err = srv.InitHostKey()
+	if err != nil {
+		t.Fatalf("second InitHostKey failed: %v", err)
+	}
+	fp := srv.Fingerprint()
+
+	// Note: InitHostKey always generates a new ephemeral key when no HostKey path is set,
+	// so fingerprints may differ. This test just verifies it doesn't error.
+	if fp == "" {
+		t.Error("expected non-empty fingerprint after second InitHostKey")
+	}
+}
+
+func TestServer_GenerateHostKey(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+
+	signer, err := srv.generateHostKey()
+	if err != nil {
+		t.Fatalf("generateHostKey failed: %v", err)
+	}
+	if signer == nil {
+		t.Error("expected non-nil signer")
+	}
+	// Verify the signer has a public key
+	pubKey := signer.PublicKey()
+	if pubKey == nil {
+		t.Error("expected non-nil public key")
+	}
+}
+
+func TestServer_GenerateHostKey_UniqueKeys(t *testing.T) {
+	portReg := newTestRegistry(t)
+	srv := NewServer(model.PortForwardConfig{Enabled: true, Port: 0}, 0, "test", portReg)
+
+	signer1, _ := srv.generateHostKey()
+	signer2, _ := srv.generateHostKey()
+
+	fp1 := gossh.FingerprintSHA256(signer1.PublicKey())
+	fp2 := gossh.FingerprintSHA256(signer2.PublicKey())
+
+	if fp1 == fp2 {
+		t.Error("expected different ephemeral keys on each generation")
 	}
 }
 

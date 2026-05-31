@@ -537,7 +537,7 @@ func (h crudHelpers[T, E]) insert(item T) (int64, error) {
 	// Capture addFn result so we can inspect extra (for auto_execute check)
 	// without calling the closure twice.
 	label, command, sortOrder, extra := h.addFn(item)
-	if _, ok := any(extra).(quickCommandExtra); ok {
+	if e, ok := any(extra).(quickCommandExtra); ok && e.autoExec == 1 {
 		if _, err := DB.Exec("UPDATE " + h.table + " SET auto_execute = 0 WHERE auto_execute = 1"); err != nil { //nolint:gosec // table is package constant
 			return 0, err
 		}
@@ -549,7 +549,7 @@ func (h crudHelpers[T, E]) insert(item T) (int64, error) {
 	}
 	var args []any
 	if e, ok := any(extra).(quickCommandExtra); ok {
-		args = []any{label, command, sortOrder, e.autoExec, e.hidden}
+		args = []any{label, command, e.hidden, e.autoExec, sortOrder}
 	} else {
 		args = []any{label, command, sortOrder}
 	}
@@ -564,14 +564,14 @@ func (h crudHelpers[T, E]) insert(item T) (int64, error) {
 // clears auto_execute on other rows to enforce the single-active invariant.
 func (h crudHelpers[T, E]) update(id int64, item T) error {
 	label, command, _, extra := h.addFn(item)
-	if _, ok := any(extra).(quickCommandExtra); ok {
+	if e, ok := any(extra).(quickCommandExtra); ok && e.autoExec == 1 {
 		if _, err := DB.Exec("UPDATE "+h.table+" SET auto_execute = 0 WHERE auto_execute = 1 AND id != ?", id); err != nil { //nolint:gosec // table is package constant
 			return err
 		}
 	}
 	var args []any
 	if e, ok := any(extra).(quickCommandExtra); ok {
-		args = []any{label, command, e.autoExec, e.hidden, id}
+		args = []any{label, command, e.hidden, e.autoExec, id}
 	} else {
 		args = []any{label, command, id}
 	}

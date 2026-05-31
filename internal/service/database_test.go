@@ -1998,6 +1998,197 @@ func TestAddQuickCommand_AutoExecuteClearsPrevious(t *testing.T) {
 	assert.Equal(t, 1, autoExecCount)
 }
 
+// ---------- Auto-execute clearing logic ----------
+
+// TestAutoExecute_InsertClearsOthers verifies that inserting a quick command
+// with auto_execute=true clears auto_execute on all other commands.
+func TestAutoExecute_InsertClearsOthers(t *testing.T) {
+	teardown := setupTestDBForQuickCommands(t)
+	defer teardown()
+
+	// Insert task A with auto_execute=true
+	idA, err := AddQuickCommand("Command A", "cmd-a", false, true)
+	assert.NoError(t, err)
+	assert.True(t, idA > 0)
+
+	// Verify A has auto_execute=true
+	cmds, _ := GetQuickCommands()
+	assert.Len(t, cmds, 1)
+	assert.True(t, cmds[0].AutoExecute, "first command should have auto_execute=true after insert")
+
+	// Insert task B with auto_execute=true — should clear A's auto_execute
+	idB, err := AddQuickCommand("Command B", "cmd-b", false, true)
+	assert.NoError(t, err)
+	assert.True(t, idB > 0)
+
+	cmds, _ = GetQuickCommands()
+	assert.Len(t, cmds, 2)
+
+	// Find A and B by ID and verify only B has auto_execute=true
+	for _, c := range cmds {
+		if c.ID == idA {
+			assert.False(t, c.AutoExecute, "command A should have auto_execute=false after B is inserted with auto_execute=true")
+		}
+		if c.ID == idB {
+			assert.True(t, c.AutoExecute, "command B should have auto_execute=true after insert")
+		}
+	}
+}
+
+// TestAutoExecute_UpdateClearsOthers verifies that updating a quick command
+// to auto_execute=true clears auto_execute on all other commands.
+func TestAutoExecute_UpdateClearsOthers(t *testing.T) {
+	teardown := setupTestDBForQuickCommands(t)
+	defer teardown()
+
+	// Insert task A with auto_execute=true
+	idA, err := AddQuickCommand("Command A", "cmd-a", false, true)
+	assert.NoError(t, err)
+
+	// Insert task B with auto_execute=false
+	idB, err := AddQuickCommand("Command B", "cmd-b", false, false)
+	assert.NoError(t, err)
+
+	// Verify A has auto_execute=true
+	cmds, _ := GetQuickCommands()
+	for _, c := range cmds {
+		if c.ID == idA {
+			assert.True(t, c.AutoExecute, "command A should have auto_execute=true")
+		}
+	}
+
+	// Update B to auto_execute=true — should clear A's auto_execute
+	err = UpdateQuickCommand(idB, "Command B", "cmd-b", false, true)
+	assert.NoError(t, err)
+
+	cmds, _ = GetQuickCommands()
+	for _, c := range cmds {
+		if c.ID == idA {
+			assert.False(t, c.AutoExecute, "command A should have auto_execute=false after B is updated to auto_execute=true")
+		}
+		if c.ID == idB {
+			assert.True(t, c.AutoExecute, "command B should have auto_execute=true after update")
+		}
+	}
+}
+
+// TestAutoExecute_InsertFalseDoesNotClear verifies that inserting a quick command
+// with auto_execute=false does NOT clear other commands' auto_execute.
+func TestAutoExecute_InsertFalseDoesNotClear(t *testing.T) {
+	teardown := setupTestDBForQuickCommands(t)
+	defer teardown()
+
+	// Insert task A with auto_execute=true
+	idA, err := AddQuickCommand("Command A", "cmd-a", false, true)
+	assert.NoError(t, err)
+
+	// Insert task B with auto_execute=false — should NOT clear A's auto_execute
+	_, err = AddQuickCommand("Command B", "cmd-b", false, false)
+	assert.NoError(t, err)
+
+	cmds, _ := GetQuickCommands()
+	assert.Len(t, cmds, 2)
+
+	for _, c := range cmds {
+		if c.ID == idA {
+			assert.True(t, c.AutoExecute, "command A should still have auto_execute=true when B is inserted with auto_execute=false")
+		}
+	}
+}
+
+// TestAutoExecute_UpdateFalseDoesNotClear verifies that updating a quick command
+// to auto_execute=false does NOT clear other commands' auto_execute.
+func TestAutoExecute_UpdateFalseDoesNotClear(t *testing.T) {
+	teardown := setupTestDBForQuickCommands(t)
+	defer teardown()
+
+	// Insert A with auto_execute=true and B with auto_execute=true (clears A)
+	idA, _ := AddQuickCommand("Command A", "cmd-a", false, true)
+	idB, _ := AddQuickCommand("Command B", "cmd-b", false, true)
+
+	// Now B has auto_execute=true, A has auto_execute=false
+	// Update B to auto_execute=false — should NOT affect A
+	err := UpdateQuickCommand(idB, "Command B", "cmd-b-updated", false, false)
+	assert.NoError(t, err)
+
+	cmds, _ := GetQuickCommands()
+	for _, c := range cmds {
+		if c.ID == idA {
+			assert.False(t, c.AutoExecute, "command A should still have auto_execute=false")
+		}
+		if c.ID == idB {
+			assert.False(t, c.AutoExecute, "command B should have auto_execute=false after update")
+		}
+	}
+}
+
+// TestAutoExecute_UpdateSelfTrueNoOp verifies that updating a command that
+// already has auto_execute=true to auto_execute=true again is a no-op —
+// it should still be the only auto_execute command.
+func TestAutoExecute_UpdateSelfTrueNoOp(t *testing.T) {
+	teardown := setupTestDBForQuickCommands(t)
+	defer teardown()
+
+	idA, _ := AddQuickCommand("Command A", "cmd-a", false, true)
+	AddQuickCommand("Command B", "cmd-b", false, false)
+
+	// Update A (already auto_execute=true) to auto_execute=true again
+	err := UpdateQuickCommand(idA, "Command A Updated", "cmd-a-upd", false, true)
+	assert.NoError(t, err)
+
+	cmds, _ := GetQuickCommands()
+	autoExecCount := 0
+	for _, c := range cmds {
+		if c.AutoExecute {
+			autoExecCount++
+			assert.Equal(t, idA, c.ID, "only command A should have auto_execute=true")
+		}
+	}
+	assert.Equal(t, 1, autoExecCount, "exactly one command should have auto_execute=true")
+}
+
+// TestAutoExecute_ReorderRollbackOnError verifies that the reorder transaction
+// rolls back if one of the updates fails (e.g., referencing a non-existent ID
+// in a constrained context). Since the current schema allows updating
+// non-existent IDs silently, we test that reorder with valid IDs succeeds
+// and empty reorder is a no-op.
+func TestAutoExecute_ReorderValidIDs(t *testing.T) {
+	teardown := setupTestDBForQuickCommands(t)
+	defer teardown()
+
+	id1, _ := AddQuickCommand("A", "a", false, false) // sort_order=0
+	id2, _ := AddQuickCommand("B", "b", false, false) // sort_order=1
+	id3, _ := AddQuickCommand("C", "c", false, false) // sort_order=2
+
+	// Reverse order
+	err := ReorderQuickCommands([]int64{id3, id2, id1})
+	assert.NoError(t, err)
+
+	cmds, _ := GetQuickCommands()
+	assert.Equal(t, "C", cmds[0].Label)
+	assert.Equal(t, 0, cmds[0].SortOrder)
+	assert.Equal(t, "B", cmds[1].Label)
+	assert.Equal(t, 1, cmds[1].SortOrder)
+	assert.Equal(t, "A", cmds[2].Label)
+	assert.Equal(t, 2, cmds[2].SortOrder)
+}
+
+// TestAutoExecute_ReorderEmptyIDs verifies that reordering with an empty
+// ID list is a no-op (the transaction commits with zero updates).
+func TestAutoExecute_ReorderEmptyIDs(t *testing.T) {
+	teardown := setupTestDBForQuickCommands(t)
+	defer teardown()
+
+	AddQuickCommand("A", "a", false, true)
+
+	err := ReorderQuickCommands([]int64{})
+	assert.NoError(t, err)
+
+	cmds, _ := GetQuickCommands()
+	assert.Len(t, cmds, 1)
+	assert.True(t, cmds[0].AutoExecute, "auto_execute should be preserved after empty reorder")
+}
+
 func TestUpdateQuickCommand(t *testing.T) {
 	teardown := setupTestDBForQuickCommands(t)
 	defer teardown()

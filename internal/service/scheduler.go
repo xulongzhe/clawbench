@@ -115,6 +115,30 @@ func (s *Scheduler) MarkTaskRunning(taskID int64) {
 	s.taskRunning.Store(taskID, struct{}{})
 }
 
+// AddRunningExecution adds a RunningExecution entry to the in-memory map.
+// Used for testing running execution management without spawning a CLI backend.
+// The cancelFunc is called when CancelExecution or CancelAllExecutions is invoked.
+func (s *Scheduler) AddRunningExecution(exec *RunningExecution) {
+	s.runningExecutions.Store(exec.ID, exec)
+}
+
+// RemoveRunningExecution removes a RunningExecution entry from the in-memory map.
+// Used for testing cleanup.
+func (s *Scheduler) RemoveRunningExecution(execID string) {
+	s.runningExecutions.Delete(execID)
+}
+
+// TriggerTaskLoadOrStore exposes taskRunning.LoadOrStore for testing.
+// Returns (value, loaded) where loaded=true means the task was already marked running.
+func (s *Scheduler) TriggerTaskLoadOrStore(taskID int64) (any, bool) {
+	return s.taskRunning.LoadOrStore(taskID, struct{}{})
+}
+
+// TaskSummarizer returns the current task summarizer instance. Used for testing.
+func (s *Scheduler) TaskSummarizer() *summarize.TaskSummarizer {
+	return s.taskSummarizer
+}
+
 // UnmarkTaskRunning removes the running flag for a task. Used for testing cleanup.
 func (s *Scheduler) UnmarkTaskRunning(taskID int64) {
 	s.taskRunning.Delete(taskID)

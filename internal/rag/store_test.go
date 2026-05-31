@@ -85,6 +85,10 @@ func TestNewStore_CreatesDB(t *testing.T) {
 	store := setupTestStore(t)
 	assert.NotNil(t, store.db)
 	assert.NotEmpty(t, store.dbPath)
+
+	// Verify the DB file was actually created on disk
+	_, err := os.Stat(store.dbPath)
+	assert.NoError(t, err, "DB file should exist on disk")
 }
 
 func TestNewStore_CreatesDirectory(t *testing.T) {
@@ -126,6 +130,36 @@ func TestStore_InsertChunks_MultipleChunks(t *testing.T) {
 	count, err := store.ChunkCount()
 	assert.NoError(t, err)
 	assert.Equal(t, 5, count)
+}
+
+func TestStore_InsertChunks_MixedEmbeddingAndNoEmbedding(t *testing.T) {
+	store := setupTestStore(t)
+
+	// Insert a batch with both embedded and non-embedded chunks
+	chunkWithEmb := makeTestChunk(testSession1, 1, 0, "has embedding")
+	chunkWithoutEmb := Chunk{
+		SessionID:          testSession2,
+		MessageID:          2,
+		ChunkText:          "no embedding",
+		ChunkTextSegmented: "no embedding",
+		ChunkIndex:         0,
+		TokenCount:         3,
+		Embedding:          nil,
+		HasEmbedding:       false,
+		ProjectPath:        testProjectPath,
+		Backend:            testBackendClaude,
+		Role:               testRoleAssistant,
+		CreatedAt:          time.Now().Truncate(time.Millisecond),
+	}
+
+	err := store.InsertChunks([]Chunk{chunkWithEmb, chunkWithoutEmb})
+	require.NoError(t, err)
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 2, count, "both chunks should be inserted")
+
+	pending, _ := store.PendingEmbeddingCount()
+	assert.Equal(t, 1, pending, "one chunk should need embedding backfill")
 }
 
 func TestStore_InsertChunks_AutoIncrementID(t *testing.T) {
@@ -354,6 +388,15 @@ func TestStore_ChunkCount_Empty(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
+func TestStore_ChunkCount_WithData(t *testing.T) {
+	store := setupTestStore(t)
+	insertTestChunks(t, store, 7)
+
+	count, err := store.ChunkCount()
+	assert.NoError(t, err)
+	assert.Equal(t, 7, count)
+}
+
 // ---------- DeleteChunksBySessionIDs ----------
 
 func TestStore_DeleteChunksBySessionIDs(t *testing.T) {
@@ -385,6 +428,30 @@ func TestStore_DeleteChunksBySessionIDs_EmptyList(t *testing.T) {
 	deleted, err = store.DeleteChunksBySessionIDs([]string{})
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), deleted)
+}
+
+func TestStore_DeleteChunksBySessionIDs_MultipleSessions(t *testing.T) {
+	store := setupTestStore(t)
+
+	// Insert chunks for three sessions
+	chunks := []Chunk{
+		makeTestChunk("sess-a", 1, 0, "content a1"),
+		makeTestChunk("sess-a", 2, 1, "content a2"),
+		makeTestChunk("sess-b", 3, 0, "content b1"),
+		makeTestChunk("sess-b", 4, 1, "content b2"),
+		makeTestChunk("sess-b", 5, 2, "content b3"),
+		makeTestChunk("sess-c", 6, 0, "content c1"),
+	}
+	err := store.InsertChunks(chunks)
+	require.NoError(t, err)
+
+	// Delete two sessions at once
+	deleted, err := store.DeleteChunksBySessionIDs([]string{"sess-a", "sess-b"})
+	assert.NoError(t, err)
+	assert.Equal(t, int64(5), deleted, "should delete 5 chunks from sess-a and sess-b")
+
+	count, _ := store.ChunkCount()
+	assert.Equal(t, 1, count, "should have 1 chunk remaining from sess-c")
 }
 
 // ---------- Close ----------
@@ -1003,6 +1070,26 @@ func TestStore_LoadEmbeddingDim_Zero(t *testing.T) {
 	origDim := store.embeddingDim
 	store.loadEmbeddingDim()
 	assert.Equal(t, origDim, store.embeddingDim, "should not change dim when no metadata")
+}
+
+func TestStore_LoadEmbeddingDim_NegativeValue(t *testing.T) {
+	store := setupTestStore(t)
+
+	// Write a negative value — should not override (loadEmbeddingDim only uses dim > 0)
+	store.writeMetadata("embedding_dim", "-1")
+	origDim := store.embeddingDim
+	store.loadEmbeddingDim()
+	assert.Equal(t, origDim, store.embeddingDim, "negative dim should not override")
+}
+
+func TestStore_LoadEmbeddingDim_InvalidString(t *testing.T) {
+	store := setupTestStore(t)
+
+	// Write a non-numeric value — readMetadataInt returns 0 fallback
+	store.writeMetadata("embedding_dim", "not_a_number")
+	origDim := store.embeddingDim
+	store.loadEmbeddingDim()
+	assert.Equal(t, origDim, store.embeddingDim, "invalid dim string should not override")
 }
 
 // ---------- NewStore error path ----------
