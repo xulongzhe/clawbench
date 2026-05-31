@@ -279,7 +279,7 @@ describe('FileManagerContent — syncToCurrentFile with error state', () => {
     })
   }
 
-  it('isInSync is false when currentFile has an error', async () => {
+  it('syncButtonDisabled is true when currentFile has an error', async () => {
     const wrapper = mountComponent({
       path: 'src/deleted/File.ts',
       name: 'File.ts',
@@ -287,16 +287,37 @@ describe('FileManagerContent — syncToCurrentFile with error state', () => {
     })
     await nextTick()
 
-    // The sync button in the "more" dropdown should be disabled
-    // Open the more menu first
-    const moreBtn = wrapper.findAll('.toolbar-btn').find(b => b.attributes('title') === undefined || b.text().includes(''))
-    // We check that the component's isInSync computed returns false
-    // by verifying the sync button is disabled
-    // Since the button is in a dropdown, we need to open it first
-    // Instead, test the logic more directly by emitting navigateDir
-    // and checking it does NOT fire when file has error
-    const emitted = wrapper.emitted('navigateDir')
-    expect(emitted).toBeUndefined()
+    // Access the computed property directly via vm
+    expect(wrapper.vm.syncButtonDisabled).toBe(true)
+  })
+
+  it('syncButtonDisabled is true when no currentFile', async () => {
+    const wrapper = mountComponent(null)
+    await nextTick()
+
+    expect(wrapper.vm.syncButtonDisabled).toBe(true)
+  })
+
+  it('syncButtonDisabled is false when currentFile has no error', async () => {
+    const wrapper = mountComponent({
+      path: 'src/main.go',
+      name: 'main.go',
+      content: 'package main',
+    })
+    await nextTick()
+
+    expect(wrapper.vm.syncButtonDisabled).toBe(false)
+  })
+
+  it('isInSync is false when currentFile has error', async () => {
+    const wrapper = mountComponent({
+      path: 'src/deleted/File.ts',
+      name: 'File.ts',
+      error: 'File not found',
+    })
+    await nextTick()
+
+    expect(wrapper.vm.isInSync).toBe(false)
   })
 
   it('does not emit navigateDir from syncToCurrentFile when currentFile has error', async () => {
@@ -307,46 +328,11 @@ describe('FileManagerContent — syncToCurrentFile with error state', () => {
     })
     await nextTick()
 
-    // Open more menu to access sync button
-    const moreBtns = wrapper.findAll('.toolbar-dropdown-wrap .toolbar-btn')
-    const moreBtn = moreBtns[moreBtns.length - 1] // last one is "more"
-    await moreBtn.trigger('click')
+    // Call syncToCurrentFile directly
+    wrapper.vm.syncToCurrentFile()
     await nextTick()
 
-    // Find the sync button in the dropdown
-    const syncBtn = wrapper.findAll('.toolbar-dropdown-item').find(
-      el => el.text().includes('同步'),
-    )
-    if (syncBtn) {
-      // The button should be disabled due to currentFile.error
-      expect(syncBtn.attributes('disabled')).toBeDefined()
-      // Even if we try to click it, navigateDir should not be emitted
-      await syncBtn.trigger('click')
-      await nextTick()
-      expect(wrapper.emitted('navigateDir')).toBeUndefined()
-    }
-  })
-
-  it('sync button is disabled when currentFile has error', async () => {
-    const wrapper = mountComponent({
-      path: 'src/deleted/File.ts',
-      name: 'File.ts',
-      error: 'File not found',
-    })
-    await nextTick()
-
-    // Open more menu
-    const moreBtns = wrapper.findAll('.toolbar-dropdown-wrap .toolbar-btn')
-    const moreBtn = moreBtns[moreBtns.length - 1]
-    await moreBtn.trigger('click')
-    await nextTick()
-
-    const syncBtn = wrapper.findAll('.toolbar-dropdown-item').find(
-      el => el.text().includes('同步'),
-    )
-    if (syncBtn) {
-      expect(syncBtn.attributes('disabled')).toBeDefined()
-    }
+    expect(wrapper.emitted('navigateDir')).toBeUndefined()
   })
 })
 

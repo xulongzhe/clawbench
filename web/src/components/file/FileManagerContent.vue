@@ -54,7 +54,7 @@
               <Upload :size="14" />
               <span>{{ t('file.uploadHere') }}</span>
             </button>
-            <button class="toolbar-dropdown-item" :disabled="!currentFile?.path || !!currentFile?.error" @click="syncToCurrentFile(); moreMenuOpen = false">
+            <button class="toolbar-dropdown-item" :disabled="syncButtonDisabled" @click="syncToCurrentFile(); moreMenuOpen = false">
               <ArrowRightLeft :size="14" />
               <span>{{ t('file.syncToCurrentDir') }}</span>
             </button>
@@ -426,6 +426,9 @@ const isInSync = computed(() => {
     if (props.currentFile.error) return false
     return dirName(props.currentFile.path) === props.currentDir
 })
+
+// Sync button disabled state: no file selected or file has error (issue #166)
+const syncButtonDisabled = computed(() => !props.currentFile?.path || !!props.currentFile?.error)
 
 function syncToCurrentFile() {
     if (!props.currentFile?.path) return
