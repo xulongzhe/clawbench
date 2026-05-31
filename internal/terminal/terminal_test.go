@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -655,11 +656,14 @@ func dialWS(t *testing.T, url string) *websocket.Conn {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{
+	conn, resp, err := websocket.Dial(ctx, url, &websocket.DialOptions{
 		HTTPHeader: http.Header{"Origin": []string{"http://" + hostFromWSURL(url)}},
 	})
 	if err != nil {
 		t.Fatalf("failed to dial websocket %s: %v", url, err)
+	}
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
 	}
 	t.Cleanup(func() { _ = conn.Close(websocket.StatusNormalClosure, "test done") })
 	return conn
@@ -681,7 +685,18 @@ func readServerMessage(t *testing.T, conn *websocket.Conn) ServerMessage {
 	return msg
 }
 
+// skipIfWindows skips WebSocket tests on Windows because PTY/shell integration
+// does not work the same way — the WebSocket handler returns 500 when it fails
+// to start a PTY session on Windows.
+func skipIfWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("WebSocket terminal tests skipped on Windows (PTY not supported)")
+	}
+}
+
 func TestManager_HandleWebSocket_NewSession(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "5m",
@@ -729,9 +744,12 @@ func TestManager_HandleWebSocket_Disabled(t *testing.T) {
 	// Attempt to connect — server should return HTTP error since terminal is disabled
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _, err := websocket.Dial(ctx, baseURL, &websocket.DialOptions{
+	_, resp, err := websocket.Dial(ctx, baseURL, &websocket.DialOptions{
 		HTTPHeader: http.Header{"Origin": []string{"http://" + hostFromWSURL(baseURL)}},
 	})
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	// The WebSocket upgrade may succeed but the handler returns an error
 	// before upgrading, resulting in a non-101 response
 	if err == nil {
@@ -740,6 +758,7 @@ func TestManager_HandleWebSocket_Disabled(t *testing.T) {
 }
 
 func TestManager_HandleWebSocket_ReconnectSession(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "1m",
@@ -796,6 +815,7 @@ func TestManager_HandleWebSocket_ReconnectSession(t *testing.T) {
 }
 
 func TestManager_HandleWebSocket_ClientInput(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "5m",
@@ -832,6 +852,7 @@ func TestManager_HandleWebSocket_ClientInput(t *testing.T) {
 }
 
 func TestManager_HandleWebSocket_ResizeMessage(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "5m",
@@ -860,6 +881,7 @@ func TestManager_HandleWebSocket_ResizeMessage(t *testing.T) {
 }
 
 func TestManager_HandleWebSocket_CloseMessage(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "5m",
@@ -896,6 +918,7 @@ func TestManager_HandleWebSocket_CloseMessage(t *testing.T) {
 }
 
 func TestManager_HandleWebSocket_SessionLimit(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "5m",
@@ -915,9 +938,12 @@ func TestManager_HandleWebSocket_SessionLimit(t *testing.T) {
 	_ = readServerMessage(t, conn1)
 
 	// Second connection should be rejected with session limit error
-	conn2, _, err := websocket.Dial(context.Background(), baseURL, &websocket.DialOptions{
+	conn2, resp, err := websocket.Dial(context.Background(), baseURL, &websocket.DialOptions{
 		HTTPHeader: http.Header{"Origin": []string{"http://" + hostFromWSURL(baseURL)}},
 	})
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		// Connection itself failed — acceptable
 		t.Logf("second connection failed (expected): %v", err)
@@ -944,6 +970,7 @@ func TestManager_HandleWebSocket_SessionLimit(t *testing.T) {
 }
 
 func TestManager_HandleWebSocket_InvalidMessage(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "5m",
@@ -980,6 +1007,7 @@ func TestManager_HandleWebSocket_InvalidMessage(t *testing.T) {
 }
 
 func TestManager_HandleWebSocket_Disconnect(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "5m",
@@ -1014,6 +1042,7 @@ func TestManager_HandleWebSocket_Disconnect(t *testing.T) {
 }
 
 func TestManager_HandleWebSocket_SessionExpiredReconnect(t *testing.T) {
+	skipIfWindows(t)
 	cfg := model.TerminalConfig{
 		Enabled:      true,
 		IdleTimeout:  "5m",
