@@ -23,9 +23,12 @@ test.describe('File Manager', () => {
     const dirItem = page.locator('.file-item.dir-item').first()
     await expect(dirItem).toBeVisible({ timeout: 10000 })
 
-    // Record current breadcrumb state before clicking
+    // Record current breadcrumb text before clicking
     const breadcrumbBefore = page.locator('.dir-breadcrumb .crumb.current')
     const hadBreadcrumb = await breadcrumbBefore.count() > 0
+    const beforeText = hadBreadcrumb
+      ? await breadcrumbBefore.first().textContent()
+      : ''
 
     await dirItem.click()
 
@@ -35,25 +38,22 @@ test.describe('File Manager', () => {
     // 3. Empty directory message appears ("This directory is empty")
     // We cannot assume the subdirectory has files — CI runners may have
     // empty directories (e.g. ~/Downloads).
-    const breadcrumbCurrent = page.locator('.dir-breadcrumb .crumb.current')
-    const emptyState = page.locator('.empty-state')
-    const fileItem = page.locator('.file-item').first()
+    await expect.poll(async () => {
+      const breadcrumbCurrent = page.locator('.dir-breadcrumb .crumb.current')
+      const emptyState = page.locator('.empty-state')
+      const fileItem = page.locator('.file-item').first()
 
-    await expect(
-      page.locator('body')
-    ).toSatisfy(async () => {
-      // Breadcrumb updated with a new directory
+      // Breadcrumb updated with a new directory name
       if (await breadcrumbCurrent.count() > 0) {
-        if (!hadBreadcrumb) return true
         const text = await breadcrumbCurrent.first().textContent()
-        if (text && text.trim()) return true
+        if (text && text.trim() && text.trim() !== (beforeText || '').trim()) return true
       }
       // Or file items appeared
       if (await fileItem.isVisible().catch(() => false)) return true
       // Or empty directory message
       if (await emptyState.isVisible().catch(() => false)) return true
       return false
-    }, { timeout: 10000 })
+    }, { timeout: 10000 }).toBe(true)
   })
 
   test('should show file list container', async ({ page }) => {
