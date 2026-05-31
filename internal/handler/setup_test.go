@@ -478,12 +478,11 @@ func TestSetupModels_OpenAIProviderHTTPFetch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Use a provider with ModelsEndpoint pointing to our mock
-	// NOTE: custom_url now returns empty model list, so we test the built-in provider path instead
+	// Built-in provider (no custom_url) should return models from the known list.
+	// custom_url mode always returns empty models — tested separately.
 	body := map[string]any{
-		"provider":   "openai",
-		"custom_url": server.URL + "/chat/completions",
-		"api_key":    "test-key",
+		"provider": "openai",
+		"api_key":  "test-key",
 	}
 	req := newRequest(t, http.MethodPost, "/api/setup/models", body)
 	withAuthCookie(req, model.SessionToken)
@@ -495,7 +494,7 @@ func TestSetupModels_OpenAIProviderHTTPFetch(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
 	models, _ := resp["models"].([]any)
-	assert.NotEmpty(t, models, "should have models from mock server")
+	assert.NotEmpty(t, models, "should have models from known list")
 	hint := resp["summarize_model_hint"]
 	assert.NotEmpty(t, hint)
 }
@@ -660,9 +659,9 @@ func TestSetupComplete_CustomURLDefaultsToOpenAI(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.True(t, resp["success"].(bool))
 
-	// Verify agent was created with agent ID as provider (custom URL mode stores agent ID, not "openai")
+	// Verify agent was created with agent ID as provider (custom URL mode stores agent ID as provider)
 	var count int
-	_ = service.DB.QueryRow("SELECT COUNT(*) FROM agent_api_keys WHERE agent_id = ? AND provider = ?", "custom-openai", "openai").Scan(&count)
+	_ = service.DB.QueryRow("SELECT COUNT(*) FROM agent_api_keys WHERE agent_id = ? AND provider = ?", "custom-openai", "custom-openai").Scan(&count)
 	assert.Equal(t, 1, count)
 }
 
@@ -1091,6 +1090,8 @@ func TestSetupModels_CustomURLWithMockServer(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// Custom URL mode now returns an empty model list — the user must enter
+	// model IDs manually. Verify the response matches this behavior.
 	body := map[string]any{
 		"provider":   "",
 		"custom_url": "https://api.example.com/v1/chat/completions",
@@ -1106,10 +1107,10 @@ func TestSetupModels_CustomURLWithMockServer(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
 	models, _ := resp["models"].([]any)
-	assert.Len(t, models, 2)
+	assert.Len(t, models, 0, "custom URL mode should return empty model list")
 
 	hint := resp["summarize_model_hint"]
-	assert.NotEmpty(t, hint, "should have a summarize_model_hint")
+	assert.Empty(t, hint, "custom URL mode should return empty summarize_model_hint")
 }
 
 // ---------- ServeSetupVerify with custom URL ----------
