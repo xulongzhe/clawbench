@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -244,6 +245,9 @@ func TestEdgeTTSProvider_Synthesize_EmptyRate(t *testing.T) {
 }
 
 func TestEdgeTTSProvider_Synthesize_WriteError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix file permissions not supported on Windows")
+	}
 	p := NewEdgeTTSProvider()
 
 	// Create output path in a read-only directory to force write error
@@ -371,6 +375,9 @@ func TestEdgeTTSProvider_SynthesizeViaWebSocket_CancelledContext(t *testing.T) {
 }
 
 func TestEdgeTTSProvider_Synthesize_DirectoryCreationError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix-specific path test")
+	}
 	p := NewEdgeTTSProvider()
 
 	// Try to write to a path where directory creation would fail
