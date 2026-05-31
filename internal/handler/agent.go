@@ -120,6 +120,10 @@ func serveAgentsPatch(w http.ResponseWriter, r *http.Request) {
 // ServeAgentRefreshModels handles POST /api/agents/{id}/refresh-models — triggers model re-discovery
 // for the specified agent and returns the updated model list. The discovered models completely replace
 // the agent's current model list (both in memory and in the cache file).
+//
+// Refresh strategy (in priority order):
+// 1. CLI model discovery via BackendSpec (e.g., pi --list-models)
+// 2. Fallback: re-read models from ProviderSpec.KnownModels (embedded provider_models.json)
 func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeLocalizedErrorf(w, r, http.StatusMethodNotAllowed, "MethodNotAllowed")
@@ -144,21 +148,59 @@ func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the BackendSpec for this agent
+	var models []model.AgentModel
+	canDiscover := false // whether any discovery method is available
+
+	// Find provider spec early — used for filtering and fallback
+	providerSpec := findProviderSpecForAgent(agentID)
+
+	// Strategy 1: CLI model discovery via BackendSpec
 	spec := model.FindSpecByBackend(agent.Backend)
-	if spec == nil || !model.CanDiscoverModels(*spec) {
-		writeLocalizedErrorf(w, r, http.StatusBadRequest, "ModelDiscoveryNotSupported")
-		return
+	if spec != nil && model.CanDiscoverModels(*spec) {
+		canDiscover = true
+		discovered := model.DiscoverModels(*spec)
+
+		// If agent has a provider (from setup wizard), filter to that provider's models.
+		// Pi --list-models returns all providers' models in "provider/model" format.
+		if providerSpec != nil && len(discovered) > 0 {
+			prefix := providerSpec.ID + "/"
+			for _, m := range discovered {
+				if strings.HasPrefix(m.ID, prefix) {
+					m.ID = strings.TrimPrefix(m.ID, prefix)
+					m.Name = strings.TrimPrefix(m.Name, prefix)
+					models = append(models, m)
+				}
+			}
+			if len(models) == 0 {
+				// No models matched the prefix — use all discovered models
+				models = discovered
+			}
+		} else {
+			models = discovered
+		}
 	}
 
-	// Run model discovery
-	models := model.DiscoverModels(*spec)
+	// Strategy 2: Fallback to ProviderSpec.KnownModels from agent_api_keys
+	// Shows ALL models for that provider (not just the ones user configured)
+	if len(models) == 0 && providerSpec != nil && len(providerSpec.KnownModels) > 0 {
+		canDiscover = true
+		slog.Info("model refresh: CLI discovery failed, using KnownModels from provider", "agent", agentID, "provider", providerSpec.ID)
+		models = model.KnownModelsToAgentModels(providerSpec.KnownModels)
+	}
+
 	if len(models) == 0 {
-		// Check if the CLI binary exists — give a more specific error
-		if err := model.CheckCLIExistsErr(spec.DefaultCmd); err != nil {
-			slog.Warn("model refresh failed: CLI not available", "agent", agentID, "backend", agent.Backend, "cmd", spec.DefaultCmd, "error", err)
-			writeLocalizedErrorf(w, r, http.StatusNotFound, "CLINotFound")
+		// No discovery method available at all
+		if !canDiscover {
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "ModelDiscoveryNotSupported")
 			return
+		}
+		// Discovery method available but returned nothing — check for specific errors
+		if spec != nil {
+			if err := model.CheckCLIExistsErr(spec.DefaultCmd); err != nil {
+				slog.Warn("model refresh failed: CLI not available", "agent", agentID, "backend", agent.Backend, "cmd", spec.DefaultCmd, "error", err)
+				writeLocalizedErrorf(w, r, http.StatusNotFound, "CLINotFound")
+				return
+			}
 		}
 		slog.Warn("model refresh returned no models", "agent", agentID, "backend", agent.Backend)
 		writeLocalizedErrorf(w, r, http.StatusInternalServerError, "ModelDiscoveryFailed")
@@ -182,4 +224,10 @@ func ServeAgentRefreshModels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"models": models,
 	})
+}
+
+// findProviderSpecForAgent looks up the provider for an agent from the agent_api_keys table
+// and returns the corresponding ProviderSpec.
+func findProviderSpecForAgent(agentID string) *model.ProviderSpec {
+	return service.FindProviderSpecForAgent(agentID)
 }

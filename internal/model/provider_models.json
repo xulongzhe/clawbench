@@ -1,0 +1,4634 @@
+{
+  "_generated_at": "2026-05-31T02:32:33.999101+00:00",
+  "_source": "https://models.dev/api.json",
+  "providers": {
+    "anthropic": {
+      "models": [
+        {
+          "id": "claude-3-5-haiku-20241022",
+          "name": "Claude Haiku 3.5",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "claude-3-5-haiku-latest",
+          "name": "Claude Haiku 3.5 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "claude-3-5-sonnet-20240620",
+          "name": "Claude Sonnet 3.5",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-3-5-sonnet-20241022",
+          "name": "Claude Sonnet 3.5 v2",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-3-7-sonnet-20250219",
+          "name": "Claude Sonnet 3.7",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-3-haiku-20240307",
+          "name": "Claude Haiku 3",
+          "context_length": 200000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "claude-3-opus-20240229",
+          "name": "Claude Opus 3",
+          "context_length": 200000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-3-sonnet-20240229",
+          "name": "Claude Sonnet 3",
+          "context_length": 200000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-haiku-4-5",
+          "name": "Claude Haiku 4.5 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "claude-haiku-4-5-20251001",
+          "name": "Claude Haiku 4.5",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "claude-opus-4-0",
+          "name": "Claude Opus 4 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-1",
+          "name": "Claude Opus 4.1 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-1-20250805",
+          "name": "Claude Opus 4.1",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-20250514",
+          "name": "Claude Opus 4",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-5",
+          "name": "Claude Opus 4.5 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-5-20251101",
+          "name": "Claude Opus 4.5",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-6",
+          "name": "Claude Opus 4.6",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-7",
+          "name": "Claude Opus 4.7",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-8",
+          "name": "Claude Opus 4.8",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-sonnet-4-0",
+          "name": "Claude Sonnet 4 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-sonnet-4-20250514",
+          "name": "Claude Sonnet 4",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-sonnet-4-5",
+          "name": "Claude Sonnet 4.5 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-sonnet-4-5-20250929",
+          "name": "Claude Sonnet 4.5",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "context_length": 1000000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        }
+      ]
+    },
+    "cerebras": {
+      "models": [
+        {
+          "id": "gpt-oss-120b",
+          "name": "GPT OSS 120B",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "llama3.1-8b",
+          "name": "Llama 3.1 8B",
+          "context_length": 32000,
+          "max_output_tokens": 8000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "zai-glm-4.7",
+          "name": "Z.AI GLM-4.7",
+          "context_length": 131072,
+          "max_output_tokens": 40000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "deepseek": {
+      "models": [
+        {
+          "id": "deepseek-chat",
+          "name": "DeepSeek Chat",
+          "context_length": 1000000,
+          "max_output_tokens": 384000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek-reasoner",
+          "name": "DeepSeek Reasoner",
+          "context_length": 1000000,
+          "max_output_tokens": 384000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "context_length": 1000000,
+          "max_output_tokens": 384000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "context_length": 1000000,
+          "max_output_tokens": 384000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        }
+      ]
+    },
+    "fireworks": {
+      "models": [
+        {
+          "id": "accounts/fireworks/models/deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "context_length": 1000000,
+          "max_output_tokens": 384000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "accounts/fireworks/models/deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "context_length": 1000000,
+          "max_output_tokens": 384000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "accounts/fireworks/models/glm-5p1",
+          "name": "GLM 5.1",
+          "context_length": 202800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "accounts/fireworks/models/gpt-oss-120b",
+          "name": "GPT OSS 120B",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "accounts/fireworks/models/gpt-oss-20b",
+          "name": "GPT OSS 20B",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "accounts/fireworks/models/kimi-k2p5",
+          "name": "Kimi K2.5",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "accounts/fireworks/models/kimi-k2p6",
+          "name": "Kimi K2.6",
+          "context_length": 262000,
+          "max_output_tokens": 262000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "accounts/fireworks/models/minimax-m2p5",
+          "name": "MiniMax-M2.5",
+          "context_length": 196608,
+          "max_output_tokens": 196608,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "accounts/fireworks/models/minimax-m2p7",
+          "name": "MiniMax-M2.7",
+          "context_length": 196608,
+          "max_output_tokens": 196608,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "accounts/fireworks/models/qwen3p6-plus",
+          "name": "Qwen 3.6 Plus",
+          "context_length": 128000,
+          "max_output_tokens": 8192,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "accounts/fireworks/routers/glm-5p1-fast",
+          "name": "GLM 5.1 Fast",
+          "context_length": 202800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "accounts/fireworks/routers/kimi-k2p6-turbo",
+          "name": "Kimi K2.6 Turbo",
+          "context_length": 262000,
+          "max_output_tokens": 262000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "google": {
+      "models": [
+        {
+          "id": "gemini-2.0-flash",
+          "name": "Gemini 2.0 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gemini-2.0-flash-lite",
+          "name": "Gemini 2.0 Flash-Lite",
+          "context_length": 1048576,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gemini-2.5-flash",
+          "name": "Gemini 2.5 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gemini-2.5-flash-lite",
+          "name": "Gemini 2.5 Flash-Lite",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gemini-2.5-pro",
+          "name": "Gemini 2.5 Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gemini-3-flash-preview",
+          "name": "Gemini 3 Flash Preview",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gemini-3-pro-preview",
+          "name": "Gemini 3 Pro Preview",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gemini-3.1-flash-lite",
+          "name": "Gemini 3.1 Flash Lite",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gemini-3.1-flash-lite-preview",
+          "name": "Gemini 3.1 Flash Lite Preview",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gemini-3.1-pro-preview",
+          "name": "Gemini 3.1 Pro Preview",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gemini-3.1-pro-preview-customtools",
+          "name": "Gemini 3.1 Pro Preview Custom Tools",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gemini-3.5-flash",
+          "name": "Gemini 3.5 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gemini-flash-latest",
+          "name": "Gemini Flash Latest",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gemini-flash-lite-latest",
+          "name": "Gemini Flash-Lite Latest",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gemma-4-26b-a4b-it",
+          "name": "Gemma 4 26B A4B IT",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gemma-4-31b-it",
+          "name": "Gemma 4 31B IT",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        }
+      ]
+    },
+    "groq": {
+      "models": [
+        {
+          "id": "deepseek-r1-distill-llama-70b",
+          "name": "DeepSeek R1 Distill Llama 70B",
+          "context_length": 131072,
+          "max_output_tokens": 8192,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gemma2-9b-it",
+          "name": "Gemma 2 9B",
+          "context_length": 8192,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "groq/compound",
+          "name": "Compound",
+          "context_length": 131072,
+          "max_output_tokens": 8192,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "groq/compound-mini",
+          "name": "Compound Mini",
+          "context_length": 131072,
+          "max_output_tokens": 8192,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "llama-3.1-8b-instant",
+          "name": "Llama 3.1 8B Instant",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "llama-3.3-70b-versatile",
+          "name": "Llama 3.3 70B Versatile",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "llama3-70b-8192",
+          "name": "Llama 3 70B",
+          "context_length": 8192,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "llama3-8b-8192",
+          "name": "Llama 3 8B",
+          "context_length": 8192,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "meta-llama/llama-4-maverick-17b-128e-instruct",
+          "name": "Llama 4 Maverick 17B",
+          "context_length": 131072,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "meta-llama/llama-4-scout-17b-16e-instruct",
+          "name": "Llama 4 Scout 17B",
+          "context_length": 131072,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistral-saba-24b",
+          "name": "Mistral Saba 24B",
+          "context_length": 32768,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "moonshotai/kimi-k2-instruct",
+          "name": "Kimi K2 Instruct",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/kimi-k2-instruct-0905",
+          "name": "Kimi K2 Instruct 0905",
+          "context_length": 262144,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-oss-120b",
+          "name": "GPT OSS 120B",
+          "context_length": 131072,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-oss-20b",
+          "name": "GPT OSS 20B",
+          "context_length": 131072,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-oss-safeguard-20b",
+          "name": "Safety GPT OSS 20B",
+          "context_length": 131072,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen-qwq-32b",
+          "name": "Qwen QwQ 32B",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-32b",
+          "name": "Qwen3 32B",
+          "context_length": 131072,
+          "max_output_tokens": 40960,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        }
+      ]
+    },
+    "huggingface": {
+      "models": [
+        {
+          "id": "MiniMaxAI/MiniMax-M2.1",
+          "name": "MiniMax-M2.1",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMaxAI/MiniMax-M2.5",
+          "name": "MiniMax-M2.5",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMaxAI/MiniMax-M2.7",
+          "name": "MiniMax-M2.7",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "Qwen/Qwen3-235B-A22B-Thinking-2507",
+          "name": "Qwen3-235B-A22B-Thinking-2507",
+          "context_length": 262144,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "name": "Qwen3-Coder-480B-A35B-Instruct",
+          "context_length": 262144,
+          "max_output_tokens": 66536,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "Qwen/Qwen3-Coder-Next",
+          "name": "Qwen3-Coder-Next",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "Qwen/Qwen3-Next-80B-A3B-Instruct",
+          "name": "Qwen3-Next-80B-A3B-Instruct",
+          "context_length": 262144,
+          "max_output_tokens": 66536,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "Qwen/Qwen3-Next-80B-A3B-Thinking",
+          "name": "Qwen3-Next-80B-A3B-Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "Qwen/Qwen3.5-397B-A17B",
+          "name": "Qwen3.5-397B-A17B",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "XiaomiMiMo/MiMo-V2-Flash",
+          "name": "MiMo-V2-Flash",
+          "context_length": 262144,
+          "max_output_tokens": 4096,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-R1-0528",
+          "name": "DeepSeek-R1-0528",
+          "context_length": 163840,
+          "max_output_tokens": 163840,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-V3.2",
+          "name": "DeepSeek-V3.2",
+          "context_length": 163840,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek-ai/DeepSeek-V4-Pro",
+          "name": "DeepSeek V4 Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 393216,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "moonshotai/Kimi-K2-Instruct",
+          "name": "Kimi-K2-Instruct",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/Kimi-K2-Instruct-0905",
+          "name": "Kimi-K2-Instruct-0905",
+          "context_length": 262144,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/Kimi-K2-Thinking",
+          "name": "Kimi-K2-Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/Kimi-K2.5",
+          "name": "Kimi-K2.5",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/Kimi-K2.6",
+          "name": "Kimi-K2.6",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "zai-org/GLM-4.7",
+          "name": "GLM-4.7",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "zai-org/GLM-4.7-Flash",
+          "name": "GLM-4.7-Flash",
+          "context_length": 200000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "zai-org/GLM-5",
+          "name": "GLM-5",
+          "context_length": 202752,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "zai-org/GLM-5.1",
+          "name": "GLM-5.1",
+          "context_length": 202752,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "kimi-coding": {
+      "models": [
+        {
+          "id": "k2p5",
+          "name": "Kimi K2.5",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "k2p6",
+          "name": "Kimi K2.6",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "kimi-k2-thinking",
+          "name": "Kimi K2 Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        }
+      ]
+    },
+    "minimax": {
+      "models": [
+        {
+          "id": "MiniMax-M2",
+          "name": "MiniMax-M2",
+          "context_length": 196608,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.1",
+          "name": "MiniMax-M2.1",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.5",
+          "name": "MiniMax-M2.5",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.5-highspeed",
+          "name": "MiniMax-M2.5-highspeed",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.7",
+          "name": "MiniMax-M2.7",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.7-highspeed",
+          "name": "MiniMax-M2.7-highspeed",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "minimax-cn": {
+      "models": [
+        {
+          "id": "MiniMax-M2",
+          "name": "MiniMax-M2",
+          "context_length": 196608,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.1",
+          "name": "MiniMax-M2.1",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.5",
+          "name": "MiniMax-M2.5",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.5-highspeed",
+          "name": "MiniMax-M2.5-highspeed",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.7",
+          "name": "MiniMax-M2.7",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "MiniMax-M2.7-highspeed",
+          "name": "MiniMax-M2.7-highspeed",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "mistral": {
+      "models": [
+        {
+          "id": "codestral-latest",
+          "name": "Codestral (latest)",
+          "context_length": 256000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "devstral-2512",
+          "name": "Devstral 2",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "devstral-medium-2507",
+          "name": "Devstral Medium",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "devstral-medium-latest",
+          "name": "Devstral 2 (latest)",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "devstral-small-2505",
+          "name": "Devstral Small 2505",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "devstral-small-2507",
+          "name": "Devstral Small",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "labs-devstral-small-2512",
+          "name": "Devstral Small 2",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "magistral-medium-latest",
+          "name": "Magistral Medium (latest)",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "magistral-small",
+          "name": "Magistral Small",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "ministral-3b-latest",
+          "name": "Ministral 3B (latest)",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "ministral-8b-latest",
+          "name": "Ministral 8B (latest)",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistral-large-2411",
+          "name": "Mistral Large 2.1",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistral-large-2512",
+          "name": "Mistral Large 3",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistral-large-latest",
+          "name": "Mistral Large (latest)",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistral-medium-2505",
+          "name": "Mistral Medium 3",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistral-medium-2508",
+          "name": "Mistral Medium 3.1",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistral-medium-2604",
+          "name": "Mistral Medium 3.5",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistral-medium-latest",
+          "name": "Mistral Medium (latest)",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistral-nemo",
+          "name": "Mistral Nemo",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistral-small-2506",
+          "name": "Mistral Small 3.2",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistral-small-2603",
+          "name": "Mistral Small 4",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistral-small-latest",
+          "name": "Mistral Small (latest)",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "open-mistral-7b",
+          "name": "Mistral 7B",
+          "context_length": 8000,
+          "max_output_tokens": 8000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "open-mixtral-8x22b",
+          "name": "Mixtral 8x22B",
+          "context_length": 64000,
+          "max_output_tokens": 64000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "open-mixtral-8x7b",
+          "name": "Mixtral 8x7B",
+          "context_length": 32000,
+          "max_output_tokens": 32000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "pixtral-12b",
+          "name": "Pixtral 12B",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "pixtral-large-latest",
+          "name": "Pixtral Large (latest)",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "moonshotai": {
+      "models": [
+        {
+          "id": "kimi-k2-0711-preview",
+          "name": "Kimi K2 0711",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-0905-preview",
+          "name": "Kimi K2 0905",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-thinking",
+          "name": "Kimi K2 Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-thinking-turbo",
+          "name": "Kimi K2 Thinking Turbo",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-turbo-preview",
+          "name": "Kimi K2 Turbo",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2.5",
+          "name": "Kimi K2.5",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2.6",
+          "name": "Kimi K2.6",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "moonshotai-cn": {
+      "models": [
+        {
+          "id": "kimi-k2-0711-preview",
+          "name": "Kimi K2 0711",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-0905-preview",
+          "name": "Kimi K2 0905",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-thinking",
+          "name": "Kimi K2 Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-thinking-turbo",
+          "name": "Kimi K2 Thinking Turbo",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-turbo-preview",
+          "name": "Kimi K2 Turbo",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2.5",
+          "name": "Kimi K2.5",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2.6",
+          "name": "Kimi K2.6",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "openai": {
+      "models": [
+        {
+          "id": "gpt-4",
+          "name": "GPT-4",
+          "context_length": 8192,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-4-turbo",
+          "name": "GPT-4 Turbo",
+          "context_length": 128000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-4.1",
+          "name": "GPT-4.1",
+          "context_length": 1047576,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-4.1-mini",
+          "name": "GPT-4.1 mini",
+          "context_length": 1047576,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-4.1-nano",
+          "name": "GPT-4.1 nano",
+          "context_length": 1047576,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gpt-4o",
+          "name": "GPT-4o",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-4o-2024-05-13",
+          "name": "GPT-4o (2024-05-13)",
+          "context_length": 128000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-4o-2024-08-06",
+          "name": "GPT-4o (2024-08-06)",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-4o-2024-11-20",
+          "name": "GPT-4o (2024-11-20)",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-4o-mini",
+          "name": "GPT-4o mini",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gpt-5",
+          "name": "GPT-5",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5-codex",
+          "name": "GPT-5-Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5-mini",
+          "name": "GPT-5 Mini",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5-nano",
+          "name": "GPT-5 Nano",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gpt-5-pro",
+          "name": "GPT-5 Pro",
+          "context_length": 400000,
+          "max_output_tokens": 272000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.1",
+          "name": "GPT-5.1",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.1-chat-latest",
+          "name": "GPT-5.1 Chat",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.1-codex",
+          "name": "GPT-5.1 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.1-codex-max",
+          "name": "GPT-5.1 Codex Max",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.1-codex-mini",
+          "name": "GPT-5.1 Codex mini",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.2",
+          "name": "GPT-5.2",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.2-chat-latest",
+          "name": "GPT-5.2 Chat",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.2-codex",
+          "name": "GPT-5.2 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.2-pro",
+          "name": "GPT-5.2 Pro",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.3-chat-latest",
+          "name": "GPT-5.3 Chat (latest)",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.3-codex",
+          "name": "GPT-5.3 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.3-codex-spark",
+          "name": "GPT-5.3 Codex Spark",
+          "context_length": 128000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.4",
+          "name": "GPT-5.4",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "name": "GPT-5.4 mini",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.4-nano",
+          "name": "GPT-5.4 nano",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.4-pro",
+          "name": "GPT-5.4 Pro",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.5",
+          "name": "GPT-5.5",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.5-pro",
+          "name": "GPT-5.5 Pro",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "o1",
+          "name": "o1",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "o1-pro",
+          "name": "o1-pro",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "o3",
+          "name": "o3",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "o3-deep-research",
+          "name": "o3-deep-research",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "o3-mini",
+          "name": "o3-mini",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "o3-pro",
+          "name": "o3-pro",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "o4-mini",
+          "name": "o4-mini",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "o4-mini-deep-research",
+          "name": "o4-mini-deep-research",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "opencode": {
+      "models": [
+        {
+          "id": "big-pickle",
+          "name": "Big Pickle",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "claude-3-5-haiku",
+          "name": "Claude Haiku 3.5",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "claude-haiku-4-5",
+          "name": "Claude Haiku 4.5",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "claude-opus-4-1",
+          "name": "Claude Opus 4.1",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-5",
+          "name": "Claude Opus 4.5",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-6",
+          "name": "Claude Opus 4.6",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-7",
+          "name": "Claude Opus 4.7",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-opus-4-8",
+          "name": "Claude Opus 4.8",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-sonnet-4",
+          "name": "Claude Sonnet 4",
+          "context_length": 1000000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-sonnet-4-5",
+          "name": "Claude Sonnet 4.5",
+          "context_length": 1000000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "claude-sonnet-4-6",
+          "name": "Claude Sonnet 4.6",
+          "context_length": 1000000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "deepseek-v4-flash-free",
+          "name": "DeepSeek V4 Flash Free",
+          "context_length": 200000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gemini-3-flash",
+          "name": "Gemini 3 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gemini-3-pro",
+          "name": "Gemini 3 Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gemini-3.1-pro",
+          "name": "Gemini 3.1 Pro Preview",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gemini-3.5-flash",
+          "name": "Gemini 3.5 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "glm-4.6",
+          "name": "GLM-4.6",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "glm-4.7",
+          "name": "GLM-4.7",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "glm-4.7-free",
+          "name": "GLM-4.7 Free",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "glm-5",
+          "name": "GLM-5",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "glm-5-free",
+          "name": "GLM-5 Free",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "glm-5.1",
+          "name": "GLM-5.1",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5",
+          "name": "GPT-5",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5-codex",
+          "name": "GPT-5 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5-nano",
+          "name": "GPT-5 Nano",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "gpt-5.1",
+          "name": "GPT-5.1",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.1-codex",
+          "name": "GPT-5.1 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.1-codex-max",
+          "name": "GPT-5.1 Codex Max",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.1-codex-mini",
+          "name": "GPT-5.1 Codex Mini",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.2",
+          "name": "GPT-5.2",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.2-codex",
+          "name": "GPT-5.2 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.3-codex",
+          "name": "GPT-5.3 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.3-codex-spark",
+          "name": "GPT-5.3 Codex Spark",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.4",
+          "name": "GPT-5.4",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "name": "GPT-5.4 Mini",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.4-nano",
+          "name": "GPT-5.4 Nano",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "gpt-5.4-pro",
+          "name": "GPT-5.4 Pro",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.5",
+          "name": "GPT-5.5",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "gpt-5.5-pro",
+          "name": "GPT-5.5 Pro",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "grok-build-0.1",
+          "name": "Grok Build 0.1",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "grok-code",
+          "name": "Grok Code Fast 1",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "hy3-preview-free",
+          "name": "Hy3 preview Free",
+          "context_length": 256000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "kimi-k2",
+          "name": "Kimi K2",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2-thinking",
+          "name": "Kimi K2 Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2.5",
+          "name": "Kimi K2.5",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "kimi-k2.5-free",
+          "name": "Kimi K2.5 Free",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "kimi-k2.6",
+          "name": "Kimi K2.6",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "ling-2.6-flash-free",
+          "name": "Ling 2.6 Flash Free",
+          "context_length": 262100,
+          "max_output_tokens": 32800,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2-flash-free",
+          "name": "MiMo V2 Flash Free",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2-omni-free",
+          "name": "MiMo V2 Omni Free",
+          "context_length": 262144,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2-pro-free",
+          "name": "MiMo V2 Pro Free",
+          "context_length": 1048576,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2.5-free",
+          "name": "MiMo V2.5 Free",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "minimax-m2.1",
+          "name": "MiniMax M2.1",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "minimax-m2.1-free",
+          "name": "MiniMax M2.1 Free",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "minimax-m2.5",
+          "name": "MiniMax M2.5",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "minimax-m2.5-free",
+          "name": "MiniMax M2.5 Free",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "minimax-m2.7",
+          "name": "MiniMax M2.7",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "nemotron-3-super-free",
+          "name": "Nemotron 3 Super Free",
+          "context_length": 204800,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen3-coder",
+          "name": "Qwen3 Coder",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen3.5-plus",
+          "name": "Qwen3.5 Plus",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen3.6-plus",
+          "name": "Qwen3.6 Plus",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen3.6-plus-free",
+          "name": "Qwen3.6 Plus Free",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "ring-2.6-1t-free",
+          "name": "Ring 2.6 1T Free",
+          "context_length": 262000,
+          "max_output_tokens": 66000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "trinity-large-preview-free",
+          "name": "Trinity Large Preview",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        }
+      ]
+    },
+    "openrouter": {
+      "models": [
+        {
+          "id": "ai21/jamba-large-1.7",
+          "name": "Jamba Large 1.7",
+          "context_length": 256000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "amazon/nova-2-lite-v1",
+          "name": "Nova 2 Lite",
+          "context_length": 1000000,
+          "max_output_tokens": 65535,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "amazon/nova-lite-v1",
+          "name": "Nova Lite 1.0",
+          "context_length": 300000,
+          "max_output_tokens": 5120,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "amazon/nova-micro-v1",
+          "name": "Nova Micro 1.0",
+          "context_length": 128000,
+          "max_output_tokens": 5120,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "amazon/nova-premier-v1",
+          "name": "Nova Premier 1.0",
+          "context_length": 1000000,
+          "max_output_tokens": 32000,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "amazon/nova-pro-v1",
+          "name": "Nova Pro 1.0",
+          "context_length": 300000,
+          "max_output_tokens": 5120,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "anthropic/claude-3-haiku",
+          "name": "Claude 3 Haiku",
+          "context_length": 200000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "anthropic/claude-3.5-haiku",
+          "name": "Claude 3.5 Haiku",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "anthropic/claude-haiku-4.5",
+          "name": "Claude Haiku 4.5 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "anthropic/claude-opus-4",
+          "name": "Claude Opus 4",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.1",
+          "name": "Claude Opus 4.1 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.5",
+          "name": "Claude Opus 4.5 (latest)",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.6",
+          "name": "Claude Opus 4.6",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.6-fast",
+          "name": "Claude Opus 4.6 (Fast)",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.7",
+          "name": "Claude Opus 4.7",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.7-fast",
+          "name": "Claude Opus 4.7 (Fast)",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.8",
+          "name": "Claude Opus 4.8",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.8-fast",
+          "name": "Claude Opus 4.8 (Fast)",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-sonnet-4",
+          "name": "Claude Sonnet 4",
+          "context_length": 1000000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-sonnet-4.5",
+          "name": "Claude Sonnet 4.5 (latest)",
+          "context_length": 1000000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-sonnet-4.6",
+          "name": "Claude Sonnet 4.6",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "arcee-ai/trinity-large-thinking",
+          "name": "Trinity Large Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "arcee-ai/trinity-mini",
+          "name": "Trinity Mini",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "arcee-ai/virtuoso-large",
+          "name": "Virtuoso Large",
+          "context_length": 131072,
+          "max_output_tokens": 64000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "baidu/ernie-4.5-21b-a3b",
+          "name": "ERNIE 4.5 21B A3B",
+          "context_length": 120000,
+          "max_output_tokens": 8000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "baidu/ernie-4.5-vl-28b-a3b",
+          "name": "ERNIE 4.5 VL 28B A3B",
+          "context_length": 30000,
+          "max_output_tokens": 8000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "bytedance-seed/seed-1.6",
+          "name": "Seed 1.6",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "bytedance-seed/seed-1.6-flash",
+          "name": "Seed 1.6 Flash",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "bytedance-seed/seed-2.0-lite",
+          "name": "Seed-2.0-Lite",
+          "context_length": 262144,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "bytedance-seed/seed-2.0-mini",
+          "name": "Seed-2.0-Mini",
+          "context_length": 262144,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "cohere/command-r-08-2024",
+          "name": "Command R",
+          "context_length": 128000,
+          "max_output_tokens": 4000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "cohere/command-r-plus-08-2024",
+          "name": "Command R+",
+          "context_length": 128000,
+          "max_output_tokens": 4000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "deepseek/deepseek-chat",
+          "name": "DeepSeek Chat",
+          "context_length": 128000,
+          "max_output_tokens": 16000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek/deepseek-chat-v3-0324",
+          "name": "DeepSeek V3 0324",
+          "context_length": 163840,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek/deepseek-chat-v3.1",
+          "name": "DeepSeek V3.1",
+          "context_length": 163840,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek/deepseek-r1",
+          "name": "R1",
+          "context_length": 64000,
+          "max_output_tokens": 16000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "deepseek/deepseek-r1-0528",
+          "name": "R1 0528",
+          "context_length": 163840,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "deepseek/deepseek-v3.1-terminus",
+          "name": "DeepSeek V3.1 Terminus",
+          "context_length": 163840,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek/deepseek-v3.2",
+          "name": "DeepSeek V3.2",
+          "context_length": 131072,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek/deepseek-v3.2-exp",
+          "name": "DeepSeek V3.2 Exp",
+          "context_length": 163840,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek/deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek/deepseek-v4-flash:free",
+          "name": "DeepSeek V4 Flash (free)",
+          "context_length": 1048576,
+          "max_output_tokens": 384000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "deepseek/deepseek-v4-pro",
+          "name": "DeepSeek V4 Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 384000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "essentialai/rnj-1-instruct",
+          "name": "Rnj 1 Instruct",
+          "context_length": 32768,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemini-2.0-flash-001",
+          "name": "Gemini 2.0 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemini-2.0-flash-lite-001",
+          "name": "Gemini 2.0 Flash Lite",
+          "context_length": 1048576,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemini-2.5-flash",
+          "name": "Gemini 2.5 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 65535,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "google/gemini-2.5-flash-lite",
+          "name": "Gemini 2.5 Flash-Lite",
+          "context_length": 1048576,
+          "max_output_tokens": 65535,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemini-2.5-flash-lite-preview-09-2025",
+          "name": "Gemini 2.5 Flash Lite Preview 09-2025",
+          "context_length": 1048576,
+          "max_output_tokens": 65535,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemini-2.5-pro",
+          "name": "Gemini 2.5 Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "google/gemini-2.5-pro-preview",
+          "name": "Gemini 2.5 Pro Preview 06-05",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "google/gemini-2.5-pro-preview-05-06",
+          "name": "Gemini 2.5 Pro Preview 05-06",
+          "context_length": 1048576,
+          "max_output_tokens": 65535,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "google/gemini-3-flash-preview",
+          "name": "Gemini 3 Flash Preview",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "google/gemini-3.1-flash-lite",
+          "name": "Gemini 3.1 Flash Lite",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "google/gemini-3.1-flash-lite-preview",
+          "name": "Gemini 3.1 Flash Lite Preview",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "google/gemini-3.1-pro-preview",
+          "name": "Gemini 3.1 Pro Preview",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "google/gemini-3.1-pro-preview-customtools",
+          "name": "Gemini 3.1 Pro Preview Custom Tools",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "google/gemini-3.5-flash",
+          "name": "Gemini 3.5 Flash",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "google/gemma-3-12b-it",
+          "name": "Gemma 3 12B",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemma-3-27b-it",
+          "name": "Gemma 3 27B",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemma-4-26b-a4b-it",
+          "name": "Gemma 4 26B A4B IT",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemma-4-26b-a4b-it:free",
+          "name": "Gemma 4 26B A4B  (free)",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemma-4-31b-it",
+          "name": "Gemma 4 31B IT",
+          "context_length": 262144,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "google/gemma-4-31b-it:free",
+          "name": "Gemma 4 31B (free)",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "ibm-granite/granite-4.1-8b",
+          "name": "Granite 4.1 8B",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "inception/mercury-2",
+          "name": "Mercury 2",
+          "context_length": 128000,
+          "max_output_tokens": 50000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "inclusionai/ling-2.6-1t",
+          "name": "Ling-2.6-1T",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "inclusionai/ling-2.6-flash",
+          "name": "Ling-2.6-flash",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "inclusionai/ring-2.6-1t",
+          "name": "Ring-2.6-1T",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "kwaipilot/kat-coder-pro-v2",
+          "name": "KAT-Coder-Pro V2",
+          "context_length": 256000,
+          "max_output_tokens": 80000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "meta-llama/llama-3.1-70b-instruct",
+          "name": "Llama 3.1 70B Instruct",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "meta-llama/llama-3.1-8b-instruct",
+          "name": "Llama 3.1 8B Instruct",
+          "context_length": 16384,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "meta-llama/llama-3.3-70b-instruct",
+          "name": "Llama-3.3-70B-Instruct",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "meta-llama/llama-3.3-70b-instruct:free",
+          "name": "Llama 3.3 70B Instruct (free)",
+          "context_length": 65536,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "meta-llama/llama-4-maverick",
+          "name": "Llama 4 Maverick",
+          "context_length": 1048576,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "meta-llama/llama-4-scout",
+          "name": "Llama 4 Scout",
+          "context_length": 327680,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "minimax/minimax-m1",
+          "name": "MiniMax M1",
+          "context_length": 1000000,
+          "max_output_tokens": 40000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "minimax/minimax-m2",
+          "name": "MiniMax-M2",
+          "context_length": 196608,
+          "max_output_tokens": 196608,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "minimax/minimax-m2.1",
+          "name": "MiniMax-M2.1",
+          "context_length": 196608,
+          "max_output_tokens": 196608,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "minimax/minimax-m2.5",
+          "name": "MiniMax-M2.5",
+          "context_length": 196608,
+          "max_output_tokens": 196608,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "minimax/minimax-m2.5:free",
+          "name": "MiniMax M2.5 (free)",
+          "context_length": 196608,
+          "max_output_tokens": 8192,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "minimax/minimax-m2.7",
+          "name": "MiniMax-M2.7",
+          "context_length": 196608,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/codestral-2508",
+          "name": "Codestral 2508",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/devstral-2512",
+          "name": "Devstral 2",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/devstral-medium",
+          "name": "Devstral Medium",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/devstral-small",
+          "name": "Devstral Small 1.1",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/ministral-14b-2512",
+          "name": "Ministral 3 14B 2512",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/ministral-3b-2512",
+          "name": "Ministral 3 3B 2512",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/ministral-8b-2512",
+          "name": "Ministral 3 8B 2512",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/mistral-large",
+          "name": "Mistral Large",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/mistral-large-2407",
+          "name": "Mistral Large 2407",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/mistral-large-2411",
+          "name": "Mistral Large 2.1",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/mistral-large-2512",
+          "name": "Mistral Large 3",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/mistral-medium-3",
+          "name": "Mistral Medium 3",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/mistral-medium-3-5",
+          "name": "Mistral Medium 3.5",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/mistral-medium-3.1",
+          "name": "Mistral Medium 3.1",
+          "context_length": 131072,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/mistral-nemo",
+          "name": "Mistral Nemo",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/mistral-saba",
+          "name": "Saba",
+          "context_length": 32768,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/mistral-small-2603",
+          "name": "Mistral Small 4",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/mistral-small-3.2-24b-instruct",
+          "name": "Mistral Small 3.2 24B",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mistralai/mixtral-8x22b-instruct",
+          "name": "Mixtral 8x22B Instruct",
+          "context_length": 65536,
+          "max_output_tokens": 65536,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/pixtral-large-2411",
+          "name": "Pixtral Large 2411",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mistralai/voxtral-small-24b-2507",
+          "name": "Voxtral Small 24B 2507",
+          "context_length": 32000,
+          "max_output_tokens": 32000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "moonshotai/kimi-k2",
+          "name": "Kimi K2 0711",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/kimi-k2-0905",
+          "name": "Kimi K2 0905",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/kimi-k2-thinking",
+          "name": "Kimi K2 Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/kimi-k2.5",
+          "name": "Kimi K2.5",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/kimi-k2.6",
+          "name": "Kimi K2.6",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "moonshotai/kimi-k2.6:free",
+          "name": "Kimi K2.6 (free)",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nex-agi/deepseek-v3.1-nex-n1",
+          "name": "DeepSeek V3.1 Nex N1",
+          "context_length": 131072,
+          "max_output_tokens": 163840,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+          "name": "Llama 3.3 Nemotron Super 49B V1.5",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/nemotron-3-nano-30b-a3b",
+          "name": "Nemotron 3 Nano 30B A3B",
+          "context_length": 262144,
+          "max_output_tokens": 228000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/nemotron-3-nano-30b-a3b:free",
+          "name": "Nemotron 3 Nano 30B A3B (free)",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+          "name": "Nemotron 3 Nano Omni (free)",
+          "context_length": 256000,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/nemotron-3-super-120b-a12b",
+          "name": "Nemotron 3 Super",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/nemotron-3-super-120b-a12b:free",
+          "name": "Nemotron 3 Super (free)",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/nemotron-nano-12b-v2-vl:free",
+          "name": "Nemotron Nano 12B 2 VL (free)",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/nemotron-nano-9b-v2",
+          "name": "Nemotron Nano 9B V2",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "nvidia/nemotron-nano-9b-v2:free",
+          "name": "Nemotron Nano 9B V2 (free)",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-3.5-turbo",
+          "name": "GPT-3.5-turbo",
+          "context_length": 16385,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-3.5-turbo-0613",
+          "name": "GPT-3.5 Turbo (older v0613)",
+          "context_length": 4095,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-3.5-turbo-16k",
+          "name": "GPT-3.5 Turbo 16k",
+          "context_length": 16385,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-4",
+          "name": "GPT-4",
+          "context_length": 8191,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-4-0314",
+          "name": "GPT-4 (older v0314)",
+          "context_length": 8191,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-4-1106-preview",
+          "name": "GPT-4 Turbo (older v1106)",
+          "context_length": 128000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-4-turbo",
+          "name": "GPT-4 Turbo",
+          "context_length": 128000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-4-turbo-preview",
+          "name": "GPT-4 Turbo Preview",
+          "context_length": 128000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-4.1",
+          "name": "GPT-4.1",
+          "context_length": 1047576,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-4.1-mini",
+          "name": "GPT-4.1 mini",
+          "context_length": 1047576,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-4.1-nano",
+          "name": "GPT-4.1 nano",
+          "context_length": 1047576,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-4o",
+          "name": "GPT-4o",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-4o-2024-05-13",
+          "name": "GPT-4o (2024-05-13)",
+          "context_length": 128000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-4o-2024-08-06",
+          "name": "GPT-4o (2024-08-06)",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-4o-2024-11-20",
+          "name": "GPT-4o (2024-11-20)",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-4o-mini",
+          "name": "GPT-4o mini",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-4o-mini-2024-07-18",
+          "name": "GPT-4o-mini (2024-07-18)",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-5",
+          "name": "GPT-5",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5-codex",
+          "name": "GPT-5-Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5-mini",
+          "name": "GPT-5 Mini",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5-nano",
+          "name": "GPT-5 Nano",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-5-pro",
+          "name": "GPT-5 Pro",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.1",
+          "name": "GPT-5.1",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5.1-chat",
+          "name": "GPT-5.1 Chat",
+          "context_length": 128000,
+          "max_output_tokens": 32000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5.1-codex",
+          "name": "GPT-5.1 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5.1-codex-max",
+          "name": "GPT-5.1 Codex Max",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5.1-codex-mini",
+          "name": "GPT-5.1 Codex mini",
+          "context_length": 400000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5.2",
+          "name": "GPT-5.2",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.2-chat",
+          "name": "GPT-5.2 Chat",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.2-codex",
+          "name": "GPT-5.2 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.2-pro",
+          "name": "GPT-5.2 Pro",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.3-chat",
+          "name": "GPT-5.3 Chat",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.3-codex",
+          "name": "GPT-5.3 Codex",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.4",
+          "name": "GPT-5.4",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.4-mini",
+          "name": "GPT-5.4 mini",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5.4-nano",
+          "name": "GPT-5.4 nano",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-5.4-pro",
+          "name": "GPT-5.4 Pro",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.5",
+          "name": "GPT-5.5",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-5.5-pro",
+          "name": "GPT-5.5 Pro",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-audio",
+          "name": "GPT Audio",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-audio-mini",
+          "name": "GPT Audio Mini",
+          "context_length": 128000,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/gpt-chat-latest",
+          "name": "GPT Chat Latest",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/gpt-oss-120b",
+          "name": "gpt-oss-120b",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-oss-120b:free",
+          "name": "gpt-oss-120b (free)",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-oss-20b",
+          "name": "gpt-oss-20b",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-oss-20b:free",
+          "name": "gpt-oss-20b (free)",
+          "context_length": 131072,
+          "max_output_tokens": 8192,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/gpt-oss-safeguard-20b",
+          "name": "gpt-oss-safeguard-20b",
+          "context_length": 131072,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openai/o1",
+          "name": "o1",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/o3",
+          "name": "o3",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/o3-deep-research",
+          "name": "o3-deep-research",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/o3-mini",
+          "name": "o3-mini",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/o3-mini-high",
+          "name": "o3 Mini High",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/o3-pro",
+          "name": "o3-pro",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "openai/o4-mini",
+          "name": "o4-mini",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/o4-mini-deep-research",
+          "name": "o4-mini-deep-research",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openai/o4-mini-high",
+          "name": "o4 Mini High",
+          "context_length": 200000,
+          "max_output_tokens": 100000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "openrouter/auto",
+          "name": "Auto Router",
+          "context_length": 2000000,
+          "max_output_tokens": 2000000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openrouter/free",
+          "name": "Free Models Router",
+          "context_length": 200000,
+          "max_output_tokens": 8000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "openrouter/owl-alpha",
+          "name": "Owl Alpha",
+          "context_length": 1048756,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "poolside/laguna-m.1:free",
+          "name": "Laguna M.1 (free)",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "poolside/laguna-xs.2:free",
+          "name": "Laguna XS.2 (free)",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "prime-intellect/intellect-3",
+          "name": "INTELLECT-3",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen-2.5-72b-instruct",
+          "name": "Qwen2.5 72B Instruct",
+          "context_length": 32768,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen-2.5-7b-instruct",
+          "name": "Qwen2.5 7B Instruct",
+          "context_length": 32768,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen-plus",
+          "name": "Qwen-Plus",
+          "context_length": 1000000,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen-plus-2025-07-28",
+          "name": "Qwen Plus 0728",
+          "context_length": 1000000,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen-plus-2025-07-28:thinking",
+          "name": "Qwen Plus 0728 (thinking)",
+          "context_length": 1000000,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-14b",
+          "name": "Qwen3 14B",
+          "context_length": 40960,
+          "max_output_tokens": 40960,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-235b-a22b",
+          "name": "Qwen3 235B A22B",
+          "context_length": 131072,
+          "max_output_tokens": 8192,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3-235b-a22b-2507",
+          "name": "Qwen3 235B A22B Instruct 2507",
+          "context_length": 262144,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-235b-a22b-thinking-2507",
+          "name": "Qwen3 235B A22B Thinking 2507",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-30b-a3b",
+          "name": "Qwen3 30B A3B",
+          "context_length": 40960,
+          "max_output_tokens": 20000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-30b-a3b-instruct-2507",
+          "name": "Qwen3 30B A3B Instruct 2507",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-30b-a3b-thinking-2507",
+          "name": "Qwen3 30B A3B Thinking 2507",
+          "context_length": 131072,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-32b",
+          "name": "Qwen3 32B",
+          "context_length": 40960,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-8b",
+          "name": "Qwen3 8B",
+          "context_length": 40960,
+          "max_output_tokens": 8192,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-coder",
+          "name": "Qwen3 Coder 480B A35B",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3-coder-30b-a3b-instruct",
+          "name": "Qwen3 Coder 30B A3B Instruct",
+          "context_length": 160000,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-coder-flash",
+          "name": "Qwen3 Coder Flash",
+          "context_length": 1000000,
+          "max_output_tokens": 65536,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-coder-next",
+          "name": "Qwen3 Coder Next",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-coder-plus",
+          "name": "Qwen3 Coder Plus",
+          "context_length": 1000000,
+          "max_output_tokens": 65536,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3-coder:free",
+          "name": "Qwen3 Coder 480B A35B (free)",
+          "context_length": 262000,
+          "max_output_tokens": 262000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-max",
+          "name": "Qwen3 Max",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3-max-thinking",
+          "name": "Qwen3 Max Thinking",
+          "context_length": 262144,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3-next-80b-a3b-instruct",
+          "name": "Qwen3 Next 80B A3B Instruct",
+          "context_length": 262144,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3-next-80b-a3b-instruct:free",
+          "name": "Qwen3 Next 80B A3B Instruct (free)",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-next-80b-a3b-thinking",
+          "name": "Qwen3 Next 80B A3B Thinking",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-vl-235b-a22b-instruct",
+          "name": "Qwen3 VL 235B A22B Instruct",
+          "context_length": 262144,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-vl-235b-a22b-thinking",
+          "name": "Qwen3 VL 235B A22B Thinking",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3-vl-30b-a3b-instruct",
+          "name": "Qwen3 VL 30B A3B Instruct",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-vl-30b-a3b-thinking",
+          "name": "Qwen3 VL 30B A3B Thinking",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3-vl-32b-instruct",
+          "name": "Qwen3 VL 32B Instruct",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-vl-8b-instruct",
+          "name": "Qwen3 VL 8B Instruct",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3-vl-8b-thinking",
+          "name": "Qwen3 VL 8B Thinking",
+          "context_length": 131072,
+          "max_output_tokens": 32768,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.5-122b-a10b",
+          "name": "Qwen3.5-122B-A10B",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.5-27b",
+          "name": "Qwen3.5-27B",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.5-35b-a3b",
+          "name": "Qwen3.5-35B-A3B",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3.5-397b-a17b",
+          "name": "Qwen3.5 397B A17B",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.5-9b",
+          "name": "Qwen3.5-9B",
+          "context_length": 262144,
+          "max_output_tokens": 81920,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3.5-flash-02-23",
+          "name": "Qwen3.5-Flash",
+          "context_length": 1000000,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3.5-plus-02-15",
+          "name": "Qwen3.5 Plus 2026-02-15",
+          "context_length": 1000000,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.5-plus-20260420",
+          "name": "Qwen3.5 Plus 2026-04-20",
+          "context_length": 1000000,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.6-27b",
+          "name": "Qwen3.6 27B",
+          "context_length": 262140,
+          "max_output_tokens": 262140,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.6-35b-a3b",
+          "name": "Qwen3.6 35B A3B",
+          "context_length": 262140,
+          "max_output_tokens": 262140,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "qwen/qwen3.6-flash",
+          "name": "Qwen3.6 Flash",
+          "context_length": 1000000,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.6-max-preview",
+          "name": "Qwen3.6 Max Preview",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.6-plus",
+          "name": "Qwen3.6 Plus",
+          "context_length": 1000000,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "qwen/qwen3.7-max",
+          "name": "Qwen3.7 Max",
+          "context_length": 1000000,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "rekaai/reka-edge",
+          "name": "Reka Edge",
+          "context_length": 16384,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "relace/relace-search",
+          "name": "Relace Search",
+          "context_length": 256000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "sao10k/l3-euryale-70b",
+          "name": "Llama 3 Euryale 70B v2.1",
+          "context_length": 8192,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "sao10k/l3.1-euryale-70b",
+          "name": "Llama 3.1 Euryale 70B v2.2",
+          "context_length": 131072,
+          "max_output_tokens": 16384,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "stepfun/step-3.5-flash",
+          "name": "Step 3.5 Flash",
+          "context_length": 262144,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "stepfun/step-3.7-flash",
+          "name": "Step 3.7 Flash",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "tencent/hy3-preview",
+          "name": "Hy3 preview",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "thedrummer/rocinante-12b",
+          "name": "Rocinante 12B",
+          "context_length": 32768,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "thedrummer/unslopnemo-12b",
+          "name": "UnslopNemo 12B",
+          "context_length": 32768,
+          "max_output_tokens": 32768,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "x-ai/grok-4.20",
+          "name": "Grok 4.20",
+          "context_length": 2000000,
+          "max_output_tokens": 2000000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "x-ai/grok-4.3",
+          "name": "Grok 4.3",
+          "context_length": 1000000,
+          "max_output_tokens": 1000000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "x-ai/grok-build-0.1",
+          "name": "Grok Build 0.1",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "xiaomi/mimo-v2-flash",
+          "name": "MiMo-V2-Flash",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "xiaomi/mimo-v2-omni",
+          "name": "MiMo-V2-Omni",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "xiaomi/mimo-v2-pro",
+          "name": "MiMo-V2-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "xiaomi/mimo-v2.5",
+          "name": "MiMo-V2.5",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "xiaomi/mimo-v2.5-pro",
+          "name": "MiMo-V2.5-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "z-ai/glm-4-32b",
+          "name": "GLM 4 32B ",
+          "context_length": 128000,
+          "max_output_tokens": 128000,
+          "supports_thinking": false,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "z-ai/glm-4.5",
+          "name": "GLM-4.5",
+          "context_length": 131072,
+          "max_output_tokens": 98304,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "z-ai/glm-4.5-air",
+          "name": "GLM-4.5-Air",
+          "context_length": 131070,
+          "max_output_tokens": 131070,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "z-ai/glm-4.5-air:free",
+          "name": "GLM 4.5 Air (free)",
+          "context_length": 131072,
+          "max_output_tokens": 96000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "z-ai/glm-4.5v",
+          "name": "GLM-4.5V",
+          "context_length": 65536,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "z-ai/glm-4.6",
+          "name": "GLM-4.6",
+          "context_length": 202752,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "z-ai/glm-4.6v",
+          "name": "GLM-4.6V",
+          "context_length": 131072,
+          "max_output_tokens": 24000,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "z-ai/glm-4.7",
+          "name": "GLM-4.7",
+          "context_length": 202752,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "z-ai/glm-4.7-flash",
+          "name": "GLM-4.7-Flash",
+          "context_length": 202752,
+          "max_output_tokens": 16384,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "z-ai/glm-5",
+          "name": "GLM-5",
+          "context_length": 202752,
+          "max_output_tokens": 131000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "z-ai/glm-5-turbo",
+          "name": "GLM-5-Turbo",
+          "context_length": 202752,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "z-ai/glm-5.1",
+          "name": "GLM-5.1",
+          "context_length": 202752,
+          "max_output_tokens": 202800,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "z-ai/glm-5v-turbo",
+          "name": "GLM-5V-Turbo",
+          "context_length": 202752,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "~anthropic/claude-haiku-latest",
+          "name": "Anthropic Claude Haiku Latest",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "~anthropic/claude-opus-latest",
+          "name": "Claude Opus Latest",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "~anthropic/claude-sonnet-latest",
+          "name": "Anthropic Claude Sonnet Latest",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "~google/gemini-flash-latest",
+          "name": "Google Gemini Flash Latest",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "~google/gemini-pro-latest",
+          "name": "Google Gemini Pro Latest",
+          "context_length": 1048576,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "~moonshotai/kimi-latest",
+          "name": "MoonshotAI Kimi Latest",
+          "context_length": 262144,
+          "max_output_tokens": 262144,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "~openai/gpt-latest",
+          "name": "OpenAI GPT Latest",
+          "context_length": 1050000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "~openai/gpt-mini-latest",
+          "name": "OpenAI GPT Mini Latest",
+          "context_length": 400000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "vercel-ai-gateway": {
+      "models": [
+        {
+          "id": "anthropic/claude-3-haiku",
+          "name": "Claude Haiku 3",
+          "context_length": 200000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "anthropic/claude-3-opus",
+          "name": "Claude Opus 3",
+          "context_length": 200000,
+          "max_output_tokens": 4096,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-3.5-haiku",
+          "name": "Claude Haiku 3.5",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "anthropic/claude-3.5-sonnet",
+          "name": "Claude Sonnet 3.5 v2",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-3.5-sonnet-20240620",
+          "name": "Claude 3.5 Sonnet (2024-06-20)",
+          "context_length": 200000,
+          "max_output_tokens": 8192,
+          "supports_thinking": false,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-3.7-sonnet",
+          "name": "Claude Sonnet 3.7",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-haiku-4.5",
+          "name": "Claude Haiku 4.5",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "anthropic/claude-opus-4",
+          "name": "Claude Opus 4",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.1",
+          "name": "Claude Opus 4",
+          "context_length": 200000,
+          "max_output_tokens": 32000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.5",
+          "name": "Claude Opus 4.5",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.6",
+          "name": "Claude Opus 4.6",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.7",
+          "name": "Claude Opus 4.7",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-opus-4.8",
+          "name": "Claude Opus 4.8",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-sonnet-4",
+          "name": "Claude Sonnet 4",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-sonnet-4.5",
+          "name": "Claude Sonnet 4.5",
+          "context_length": 200000,
+          "max_output_tokens": 64000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        },
+        {
+          "id": "anthropic/claude-sonnet-4.6",
+          "name": "Claude Sonnet 4.6",
+          "context_length": 1000000,
+          "max_output_tokens": 128000,
+          "supports_thinking": true,
+          "cost_tier": "expensive"
+        }
+      ]
+    },
+    "xai": {
+      "models": [
+        {
+          "id": "grok-4.20-0309-non-reasoning",
+          "name": "Grok 4.20 (Non-Reasoning)",
+          "context_length": 2000000,
+          "max_output_tokens": 30000,
+          "supports_thinking": false,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "grok-4.20-0309-reasoning",
+          "name": "Grok 4.20 (Reasoning)",
+          "context_length": 2000000,
+          "max_output_tokens": 30000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "grok-4.3",
+          "name": "Grok 4.3",
+          "context_length": 1000000,
+          "max_output_tokens": 30000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "grok-build-0.1",
+          "name": "Grok Build 0.1",
+          "context_length": 256000,
+          "max_output_tokens": 256000,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "xiaomi": {
+      "models": [
+        {
+          "id": "mimo-v2-flash",
+          "name": "MiMo-V2-Flash",
+          "context_length": 262144,
+          "max_output_tokens": 65536,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2-omni",
+          "name": "MiMo-V2-Omni",
+          "context_length": 262144,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mimo-v2-pro",
+          "name": "MiMo-V2-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mimo-v2.5",
+          "name": "MiMo-V2.5",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        },
+        {
+          "id": "mimo-v2.5-pro",
+          "name": "MiMo-V2.5-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "moderate"
+        }
+      ]
+    },
+    "xiaomi-token-plan-ams": {
+      "models": [
+        {
+          "id": "mimo-v2-omni",
+          "name": "MiMo-V2-Omni",
+          "context_length": 262144,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2-pro",
+          "name": "MiMo-V2-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2.5",
+          "name": "MiMo-V2.5",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2.5-pro",
+          "name": "MiMo-V2.5-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        }
+      ]
+    },
+    "xiaomi-token-plan-cn": {
+      "models": [
+        {
+          "id": "mimo-v2-omni",
+          "name": "MiMo-V2-Omni",
+          "context_length": 262144,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2-pro",
+          "name": "MiMo-V2-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2.5",
+          "name": "MiMo-V2.5",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2.5-pro",
+          "name": "MiMo-V2.5-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        }
+      ]
+    },
+    "xiaomi-token-plan-sgp": {
+      "models": [
+        {
+          "id": "mimo-v2-omni",
+          "name": "MiMo-V2-Omni",
+          "context_length": 262144,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2-pro",
+          "name": "MiMo-V2-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2.5",
+          "name": "MiMo-V2.5",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "mimo-v2.5-pro",
+          "name": "MiMo-V2.5-Pro",
+          "context_length": 1048576,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        }
+      ]
+    },
+    "zai": {
+      "models": [
+        {
+          "id": "glm-4.5-air",
+          "name": "GLM-4.5-Air",
+          "context_length": 131072,
+          "max_output_tokens": 98304,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "glm-4.7",
+          "name": "GLM-4.7",
+          "context_length": 204800,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "glm-5-turbo",
+          "name": "GLM-5-Turbo",
+          "context_length": 200000,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "glm-5.1",
+          "name": "GLM-5.1",
+          "context_length": 200000,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        },
+        {
+          "id": "glm-5v-turbo",
+          "name": "GLM-5V-Turbo",
+          "context_length": 200000,
+          "max_output_tokens": 131072,
+          "supports_thinking": true,
+          "cost_tier": "cheap"
+        }
+      ]
+    }
+  }
+}

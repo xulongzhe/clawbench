@@ -1,0 +1,52 @@
+# Exclude everything not needed for the Docker image
+# Only clawbench, public/, and docker-staging/ are needed
+
+# Git
+.git
+
+# Worktrees (huge — can be 1GB+)
+.worktrees
+
+# Node modules (rebuilt via npm run build, output is in public/)
+node_modules
+
+# Android project (not needed in Docker)
+android
+
+# Development scripts
+.dev-server.sh
+.server.sh
+
+# IDE
+.idea
+.vscode
+.codebuddy
+
+# RAG / runtime data
+.claawbench/rag*
+
+# Test artifacts
+coverage
+*.out
+*.test
+coverage.html
+
+# Logs
+*.log
+
+# Docker build files (avoid recursion)
+Dockerfile.build
+
+# Scripts (not needed in runtime image)
+scripts/
+
+# Config (runtime generates defaults)
+config/config.yaml
+config/config.yaml.bak
+config/agents/
+
+# Generated docs
+docs/
+
+# Temp
+tmp/

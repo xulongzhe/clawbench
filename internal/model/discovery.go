@@ -71,9 +71,15 @@ var BackendRegistry = []BackendSpec{
 // If that fails, it falls back to exec.LookPath — some CLIs (especially Node.js ones)
 // may return non-zero exit codes for --version when run without a TTY or in certain
 // environments, but the binary itself is still present and functional.
+// For the "pi" command, also checks the embedded binary at .clawbench/pi/pi.
 func CheckCLIExists(cmd string) bool {
 	if cmd == "" {
 		return false
+	}
+
+	// Special case: embedded Pi binary
+	if cmd == "pi" && EmbeddedAgentPath() != "" {
+		return true
 	}
 
 	// Primary check: run `cmd --version`
@@ -100,9 +106,15 @@ func CheckCLIExists(cmd string) bool {
 
 // CheckCLIExistsErr returns an error describing why the CLI is not available,
 // or nil if the CLI is available. This is used for more specific error reporting.
+// For the "pi" command, also checks the embedded binary at .clawbench/pi/pi.
 func CheckCLIExistsErr(cmd string) error {
 	if cmd == "" {
 		return fmt.Errorf("empty command")
+	}
+
+	// Special case: embedded Pi binary
+	if cmd == "pi" && EmbeddedAgentPath() != "" {
+		return nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -816,15 +828,21 @@ func ParsePiModels(output string) []AgentModel {
 
 // DiscoverPiModels discovers Pi model IDs by running `pi --list-models` and parsing the output.
 // Pi outputs the model table to stderr (not stdout), so we must capture both streams.
+// It first tries the embedded Pi binary at .clawbench/pi/pi, then falls back to PATH.
 func DiscoverPiModels() []AgentModel {
+	piPath := EmbeddedAgentPath()
+	if piPath == "" {
+		piPath = "pi" // fallback to PATH
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "pi", "--list-models")
+	cmd := exec.CommandContext(ctx, piPath, "--list-models")
 	// Pi outputs the model table to stderr; use CombinedOutput to capture both.
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		slog.Debug("pi model discovery: command failed", "error", err)
+		slog.Debug("pi model discovery: command failed", "path", piPath, "error", err)
 		return nil
 	}
 

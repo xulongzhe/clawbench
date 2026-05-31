@@ -74,6 +74,8 @@ InvalidBranchName: Invalid branch name
 ModelDiscoveryNotSupported: This agent does not support model discovery
 ModelDiscoveryFailed: Model discovery returned no results
 CLINotFound: CLI tool not found, please install it first
+CustomURLOpenAIFormat: Custom URL for OpenAI format should end with /chat/completions
+CustomURLAnthropicFormat: Custom URL for Anthropic format should end with /v1/messages
 PushTaskCompleted: AI Task Completed
 PushSessionEnded: AI session ended
 PushScheduledTaskDone: Scheduled task completed

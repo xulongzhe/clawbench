@@ -44,6 +44,18 @@ done
 
 echo "=== Building $NAME ==="
 
+# 0. Generate provider models from models.dev API
+echo "[0/5] Generating provider models..."
+if command -v python3 >/dev/null 2>&1; then
+    if python3 scripts/generate-provider-models.py; then
+        echo "  internal/model/provider_models.json updated"
+    else
+        echo "  WARNING: Failed to generate provider models, using cached version"
+    fi
+else
+    echo "  python3 not found, using cached provider_models.json"
+fi
+
 # Derive version from git (e.g. v1.0.0, v0.30.0-30-g830bb6c, or short SHA)
 VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
 # Detect release: git describe --exact-match succeeds only when HEAD is on a tag
@@ -65,7 +77,7 @@ VERSION_CODE=$(git rev-list --count HEAD 2>/dev/null || echo "1")
 echo "  Version: $FULL_VERSION (code: $VERSION_CODE, release: $IS_RELEASE)"
 
 # 1. Build Go backend
-echo "[1/4] Building Go backend..."
+echo "[1/5] Building Go backend..."
 if command -v go >/dev/null 2>&1; then
     if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then
         BINARY_NAME="$NAME"
@@ -88,7 +100,7 @@ fi
 PI_VERSION="${PI_VERSION:-0.78.0}"
 PI_DIR=".clawbench/pi"
 if [ -n "$DOWNLOAD_PI" ]; then
-    echo "[2/4] Downloading Pi v${PI_VERSION}..."
+    echo "[2/5] Downloading Pi v${PI_VERSION}..."
     # Determine platform for Pi binary
     if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then
         case "$TARGET_OS" in
@@ -129,11 +141,11 @@ if [ -n "$DOWNLOAD_PI" ]; then
         echo "  Unknown platform, skipping Pi download"
     fi
 else
-    echo "[2/4] Pi download skipped (use --with-pi to download embedded agent)"
+    echo "[2/5] Pi download skipped (use --with-pi to download embedded agent)"
 fi
 
 # 2. Build Vue frontend
-echo "[3/4] Building Vue frontend..."
+echo "[3/5] Building Vue frontend..."
 if [ -f "package.json" ] && command -v npm >/dev/null 2>&1; then
     if [ ! -d "node_modules" ]; then
         echo "  Installing dependencies..."
@@ -149,7 +161,7 @@ fi
 
 # 3. Build Android APK (optional)
 if [ -n "$BUILD_ANDROID" ]; then
-    echo "[4/4] Building Android APK..."
+    echo "[4/5] Building Android APK..."
     if [ -d "android" ] && [ -f "android/gradlew" ]; then
         (cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew assembleRelease \
             -PversionCode=$VERSION_CODE -PversionName="$FULL_VERSION")
@@ -158,7 +170,7 @@ if [ -n "$BUILD_ANDROID" ]; then
         echo "  Android project not found, skipping APK build"
     fi
 else
-    echo "[4/4] Android APK skipped (use --android to build)"
+    echo "[4/5] Android APK skipped (use --android to build)"
 fi
 
 echo ""

@@ -1,7 +1,6 @@
 <template>
   <div class="setup-step setup-agent-name">
     <h3 class="step-title">{{ t('setup.nameYourAgent') }}</h3>
-    <p class="step-desc">{{ t('setup.nameYourAgentHint') }}</p>
 
     <!-- Agent icon preview -->
     <div class="agent-preview">
@@ -40,7 +39,7 @@
 
     <!-- Error -->
     <div v-if="error" class="setup-error">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
         <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
       </svg>
       {{ error }}
@@ -102,38 +101,32 @@ function handleComplete() {
 .setup-agent-name {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .step-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
 }
 
-.step-desc {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: -8px 0 0;
-}
-
 .agent-preview {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: var(--radius-md, 10px);
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm, 6px);
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
 }
 
 .agent-preview-icon {
-  font-size: 28px;
+  font-size: 22px;
 }
 
 .agent-preview-name {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -141,32 +134,32 @@ function handleComplete() {
 .input-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .input-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 4px;
 }
 
 .input-label-hint {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 400;
   color: var(--text-muted);
 }
 
 .setup-input {
   width: 100%;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border: 1.5px solid var(--border-color);
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-sm, 6px);
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.2s;
@@ -178,19 +171,19 @@ function handleComplete() {
 
 .setup-input--mono {
   font-family: monospace;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .complete-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .btn-spinner {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: #fff;
   border-radius: 50%;

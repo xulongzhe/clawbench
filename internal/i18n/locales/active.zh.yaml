@@ -74,6 +74,8 @@ InvalidBranchName: 无效的分支名
 ModelDiscoveryNotSupported: 该智能体不支持模型自动发现
 ModelDiscoveryFailed: 模型发现未返回结果
 CLINotFound: 未找到CLI工具，请先安装
+CustomURLOpenAIFormat: OpenAI 格式的自定义 URL 应以 /chat/completions 结尾
+CustomURLAnthropicFormat: Anthropic 格式的自定义 URL 应以 /v1/messages 结尾
 PushTaskCompleted: AI任务完成
 PushSessionEnded: AI会话已结束
 PushScheduledTaskDone: 计划任务已完成

@@ -6,7 +6,6 @@
     <div class="model-group">
       <label class="model-label">
         {{ t('setup.chatModel') }}
-        <span class="model-label-hint">{{ t('setup.chatModelHint') }}</span>
       </label>
 
       <!-- Manual input for empty model list -->
@@ -26,7 +25,6 @@
           <option v-for="m in models" :key="m.id" :value="m.id">
             {{ m.name || m.id }}
             <template v-if="m.context_length"> ({{ formatContext(m.context_length) }})</template>
-            <template v-if="m.cost_tier"> · {{ m.cost_tier }}</template>
           </option>
         </select>
       </div>
@@ -36,7 +34,6 @@
     <div class="model-group">
       <label class="model-label">
         {{ t('setup.summarizeModel') }}
-        <span class="model-label-hint">{{ t('setup.summarizeModelHint') }}</span>
       </label>
 
       <div v-if="models.length === 0 && !modelsLoading" class="input-wrap">
@@ -53,7 +50,6 @@
         <select v-model="summarizeModelValue" class="model-select" :disabled="modelsLoading">
           <option v-for="m in models" :key="m.id" :value="m.id">
             {{ m.name || m.id }}
-            <template v-if="m.cost_tier"> · {{ m.cost_tier }}</template>
           </option>
         </select>
       </div>
@@ -65,7 +61,7 @@
       <span>{{ t('setup.loadingModels') }}</span>
     </div>
     <div v-else-if="modelsError" class="setup-error">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
         <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
       </svg>
       {{ modelsError }}
@@ -79,7 +75,7 @@
         @click="handleVerify"
       >
         <span v-if="verifying" class="btn-spinner"></span>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
           <polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
@@ -88,11 +84,11 @@
 
       <!-- Verify result -->
       <div v-if="verifyResult" class="verify-result" :class="{ 'verify-success': verifyResult.success, 'verify-fail': !verifyResult.success }">
-        <svg v-if="verifyResult.success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <svg v-if="verifyResult.success" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
           <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
           <polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
           <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
         </svg>
         <span>{{ verifyResult.message }}</span>
@@ -108,7 +104,7 @@
         @click="$emit('next')"
       >
         {{ t('setup.next') }}
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
           <path d="M5 12h14M12 5l7 7-7 7"/>
         </svg>
       </button>
@@ -172,11 +168,11 @@ function handleVerify() {
 .setup-model-verify {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .step-title {
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
@@ -185,22 +181,13 @@ function handleVerify() {
 .model-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .model-label {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.model-label-hint {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--text-muted);
 }
 
 .model-select-wrap {
@@ -209,12 +196,12 @@ function handleVerify() {
 
 .model-select {
   width: 100%;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border: 1.5px solid var(--border-color);
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-sm, 6px);
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   box-sizing: border-box;
   appearance: none;
@@ -227,12 +214,12 @@ function handleVerify() {
 
 .setup-input {
   width: 100%;
-  padding: 10px 14px;
+  padding: 8px 10px;
   border: 1.5px solid var(--border-color);
-  border-radius: var(--radius-md, 10px);
+  border-radius: var(--radius-sm, 6px);
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
   box-sizing: border-box;
 }
@@ -244,34 +231,35 @@ function handleVerify() {
 .model-loading {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 12px;
   color: var(--text-muted);
-  padding: 8px 0;
+  padding: 4px 0;
 }
 
 .verify-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 4px;
+  gap: 6px;
 }
 
 .verify-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
 .verify-result {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-radius: var(--radius-md, 10px);
-  font-size: 13px;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 12px;
 }
 
 .verify-success {
@@ -287,8 +275,8 @@ function handleVerify() {
 }
 
 .btn-spinner {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
   border-top-color: currentColor;
   border-radius: 50%;

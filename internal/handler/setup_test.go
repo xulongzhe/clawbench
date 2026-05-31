@@ -898,9 +898,13 @@ func TestWritePiConfigFiles(t *testing.T) {
 	data, err := os.ReadFile(authPath)
 	require.NoError(t, err)
 
-	var authData map[string]string
+	var authData map[string]any
 	require.NoError(t, json.Unmarshal(data, &authData))
-	assert.Equal(t, "sk-test-key-123", authData["OPENAI_API_KEY"])
+	// Pi expects structured format: { "provider": { "type": "api_key", "key": "..." } }
+	entry, ok := authData["openai"].(map[string]any)
+	require.True(t, ok, "auth.json should have 'openai' key with object value")
+	assert.Equal(t, "api_key", entry["type"])
+	assert.Equal(t, "sk-test-key-123", entry["key"])
 
 	// Verify settings.json was written
 	settingsPath := filepath.Join(tmpDir, ".pi", "agent", "settings.json")
@@ -1487,9 +1491,12 @@ func TestWritePiConfigFiles_HomeDirError(t *testing.T) {
 	data, err := os.ReadFile(authPath)
 	require.NoError(t, err)
 
-	var authData map[string]string
+	var authData map[string]any
 	require.NoError(t, json.Unmarshal(data, &authData))
-	assert.Equal(t, "sk-ant-key", authData["ANTHROPIC_API_KEY"])
+	entry, ok := authData["anthropic"].(map[string]any)
+	require.True(t, ok, "auth.json should have 'anthropic' key with object value")
+	assert.Equal(t, "api_key", entry["type"])
+	assert.Equal(t, "sk-ant-key", entry["key"])
 }
 
 // ---------- atomicWriteFile error path ----------

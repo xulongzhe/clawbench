@@ -40,7 +40,7 @@ session:
     max_count: 20
 summarize:
     api:
-        agent_id: openai
+        agent_id: openai-pi
         base_url: https://api.openai.com/v1/chat/completions
         format: openai
         key: ""

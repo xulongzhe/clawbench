@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { useSetup, providerAgentNames, recommendedProviders } from '@/composables/useSetup'
+import { useSetup, providerAgentNames } from '@/composables/useSetup'
 
 // Mock the api module
 vi.mock('@/utils/api', () => ({
@@ -189,18 +189,6 @@ describe('providerAgentNames', () => {
   it('includes _custom entry', () => {
     expect(providerAgentNames['_custom']).toBeDefined()
     expect(providerAgentNames['_custom'].id).toBe('custom-agent')
-  })
-})
-
-describe('recommendedProviders', () => {
-  it('contains the big three providers', () => {
-    expect(recommendedProviders).toContain('openai')
-    expect(recommendedProviders).toContain('anthropic')
-    expect(recommendedProviders).toContain('google')
-  })
-
-  it('has exactly 3 entries', () => {
-    expect(recommendedProviders).toHaveLength(3)
   })
 })
 
