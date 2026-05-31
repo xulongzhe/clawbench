@@ -48,7 +48,8 @@ export class ChatPage {
     // Brief pause to let Vue's v-model react to the filled value.
     // Without this, Firefox/WebKit may fire the click before the
     // framework has processed the input event, sending an empty message.
-    await this.page.waitForTimeout(100)
+    // 200ms gives more headroom for slower browser engines.
+    await this.page.waitForTimeout(200)
     await this.sendButton.click()
   }
 
@@ -61,10 +62,13 @@ export class ChatPage {
   async waitForReply(timeout = 15000) {
     // Wait for assistant message element to appear AND have non-empty text content.
     // SSE streams content incrementally, so we must wait until text is actually rendered.
+    // Use polling approach for better reliability on Firefox/WebKit where SSE events
+    // may arrive with variable latency.
     const assistantMsg = this.page.locator('.chat-message.assistant').last()
     await expect(assistantMsg).toBeVisible({ timeout })
     // Wait for actual text content (the mock response contains "mock assistant")
-    await expect(assistantMsg).not.toBeEmpty({ timeout })
+    // Use toContainText instead of not.toBeEmpty for more reliable cross-browser behavior
+    await expect(assistantMsg).toContainText(/.+/, { timeout })
   }
 
   /** Get the last user message element */

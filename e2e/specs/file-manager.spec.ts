@@ -12,15 +12,22 @@ test.describe('File Manager', () => {
 
     // Navigate to the file manager tab
     await nav.switchToFileManager()
+
+    // Wait for file content to be loaded (not just tab switch).
+    // Firefox/WebKit need this extra wait because the file list API
+    // call is async — the tab renders before directory entries arrive.
+    await fm.waitForContent(15000)
   })
 
   test('should display files in the project directory', async ({ page }) => {
     // Project directory should contain at least some files
-    await expect(page.locator('.file-item').first()).toBeVisible({ timeout: 10000 })
+    // Use view-agnostic selector (.file-item or .grid-item)
+    await expect(page.locator('.file-item, .grid-item').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('should navigate into a directory on click', async ({ page }) => {
-    const dirItem = page.locator('.file-item.dir-item').first()
+    // Use view-agnostic directory selector (.file-item.dir-item or .grid-item.grid-dir)
+    const dirItem = page.locator('.file-item.dir-item, .grid-item.grid-dir').first()
     await expect(dirItem).toBeVisible({ timeout: 10000 })
 
     // Record current breadcrumb text before clicking
@@ -41,7 +48,7 @@ test.describe('File Manager', () => {
     await expect.poll(async () => {
       const breadcrumbCurrent = page.locator('.dir-breadcrumb .crumb.current')
       const emptyState = page.locator('.empty-state')
-      const fileItem = page.locator('.file-item').first()
+      const fileItem = page.locator('.file-item, .grid-item').first()
 
       // Breadcrumb updated with a new directory name
       if (await breadcrumbCurrent.count() > 0) {
@@ -57,7 +64,7 @@ test.describe('File Manager', () => {
   })
 
   test('should show file list container', async ({ page }) => {
-    // Either list view (.file-list) or grid view must render file items
-    await expect(page.locator('.file-item').first()).toBeVisible({ timeout: 10000 })
+    // Either list view (.file-list + .file-item) or grid view (.file-grid + .grid-item)
+    await expect(page.locator('.file-item, .grid-item').first()).toBeVisible({ timeout: 10000 })
   })
 })

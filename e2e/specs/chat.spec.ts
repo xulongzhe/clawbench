@@ -19,10 +19,11 @@ test.describe('Chat', () => {
 
     // 2. Assistant response appears (async SSE stream from MockAIBackend)
     //    MockAIBackend responds: "Hello! I am a mock assistant. How can I help you today?"
-    await chat.waitForReply(20000)
+    //    Firefox/WebKit may have slower SSE delivery, use longer timeout.
+    await chat.waitForReply(30000)
 
     // 3. Response contains the mock text
-    await expect(chat.getLastAssistantMessage()).toContainText('mock assistant', { timeout: 10000 })
+    await expect(chat.getLastAssistantMessage()).toContainText('mock assistant', { timeout: 15000 })
   })
 
   test('should open quick-send menu on empty send click', async ({ page }) => {
@@ -58,10 +59,11 @@ test.describe('Chat', () => {
     // Send a message
     await chat.sendMessage('Hello')
 
-    // Stop button may briefly appear while AI is generating
-    // MockAIBackend responds in ~500ms, so we might not catch it
-    // Wait for the response to complete
-    await chat.waitForReply(20000)
+    // The stop button appears while AI is generating.
+    // MockAIBackend responds quickly (~500ms), so we may or may not catch it.
+    // The key assertion is that after the response completes, the stop button is gone.
+    // Wait for the response to complete — this implicitly verifies the chat flow works.
+    await chat.waitForReply(30000)
 
     // After response completes, stop button should be gone
     await expect(chat.stopButton).not.toBeVisible()

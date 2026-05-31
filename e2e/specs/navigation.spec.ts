@@ -11,13 +11,14 @@ test.describe('Navigation', () => {
   test('should switch from Chat to Files tab', async ({ page }) => {
     await nav.switchToFileManager()
     // File list or file manager content should be visible after switching
-    await expect(page.locator('.file-list, .file-item').first()).toBeVisible({ timeout: 10000 })
+    // Use view-agnostic selectors to match both list (.file-item) and grid (.grid-item) modes
+    await expect(page.locator('.file-list, .file-item, .file-grid, .grid-item').first()).toBeVisible({ timeout: 10000 })
   })
 
   test('should switch from Files back to Chat', async ({ page }) => {
     // Go to files first
     await nav.switchToFileManager()
-    await expect(page.locator('.file-list, .file-item').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('.file-list, .file-item, .file-grid, .grid-item').first()).toBeVisible({ timeout: 10000 })
 
     // Switch back to chat
     await nav.switchToChat()
@@ -37,7 +38,7 @@ test.describe('Navigation', () => {
 
     // Switch to files and back
     await nav.switchToFileManager()
-    await expect(page.locator('.file-list, .file-item').first()).toBeVisible({ timeout: 10000 })
+    await expect(page.locator('.file-list, .file-item, .file-grid, .grid-item').first()).toBeVisible({ timeout: 10000 })
     await nav.switchToChat()
 
     // Draft should be preserved
