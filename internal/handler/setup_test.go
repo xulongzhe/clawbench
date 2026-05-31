@@ -498,7 +498,6 @@ func TestSetupModels_OpenAIProviderHTTPFetch(t *testing.T) {
 	models := resp["models"].([]any)
 	assert.Empty(t, models, "custom URL mode should return empty model list")
 }
-}
 
 // TestSetupModels_KnownModelsFields tests that KnownModels entries have expected fields.
 func TestSetupModels_KnownModelsFields(t *testing.T) {
@@ -1863,4 +1862,706 @@ func TestSetupComplete_InvalidCustomURLAnthropic(t *testing.T) {
 	w := callHandler(ServeSetupComplete, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// ---------- detectAPIFormat unit tests ----------
+
+func TestDetectAPIFormat(t *testing.T) {
+	tests := []struct {
+		name      string
+		customURL string
+		apiFormat string
+		expected  string
+	}{
+		{
+			name:      "explicit format takes priority",
+			customURL: "https://api.example.com/v1/chat/completions",
+			apiFormat: "anthropic",
+			expected:  "anthropic",
+		},
+		{
+			name:      "auto-detect anthropic from /v1/messages",
+			customURL: "https://api.anthropic.com/v1/messages",
+			apiFormat: "",
+			expected:  "anthropic",
+		},
+		{
+			name:      "auto-detect openai default for /chat/completions",
+			customURL: "https://api.openai.com/v1/chat/completions",
+			apiFormat: "",
+			expected:  "openai",
+		},
+		{
+			name:      "default to openai for unrecognized path",
+			customURL: "https://api.example.com/v1/unknown",
+			apiFormat: "",
+			expected:  "openai",
+		},
+		{
+			name:      "empty URL defaults to openai",
+			customURL: "",
+			apiFormat: "",
+			expected:  "openai",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := detectAPIFormat(tt.customURL, tt.apiFormat)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// ---------- validateCustomURL extended unit tests ----------
+
+func TestValidateCustomURL_InvalidScheme(t *testing.T) {
+	result := validateCustomURL("ftp://api.example.com/v1/chat/completions", "")
+	assert.Equal(t, "CustomURLInvalidScheme", result)
+}
+
+func TestValidateCustomURL_NoHost(t *testing.T) {
+	result := validateCustomURL("https:///v1/chat/completions", "")
+	assert.Equal(t, "CustomURLInvalidHost", result)
+}
+
+func TestValidateCustomURL_UnparseableURL(t *testing.T) {
+	result := validateCustomURL("://not-a-valid-url", "")
+	assert.Equal(t, "CustomURLInvalid", result)
+}
+
+func TestValidateCustomURL_AutoDetectOpenAI(t *testing.T) {
+	result := validateCustomURL("https://api.example.com/v1/chat/completions", "")
+	assert.Empty(t, result, "auto-detected openai URL should be valid")
+}
+
+func TestValidateCustomURL_AutoDetectAnthropic(t *testing.T) {
+	result := validateCustomURL("https://api.anthropic.com/v1/messages", "")
+	assert.Empty(t, result, "auto-detected anthropic URL should be valid")
+}
+
+func TestValidateCustomURL_AutoDetectUnrecognized(t *testing.T) {
+	result := validateCustomURL("https://api.example.com/v1/unknown", "")
+	assert.Equal(t, "CustomURLUnrecognizedFormat", result)
+}
+
+func TestValidateCustomURL_HttpScheme(t *testing.T) {
+	result := validateCustomURL("http://localhost:8080/v1/chat/completions", "")
+	assert.Empty(t, result, "http scheme should be allowed for local dev")
+}
+
+// ---------- verifyOpenAIHTTP / verifyAnthropicHTTP with mock servers ----------
+
+func TestVerifyOpenAIHTTP_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer test-api-key", r.Header.Get("Authorization"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-test","choices":[]}`))
+	}))
+	defer server.Close()
+
+	err := verifyOpenAIHTTP(t.Context(), server.URL+"/v1/chat/completions", "test-api-key", "gpt-4o")
+	assert.NoError(t, err)
+}
+
+func TestVerifyOpenAIHTTP_Unauthorized(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":{"message":"Invalid API key"}}`))
+	}))
+	defer server.Close()
+
+	err := verifyOpenAIHTTP(t.Context(), server.URL+"/v1/chat/completions", "bad-key", "gpt-4o")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
+}
+
+func TestVerifyOpenAIHTTP_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	err := verifyOpenAIHTTP(t.Context(), server.URL+"/v1/chat/completions", "test-key", "unknown-model")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+}
+
+func TestVerifyOpenAIHTTP_Forbidden(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	err := verifyOpenAIHTTP(t.Context(), server.URL+"/v1/chat/completions", "test-key", "gpt-4o")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+}
+
+func TestVerifyOpenAIHTTP_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	err := verifyOpenAIHTTP(t.Context(), server.URL+"/v1/chat/completions", "test-key", "gpt-4o")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+func TestVerifyOpenAIHTTP_NoAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-test","choices":[]}`))
+	}))
+	defer server.Close()
+
+	err := verifyOpenAIHTTP(t.Context(), server.URL+"/v1/chat/completions", "", "gpt-4o")
+	assert.NoError(t, err)
+}
+
+func TestVerifyOpenAIHTTP_Unreachable(t *testing.T) {
+	err := verifyOpenAIHTTP(t.Context(), "http://127.0.0.1:1/v1/chat/completions", "key", "model")
+	assert.Error(t, err)
+}
+
+func TestVerifyAnthropicHTTP_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "test-api-key", r.Header.Get("x-api-key"))
+		assert.Equal(t, "2023-06-01", r.Header.Get("anthropic-version"))
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"msg_test","content":[]}`))
+	}))
+	defer server.Close()
+
+	err := verifyAnthropicHTTP(t.Context(), server.URL+"/v1/messages", "test-api-key", "claude-sonnet-4-20250514")
+	assert.NoError(t, err)
+}
+
+func TestVerifyAnthropicHTTP_Unauthorized(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	err := verifyAnthropicHTTP(t.Context(), server.URL+"/v1/messages", "bad-key", "claude-sonnet-4-20250514")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
+}
+
+func TestVerifyAnthropicHTTP_NotFound(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	err := verifyAnthropicHTTP(t.Context(), server.URL+"/v1/messages", "test-key", "unknown-model")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+}
+
+func TestVerifyAnthropicHTTP_Forbidden(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+
+	err := verifyAnthropicHTTP(t.Context(), server.URL+"/v1/messages", "test-key", "claude-sonnet-4-20250514")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+}
+
+func TestVerifyAnthropicHTTP_NoAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("x-api-key"))
+		assert.Equal(t, "2023-06-01", r.Header.Get("anthropic-version"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"msg_test","content":[]}`))
+	}))
+	defer server.Close()
+
+	err := verifyAnthropicHTTP(t.Context(), server.URL+"/v1/messages", "", "claude-sonnet-4-20250514")
+	assert.NoError(t, err)
+}
+
+// ---------- ServeSetupBackends tests ----------
+
+func TestSetupBackends_ReturnsCLIBackends(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodGet, "/api/setup/backends", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupBackends, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	backends, ok := resp["backends"].([]any)
+	require.True(t, ok, "response should contain backends array")
+	assert.NotEmpty(t, backends, "should have at least one CLI backend")
+
+	for _, b := range backends {
+		bMap := b.(map[string]any)
+		assert.NotEmpty(t, bMap["id"], "backend should have id")
+		assert.NotEmpty(t, bMap["name"], "backend should have name")
+	}
+}
+
+func TestSetupBackends_MethodNotAllowed(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodPost, "/api/setup/backends", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupBackends, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+}
+
+func TestSetupBackends_SkipsNoCLI(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodGet, "/api/setup/backends", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupBackends, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	backends := resp["backends"].([]any)
+	for _, b := range backends {
+		bMap := b.(map[string]any)
+		assert.NotEqual(t, "mock", bMap["id"], "NoCLI backends should be excluded")
+	}
+}
+
+// ---------- writePiModelsJSON tests ----------
+
+func TestWritePiModelsJSON_OpenAIFormat(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var not used on Windows")
+	}
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	req := setupCompleteRequest{
+		Provider:       "openai",
+		CustomURL:      "https://api.deepseek.com/v1/chat/completions",
+		APIFormat:      "openai",
+		APIKey:         "sk-test-key",
+		Model:          "deepseek-chat",
+		SummarizeModel: "deepseek-chat-small",
+		AgentID:        "custom-deepseek",
+	}
+
+	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
+	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+
+	writePiModelsJSON(piConfigDir, req)
+
+	modelsPath := filepath.Join(piConfigDir, "models.json")
+	data, err := os.ReadFile(modelsPath)
+	require.NoError(t, err)
+
+	var modelsData map[string]any
+	require.NoError(t, json.Unmarshal(data, &modelsData))
+
+	providers, ok := modelsData["providers"].(map[string]any)
+	require.True(t, ok, "models.json should have providers map")
+
+	provider, ok := providers["custom-deepseek"].(map[string]any)
+	require.True(t, ok, "should have custom-deepseek provider entry")
+
+	assert.Equal(t, "https://api.deepseek.com/v1", provider["baseUrl"])
+	assert.Equal(t, "openai-completions", provider["api"])
+
+	modelEntries := provider["models"].([]any)
+	assert.Len(t, modelEntries, 2, "should have chat + summarize model")
+
+	assert.Equal(t, "$custom-deepseek", provider["apiKey"])
+}
+
+func TestWritePiModelsJSON_AnthropicFormat(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var not used on Windows")
+	}
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	req := setupCompleteRequest{
+		Provider:       "anthropic",
+		CustomURL:      "https://api.minimaxi.com/anthropic/v1/messages",
+		APIFormat:      "anthropic",
+		APIKey:         "sk-ant-test-key",
+		Model:          "minimax-m1",
+		SummarizeModel: "minimax-m1-small",
+		AgentID:        "custom-minimax",
+	}
+
+	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
+	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+
+	writePiModelsJSON(piConfigDir, req)
+
+	modelsPath := filepath.Join(piConfigDir, "models.json")
+	data, err := os.ReadFile(modelsPath)
+	require.NoError(t, err)
+
+	var modelsData map[string]any
+	require.NoError(t, json.Unmarshal(data, &modelsData))
+
+	providers := modelsData["providers"].(map[string]any)
+	provider := providers["custom-minimax"].(map[string]any)
+
+	assert.Equal(t, "https://api.minimaxi.com/anthropic", provider["baseUrl"])
+	assert.Equal(t, "anthropic-messages", provider["api"])
+}
+
+func TestWritePiModelsJSON_SameSummarizeModel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var not used on Windows")
+	}
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	req := setupCompleteRequest{
+		Provider:       "openai",
+		CustomURL:      "https://api.example.com/v1/chat/completions",
+		APIFormat:      "openai",
+		APIKey:         "sk-test",
+		Model:          "same-model",
+		SummarizeModel: "same-model",
+		AgentID:        "same-model-agent",
+	}
+
+	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
+	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+
+	writePiModelsJSON(piConfigDir, req)
+
+	data, _ := os.ReadFile(filepath.Join(piConfigDir, "models.json"))
+	var modelsData map[string]any
+	json.Unmarshal(data, &modelsData)
+
+	provider := modelsData["providers"].(map[string]any)["same-model-agent"].(map[string]any)
+	modelEntries := provider["models"].([]any)
+	assert.Len(t, modelEntries, 1, "should have only 1 model when chat=summarize")
+}
+
+func TestWritePiModelsJSON_EmptySummarizeModel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var not used on Windows")
+	}
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	req := setupCompleteRequest{
+		Provider:       "openai",
+		CustomURL:      "https://api.example.com/v1/chat/completions",
+		APIFormat:      "openai",
+		APIKey:         "sk-test",
+		Model:          "chat-model",
+		SummarizeModel: "",
+		AgentID:        "no-sum-agent",
+	}
+
+	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
+	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+
+	writePiModelsJSON(piConfigDir, req)
+
+	data, _ := os.ReadFile(filepath.Join(piConfigDir, "models.json"))
+	var modelsData map[string]any
+	json.Unmarshal(data, &modelsData)
+
+	provider := modelsData["providers"].(map[string]any)["no-sum-agent"].(map[string]any)
+	modelEntries := provider["models"].([]any)
+	assert.Len(t, modelEntries, 1, "should have only 1 model when summarize is empty")
+}
+
+func TestWritePiModelsJSON_MergesExisting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var not used on Windows")
+	}
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	piConfigDir := filepath.Join(tmpDir, ".pi", "agent")
+	require.NoError(t, os.MkdirAll(piConfigDir, 0755))
+
+	existingData := map[string]any{
+		"providers": map[string]any{
+			"existing-provider": map[string]any{
+				"baseUrl": "https://existing.com/v1",
+				"api":     "openai-completions",
+			},
+		},
+	}
+	existingJSON, _ := json.Marshal(existingData)
+	require.NoError(t, os.WriteFile(filepath.Join(piConfigDir, "models.json"), existingJSON, 0644))
+
+	req := setupCompleteRequest{
+		Provider:  "openai",
+		CustomURL: "https://api.new.com/v1/chat/completions",
+		APIFormat: "openai",
+		APIKey:    "sk-test",
+		Model:     "new-model",
+		AgentID:   "new-agent",
+	}
+
+	writePiModelsJSON(piConfigDir, req)
+
+	data, _ := os.ReadFile(filepath.Join(piConfigDir, "models.json"))
+	var modelsData map[string]any
+	json.Unmarshal(data, &modelsData)
+
+	providers := modelsData["providers"].(map[string]any)
+	_, hasExisting := providers["existing-provider"]
+	assert.True(t, hasExisting, "should preserve existing providers")
+	_, hasNew := providers["new-agent"]
+	assert.True(t, hasNew, "should add new provider")
+}
+
+// ---------- writePiConfigFiles custom URL branch ----------
+
+func TestWritePiConfigFiles_CustomURL(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("HOME env var not used on Windows")
+	}
+	tmpDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	spec := model.FindProviderSpec("openai")
+	require.NotNil(t, spec)
+
+	req := setupCompleteRequest{
+		Provider:       "openai",
+		CustomURL:      "https://api.deepseek.com/v1/chat/completions",
+		APIFormat:      "openai",
+		APIKey:         "sk-custom-key",
+		Model:          "deepseek-chat",
+		SummarizeModel: "deepseek-chat-small",
+		AgentID:        "custom-deepseek",
+	}
+
+	writePiConfigFiles(req, spec)
+
+	modelsPath := filepath.Join(tmpDir, ".pi", "agent", "models.json")
+	data, err := os.ReadFile(modelsPath)
+	require.NoError(t, err)
+
+	var modelsData map[string]any
+	require.NoError(t, json.Unmarshal(data, &modelsData))
+	providers := modelsData["providers"].(map[string]any)
+	_, hasCustom := providers["custom-deepseek"]
+	assert.True(t, hasCustom, "models.json should have custom provider")
+
+	authPath := filepath.Join(tmpDir, ".pi", "agent", "auth.json")
+	data, err = os.ReadFile(authPath)
+	require.NoError(t, err)
+
+	var authData map[string]any
+	require.NoError(t, json.Unmarshal(data, &authData))
+	_, hasAgentIDKey := authData["custom-deepseek"]
+	assert.True(t, hasAgentIDKey, "auth.json should use agent ID as key for custom URL")
+
+	settingsPath := filepath.Join(tmpDir, ".pi", "agent", "settings.json")
+	data, err = os.ReadFile(settingsPath)
+	require.NoError(t, err)
+
+	var settingsData map[string]any
+	require.NoError(t, json.Unmarshal(data, &settingsData))
+	assert.Equal(t, "custom-deepseek", settingsData["defaultProvider"])
+}
+
+// ---------- ServeSetupVerify with mock HTTP server for custom URL ----------
+
+func TestSetupVerify_CustomURLHTTPSuccess(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-test","choices":[]}`))
+	}))
+	defer server.Close()
+
+	body := map[string]any{
+		"provider":   "",
+		"custom_url": server.URL + "/v1/chat/completions",
+		"api_key":    "test-key",
+		"model":      "gpt-4o",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/verify", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupVerify, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.True(t, resp["success"].(bool), "should succeed with mock server")
+}
+
+func TestSetupVerify_CustomURLAnthropicHTTPSuccess(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "sk-ant-test-key", r.Header.Get("x-api-key"))
+		assert.Equal(t, "2023-06-01", r.Header.Get("anthropic-version"))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"msg_test","content":[]}`))
+	}))
+	defer server.Close()
+
+	body := map[string]any{
+		"provider":   "",
+		"custom_url": server.URL + "/v1/messages",
+		"api_format": "anthropic",
+		"api_key":    "sk-ant-test-key",
+		"model":      "claude-sonnet-4-20250514",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/verify", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupVerify, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.True(t, resp["success"].(bool), "should succeed with mock Anthropic server")
+}
+
+func TestSetupVerify_CustomURLHTTPUnauthorized(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error":{"message":"Invalid API key"}}`))
+	}))
+	defer server.Close()
+
+	body := map[string]any{
+		"provider":   "",
+		"custom_url": server.URL + "/v1/chat/completions",
+		"api_key":    "bad-key",
+		"model":      "gpt-4o",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/verify", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupVerify, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.False(t, resp["success"].(bool), "should fail on 401")
+}
+
+func TestSetupVerify_CustomURLHTTPNotFound(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	body := map[string]any{
+		"provider":   "",
+		"custom_url": server.URL + "/v1/chat/completions",
+		"api_key":    "test-key",
+		"model":      "nonexistent-model",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/verify", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupVerify, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.False(t, resp["success"].(bool), "should fail on 404")
+}
+
+// ---------- ServeSetupModels _custom provider normalization ----------
+
+func TestSetupModels_CustomProviderNormalization(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	body := map[string]any{
+		"provider":   "_custom",
+		"custom_url": "https://api.example.com/v1/chat/completions",
+		"api_key":    "test-key",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/models", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupModels, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	models := resp["models"].([]any)
+	assert.Empty(t, models, "_custom provider should be normalized to empty → custom URL mode → empty model list")
+}
+
+// ---------- ServeSetupVerify _custom provider normalization ----------
+
+func TestSetupVerify_CustomProviderNormalization(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"chatcmpl-test","choices":[]}`))
+	}))
+	defer server.Close()
+
+	body := map[string]any{
+		"provider":   "_custom",
+		"custom_url": server.URL + "/v1/chat/completions",
+		"api_key":    "test-key",
+		"model":      "gpt-4o",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/verify", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupVerify, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.True(t, resp["success"].(bool), "_custom should be normalized and verify should succeed with mock server")
 }

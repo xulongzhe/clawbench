@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { useSetup, providerAgentNames } from '@/composables/useSetup'
 
 // Mock the api module
@@ -26,12 +26,10 @@ describe('useSetup', () => {
     expect(setup.completed).toBeDefined()
     expect(typeof setup.checkStatus).toBe('function')
     expect(typeof setup.getProviders).toBe('function')
+    expect(typeof setup.getBackends).toBe('function')
     expect(typeof setup.scanModels).toBe('function')
     expect(typeof setup.verify).toBe('function')
     expect(typeof setup.complete).toBe('function')
-    expect(typeof setup.saveWizardState).toBe('function')
-    expect(typeof setup.loadWizardState).toBe('function')
-    expect(typeof setup.clearWizardState).toBe('function')
   })
 
   describe('checkStatus', () => {
@@ -67,6 +65,30 @@ describe('useSetup', () => {
     })
   })
 
+  describe('getBackends', () => {
+    it('calls GET /api/setup/backends and returns backend list', async () => {
+      vi.mocked(apiGet).mockResolvedValueOnce({
+        backends: [
+          { id: 'pi', name: 'Pi', icon: '🥧', specialty: '极简编程智能体', default_cmd: 'pi' },
+          { id: 'codebuddy', name: 'CodeBuddy', icon: '🤖', specialty: 'AI pair programmer', default_cmd: 'codebuddy' },
+        ],
+      })
+      const setup = useSetup()
+      const result = await setup.getBackends()
+      expect(apiGet).toHaveBeenCalledWith('/api/setup/backends')
+      expect(result).toHaveLength(2)
+      expect(result[0].id).toBe('pi')
+      expect(result[1].name).toBe('CodeBuddy')
+    })
+
+    it('returns empty array when backends response is empty', async () => {
+      vi.mocked(apiGet).mockResolvedValueOnce({})
+      const setup = useSetup()
+      const result = await setup.getBackends()
+      expect(result).toEqual([])
+    })
+  })
+
   describe('scanModels', () => {
     it('calls POST /api/setup/models and returns models', async () => {
       vi.mocked(apiPost).mockResolvedValueOnce({
@@ -77,11 +99,12 @@ describe('useSetup', () => {
         summarize_model_hint: 'gpt-4o-mini',
       })
       const setup = useSetup()
-      const result = await setup.scanModels('openai', '', 'sk-test')
+      const result = await setup.scanModels('openai', '', 'sk-test', '')
       expect(apiPost).toHaveBeenCalledWith('/api/setup/models', {
         provider: 'openai',
         custom_url: '',
         api_key: 'sk-test',
+        api_format: '',
       }, expect.any(Object))
       expect(result.models).toHaveLength(2)
       expect(result.summarize_model_hint).toBe('gpt-4o-mini')
@@ -90,9 +113,24 @@ describe('useSetup', () => {
     it('handles errors gracefully', async () => {
       vi.mocked(apiPost).mockRejectedValueOnce(new Error('Network error'))
       const setup = useSetup()
-      const result = await setup.scanModels('openai', '', 'sk-test')
+      const result = await setup.scanModels('openai', '', 'sk-test', '')
       expect(result.models).toHaveLength(0)
       expect(result.error).toBe('Network error')
+    })
+
+    it('passes api_format for custom URL mode', async () => {
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        models: [],
+        summarize_model_hint: '',
+      })
+      const setup = useSetup()
+      await setup.scanModels('_custom', 'https://api.example.com/v1/chat/completions', 'sk-test', 'openai')
+      expect(apiPost).toHaveBeenCalledWith('/api/setup/models', {
+        provider: '_custom',
+        custom_url: 'https://api.example.com/v1/chat/completions',
+        api_key: 'sk-test',
+        api_format: 'openai',
+      }, expect.any(Object))
     })
   })
 
@@ -104,12 +142,13 @@ describe('useSetup', () => {
         model: 'gpt-4o',
       })
       const setup = useSetup()
-      const result = await setup.verify('openai', '', 'sk-test', 'gpt-4o')
+      const result = await setup.verify('openai', '', 'sk-test', 'gpt-4o', '')
       expect(apiPost).toHaveBeenCalledWith('/api/setup/verify', {
         provider: 'openai',
         custom_url: '',
         api_key: 'sk-test',
         model: 'gpt-4o',
+        api_format: '',
       }, expect.any(Object))
       expect(result.success).toBe(true)
     })
@@ -117,9 +156,25 @@ describe('useSetup', () => {
     it('handles verify failure gracefully', async () => {
       vi.mocked(apiPost).mockRejectedValueOnce(new Error('Timeout'))
       const setup = useSetup()
-      const result = await setup.verify('openai', '', 'sk-test', 'gpt-4o')
+      const result = await setup.verify('openai', '', 'sk-test', 'gpt-4o', '')
       expect(result.success).toBe(false)
       expect(result.message).toBe('Timeout')
+    })
+
+    it('passes api_format for custom URL verify', async () => {
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        success: true,
+        message: 'OK',
+      })
+      const setup = useSetup()
+      await setup.verify('_custom', 'https://api.deepseek.com/v1/chat/completions', 'sk-test', 'deepseek-chat', 'openai')
+      expect(apiPost).toHaveBeenCalledWith('/api/setup/verify', {
+        provider: '_custom',
+        custom_url: 'https://api.deepseek.com/v1/chat/completions',
+        api_key: 'sk-test',
+        model: 'deepseek-chat',
+        api_format: 'openai',
+      }, expect.any(Object))
     })
   })
 
@@ -134,6 +189,7 @@ describe('useSetup', () => {
       const result = await setup.complete({
         provider: 'openai',
         custom_url: '',
+        api_format: '',
         api_key: 'sk-test',
         model: 'gpt-4o',
         summarize_model: 'gpt-4o-mini',
@@ -143,6 +199,7 @@ describe('useSetup', () => {
       expect(apiPost).toHaveBeenCalledWith('/api/setup/complete', {
         provider: 'openai',
         custom_url: '',
+        api_format: '',
         api_key: 'sk-test',
         model: 'gpt-4o',
         summarize_model: 'gpt-4o-mini',
@@ -158,6 +215,7 @@ describe('useSetup', () => {
       const result = await setup.complete({
         provider: 'openai',
         custom_url: '',
+        api_format: '',
         api_key: 'sk-test',
         model: 'gpt-4o',
         summarize_model: 'gpt-4o-mini',
@@ -165,6 +223,34 @@ describe('useSetup', () => {
         agent_id: 'openai',
       })
       expect(result.success).toBe(false)
+    })
+
+    it('sends api_format for custom URL complete', async () => {
+      vi.mocked(apiPost).mockResolvedValueOnce({
+        success: true,
+        agent: { id: 'custom-agent', name: 'Custom' },
+      })
+      const setup = useSetup()
+      await setup.complete({
+        provider: '_custom',
+        custom_url: 'https://api.deepseek.com/v1/chat/completions',
+        api_format: 'openai',
+        api_key: 'sk-test',
+        model: 'deepseek-chat',
+        summarize_model: 'deepseek-chat',
+        agent_name: 'Custom DeepSeek',
+        agent_id: 'custom-deepseek',
+      })
+      expect(apiPost).toHaveBeenCalledWith('/api/setup/complete', {
+        provider: '_custom',
+        custom_url: 'https://api.deepseek.com/v1/chat/completions',
+        api_format: 'openai',
+        api_key: 'sk-test',
+        model: 'deepseek-chat',
+        summarize_model: 'deepseek-chat',
+        agent_name: 'Custom DeepSeek',
+        agent_id: 'custom-deepseek',
+      })
     })
   })
 })
@@ -189,49 +275,5 @@ describe('providerAgentNames', () => {
   it('includes _custom entry', () => {
     expect(providerAgentNames['_custom']).toBeDefined()
     expect(providerAgentNames['_custom'].id).toBe('custom-agent')
-  })
-})
-
-describe('session storage persistence', () => {
-  afterEach(() => {
-    sessionStorage.clear()
-  })
-
-  it('saveWizardState and loadWizardState round-trip', () => {
-    const setup = useSetup()
-    const state = {
-      step: 3,
-      provider: 'openai',
-      customUrl: '',
-      chatModel: 'gpt-4o',
-      summarizeModel: 'gpt-4o-mini',
-      agentName: 'OpenAI',
-      agentId: 'openai',
-    }
-    setup.saveWizardState(state)
-    const loaded = setup.loadWizardState()
-    expect(loaded).toEqual(state)
-  })
-
-  it('loadWizardState returns null when no state saved', () => {
-    const setup = useSetup()
-    const loaded = setup.loadWizardState()
-    expect(loaded).toBeNull()
-  })
-
-  it('clearWizardState removes saved state', () => {
-    const setup = useSetup()
-    setup.saveWizardState({
-      step: 1,
-      provider: '',
-      customUrl: '',
-      chatModel: '',
-      summarizeModel: '',
-      agentName: '',
-      agentId: '',
-    })
-    setup.clearWizardState()
-    const loaded = setup.loadWizardState()
-    expect(loaded).toBeNull()
   })
 })
