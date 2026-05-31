@@ -13,6 +13,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -875,6 +876,9 @@ func TestExtractIP_MalformedAddress(t *testing.T) {
 // --- Host Key Error Path Tests ---
 
 func TestSSHServer_LoadHostKey_PermissivePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on Windows: admin privileges bypass file permissions")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("skipping as root: root bypasses filesystem permissions")
 	}
@@ -923,6 +927,9 @@ func TestSSHServer_LoadHostKey_ParseError(t *testing.T) {
 }
 
 func TestSSHServer_GenerateAndSaveHostKey_WriteFail(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on Windows: admin privileges bypass file permissions")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("skipping as root: root can write anywhere")
 	}
