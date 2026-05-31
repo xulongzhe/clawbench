@@ -743,6 +743,8 @@ export default {
     generateFailedGeneric: 'Speech generation failed, please try again later',
     generateFailedDetail: 'Speech generation failed: {error}',
     autoplayBlocked: 'Browser blocked autoplay, please click the read button manually',
+    enabled: 'Auto speech enabled',
+    disabled: 'Auto speech disabled',
   },
   tool: {
     read: {

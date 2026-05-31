@@ -743,6 +743,8 @@ export default {
     generateFailedGeneric: '语音生成失败，请稍后重试',
     generateFailedDetail: '语音生成失败: {error}',
     autoplayBlocked: '浏览器禁止自动播放音频，请手动点击朗读按钮',
+    enabled: '自动朗读已开启',
+    disabled: '自动朗读已关闭',
   },
   tool: {
     read: {

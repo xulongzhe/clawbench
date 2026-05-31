@@ -66,15 +66,17 @@ let currentAudioEl: HTMLAudioElement | null = null
 // Initialize from settings config (which handles legacy key migration)
 enabled.value = !!localConfig.autoSpeech
 
+// Module-level toast instance (shared, not per-component)
+const toast = useToast()
+
 // Sync from Settings page changes
 if (typeof window !== 'undefined') {
   window.addEventListener('clawbench-autospeech-change', (e: Event) => {
-    enabled.value = (e as CustomEvent).detail as boolean
+    const val = (e as CustomEvent).detail as boolean
+    enabled.value = val
+    toast.show(gt(val ? 'autoSpeech.enabled' : 'autoSpeech.disabled'), { icon: val ? '🔊' : '🔇', type: 'info', duration: 2000 })
   })
 }
-
-// Module-level toast instance (shared, not per-component)
-const toast = useToast()
 
 export function useAutoSpeech() {
   // --- Persistence ---
@@ -85,7 +87,12 @@ export function useAutoSpeech() {
   function toggle() {
     enabled.value = !enabled.value
     saveState()
-    if (!enabled.value) stopAudio()
+    if (!enabled.value) {
+      stopAudio()
+      toast.show(gt('autoSpeech.disabled'), { icon: '🔇', type: 'info', duration: 2000 })
+    } else {
+      toast.show(gt('autoSpeech.enabled'), { icon: '🔊', type: 'info', duration: 2000 })
+    }
   }
 
   // --- Audio Playback ---
