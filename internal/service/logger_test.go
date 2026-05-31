@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -191,6 +192,9 @@ func TestFileHandler_MessagesPersistAfterClose(t *testing.T) {
 }
 
 func TestNewFileHandler_MkdirAllError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("MkdirAll error path not reliably testable on Windows (admin privileges)")
+	}
 	// /proc/is-a-file/logs should fail MkdirAll since /proc/is-a-file is not a dir
 	_, err := service.NewFileHandler("/proc/nonexistent-dir-for-test/logs", "test", 7)
 	assert.Error(t, err, "should fail when MkdirAll cannot create the directory")
