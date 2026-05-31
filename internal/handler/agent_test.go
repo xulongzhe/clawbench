@@ -684,3 +684,116 @@ func TestAgentPatch_PatchAgentDBError(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
+
+// ---------- ServeAgents method not allowed ----------
+
+func TestServeAgents_MethodNotAllowed(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	req := newRequest(t, http.MethodDelete, "/api/agents", nil)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeAgents, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
+}
+
+// ---------- ServeAgentRefreshModels with provider filter ----------
+
+func TestServeAgentRefreshModels_WithProviderFilter(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Save original DiscoverModels and restore later
+	origDiscover := model.DiscoverModels
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	// Mock DiscoverModels to return models with provider prefix
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		return []model.AgentModel{
+			{ID: "openai/gpt-4o", Name: "openai/GPT-4o"},
+			{ID: "anthropic/claude-sonnet-4-20250514", Name: "anthropic/Claude Sonnet 4"},
+			{ID: "deepseek/deepseek-chat", Name: "deepseek/DeepSeek Chat"},
+		}
+	}
+
+	// Add agent_api_keys entry using SaveAgentAPIKey (handles encryption + key_nonce)
+	require.NoError(t, service.SaveAgentAPIKey(service.DB, "codebuddy", "openai", "", "test-api-key"))
+
+	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	req.URL.Path = "/api/agents/codebuddy/refresh-models"
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	models := resp["models"].([]any)
+	// Should only return openai/ prefixed models (stripped of prefix)
+	assert.NotEmpty(t, models, "should have models after provider filtering")
+}
+
+func TestServeAgentRefreshModels_ProviderFilterNoMatch(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	origDiscover := model.DiscoverModels
+	defer func() { model.DiscoverModels = origDiscover }()
+
+	// Mock DiscoverModels to return models that DON'T match the provider prefix
+	model.DiscoverModels = func(spec model.BackendSpec) []model.AgentModel {
+		return []model.AgentModel{
+			{ID: "openai/gpt-4o", Name: "openai/GPT-4o"},
+			{ID: "anthropic/claude-sonnet-4-20250514", Name: "anthropic/Claude Sonnet 4"},
+		}
+	}
+
+	// Set up provider that won't match any model prefix
+	require.NoError(t, service.SaveAgentAPIKey(service.DB, "codebuddy", "deepseek", "", "test-api-key"))
+
+	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	req.URL.Path = "/api/agents/codebuddy/refresh-models"
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// When no models match the prefix, all discovered models are returned as fallback
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	models := resp["models"].([]any)
+	assert.Len(t, models, 2, "should return all models when no prefix matches")
+}
+
+func TestServeAgentRefreshModels_KnownModelsFallback(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	// Set up agent_api_keys entry for a provider with KnownModels (e.g., anthropic)
+	require.NoError(t, service.SaveAgentAPIKey(service.DB, "codebuddy", "anthropic", "", "test-api-key"))
+
+	// Make the agent's backend have NO discovery support by temporarily changing it
+	origBackend := model.Agents["codebuddy"].Backend
+	origModels := model.Agents["codebuddy"].Models
+	model.Agents["codebuddy"].Backend = "nondiscoverable"
+	model.Agents["codebuddy"].Models = nil
+	defer func() {
+		model.Agents["codebuddy"].Backend = origBackend
+		model.Agents["codebuddy"].Models = origModels
+	}()
+
+	req := newRequest(t, http.MethodPost, "/api/agents/codebuddy/refresh-models", nil)
+	withAuthCookie(req, model.SessionToken)
+	req.URL.Path = "/api/agents/codebuddy/refresh-models"
+	w := callHandler(ServeAgentRefreshModels, req)
+
+	// Should fall back to KnownModels from anthropic provider
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	models := resp["models"].([]any)
+	assert.NotEmpty(t, models, "should have KnownModels from anthropic provider")
+}

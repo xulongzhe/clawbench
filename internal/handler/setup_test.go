@@ -1725,3 +1725,142 @@ func TestReinitSummarizer_CustomURL(t *testing.T) {
 	assert.NotNil(t, summarizer)
 	assert.NotEqual(t, origSummarizer, summarizer)
 }
+
+// ---------- validateCustomURL extended tests ----------
+
+func TestValidateCustomURL_AnthropicValid(t *testing.T) {
+	result := validateCustomURL("https://api.anthropic.com/v1/messages", "anthropic")
+	assert.Empty(t, result, "valid anthropic URL should pass validation")
+}
+
+func TestValidateCustomURL_AnthropicInvalid(t *testing.T) {
+	result := validateCustomURL("https://api.anthropic.com/v1/chat/completions", "anthropic")
+	assert.Equal(t, "CustomURLAnthropicFormat", result, "anthropic URL should end with /v1/messages")
+}
+
+func TestValidateCustomURL_OpenAIValid(t *testing.T) {
+	result := validateCustomURL("https://api.openai.com/v1/chat/completions", "openai")
+	assert.Empty(t, result, "valid openai URL should pass validation")
+}
+
+func TestValidateCustomURL_OpenAIInvalid(t *testing.T) {
+	result := validateCustomURL("https://api.openai.com/v1/messages", "openai")
+	assert.Equal(t, "CustomURLOpenAIFormat", result, "openai URL should end with /chat/completions")
+}
+
+func TestValidateCustomURL_EmptyURL(t *testing.T) {
+	result := validateCustomURL("", "openai")
+	assert.Empty(t, result, "empty URL should pass (no validation needed)")
+}
+
+// ---------- ServeSetupVerify with anthropic custom URL ----------
+
+func TestSetupVerify_AnthropicCustomURL(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	body := map[string]any{
+		"provider":   "",
+		"custom_url": "https://api.anthropic.com/v1/messages",
+		"api_format": "anthropic",
+		"api_key":    "sk-ant-test-key",
+		"model":      "claude-sonnet-4-20250514",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/verify", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupVerify, req)
+
+	// In test env, EmbeddedAgentPath() returns "" → 404
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// ---------- ServeSetupComplete with custom URL anthropic ----------
+
+func TestSetupComplete_CustomURLAnthropic(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{}
+	model.AgentList = []*model.Agent{}
+	service.DB.Exec("DELETE FROM agents")
+
+	origSummarizer := summarizer
+	defer func() { summarizer = origSummarizer }()
+
+	body := map[string]any{
+		"provider":        "",
+		"custom_url":      "https://api.anthropic.com/v1/messages",
+		"api_format":      "anthropic",
+		"api_key":         "sk-ant-test-key",
+		"model":           "claude-sonnet-4-20250514",
+		"summarize_model": "claude-3-5-haiku-20241022",
+		"agent_name":      "Custom Anthropic",
+		"agent_id":        "custom-anthropic",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/complete", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupComplete, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.True(t, resp["success"].(bool))
+
+	// Verify agent was created with "anthropic" provider
+	var count int
+	service.DB.QueryRow("SELECT COUNT(*) FROM agent_api_keys WHERE agent_id = ? AND provider = ?", "custom-anthropic", "anthropic").Scan(&count)
+	assert.Equal(t, 1, count)
+
+	// Verify summarize backend was configured with anthropic format
+	assert.Equal(t, "anthropic", model.ConfigInstance.Summarize.API.Format)
+}
+
+// ---------- ServeSetupComplete with invalid custom URL ----------
+
+func TestSetupComplete_InvalidCustomURLOpenAI(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{}
+	model.AgentList = []*model.Agent{}
+	service.DB.Exec("DELETE FROM agents")
+
+	body := map[string]any{
+		"provider":   "",
+		"custom_url": "https://api.example.com/v1/invalid",
+		"api_key":    "test-key",
+		"model":      "test-model",
+		"agent_name": "Invalid URL",
+		"agent_id":   "invalid-url",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/complete", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupComplete, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSetupComplete_InvalidCustomURLAnthropic(t *testing.T) {
+	_, teardown := setupAgentTestEnv(t)
+	defer teardown()
+
+	model.Agents = map[string]*model.Agent{}
+	model.AgentList = []*model.Agent{}
+	service.DB.Exec("DELETE FROM agents")
+
+	body := map[string]any{
+		"provider":   "",
+		"custom_url": "https://api.example.com/v1/invalid",
+		"api_format": "anthropic",
+		"api_key":    "test-key",
+		"model":      "test-model",
+		"agent_name": "Invalid Anthropic URL",
+		"agent_id":   "invalid-anthropic-url",
+	}
+	req := newRequest(t, http.MethodPost, "/api/setup/complete", body)
+	withAuthCookie(req, model.SessionToken)
+	w := callHandler(ServeSetupComplete, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
