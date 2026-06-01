@@ -89,20 +89,16 @@ jobs:
 
       - name: Build Linux binary
         env:
-          CGO_ENABLED: 0
+          CGO_ENABLED: 1
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-          go build -tags norag -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-linux ./cmd/server
-          echo "Built with CGO_ENABLED=0 -tags norag: pure Go, no DuckDB/RAG, no glibc dependency"
+          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-linux ./cmd/server
+          echo "Built with CGO_ENABLED=1: dynamically linked, DuckDB/RAG enabled"
 
-      - name: Verify Linux binary is statically linked
+      - name: Verify Linux binary
         run: |
-          if file clawbench-linux | grep -q "statically linked"; then
-            echo "✅ Linux binary is statically linked (no glibc dependency)"
-          else
-            echo "❌ Linux binary is NOT statically linked — glibc version mismatch may occur on older distros"
-            exit 1
-          fi
+          file clawbench-linux
+          ldd clawbench-linux
 
       - name: Package Linux
         run: |
