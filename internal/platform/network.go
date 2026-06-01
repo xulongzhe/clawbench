@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"net"
 	"time"
 )
@@ -9,11 +10,12 @@ import (
 // by attempting a UDP connection to a public DNS server.
 // Returns empty string if the IP cannot be determined.
 func GetOutboundIP() string {
-	conn, err := net.DialTimeout("udp", "8.8.8.8:53", 1*time.Second)
+	dialer := net.Dialer{Timeout: 1 * time.Second}
+	conn, err := dialer.DialContext(context.Background(), "udp", "8.8.8.8:53")
 	if err != nil {
 		return ""
 	}
-	defer conn.Close()
+	defer conn.Close() //nolint:errcheck // best-effort close on UDP
 	addr, ok := conn.LocalAddr().(*net.UDPAddr)
 	if !ok {
 		return ""

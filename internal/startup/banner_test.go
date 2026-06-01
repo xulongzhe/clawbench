@@ -72,42 +72,25 @@ func TestPadRight_NoPadNeeded(t *testing.T) {
 
 // ---------- buildLines border alignment tests ----------
 
-// verifyBorderAlignment checks that all lines in the banner output
-// have consistent border alignment by verifying equal rune-width.
-func verifyBorderAlignment(t *testing.T, lines []string) {
-	t.Helper()
-	maxW := 0
-	for _, l := range lines {
-		if rw := runeWidth(l); rw > maxW {
-			maxW = rw
-		}
-	}
-	for i, l := range lines {
-		if rw := runeWidth(l); rw != maxW {
-			t.Errorf("line %d runeWidth=%d, want %d: %q", i, rw, maxW, l)
-		}
-	}
-}
-
 func TestBannerBasic(t *testing.T) {
 	cfg := BannerConfig{
-		Version:     "v1.0.0",
-		Scheme:      "http",
-		Port:        20000,
-		LocalIP:     "192.168.1.100",
+		Version:      "v1.0.0",
+		Scheme:       "http",
+		Port:         20000,
+		LocalIP:      "192.168.1.100",
 		AutoPassword: "a1b2c3d4",
-		DataDir:     "/home/user/clawbench/.clawbench",
+		DataDir:      "/home/user/clawbench/.clawbench",
 		Agents: []AgentInfo{
 			{Name: "codebuddy", Models: 21},
 			{Name: "pi", Models: 8},
 			{Name: "gemini", Models: 5},
 		},
-		SSHEnabled:    true,
-		SSHPort:       20001,
-		TTSEngine:     "edge",
-		RAGAvailable:  true,
-		TerminalOn:    true,
-		TaskCount:     3,
+		SSHEnabled:      true,
+		SSHPort:         20001,
+		TTSEngine:       "edge",
+		RAGAvailable:    true,
+		TerminalOn:      true,
+		TaskCount:       3,
 		StartupDuration: 1200 * time.Millisecond,
 	}
 	lines := buildLines(cfg)
@@ -163,14 +146,14 @@ func TestBannerBasic(t *testing.T) {
 
 func TestBannerNoAgents(t *testing.T) {
 	cfg := BannerConfig{
-		Version:     "dev",
-		Scheme:      "http",
-		Port:        20000,
-		AutoPassword: "abcdefgh",
-		DataDir:     "/tmp/.clawbench",
-		Agents:      nil,
-		TTSEngine:   "edge",
-		TaskCount:   0,
+		Version:         "dev",
+		Scheme:          "http",
+		Port:            20000,
+		AutoPassword:    "abcdefgh",
+		DataDir:         "/tmp/.clawbench",
+		Agents:          nil,
+		TTSEngine:       "edge",
+		TaskCount:       0,
 		StartupDuration: 300 * time.Millisecond,
 	}
 	lines := buildLines(cfg)
@@ -197,19 +180,19 @@ func TestBannerNoAgents(t *testing.T) {
 
 func TestBannerCJKWidth(t *testing.T) {
 	cfg := BannerConfig{
-		Version:     "v1.0.0",
-		Scheme:      "http",
-		Port:        20000,
-		LocalIP:     "192.168.1.100",
-		AutoPassword: "测试密码", // CJK password (unlikely but tests alignment)
-		DataDir:     "/home/用户/.clawbench", // CJK path
+		Version:      "v1.0.0",
+		Scheme:       "http",
+		Port:         20000,
+		LocalIP:      "192.168.1.100",
+		AutoPassword: "测试密码",                // CJK password (unlikely but tests alignment)
+		DataDir:      "/home/用户/.clawbench", // CJK path
 		Agents: []AgentInfo{
 			{Name: "智能体", Models: 5}, // CJK name
 		},
-		TTSEngine:      "edge",
-		RAGAvailable:   true,
-		TerminalOn:     true,
-		TaskCount:      0,
+		TTSEngine:       "edge",
+		RAGAvailable:    true,
+		TerminalOn:      true,
+		TaskCount:       0,
 		StartupDuration: 500 * time.Millisecond,
 	}
 	lines := buildLines(cfg)
@@ -231,19 +214,19 @@ func TestBannerCJKWidth(t *testing.T) {
 
 func TestBannerNoSSH(t *testing.T) {
 	cfg := BannerConfig{
-		Version:     "v1.0.0",
-		Scheme:      "https",
-		Port:        20000,
+		Version:      "v1.0.0",
+		Scheme:       "https",
+		Port:         20000,
 		AutoPassword: "",
-		DataDir:     "/opt/clawbench/.clawbench",
+		DataDir:      "/opt/clawbench/.clawbench",
 		Agents: []AgentInfo{
 			{Name: "claude", Models: 12},
 		},
-		SSHEnabled:     false,
-		TTSEngine:      "edge",
-		RAGAvailable:   false,
-		TerminalOn:     true,
-		TaskCount:      0,
+		SSHEnabled:      false,
+		TTSEngine:       "edge",
+		RAGAvailable:    false,
+		TerminalOn:      true,
+		TaskCount:       0,
 		StartupDuration: 800 * time.Millisecond,
 	}
 	lines := buildLines(cfg)
@@ -265,20 +248,20 @@ func TestBannerNoSSH(t *testing.T) {
 
 func TestBannerAgentNameAlignment(t *testing.T) {
 	cfg := BannerConfig{
-		Version:     "v1.0.0",
-		Scheme:      "http",
-		Port:        20000,
+		Version:      "v1.0.0",
+		Scheme:       "http",
+		Port:         20000,
 		AutoPassword: "test",
-		DataDir:     "/tmp/.clawbench",
+		DataDir:      "/tmp/.clawbench",
 		Agents: []AgentInfo{
 			{Name: "pi", Models: 8},
 			{Name: "codebuddy", Models: 21},
 			{Name: "deepseek-tui", Models: 3},
 		},
-		TTSEngine:      "edge",
-		RAGAvailable:   true,
-		TerminalOn:     true,
-		TaskCount:      0,
+		TTSEngine:       "edge",
+		RAGAvailable:    true,
+		TerminalOn:      true,
+		TaskCount:       0,
 		StartupDuration: 100 * time.Millisecond,
 	}
 	lines := buildLines(cfg)
@@ -336,14 +319,14 @@ func TestFormatDuration(t *testing.T) {
 func TestPrintBannerDoesNotPanic(t *testing.T) {
 	// Just verify PrintBanner doesn't panic with various configs
 	cfg := BannerConfig{
-		Version:     "dev",
-		Scheme:      "http",
-		Port:        20000,
-		AutoPassword: "test1234",
-		DataDir:     "/tmp/.clawbench",
-		Agents:      []AgentInfo{{Name: "codebuddy", Models: 5}},
-		TTSEngine:   "edge",
-		TaskCount:   1,
+		Version:         "dev",
+		Scheme:          "http",
+		Port:            20000,
+		AutoPassword:    "test1234",
+		DataDir:         "/tmp/.clawbench",
+		Agents:          []AgentInfo{{Name: "codebuddy", Models: 5}},
+		TTSEngine:       "edge",
+		TaskCount:       1,
 		StartupDuration: 100 * time.Millisecond,
 	}
 	// Output goes to stdout; we just verify no panic
@@ -353,12 +336,12 @@ func TestPrintBannerDoesNotPanic(t *testing.T) {
 func TestPrintBannerEmptyConfig(t *testing.T) {
 	// Minimal config — no agents, no SSH, no password
 	cfg := BannerConfig{
-		Version:     "dev",
-		Scheme:      "http",
-		Port:        20000,
-		DataDir:     "/tmp/.clawbench",
-		TTSEngine:   "edge",
-		TaskCount:   0,
+		Version:         "dev",
+		Scheme:          "http",
+		Port:            20000,
+		DataDir:         "/tmp/.clawbench",
+		TTSEngine:       "edge",
+		TaskCount:       0,
 		StartupDuration: 50 * time.Millisecond,
 	}
 	PrintBanner(cfg)
@@ -369,22 +352,22 @@ func TestBannerBorderAlignmentWithCJK(t *testing.T) {
 	// even with CJK/emoji content. We simulate the PrintBanner rendering
 	// and verify all lines have equal display width.
 	cfg := BannerConfig{
-		Version:     "v1.0.0",
-		Scheme:      "http",
-		Port:        20000,
-		LocalIP:     "192.168.1.100",
-		AutoPassword: "测试密码", // CJK
-		DataDir:     "/home/用户/.clawbench", // CJK
+		Version:      "v1.0.0",
+		Scheme:       "http",
+		Port:         20000,
+		LocalIP:      "192.168.1.100",
+		AutoPassword: "测试密码",                // CJK
+		DataDir:      "/home/用户/.clawbench", // CJK
 		Agents: []AgentInfo{
 			{Name: "智能体", Models: 5}, // CJK
 			{Name: "codebuddy", Models: 21},
 		},
-		SSHEnabled:     true,
-		SSHPort:        20001,
-		TTSEngine:      "edge",
-		RAGAvailable:   true,
-		TerminalOn:     true,
-		TaskCount:      3,
+		SSHEnabled:      true,
+		SSHPort:         20001,
+		TTSEngine:       "edge",
+		RAGAvailable:    true,
+		TerminalOn:      true,
+		TaskCount:       3,
 		StartupDuration: 1 * time.Second,
 	}
 
