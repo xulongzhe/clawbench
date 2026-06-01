@@ -389,6 +389,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Set package visibility to public
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ORG="${GITHUB_REPOSITORY_OWNER}"
+          # Try org-level endpoint first, then user-level
+          if ! gh api --method PATCH \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/${ORG}/packages/container/clawbench" \
+            -f visibility=public 2>/dev/null; then
+            gh api --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              /user/packages/container/clawbench \
+              -f visibility=public 2>/dev/null || \
+              echo "⚠ Could not set package visibility via API — set manually at https://github.com/orgs/${ORG}/packages/container/clawbench/settings"
+          fi
+
   release-notes:
     name: Generate Release Notes
     needs: [build-linux, build-windows, build-macos-arm64, build-macos-amd64, build-android, docker]
