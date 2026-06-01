@@ -161,9 +161,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path .clawbench\pi
           $tmpZip = "$env:TEMP\pi-download.zip"
           Invoke-WebRequest -Uri $PI_URL -OutFile $tmpZip
-          Expand-Archive -Path $tmpZip -DestinationPath "$env:TEMP\pi-download" -Force
-          Copy-Item -Recurse "$env:TEMP\pi-download\pi\*" ".clawbench\pi\" -Force
-          Remove-Item $tmpZip, "$env:TEMP\pi-download" -Recurse -Force
+          Expand-Archive -Path $tmpZip -DestinationPath .clawbench\pi -Force
+          Remove-Item $tmpZip -Force
           Set-Content -Path ".clawbench\pi\VERSION" -Value $env:PI_VERSION
           Write-Host "Pi v${env:PI_VERSION} downloaded"
 
