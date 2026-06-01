@@ -6,13 +6,17 @@ import "runtime/debug"
 // When not set (e.g. bare "go build"), Get() falls back to VCS info.
 var Version = ""
 
+// readBuildInfo is a variable for testability — tests can override it
+// to simulate different build info scenarios.
+var readBuildInfo = debug.ReadBuildInfo
+
 // Get returns a human-readable version string.
 // Priority: ldflags-injected Version > VCS short SHA from build info > "dev".
 func Get() string {
 	if Version != "" {
 		return Version
 	}
-	info, ok := debug.ReadBuildInfo()
+	info, ok := readBuildInfo()
 	if !ok {
 		return "dev"
 	}
