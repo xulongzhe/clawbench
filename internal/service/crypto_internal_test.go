@@ -349,3 +349,92 @@ func TestRotateAPIKeyEncryption_WithPasswordChange(t *testing.T) {
 	assert.Equal(t, "", customURL)
 	assert.Equal(t, "sk-test-key", apiKey)
 }
+
+// TestDecryptAPIKey_PreviousKeyFallback verifies ISS-225 fix:
+// If a key was encrypted with the old key (before rotation), and the
+// process crashed mid-rotation, DecryptAPIKey should fall back to the
+// previous key to decrypt it.
+func TestDecryptAPIKey_PreviousKeyFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	origBinDir := model.BinDir
+	model.BinDir = tmpDir
+	defer func() { model.BinDir = origBinDir }()
+
+	// Write initial password file
+	err := os.MkdirAll(filepath.Join(tmpDir, ".clawbench"), 0o755)
+	require.NoError(t, err)
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0o600)
+	require.NoError(t, err)
+
+	db, err := InitInMemoryDB()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	origDB := DB
+	origDBRead := DBRead
+	DB = db
+	DBRead = db
+	defer func() { DB = origDB; DBRead = origDBRead }()
+
+	err = SaveAgent(db, &model.Agent{ID: "pi", Name: "Pi", Backend: "pi", Source: "setup"})
+	require.NoError(t, err)
+
+	// Step 1: Encrypt with old password
+	ResetEncryptionKeyCache()
+	err = SaveAgentAPIKey(db, "pi", "openai", "", "sk-fallback-test")
+	require.NoError(t, err)
+
+	// Step 2: Simulate rotation starting — this saves the old key as previousEncryptionKey
+	// Change password file
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0o600)
+	require.NoError(t, err)
+
+	// Call RotateAPIKeyEncryption which sets previousEncryptionKey
+	err = RotateAPIKeyEncryption(db, "old-password")
+	require.NoError(t, err)
+
+	// Step 3: Now simulate a crash mid-rotation by saving a new key with the NEW password,
+	// then manually setting previousEncryptionKey to the OLD key.
+	// This simulates: some keys were re-encrypted (new key), some weren't (old key).
+	ResetEncryptionKeyCache() // Derive from new password
+
+	// Save a key that was encrypted with the new key
+	err = SaveAgentAPIKey(db, "pi", "anthropic", "", "sk-new-key")
+	require.NoError(t, err)
+
+	// Now simulate: manually re-insert a key encrypted with the OLD key
+	// (as if the rotation crashed before re-encrypting this one)
+	ResetEncryptionKeyCache()
+	// Read the old-password derived key by temporarily restoring the old password
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("old-password"), 0o600)
+	require.NoError(t, err)
+	oldKey := DeriveEncryptionKey()
+
+	// Save the old key as the previous key fallback
+	previousKeyMu.Lock()
+	previousEncryptionKey = make([]byte, len(oldKey))
+	copy(previousEncryptionKey, oldKey)
+	previousKeyMu.Unlock()
+
+	// Now restore the new password
+	err = os.WriteFile(filepath.Join(tmpDir, ".clawbench", "auto-password"), []byte("new-password"), 0o600)
+	require.NoError(t, err)
+	ResetEncryptionKeyCache()
+
+	// The openai key should still be decryptable via the previous key fallback
+	customURL, apiKey, err := LoadAgentAPIKey(db, "pi", "openai")
+	require.NoError(t, err, "should decrypt with previous key fallback (ISS-225)")
+	assert.Equal(t, "", customURL)
+	assert.Equal(t, "sk-fallback-test", apiKey)
+
+	// The anthropic key (encrypted with new key) should decrypt normally
+	customURL, apiKey, err = LoadAgentAPIKey(db, "pi", "anthropic")
+	require.NoError(t, err)
+	assert.Equal(t, "", customURL)
+	assert.Equal(t, "sk-new-key", apiKey)
+
+	// Clean up
+	previousKeyMu.Lock()
+	previousEncryptionKey = nil
+	previousKeyMu.Unlock()
+}

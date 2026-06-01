@@ -27,6 +27,12 @@ var (
 	encryptionKeyCache []byte
 	encryptionKeyOnce  sync.Once
 	encryptionKeyMu    sync.RWMutex // protects cache for rotation
+
+	// previousEncryptionKey caches the key from before a rotation.
+	// Used by DecryptAPIKey as fallback when the current key fails to decrypt,
+	// which can happen if the process crashed mid-rotation (ISS-225).
+	previousEncryptionKey []byte
+	previousKeyMu         sync.RWMutex
 )
 
 // DeriveEncryptionKey derives a 32-byte AES-256 key from the ClawBench auto-password
@@ -121,9 +127,34 @@ func EncryptAPIKey(plaintext string) (encrypted, nonce string, err error) {
 }
 
 // DecryptAPIKey decrypts a base64-encoded ciphertext using AES-256-GCM.
+// If decryption with the current key fails, falls back to the previous key
+// (from before a password change rotation) to handle mid-rotation crashes (ISS-225).
 func DecryptAPIKey(encrypted, nonce string) (string, error) {
 	key := DeriveEncryptionKey()
 
+	plaintext, err := decryptWithKey(key, encrypted, nonce)
+	if err == nil {
+		return plaintext, nil
+	}
+
+	// Fallback: try the previous encryption key (from before rotation)
+	previousKeyMu.RLock()
+	prevKey := previousEncryptionKey
+	previousKeyMu.RUnlock()
+
+	if prevKey != nil {
+		plaintext, prevErr := decryptWithKey(prevKey, encrypted, nonce)
+		if prevErr == nil {
+			slog.Warn("decrypted API key with previous (pre-rotation) key — rotation may be incomplete (ISS-225)")
+			return plaintext, nil
+		}
+	}
+
+	return "", fmt.Errorf("decrypt: %w", err)
+}
+
+// decryptWithKey attempts AES-256-GCM decryption with a specific key.
+func decryptWithKey(key []byte, encrypted, nonce string) (string, error) {
 	ciphertext, err := base64.StdEncoding.DecodeString(encrypted)
 	if err != nil {
 		return "", fmt.Errorf("decode ciphertext: %w", err)
@@ -281,11 +312,14 @@ func loadAllAPIKeys(db *sql.DB) ([]DecryptedAPIKey, error) {
 //
 // Steps:
 // 1. Decrypt all API keys with the CURRENT (old) key
-// 2. The caller must update the auto-password file BEFORE calling this
+// 2. Save the old key as previousEncryptionKey for crash recovery (ISS-225)
 // 3. Reset the key cache so the next DeriveEncryptionKey uses the new password
 // 4. Re-encrypt all API keys with the new key
+// 5. Clear the previousEncryptionKey after successful rotation
 //
 // If any step fails, attempts to roll back by restoring the old password.
+// The previousEncryptionKey fallback ensures that if the process crashes
+// mid-rotation, DecryptAPIKey can still decrypt keys using the old key.
 func RotateAPIKeyEncryption(db *sql.DB, oldAutoPassword string) error {
 	// 1. Decrypt all keys with the CURRENT (old) key
 	keys, err := loadAllAPIKeys(db)
@@ -297,7 +331,16 @@ func RotateAPIKeyEncryption(db *sql.DB, oldAutoPassword string) error {
 		return nil // Nothing to rotate
 	}
 
-	// 2. Reset key cache — the auto-password file has already been updated by the caller,
+	// 2. Save the current (old) key as fallback for crash recovery (ISS-225).
+	// If the process crashes mid-rotation, DecryptAPIKey can try this key
+	// to decrypt keys that haven't been re-encrypted yet.
+	oldKey := DeriveEncryptionKey()
+	previousKeyMu.Lock()
+	previousEncryptionKey = make([]byte, len(oldKey))
+	copy(previousEncryptionKey, oldKey)
+	previousKeyMu.Unlock()
+
+	// 3. Reset key cache — the auto-password file has already been updated by the caller,
 	// so DeriveEncryptionKey will now use the new password
 	ResetEncryptionKeyCache()
 
@@ -316,5 +359,10 @@ func RotateAPIKeyEncryption(db *sql.DB, oldAutoPassword string) error {
 	}
 
 	slog.Info("API key encryption rotated successfully", "keys", len(keys))
+
+	// 5. Clear previous key — rotation complete, no more fallback needed (ISS-225)
+	previousKeyMu.Lock()
+	previousEncryptionKey = nil
+	previousKeyMu.Unlock()
 	return nil
 }

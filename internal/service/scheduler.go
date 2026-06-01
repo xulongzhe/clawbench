@@ -477,10 +477,13 @@ func (s *Scheduler) registerTaskLocked(task *model.ScheduledTask) error {
 }
 
 // UpdateTaskStats increments run_count and updates last_run_at for a task.
-func UpdateTaskStats(task *model.ScheduledTask, newStatus string) {
+// It does NOT update the status column — status changes must be handled
+// separately to avoid overwriting user-initiated state changes (e.g. pause).
+// See ISS-013.
+func UpdateTaskStats(task *model.ScheduledTask) {
 	now := time.Now()
-	_, _ = DB.Exec("UPDATE scheduled_tasks SET last_run_at = ?, run_count = run_count + 1, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-		now, newStatus, task.ID)
+	_, _ = DB.Exec("UPDATE scheduled_tasks SET last_run_at = ?, run_count = run_count + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+		now, task.ID)
 }
 
 // emitTaskEvent broadcasts a task_update event to connected clients.
@@ -679,8 +682,8 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		)
 		_ = UpdateExecutionStatus(sessionID, "cancelled")
 		emitTaskEvent(fmt.Sprintf("%d", task.ID), "cancelled", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
-		newStatus := task.Status
-		UpdateTaskStats(task, newStatus)
+		// Only update stats, not status — don't overwrite user-initiated pauses (ISS-013)
+		UpdateTaskStats(task)
 		return
 	}
 
@@ -695,8 +698,8 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 		)
 		_ = UpdateExecutionStatus(sessionID, "failed")
 		emitTaskEvent(fmt.Sprintf("%d", task.ID), "failed", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
-		newStatus := task.Status
-		UpdateTaskStats(task, newStatus)
+		// Only update stats, not status — don't overwrite user-initiated pauses (ISS-013)
+		UpdateTaskStats(task)
 		return
 	}
 
@@ -722,7 +725,14 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	emitTaskEvent(fmt.Sprintf("%d", task.ID), "completed", fmt.Sprintf("%d", executionID), sessionID, projectPath, task.Name)
 
 	// Update task execution stats
-	newStatus := task.Status
+	// Read current DB status to avoid overwriting user-initiated changes (e.g. pause).
+	// See ISS-013: using task.Status (in-memory snapshot) can revert "paused" back to "active".
+	var currentStatus string
+	if err := DBRead.QueryRow("SELECT status FROM scheduled_tasks WHERE id = ?", task.ID).Scan(&currentStatus); err != nil {
+		slog.Warn("failed to read current task status, falling back to snapshot", "error", err)
+		currentStatus = task.Status
+	}
+	newStatus := currentStatus
 
 	// Check repeat mode — for "limited", read current DB value to decide completion
 	if task.RepeatMode == "limited" {

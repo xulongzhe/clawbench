@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"clawbench/internal/model"
 )
@@ -92,6 +93,34 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 
 	go func() {
 		defer close(ch)
+		// Ensure cmd.Wait() is always called to reap the child process.
+		// If the goroutine returns early (e.g. context cancellation), we must
+		// still call Wait() to prevent zombie processes. See ISS-232.
+		var waitCalled bool
+		defer func() {
+			if !waitCalled {
+				// exec.CommandContext already sends SIGKILL on cancel,
+				// so the process should exit quickly. Best-effort Wait
+				// with timeout to reap the process and avoid zombies.
+				go func() {
+					timer := time.NewTimer(30 * time.Second)
+					defer timer.Stop()
+					waitCh := make(chan struct{})
+					go func() {
+						_ = cmd.Wait()
+						close(waitCh)
+					}()
+					select {
+					case <-waitCh:
+						// Process reaped successfully
+					case <-timer.C:
+						slog.Warn(b.name+" stream: cmd.Wait() timed out after context cancellation, releasing process",
+							slog.String("session_id", req.SessionID))
+						_ = cmd.Process.Release()
+					}
+				}()
+			}
+		}()
 
 		scanner := bufio.NewScanner(stdoutPipe)
 		buf := make([]byte, scannerInitial)
@@ -167,6 +196,7 @@ func (b *CLIBackend) ExecuteStream(ctx context.Context, req ChatRequest) (<-chan
 			}
 		}
 
+		waitCalled = true
 		if err := cmd.Wait(); err != nil {
 			if ctx.Err() != nil {
 				slog.Warn(

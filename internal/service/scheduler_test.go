@@ -725,13 +725,45 @@ func TestUpdateTaskStats(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 0, task.RunCount)
 
-	service.UpdateTaskStats(task, "active")
+	service.UpdateTaskStats(task)
 
 	updated, err := service.GetTaskByID(taskID)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, updated.RunCount)
 	assert.NotNil(t, updated.LastRunAt)
+	// Status should remain "active" since UpdateTaskStats no longer overwrites it
 	assert.Equal(t, "active", updated.Status)
+}
+
+// TestUpdateTaskStats_DoesNotOverwritePausedStatus verifies ISS-013 fix:
+// UpdateTaskStats must NOT overwrite a user-initiated "paused" status.
+func TestUpdateTaskStats_DoesNotOverwritePausedStatus(t *testing.T) {
+	_, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	now := time.Now()
+	result, err := service.DB.Exec(
+		"INSERT INTO scheduled_tasks (project_path, name, cron_expr, agent_id, prompt, session_id, status, repeat_mode, run_count, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"/proj", "Paused Task", "0 * * * *", "agent1", "p", "", "paused", "unlimited", 0, now, now,
+	)
+	assert.NoError(t, err)
+	taskID, _ := result.LastInsertId()
+
+	// Simulate the in-memory task snapshot still having "active" status
+	// (stale from before the user paused it)
+	task, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	assert.Equal(t, "paused", task.Status)
+
+	// UpdateTaskStats should NOT change "paused" back to anything else
+	service.UpdateTaskStats(task)
+
+	updated, err := service.GetTaskByID(taskID)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, updated.RunCount)
+	assert.NotNil(t, updated.LastRunAt)
+	// Status must still be "paused" — not overwritten
+	assert.Equal(t, "paused", updated.Status)
 }
 
 // ---------- insertTask / updateTask (tested indirectly via AddTask / UpdateTask) ----------
