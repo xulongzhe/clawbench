@@ -355,7 +355,9 @@ jobs:
           cp pkg-linux/clawbench/clawbench .
           cp -r pkg-linux/clawbench/public .
           mkdir -p docker-staging/pi
-          cp -r pkg-linux/clawbench/.clawbench/pi/* docker-staging/pi/
+          if [ -d "pkg-linux/clawbench/.clawbench/pi" ]; then
+            cp -r pkg-linux/clawbench/.clawbench/pi/. docker-staging/pi/
+          fi
           chmod +x ./clawbench
 
       - name: Set up QEMU
