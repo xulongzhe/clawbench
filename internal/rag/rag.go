@@ -1,103 +1,91 @@
-//go:build !norag
-
 package rag
 
 import (
-	"fmt"
 	"log/slog"
+	"path/filepath"
 	"sync/atomic"
 
 	"clawbench/internal/model"
 )
 
+// Global state
 var (
-	GlobalStore         *Store
-	GlobalIndexer       *Indexer
-	GlobalEmbedder      *EmbeddingClient
-	GlobalCleanupWorker *CleanupWorker
-	embedderHealthyFlag atomic.Bool
+	GlobalStore    *Store
+	GlobalEmbedder *EmbeddingClient
+
+	globalIndexer  *Indexer
+	globalCleanup  *CleanupWorker
 )
 
+var embedderHealthyFlag atomic.Bool
+
+// EmbedderHealthy returns whether the embedding API was last known to be healthy.
+func EmbedderHealthy() bool {
+	return embedderHealthyFlag.Load()
+}
+
+// SetEmbedderHealthy updates the cached embedder health state.
+func SetEmbedderHealthy(healthy bool) {
+	embedderHealthyFlag.Store(healthy)
+}
+
+// Init initializes the RAG subsystem with a SQLite-backed store.
 func Init(cfg model.RAGConfig) error {
+	// Initialize segmenter
 	if err := InitSegmenter(); err != nil {
-		slog.Warn("rag: gse segmenter not available, Chinese FTS may be limited", slog.String("err", err.Error()))
+		slog.Warn("rag: gse segmenter not available, Chinese segmentation disabled", slog.String("err", err.Error()))
 	}
 
-	store, err := InitStore(cfg)
+	// Determine database path
+	dbPath := filepath.Join(model.BinDir, ".clawbench", "ClawBench.db")
+	slog.Info("rag: opening SQLite store", slog.String("path", dbPath))
+
+	// Open SQLite store (uses the same database file as the main app)
+	store, err := NewSQLiteStore(dbPath)
 	if err != nil {
-		return fmt.Errorf("init rag store: %w", err)
+		return err
 	}
-
-	existingDim, mismatch, err := store.CheckDimensionMismatch()
-	if err != nil {
-		slog.Warn("rag: failed to check dimension, continuing", slog.String("err", err.Error()))
-	} else if mismatch {
-		slog.Warn(
-			"rag: embedding dimension mismatch, resetting table",
-			slog.Int("existing_dim", existingDim),
-			slog.Int("expected_dim", store.embeddingDim),
-		)
-		if err := store.ResetTable(); err != nil {
-			_ = store.Close()
-			return fmt.Errorf("reset rag table: %w", err)
-		}
-	}
-
-	embedder := NewEmbeddingClient(cfg.BaseURL, cfg.Model, cfg.APIKey)
-
 	GlobalStore = store
-	GlobalEmbedder = embedder
 
-	slog.Info(
-		"rag initialized",
-		slog.String("base_url", cfg.BaseURL),
-		slog.String("model", cfg.Model),
-		slog.Int("chunk_size", cfg.ChunkSize),
-		slog.Bool("fts_available", store.ftsAvailable),
-		slog.Int("embedding_dim", store.embeddingDim),
-	)
+	// Initialize embedding client
+	if cfg.BaseURL != "" && cfg.Model != "" {
+		GlobalEmbedder = NewEmbeddingClient(cfg.BaseURL, cfg.Model, cfg.APIKey)
+		slog.Info("rag: embedding client initialized", slog.String("model", cfg.Model), slog.String("url", cfg.BaseURL))
+	}
 
 	return nil
 }
 
+// StartIndexer starts the background indexing worker.
 func StartIndexer(cfg model.RAGConfig) {
 	if GlobalStore == nil {
-		slog.Warn("rag: cannot start indexer, store not initialized")
 		return
 	}
-	GlobalIndexer = NewIndexer(GlobalStore, GlobalEmbedder, cfg)
-	GlobalIndexer.Start()
+	globalIndexer = NewIndexer(GlobalStore, GlobalEmbedder, cfg)
+	globalIndexer.Start()
 }
 
+// StartCleanupWorker starts the background cleanup worker.
 func StartCleanupWorker(cfg model.RAGConfig) {
-	if cfg.RetentionDays <= 0 {
+	if GlobalStore == nil {
 		return
 	}
-	GlobalCleanupWorker = NewCleanupWorker(GlobalStore, cfg)
-	GlobalCleanupWorker.Start()
+	globalCleanup = NewCleanupWorker(GlobalStore, cfg)
+	globalCleanup.Start()
 }
 
+// Shutdown closes the RAG store, indexer, and cleanup worker.
 func Shutdown() {
-	if GlobalCleanupWorker != nil {
-		GlobalCleanupWorker.Stop()
-		GlobalCleanupWorker = nil
+	if globalIndexer != nil {
+		globalIndexer.Stop()
+		globalIndexer = nil
 	}
-	if GlobalIndexer != nil {
-		GlobalIndexer.Stop()
-		GlobalIndexer = nil
+	if globalCleanup != nil {
+		globalCleanup.Stop()
+		globalCleanup = nil
 	}
 	if GlobalStore != nil {
 		_ = GlobalStore.Close()
 		GlobalStore = nil
 	}
-	GlobalEmbedder = nil
-	slog.Info("rag shutdown complete")
-}
-
-func EmbedderHealthy() bool {
-	return embedderHealthyFlag.Load()
-}
-
-func SetEmbedderHealthy(healthy bool) {
-	embedderHealthyFlag.Store(healthy)
 }

@@ -491,14 +491,10 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	handler.SetSummarizer(ttsSummarizer)
 
 	// Initialize RAG history memory system
-	if ragAvailable {
-		if err := rag.Init(cfg.RAG); err != nil {
-			slog.Warn("failed to initialize RAG system, search will be limited", slog.String("err", err.Error()))
-		}
-		defer rag.Shutdown()
-	} else {
-		slog.Info("RAG disabled (built with norag tag)")
+	if err := rag.Init(cfg.RAG); err != nil {
+		slog.Warn("failed to initialize RAG system, search will be limited", slog.String("err", err.Error()))
 	}
+	defer rag.Shutdown()
 
 	// Determine port before loading skills/agents (skills and agents need {{PORT}})
 	port := cfg.Port
@@ -630,15 +626,12 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 	}
 
 	// Initialize RAG indexer (needs final port number)
-	if ragAvailable && rag.GlobalStore != nil {
-		// Start RAG indexer
+	if rag.GlobalStore != nil {
 		rag.StartIndexer(cfg.RAG)
 	}
 
-	// Start cleanup worker for soft-deleted data (runs even without RAG)
-	if ragAvailable {
-		rag.StartCleanupWorker(cfg.RAG)
-	}
+	// Start cleanup worker for soft-deleted data
+	rag.StartCleanupWorker(cfg.RAG)
 
 	// Initialize proxy service (port forwarding) and SSH tunnel server.
 	// ProxyRegistry is only created when SSH tunnel is enabled — it has no

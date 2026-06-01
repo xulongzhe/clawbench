@@ -1,5 +1,3 @@
-//go:build !norag
-
 package rag
 
 import (

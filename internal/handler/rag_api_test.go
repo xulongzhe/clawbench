@@ -1,5 +1,3 @@
-//go:build !norag
-
 package handler
 
 import (
@@ -329,11 +327,10 @@ func TestServeRAGSession_LocalhostCrossProject(t *testing.T) {
 
 // ---------- RAG test helpers ----------
 
-// setupRAGStore creates a temporary DuckDB store for handler tests.
+// setupRAGStore creates a temporary SQLite store for handler tests.
 func setupRAGStore(t *testing.T) *rag.Store {
 	t.Helper()
-	dir := t.TempDir()
-	store, err := rag.NewStore(dir+"/test.duckdb", nil)
+	store, err := rag.NewSQLiteStore(":memory:")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 	return store

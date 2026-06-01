@@ -1,5 +1,3 @@
-//go:build !norag
-
 package rag
 
 import (
@@ -25,9 +23,9 @@ type SearchParams struct {
 	Limit            int    `json:"limit"`
 	ProjectPath      string `json:"project"`
 	Backend          string `json:"backend"`
-	Role             string `json:"role"`               // Filter by role: "user" or "assistant"
-	SessionID        string `json:"session_id"`         // Limit search to this session
-	ExcludeSessionID string `json:"exclude_session_id"` // Exclude this session from results (e.g., current session)
+	Role             string `json:"role"`
+	SessionID        string `json:"session_id"`
+	ExcludeSessionID string `json:"exclude_session_id"`
 	FromTime         string `json:"from"`
 	ToTime           string `json:"to"`
 }
@@ -36,13 +34,15 @@ type SearchParams struct {
 type SearchResult struct {
 	Results []SearchHit `json:"results"`
 	Total   int         `json:"total"`
-	Mode    SearchMode  `json:"mode"` // Which search strategy was used
+	Mode    SearchMode  `json:"mode"`
 }
 
 // RAGSearch performs a search using the best available strategy:
-//   - Hybrid (vector + FTS with RRF) when both embedding API and FTS are available
-//   - Vector-only when embedding API is available but FTS is not
+//   - Hybrid (vector + FTS with RRF) when embedding API is available and VectorCache is ready
+//   - Vector-only when embedding API is available but cache is not ready
 //   - FTS-only when embedding API is unavailable
+//
+// FTS5 is always available in SQLite (built-in), unlike DuckDB where it was an extension.
 func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, params SearchParams, defaultLimit int, searchPoolSize int) (*SearchResult, error) { //nolint:gocyclo // multi-mode search with fallback
 	if params.Query == "" {
 		return &SearchResult{Mode: SearchModeFTS}, nil
@@ -62,29 +62,36 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 		poolSize = 20
 	}
 
-	// Determine search strategy using cached embedder health state
-	// (avoids per-request HTTP probe — indexer refreshes on every polling cycle)
+	// Determine embedder health
 	embedderHealthy := EmbedderHealthy()
-	// If no cached state and embedder is available, do a fresh probe
 	if !embedderHealthy && embedder != nil {
 		reachable, modelAvailable, _ := embedder.IsHealthy(ctx)
 		embedderHealthy = reachable && modelAvailable
 	}
 
-	ftsAvailable := store.ftsAvailable
+	// Check VectorCache readiness
+	cacheReady := store.cache.IsReady()
+
+	// FTS5 is always available with SQLite (no extension loading needed)
+	ftsAvailable := true
 
 	var hits []SearchHit
 	var mode SearchMode
 	var err error
 
 	switch {
-	case embedderHealthy && ftsAvailable:
+	case embedderHealthy && cacheReady && ftsAvailable:
 		// Hybrid: vector + FTS with RRF fusion
+		if embedder == nil {
+			// Embedder marked healthy but no client available — fall back to FTS
+			mode = SearchModeFTS
+			hits, err = store.SearchFTS(params.Query, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
+			break
+		}
 		mode = SearchModeHybrid
 		var queryEmbedding []float64
 		queryEmbedding, err = embedder.Embed(ctx, params.Query)
 		if err != nil {
-			// Embedding failed — fall back to FTS-only
 			slog.Warn("rag: query embedding failed, falling back to FTS", slog.String("err", err.Error()))
 			hits, err = store.SearchFTS(params.Query, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
 			mode = SearchModeFTS
@@ -92,8 +99,13 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 			hits, err = store.SearchHybrid(queryEmbedding, params.Query, poolSize, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
 		}
 
-	case embedderHealthy && !ftsAvailable:
-		// Vector-only
+	case embedderHealthy && cacheReady && !ftsAvailable:
+		// Vector-only (FTS not available — shouldn't happen with SQLite, but defensive)
+		if embedder == nil {
+			mode = SearchModeFTS
+			hits, err = store.SearchFTS(params.Query, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
+			break
+		}
 		mode = SearchModeVector
 		var queryEmbedding []float64
 		queryEmbedding, err = embedder.Embed(ctx, params.Query)
@@ -102,12 +114,15 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 		}
 		hits, err = store.SearchSimple(queryEmbedding, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
 
-	default:
-		// FTS-only (embedding API unavailable or no embedding)
+	case embedderHealthy && !cacheReady:
+		// Embedder available but cache not loaded yet — degrade to FTS-only
 		mode = SearchModeFTS
-		if !ftsAvailable {
-			return nil, fmt.Errorf("no search available: embedding API not reachable and FTS not loaded")
-		}
+		slog.Warn("rag: VectorCache not ready, falling back to FTS-only")
+		hits, err = store.SearchFTS(params.Query, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
+
+	default:
+		// FTS-only (embedding API unavailable)
+		mode = SearchModeFTS
 		hits, err = store.SearchFTS(params.Query, limit, params.ProjectPath, params.Backend, params.Role, params.SessionID, params.ExcludeSessionID, params.FromTime, params.ToTime)
 	}
 
@@ -121,7 +136,6 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 		sessionIDs[h.SessionID] = true
 	}
 
-	// Fetch session titles in batch
 	titles := getSessionTitles(sessionIDs)
 	for i := range hits {
 		if title, ok := titles[hits[i].SessionID]; ok {
@@ -145,18 +159,23 @@ func RAGSearch(ctx context.Context, store *Store, embedder *EmbeddingClient, par
 }
 
 // getSessionTitles fetches session titles for a set of session IDs from SQLite.
-// Uses a single batched query with IN clause instead of N individual queries.
+// Returns empty map if the service DB is not available (e.g., during tests).
 func getSessionTitles(sessionIDs map[string]bool) map[string]string {
 	if len(sessionIDs) == 0 {
 		return map[string]string{}
 	}
+
+	// Check if service DB is available
+	if service.DB == nil {
+		return map[string]string{}
+	}
+
 	ids := make([]string, 0, len(sessionIDs))
 	for id := range sessionIDs {
 		ids = append(ids, id)
 	}
 	titles, err := service.GetSessionTitlesBatch(ids)
 	if err != nil {
-		// Fallback to individual queries if batch fails
 		titles = make(map[string]string, len(sessionIDs))
 		for id := range sessionIDs {
 			title, err := service.GetSessionTitle(id)

@@ -1,5 +1,3 @@
-//go:build !norag
-
 package rag
 
 import (
@@ -12,10 +10,10 @@ import (
 )
 
 // CleanupWorker periodically purges soft-deleted data that has exceeded
-// the configured retention period. It deletes from both DuckDB (chunks)
+// the configured retention period. It deletes from both SQLite (chunks)
 // and SQLite (messages, sessions, raw responses).
 type CleanupWorker struct {
-	store   *Store // nil if RAG is disabled (only SQLite cleanup)
+	store   *Store
 	cfg     model.RAGConfig
 	stopCh  chan struct{}
 	doneCh  chan struct{}
@@ -74,7 +72,6 @@ func (w *CleanupWorker) Stop() {
 func (w *CleanupWorker) run() {
 	defer close(w.doneCh)
 
-	// Delay first run to avoid competing with startup operations
 	select {
 	case <-time.After(5 * time.Minute):
 	case <-w.stopCh:
@@ -97,11 +94,10 @@ func (w *CleanupWorker) run() {
 }
 
 // cleanup performs one purge cycle: find expired soft-deleted sessions,
-// then delete from DuckDB and SQLite.
+// then delete chunks and SQLite data.
 func (w *CleanupWorker) cleanup() {
 	cutoff := time.Now().AddDate(0, 0, -w.cfg.RetentionDays)
 
-	// Find soft-deleted sessions older than retention period
 	sessionIDs, err := service.GetExpiredDeletedSessions(cutoff)
 	if err != nil {
 		slog.Error("rag cleanup: failed to query expired sessions", slog.String("err", err.Error()))
@@ -112,20 +108,19 @@ func (w *CleanupWorker) cleanup() {
 		return
 	}
 
-	// 1. Delete DuckDB chunks for these sessions (if RAG is enabled)
+	// 1. Delete SQLite chunks for these sessions (FTS synced in same transaction)
 	var chunksPurged int64
 	if w.store != nil {
 		chunksPurged, err = w.store.DeleteChunksBySessionIDs(sessionIDs)
 		if err != nil {
-			slog.Error("rag cleanup: failed to delete DuckDB chunks", slog.String("err", err.Error()))
-			// Continue with SQLite cleanup even if DuckDB fails
+			slog.Error("rag cleanup: failed to delete chunks", slog.String("err", err.Error()))
 		}
 	}
 
 	// 2. Delete SQLite data (ai_raw_responses → chat_history → chat_sessions)
 	sessionsPurged, messagesPurged, err := service.PurgeDeletedData(sessionIDs)
 	if err != nil {
-		slog.Error("rag cleanup: failed to purge SQLite data", slog.String("err", err.Error()))
+		slog.Error("rag cleanup: failed to purge data", slog.String("err", err.Error()))
 		return
 	}
 

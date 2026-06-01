@@ -127,15 +127,13 @@ type RAGConfig struct {
 	APIKey            string `yaml:"api_key"`             // API key for the embedding service (optional, for cloud providers)
 	OllamaBaseURL     string `yaml:"ollama_base_url"`     // Deprecated: use base_url
 	OllamaModel       string `yaml:"ollama_model"`        // Deprecated: use model
-	ChunkSize         int    `yaml:"chunk_size"`          // Chunk size in tokens (default: 512)
-	ChunkOverlap      int    `yaml:"chunk_overlap"`       // Overlap between chunks in tokens (default: 64)
-	PollInterval      string `yaml:"poll_interval"`       // Indexer poll interval (default: "10s")
-	BatchSize         int    `yaml:"batch_size"`          // Messages per indexer batch (default: 10)
-	SearchLimit       int    `yaml:"search_limit"`        // Default search result limit (default: 5)
-	SearchPoolSize    int    `yaml:"search_pool_size"`    // Candidates per search source before RRF fusion (default: 20)
-	RetentionDays     int    `yaml:"retention_days"`      // Soft-deleted data retention days (0=keep forever, default: 90)
-	DuckDBThreads     int    `yaml:"duckdb_threads"`      // DuckDB thread count (default: 1; prevents SIGFPE on low-memory systems)
-	DuckDBMemoryLimit string `yaml:"duckdb_memory_limit"` // DuckDB memory limit (default: "512MB"; prevents SIGFPE on low-memory systems)
+	ChunkSize      int    `yaml:"chunk_size"`       // Chunk size in tokens (default: 512)
+	ChunkOverlap   int    `yaml:"chunk_overlap"`    // Overlap between chunks in tokens (default: 64)
+	PollInterval   string `yaml:"poll_interval"`    // Indexer poll interval (default: "10s")
+	BatchSize      int    `yaml:"batch_size"`       // Messages per indexer batch (default: 10)
+	SearchLimit    int    `yaml:"search_limit"`     // Default search result limit (default: 5)
+	SearchPoolSize int    `yaml:"search_pool_size"` // Candidates per search source before RRF fusion (default: 20)
+	RetentionDays  int    `yaml:"retention_days"`   // Soft-deleted data retention days (0=keep forever, default: 90)
 }
 
 // PiperConfig holds configuration for the Piper TTS engine.

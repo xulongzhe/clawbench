@@ -1,5 +1,3 @@
-//go:build !norag
-
 package rag
 
 import (
@@ -23,10 +21,10 @@ type Indexer struct {
 	doneCh          chan struct{}
 	mu              sync.Mutex
 	running         bool
-	modelWarn       bool               // Whether we've warned about missing model
-	embedderHealthy bool               // Current embedding API health state
-	dimensionSynced bool               // Whether dimension has been synced from embedder to store
-	batchCancel     context.CancelFunc // cancels in-flight indexBatch on Stop
+	modelWarn       bool
+	embedderHealthy bool
+	dimensionSynced bool
+	batchCancel     context.CancelFunc
 }
 
 // NewIndexer creates a new RAG indexer.
@@ -60,7 +58,6 @@ func (idx *Indexer) Start() {
 }
 
 // Stop signals the indexer to stop and waits for it to finish.
-// Cancels any in-flight batch and waits up to 5s for the goroutine to exit.
 func (idx *Indexer) Stop() {
 	idx.mu.Lock()
 	if !idx.running {
@@ -69,14 +66,12 @@ func (idx *Indexer) Stop() {
 	}
 	idx.mu.Unlock()
 
-	// Cancel any in-flight batch so indexBatch returns quickly
 	if idx.batchCancel != nil {
 		idx.batchCancel()
 	}
 
 	close(idx.stopCh)
 
-	// Wait with timeout to avoid blocking forever on a stuck goroutine
 	select {
 	case <-idx.doneCh:
 	case <-time.After(5 * time.Second):
@@ -111,7 +106,6 @@ func (idx *Indexer) run() {
 		case <-idx.stopCh:
 			return
 		case <-ticker.C:
-			// Check stop again before starting a new batch
 			select {
 			case <-idx.stopCh:
 				return
@@ -123,23 +117,20 @@ func (idx *Indexer) run() {
 }
 
 // indexBatch processes one batch of unindexed messages and backfills embeddings.
-// Uses a stop-aware context so Stop() can cancel in-flight work.
 func (idx *Indexer) indexBatch() {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	// Store cancel so Stop() can abort this batch
 	idx.mu.Lock()
 	idx.batchCancel = cancel
 	idx.mu.Unlock()
 
-	// Check embedding API health (startup probe + periodic retry)
+	// Check embedding API health
 	idx.checkEmbedderHealth(ctx)
 
 	// Phase 1: Index new messages from SQLite
 	idx.indexNewMessages(ctx)
 
-	// Exit early if stopped
 	if ctx.Err() != nil {
 		return
 	}
@@ -149,16 +140,18 @@ func (idx *Indexer) indexBatch() {
 		idx.backfillEmbeddings(ctx)
 	}
 
-	// Phase 3: Rebuild FTS index if dirty
-	if err := idx.store.RebuildFTSIfDirty(); err != nil {
-		slog.Debug("rag: FTS rebuild deferred", slog.String("err", err.Error()))
-	}
+	// Phase 3: No FTS rebuild needed — FTS5 is synced on every INSERT/DELETE
+	// (unlike DuckDB which required periodic RebuildFTSIfDirty)
 }
 
 // checkEmbedderHealth checks embedding API availability and updates the healthy flag.
-// Also updates the global cached health state for search requests.
-// After health check passes, syncs embedding dimension from embedder to store.
 func (idx *Indexer) checkEmbedderHealth(ctx context.Context) {
+	if idx.embedder == nil {
+		idx.embedderHealthy = false
+		SetEmbedderHealthy(false)
+		return
+	}
+
 	reachable, modelAvailable, err := idx.embedder.IsHealthy(ctx)
 	if err != nil {
 		slog.Debug("rag: embedding API health check error", slog.String("err", err.Error()))
@@ -187,7 +180,6 @@ func (idx *Indexer) checkEmbedderHealth(ctx context.Context) {
 		return
 	}
 
-	// Embedding API is healthy
 	if !idx.embedderHealthy {
 		slog.Info("rag: embedding API became healthy, will backfill embeddings")
 	}
@@ -195,8 +187,17 @@ func (idx *Indexer) checkEmbedderHealth(ctx context.Context) {
 	// Sync dimension from embedder to store (one-time)
 	if !idx.dimensionSynced {
 		if dim := idx.embedder.Dim(); dim > 0 {
-			if idx.store.SetEmbeddingDim(dim) {
-				slog.Info("rag: synced embedding dimension from embedder", slog.Int("dim", dim))
+			// Check for dimension mismatch against existing data
+			existingDim, mismatch, _ := idx.store.CheckDimensionMismatch()
+			if mismatch {
+				slog.Warn("rag: embedding dimension mismatch, resetting store", slog.Int("existing", existingDim), slog.Int("new", dim))
+				if err := idx.store.ResetForDimensionMismatch(dim); err != nil {
+					slog.Error("rag: failed to reset store for dimension mismatch", slog.String("err", err.Error()))
+				}
+			} else {
+				if idx.store.SetEmbeddingDim(dim) {
+					slog.Info("rag: synced embedding dimension from embedder", slog.Int("dim", dim))
+				}
 			}
 			idx.dimensionSynced = true
 		}
@@ -208,9 +209,7 @@ func (idx *Indexer) checkEmbedderHealth(ctx context.Context) {
 }
 
 // indexNewMessages indexes new (unindexed) messages from SQLite.
-// When the embedding API is healthy, generates embeddings; otherwise stores text-only (for FTS).
 func (idx *Indexer) indexNewMessages(ctx context.Context) {
-	// Fetch unindexed messages from SQLite (newest first)
 	messages, err := service.GetUnindexedMessages(idx.cfg.BatchSize)
 	if err != nil {
 		slog.Error("rag: failed to fetch unindexed messages", slog.String("err", err.Error()))
@@ -220,7 +219,6 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 		return
 	}
 
-	// Get total unindexed count for progress tracking
 	totalRemaining, _ := service.UnindexedCount()
 
 	slog.Info(
@@ -243,11 +241,9 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 				slog.String("session_id", msg.SessionID),
 				slog.String("err", err.Error()),
 			)
-			// Continue with next message — don't let one failure stop the batch
 			continue
 		}
 
-		// Mark message as indexed in SQLite
 		if err := service.MarkMessageIndexed(msg.ID); err != nil {
 			slog.Error(
 				"rag: failed to mark message indexed",
@@ -285,10 +281,8 @@ func (idx *Indexer) indexNewMessages(ctx context.Context) {
 
 // indexMessage processes a single message: extract text, chunk, (optionally) embed, store.
 func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessage) error {
-	// Extract text content
 	text := ExtractTextFromContent(msg.Content, msg.Role)
 	if text == "" {
-		// No text content (e.g., only tool_use blocks) — mark as indexed to skip
 		slog.Debug(
 			"rag: skipping message with no text content",
 			slog.Int64("message_id", msg.ID),
@@ -297,13 +291,11 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 		return nil
 	}
 
-	// Chunk the text
 	textChunks := ChunkText(text, idx.cfg.ChunkSize, idx.cfg.ChunkOverlap)
 	if len(textChunks) == 0 {
 		return nil
 	}
 
-	// Limit chunks per message to prevent runaway
 	maxChunks := 50
 	if len(textChunks) > maxChunks {
 		slog.Warn(
@@ -315,7 +307,6 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 		textChunks = textChunks[:maxChunks]
 	}
 
-	// Build Chunk objects for storage
 	chunks := make([]Chunk, len(textChunks))
 	for i, tc := range textChunks {
 		chunks[i] = Chunk{
@@ -332,7 +323,6 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 		}
 	}
 
-	// Generate embeddings if the embedding API is healthy
 	if idx.embedderHealthy {
 		slog.Debug(
 			"rag: embedding message",
@@ -348,7 +338,6 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 
 		embeddings, err := idx.embedder.EmbedBatch(ctx, texts)
 		if err != nil {
-			// Embedding failed — store without embedding (FTS still works)
 			slog.Warn(
 				"rag: embedding failed, storing text-only",
 				slog.Int64("message_id", msg.ID),
@@ -365,10 +354,7 @@ func (idx *Indexer) indexMessage(ctx context.Context, msg service.UnindexedMessa
 			}
 		}
 	}
-	// When the embedding API is NOT healthy, chunks are stored without embedding
-	// (Embedding: nil, HasEmbedding: false) — FTS search still works.
 
-	// Store in DuckDB
 	return idx.store.InsertChunks(chunks)
 }
 
@@ -390,7 +376,6 @@ func (idx *Indexer) backfillEmbeddings(ctx context.Context) {
 		batchSize = 10
 	}
 
-	// Limit backfill per cycle to avoid overloading
 	maxBackfill := batchSize
 	if maxBackfill > 50 {
 		maxBackfill = 50
@@ -405,7 +390,6 @@ func (idx *Indexer) backfillEmbeddings(ctx context.Context) {
 		return
 	}
 
-	// Batch embed all pending chunk texts
 	texts := make([]string, len(pendingChunks))
 	for i, p := range pendingChunks {
 		texts[i] = p.ChunkText
@@ -417,7 +401,6 @@ func (idx *Indexer) backfillEmbeddings(ctx context.Context) {
 		return
 	}
 
-	// Update each chunk with its embedding
 	backfilled := 0
 	for i, p := range pendingChunks {
 		if embeddings[i] == nil {
