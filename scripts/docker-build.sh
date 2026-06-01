@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
-# One-step Docker build & run for ClawBench testing
+# One-step Docker build & run for ClawBench
 #
 # Usage:
-#   ./scripts/docker-build.sh           # build + run (port 20300)
+#   ./scripts/docker-build.sh           # build + run (port 20000)
 #   ./scripts/docker-build.sh --stop    # stop and remove container
 #   ./scripts/docker-build.sh --clean   # stop + remove container + volume
 
-PORT=20300
-NAME="clawbench-test"
+PORT=20000
+NAME="clawbench"
 
 # Stop existing container
 if docker ps -a --format '{{.Names}}' | grep -q "^${NAME}$"; then
@@ -34,7 +34,7 @@ fi
 echo "Building binary..."
 ./build.sh --with-pi
 
-# Prepare staging directory for Pi binary (optional)
+# Prepare staging directory for Pi binary
 rm -rf docker-staging
 mkdir -p docker-staging/pi
 if [ -d ".clawbench/pi" ] && [ -f ".clawbench/pi/pi" ]; then
