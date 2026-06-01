@@ -9,7 +9,6 @@ require (
 	github.com/go-ego/gse v1.0.2
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/mattn/go-sqlite3 v1.14.44
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/stretchr/testify v1.11.1

@@ -108,7 +108,7 @@ fi
 echo "🔍 运行 golangci-lint ($(golangci-lint version --format short 2>/dev/null || echo "unknown"))..."
 echo ""
 
-if golangci-lint run --build-tags fts5 $LINT_ARGS ./...; then
+if golangci-lint run $LINT_ARGS ./...; then
     echo ""
     echo "✅ Lint 检查通过"
 else

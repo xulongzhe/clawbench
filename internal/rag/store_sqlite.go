@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // register SQLite driver (needs -tags fts5 for FTS5 support)
+	_ "modernc.org/sqlite" // register SQLite driver (pure Go, FTS5 built-in)
 )
 
 // Chunk represents a text chunk with its embedding and metadata.
@@ -59,15 +59,26 @@ type Store struct {
 // If dbPath is ":memory:", creates an in-memory database (for testing).
 // Uses shared cache mode for in-memory databases to allow cross-goroutine access.
 func NewSQLiteStore(dbPath string) (*Store, error) {
-	dsn := dbPath + "?_busy_timeout=5000&_journal_mode=WAL"
+	dsn := dbPath
 	if dbPath == ":memory:" {
 		// Shared cache required for in-memory DB to work across goroutines
-		dsn = "file::memory:?cache=shared&_busy_timeout=5000&_journal_mode=WAL"
+		dsn = "file::memory:?cache=shared"
 	}
 
-	db, err := sql.Open("sqlite3", dsn)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open sqlite: %w", err)
+	}
+
+	// Set pragmas via EXEC (same pattern as service/database.go;
+	// modernc.org/sqlite does not recognize mattn-style _busy_timeout/_journal_mode DSN params)
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to set WAL mode: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to set busy_timeout: %w", err)
 	}
 
 	// Set MaxOpenConns to 1 for in-memory DB (only one connection can see the data)

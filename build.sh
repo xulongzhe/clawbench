@@ -10,7 +10,7 @@ TARGET_OS=""
 TARGET_ARCH=""
 BUILD_ANDROID=""
 DOWNLOAD_PI=""
-BUILD_TAGS="fts5"
+REFRESH_MODELS=""
 for arg in "$@"; do
     case "$arg" in
         --windows)
@@ -40,21 +40,28 @@ for arg in "$@"; do
         --with-pi)
             DOWNLOAD_PI=1
             ;;
+        --refresh-models)
+            REFRESH_MODELS=1
+            ;;
     esac
 done
 
 echo "=== Building $NAME ==="
 
-# 0. Generate provider models from models.dev API
-echo "[0/5] Generating provider models..."
-if command -v python3 >/dev/null 2>&1; then
-    if python3 scripts/generate-provider-models.py; then
-        echo "  internal/model/provider_models.json updated"
+# 0. Generate provider models from models.dev API (only with --refresh-models)
+if [ -n "$REFRESH_MODELS" ]; then
+    echo "[0/5] Generating provider models..."
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 scripts/generate-provider-models.py; then
+            echo "  internal/model/provider_models.json updated"
+        else
+            echo "  WARNING: Failed to generate provider models, using cached version"
+        fi
     else
-        echo "  WARNING: Failed to generate provider models, using cached version"
+        echo "  python3 not found, using cached provider_models.json"
     fi
 else
-    echo "  python3 not found, using cached provider_models.json"
+    echo "[0/5] Provider models skipped (use --refresh-models to fetch from models.dev API)"
 fi
 
 # Derive version from git (e.g. v1.0.0, v0.30.0-30-g830bb6c, or short SHA)
@@ -93,10 +100,10 @@ if command -v go >/dev/null 2>&1; then
         if [ "$TARGET_OS" = "windows" ]; then
             BINARY_NAME="${NAME}.exe"
         fi
-        GOOS=$TARGET_OS GOARCH=$TARGET_ARCH go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "$BINARY_NAME" ./cmd/server
+        GOOS=$TARGET_OS GOARCH=$TARGET_ARCH go build -ldflags "$LDFLAGS" -o "$BINARY_NAME" ./cmd/server
         echo "  Cross-compiled: $BINARY_NAME ($TARGET_OS/$TARGET_ARCH)"
     else
-        go build -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" -o "$NAME" ./cmd/server
+        go build -ldflags "$LDFLAGS" -o "$NAME" ./cmd/server
         echo "  Go binary: ./$NAME"
     fi
 else
@@ -207,3 +214,6 @@ echo ""
 echo "Embedded agent:"
 echo "  ./build.sh --linux --with-pi  # Linux + Pi binary (CI release)"
 echo "  PI_VERSION=0.79.0 ./build.sh --with-pi  # Override Pi version"
+echo ""
+echo "Model data:"
+echo "  ./build.sh --refresh-models  # Fetch latest models from models.dev API"

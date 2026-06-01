@@ -36,7 +36,7 @@ cd "$ROOT_DIR"
 # Step 1: Run tests with coverage (if not skipped)
 if [ "$SKIP_TEST" = false ]; then
   echo "==> Running Go tests with coverage..."
-  go test -tags "fts5" -coverprofile="$COVERAGE_PROFILE" ./... 2>&1
+  go test -coverprofile="$COVERAGE_PROFILE" ./... 2>&1
   echo ""
 fi
 
@@ -139,7 +139,7 @@ def pass_fail(passed):
 
 # ── Get current per-package coverage ────────────────────────────
 result = subprocess.run(
-    ["go", "test", "-tags", "fts5", "-cover", "./..."],
+    ["go", "test", "-cover", "./..."],
     capture_output=True, text=True
 )
 output = result.stdout + result.stderr
