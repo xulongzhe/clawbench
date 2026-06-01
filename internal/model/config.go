@@ -122,11 +122,11 @@ type JPushConfig struct {
 // RAGConfig holds configuration for the RAG history memory system.
 // RAG is always enabled. When the embedding API is unavailable, falls back to BM25 full-text search.
 type RAGConfig struct {
-	BaseURL           string `yaml:"base_url"`            // OpenAI-compatible API base URL (default: "http://localhost:11434")
-	Model             string `yaml:"model"`               // Embedding model name (default: "bge-m3")
-	APIKey            string `yaml:"api_key"`             // API key for the embedding service (optional, for cloud providers)
-	OllamaBaseURL     string `yaml:"ollama_base_url"`     // Deprecated: use base_url
-	OllamaModel       string `yaml:"ollama_model"`        // Deprecated: use model
+	BaseURL        string `yaml:"base_url"`         // OpenAI-compatible API base URL (default: "http://localhost:11434")
+	Model          string `yaml:"model"`            // Embedding model name (default: "bge-m3")
+	APIKey         string `yaml:"api_key"`          // API key for the embedding service (optional, for cloud providers)
+	OllamaBaseURL  string `yaml:"ollama_base_url"`  // Deprecated: use base_url
+	OllamaModel    string `yaml:"ollama_model"`     // Deprecated: use model
 	ChunkSize      int    `yaml:"chunk_size"`       // Chunk size in tokens (default: 512)
 	ChunkOverlap   int    `yaml:"chunk_overlap"`    // Overlap between chunks in tokens (default: 64)
 	PollInterval   string `yaml:"poll_interval"`    // Indexer poll interval (default: "10s")
