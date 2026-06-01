@@ -50,10 +50,11 @@ flowchart TD
 
 ### 功能清单
 
-- **WebSocket 事件通道**：`/api/ai/events/ws` 提供 6 种事件类型（session_start、session_complete、message_new、task_update、task_exec_update、tunnel_status），客户端实时感知系统状态变化
+- **WebSocket 事件通道**：`/api/ai/events/ws` 提供 7 种事件类型（session_start、session_complete、message_new、task_update、task_exec_update、tunnel_status、summary_update），客户端实时感知系统状态变化
 - **JPush 推送后备**：WS 断开且 JPush 可用时，事件转为推送通知。保证离线客户端也能收到关键通知（如任务完成）
 - **断线缓冲与回放**：WS 断线后缓冲 10s 内的事件（最多 50 条），重连后自动回放。配合推送确保不丢失关键通知
 - **Push Registration ID 管理**：客户端通过 WS `register` 消息上报 JPush Registration ID，绑定到登录级别。WS 重连后不需要重新注册
+- **摘要推送**：`summary_update` 事件在聊天或任务摘要生成后实时推送，前端 `SummaryToggle` 组件可立即切换显示摘要，无需轮询
 - **心跳保活**：WS 30s ping/pong，5min 空闲超时。防止半开连接占用资源
 - **客户端容量限制**：最多 20 个 WS 订阅，防止单个服务端过载
 
