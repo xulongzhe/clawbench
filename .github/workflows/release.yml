@@ -389,23 +389,27 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Set package visibility to public
+      - name: Check package visibility
         if: always()
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           ORG="${GITHUB_REPOSITORY_OWNER}"
-          # Try org-level endpoint first, then user-level
-          if ! gh api --method PATCH \
-            -H "Accept: application/vnd.github+json" \
-            "/orgs/${ORG}/packages/container/clawbench" \
-            -f visibility=public 2>/dev/null; then
-            gh api --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              /user/packages/container/clawbench \
-              -f visibility=public 2>/dev/null || \
-              echo "⚠ Could not set package visibility via API — set manually at https://github.com/orgs/${ORG}/packages/container/clawbench/settings"
+          PKG_SLUG="clawbench"
+          SETTINGS_URL="https://github.com/orgs/${ORG}/packages/container/${PKG_SLUG}/settings"
+          ORG_PACKAGES_URL="https://github.com/orgs/${ORG}/settings/packages"
+
+          # GitHub has no API to change package visibility — this can only be
+          # done via the web UI.  We check and warn if the package is private.
+          VISIBILITY=$(gh api "/orgs/${ORG}/packages/container/${PKG_SLUG}" --jq '.visibility' 2>/dev/null || echo "not_found")
+
+          if [ "$VISIBILITY" = "public" ]; then
+            echo "✅ Package is already public"
+          elif [ "$VISIBILITY" = "private" ]; then
+            echo "::warning::Docker image package is PRIVATE. Users cannot pull without authentication. Fix: ${SETTINGS_URL} → Danger Zone → Change visibility → Public. To make this permanent: ${ORG_PACKAGES_URL} → Package Creation → Public."
+          else
+            echo "::warning::Could not determine package visibility. If it's private, set it to public at: ${SETTINGS_URL}"
           fi
 
   release-notes:
