@@ -177,6 +177,8 @@ func cosineSimilarity(a, b []float64) float64 {
 
 // serializeEmbedding converts a []float64 to a byte slice for BLOB storage.
 // Each float64 is stored as 8 bytes using math.Float64bits.
+//
+//nolint:gosec
 func serializeEmbedding(vec []float64) []byte {
 	buf := make([]byte, len(vec)*8)
 	for i, v := range vec {

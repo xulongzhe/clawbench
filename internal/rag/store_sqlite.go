@@ -639,14 +639,12 @@ func (s *Store) DeleteChunksBySessionIDs(sessionIDs []string) (int64, error) {
 	}
 
 	// Delete FTS entries first (uses subquery to find IDs)
-	//nolint:gosec // G202: placeholders are parameterized (?, ?, ...), not raw input
 	_, err = tx.Exec("DELETE FROM rag_chunks_fts WHERE rowid IN (SELECT id FROM rag_chunks WHERE session_id IN ("+placeholders+"))", args...)
 	if err != nil {
 		return 0, fmt.Errorf("delete fts entries: %w", err)
 	}
 
 	// Delete main table
-	//nolint:gosec // G202: placeholders are parameterized (?, ?, ...), not raw input
 	result, err := tx.Exec("DELETE FROM rag_chunks WHERE session_id IN ("+placeholders+")", args...)
 	if err != nil {
 		return 0, fmt.Errorf("delete chunks: %w", err)
