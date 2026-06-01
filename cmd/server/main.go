@@ -772,7 +772,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 		SSHEnabled:      sshEnabled,
 		SSHPort:         sshPort,
 		TTSEngine:       engine,
-		RAGAvailable:    ragAvailable && rag.GlobalStore != nil,
+		RAGAvailable:    rag.GlobalStore != nil,
 		TerminalOn:      cfg.Terminal.Enabled,
 		TaskCount:       taskCount,
 		StartupDuration: time.Since(startTime),
