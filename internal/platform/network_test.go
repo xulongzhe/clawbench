@@ -1,16 +1,29 @@
 package platform
 
 import (
-	"context"
+	"errors"
 	"net"
 	"testing"
 	"time"
 )
 
+// mockConn implements net.Conn for testing LocalAddr behavior.
+type mockConn struct {
+	localAddr net.Addr
+}
+
+func (m *mockConn) Read(b []byte) (n int, err error)   { return 0, net.ErrClosed }
+func (m *mockConn) Write(b []byte) (n int, err error)  { return 0, net.ErrClosed }
+func (m *mockConn) Close() error                       { return nil }
+func (m *mockConn) LocalAddr() net.Addr                { return m.localAddr }
+func (m *mockConn) RemoteAddr() net.Addr               { return nil }
+func (m *mockConn) SetDeadline(t time.Time) error      { return nil }
+func (m *mockConn) SetReadDeadline(t time.Time) error  { return nil }
+func (m *mockConn) SetWriteDeadline(t time.Time) error { return nil }
+
 func TestGetOutboundIP_ReturnsNonLoopback(t *testing.T) {
 	ip := GetOutboundIP()
 	if ip == "" {
-		// May be empty in isolated environments (no network)
 		t.Log("GetOutboundIP() returned empty string (no outbound route available)")
 		return
 	}
@@ -23,70 +36,90 @@ func TestGetOutboundIP_ReturnsNonLoopback(t *testing.T) {
 	}
 }
 
-func TestGetOutboundIP_Format(t *testing.T) {
-	ip := GetOutboundIP()
-	if ip == "" {
-		t.Skip("no outbound IP available in this environment")
-	}
-	// Should be a valid IPv4 or IPv6 address string
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		t.Errorf("GetOutboundIP() = %q, not a valid IP address", ip)
-	}
-}
-
 func TestGetOutboundIP_DialError(t *testing.T) {
-	// Replace dialer with one that always fails
-	origDialer := outboundDialer
-	outboundDialer = net.Dialer{Timeout: 1 * time.Nanosecond}
-	defer func() { outboundDialer = origDialer }()
+	orig := dialOutbound
+	defer func() { dialOutbound = orig }()
+
+	dialOutbound = func() (net.Conn, error) {
+		return nil, errors.New("dial error")
+	}
 
 	ip := GetOutboundIP()
-	// With an impossibly short timeout, the dial should fail
-	// and return empty string
 	if ip != "" {
 		t.Errorf("GetOutboundIP() = %q, want empty string on dial error", ip)
 	}
 }
 
-func TestGetOutboundIP_CustomDialer(t *testing.T) {
-	// Test with a real dialer to exercise the success path
-	origDialer := outboundDialer
-	outboundDialer = net.Dialer{Timeout: 2 * time.Second}
-	defer func() { outboundDialer = origDialer }()
+func TestGetOutboundIP_NonUDPAddr(t *testing.T) {
+	orig := dialOutbound
+	defer func() { dialOutbound = orig }()
+
+	// Return a connection whose LocalAddr is a TCPAddr (not *net.UDPAddr)
+	dialOutbound = func() (net.Conn, error) {
+		return &mockConn{localAddr: &net.TCPAddr{IP: net.ParseIP("192.168.1.1"), Port: 1234}}, nil
+	}
+
+	ip := GetOutboundIP()
+	if ip != "" {
+		t.Errorf("GetOutboundIP() = %q, want empty string when LocalAddr is not *net.UDPAddr", ip)
+	}
+}
+
+func TestGetOutboundIP_LoopbackAddr(t *testing.T) {
+	orig := dialOutbound
+	defer func() { dialOutbound = orig }()
+
+	// Return a connection with a loopback UDP address
+	dialOutbound = func() (net.Conn, error) {
+		return &mockConn{localAddr: &net.UDPAddr{IP: net.ParseIP("127.0.0.1"), Port: 1234}}, nil
+	}
+
+	ip := GetOutboundIP()
+	if ip != "" {
+		t.Errorf("GetOutboundIP() = %q, want empty string for loopback address", ip)
+	}
+}
+
+func TestGetOutboundIP_ValidIP(t *testing.T) {
+	orig := dialOutbound
+	defer func() { dialOutbound = orig }()
+
+	// Return a connection with a valid non-loopback UDP address
+	dialOutbound = func() (net.Conn, error) {
+		return &mockConn{localAddr: &net.UDPAddr{IP: net.ParseIP("192.168.1.100"), Port: 12345}}, nil
+	}
+
+	ip := GetOutboundIP()
+	if ip != "192.168.1.100" {
+		t.Errorf("GetOutboundIP() = %q, want %q", ip, "192.168.1.100")
+	}
+}
+
+func TestGetOutboundIP_IPv6Addr(t *testing.T) {
+	orig := dialOutbound
+	defer func() { dialOutbound = orig }()
+
+	dialOutbound = func() (net.Conn, error) {
+		return &mockConn{localAddr: &net.UDPAddr{IP: net.ParseIP("fe80::1"), Port: 12345}}, nil
+	}
 
 	ip := GetOutboundIP()
 	if ip == "" {
-		t.Skip("no outbound IP available in this environment")
-	}
-
-	parsed := net.ParseIP(ip)
-	if parsed == nil {
-		t.Errorf("GetOutboundIP() = %q, not a valid IP address", ip)
-	}
-	if parsed.IsLoopback() {
-		t.Errorf("GetOutboundIP() returned loopback IP %q", ip)
+		t.Errorf("GetOutboundIP() returned empty for IPv6 link-local address")
 	}
 }
 
 func TestGetOutboundIP_ContextCanceled(t *testing.T) {
-	// Use a canceled context to force immediate failure
-	origDialer := outboundDialer
-	defer func() { outboundDialer = origDialer }()
+	orig := dialOutbound
+	defer func() { dialOutbound = orig }()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately
-
-	outboundDialer = net.Dialer{Timeout: 5 * time.Second}
-	conn, err := outboundDialer.DialContext(ctx, "udp", "8.8.8.8:53")
-	if err == nil {
-		conn.Close()
-		// If dial succeeded despite canceled context, skip
-		t.Skip("dial succeeded despite canceled context")
+	// Simulate a canceled context by returning an error
+	dialOutbound = func() (net.Conn, error) {
+		return nil, errors.New("context canceled")
 	}
-	// Verify that our function handles this gracefully
+
 	ip := GetOutboundIP()
-	// This doesn't test the canceled context path directly,
-	// but verifies the error handling works
-	_ = ip
+	if ip != "" {
+		t.Errorf("GetOutboundIP() = %q, want empty string on canceled context", ip)
+	}
 }
