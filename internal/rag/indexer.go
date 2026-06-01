@@ -194,10 +194,8 @@ func (idx *Indexer) checkEmbedderHealth(ctx context.Context) {
 				if err := idx.store.ResetForDimensionMismatch(dim); err != nil {
 					slog.Error("rag: failed to reset store for dimension mismatch", slog.String("err", err.Error()))
 				}
-			} else {
-				if idx.store.SetEmbeddingDim(dim) {
-					slog.Info("rag: synced embedding dimension from embedder", slog.Int("dim", dim))
-				}
+			} else if idx.store.SetEmbeddingDim(dim) {
+				slog.Info("rag: synced embedding dimension from embedder", slog.Int("dim", dim))
 			}
 			idx.dimensionSynced = true
 		}

@@ -51,9 +51,9 @@ type PendingChunk struct {
 
 // Store manages the SQLite connection, FTS5 index, and vector cache.
 type Store struct {
-	db       *sql.DB
-	cache    *VectorCache
-	dirty    bool // whether VectorCache needs incremental reload
+	db    *sql.DB
+	cache *VectorCache
+	dirty bool // whether VectorCache needs incremental reload
 }
 
 // NewSQLiteStore creates a new SQLite-backed RAG store.
@@ -235,7 +235,8 @@ func (s *Store) InsertChunks(chunks []Chunk) error {
 			embDim = len(c.Embedding)
 		}
 
-		result, err := tx.Exec(`
+		result, err := tx.Exec(
+			`
 			INSERT INTO rag_chunks (session_id, message_id, chunk_text, chunk_text_segmented,
 				chunk_index, token_count, embedding, has_embedding, embedding_dim,
 				project_path, backend, role, created_at)
@@ -267,6 +268,8 @@ func (s *Store) InsertChunks(chunks []Chunk) error {
 }
 
 // SearchSimple performs vector similarity search using in-memory VectorCache.
+//
+//nolint:gocyclo // time filter branch logic is inherently multi-conditional
 func (s *Store) SearchSimple(queryEmbedding []float64, limit int, projectPath, backend, role, sessionID, excludeSessionID, fromTime, toTime string) ([]SearchHit, error) {
 	// Validate query embedding
 	if err := validateEmbedding(queryEmbedding); err != nil {
@@ -534,7 +537,8 @@ func (s *Store) UpdateEmbedding(chunkID int64, embedding []float64) error {
 	}
 
 	embBlob := serializeEmbedding(embedding)
-	_, err := s.db.Exec(`
+	_, err := s.db.Exec(
+		`
 		UPDATE rag_chunks
 		SET embedding = ?, has_embedding = 1, embedding_dim = ?
 		WHERE id = ?`,

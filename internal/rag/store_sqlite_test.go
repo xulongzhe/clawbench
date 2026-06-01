@@ -680,9 +680,10 @@ func TestSQLiteStore_LoadCache_SkipsMalformedEmbeddings(t *testing.T) {
 	require.NoError(t, store.InsertChunks([]Chunk{chunk}))
 
 	// Manually corrupt the embedding in DB (wrong dim)
-	_, err := store.db.Exec(`UPDATE rag_chunks SET embedding = ?, embedding_dim = ? WHERE id = 1`,
+	_, err := store.db.Exec(
+		`UPDATE rag_chunks SET embedding = ?, embedding_dim = ? WHERE id = 1`,
 		[]byte{0x01, 0x02, 0x03}, // only 3 bytes, not 8*dim
-		1024, // claims 1024 dim but blob is only 3 bytes
+		1024,                     // claims 1024 dim but blob is only 3 bytes
 	)
 	require.NoError(t, err)
 

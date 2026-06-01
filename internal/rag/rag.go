@@ -13,8 +13,8 @@ var (
 	GlobalStore    *Store
 	GlobalEmbedder *EmbeddingClient
 
-	globalIndexer  *Indexer
-	globalCleanup  *CleanupWorker
+	globalIndexer *Indexer
+	globalCleanup *CleanupWorker
 )
 
 var embedderHealthyFlag atomic.Bool

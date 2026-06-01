@@ -88,6 +88,8 @@ func (c *VectorCache) MarkDirty() {
 // Returns SearchHit results sorted by score descending, limited to `limit` results.
 // If the cache is not ready, returns empty results.
 // Filters: projectPath, backend, role, sessionID, excludeSessionID (empty = no filter).
+//
+//nolint:gocyclo // filter chain is inherently multi-conditional
 func (c *VectorCache) Search(queryEmbedding []float64, limit int, projectPath, backend, role, sessionID, excludeSessionID string) []SearchHit {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -179,14 +181,14 @@ func serializeEmbedding(vec []float64) []byte {
 	buf := make([]byte, len(vec)*8)
 	for i, v := range vec {
 		bits := math.Float64bits(v)
-		buf[i*8+0] = byte(bits >> 56)
-		buf[i*8+1] = byte(bits >> 48)
-		buf[i*8+2] = byte(bits >> 40)
-		buf[i*8+3] = byte(bits >> 32)
-		buf[i*8+4] = byte(bits >> 24)
-		buf[i*8+5] = byte(bits >> 16)
-		buf[i*8+6] = byte(bits >> 8)
-		buf[i*8+7] = byte(bits)
+		buf[i*8+0] = byte(bits >> 56) //nolint:gosec // G115: intentional bit extraction
+		buf[i*8+1] = byte(bits >> 48) //nolint:gosec // G115: intentional bit extraction
+		buf[i*8+2] = byte(bits >> 40) //nolint:gosec // G115: intentional bit extraction
+		buf[i*8+3] = byte(bits >> 32) //nolint:gosec // G115: intentional bit extraction
+		buf[i*8+4] = byte(bits >> 24) //nolint:gosec // G115: intentional bit extraction
+		buf[i*8+5] = byte(bits >> 16) //nolint:gosec // G115: intentional bit extraction
+		buf[i*8+6] = byte(bits >> 8)  //nolint:gosec // G115: intentional bit extraction
+		buf[i*8+7] = byte(bits)       //nolint:gosec // G115: intentional bit extraction
 	}
 	return buf
 }
