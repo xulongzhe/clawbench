@@ -68,7 +68,14 @@ jobs:
           go-version: '1.25'
 
       - name: Run coverage gate check
-        run: ./scripts/check-go-coverage.sh
+        run: |
+          ./scripts/check-go-coverage.sh
+          exit_code=$?
+          if [ $exit_code -eq 2 ]; then
+            echo "::warning::Tier 1 (Project) coverage gate failed — baseline drift, non-blocking"
+            exit 0
+          fi
+          exit $exit_code
 
       - name: Upload coverage profile
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

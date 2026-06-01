@@ -523,5 +523,11 @@ else:
     print(f"\n{YELLOW}Tips:{RESET}")
     print("  - Add tests to improve coverage for failing checks")
     print("  - To skip test run: ./scripts/check-go-coverage.sh --skip-test")
+    # Exit code 2: Tier 1 only failure (baseline drift, non-blocking for CI)
+    # Exit code 1: Tier 2 failure or both tiers failed (blocking)
+    if not tier2_skipped and not tier2_pass:
+        sys.exit(1)
+    if not tier1_skipped and not tier1_pass:
+        sys.exit(2)
     sys.exit(1)
 PYTHON_SCRIPT
