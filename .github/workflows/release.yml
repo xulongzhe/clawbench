@@ -92,8 +92,8 @@ jobs:
           CGO_ENABLED: 1
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-linux ./cmd/server
-          echo "Built with CGO_ENABLED=1: dynamically linked, DuckDB/RAG enabled"
+          go build -tags "fts5" -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-linux ./cmd/server
+          echo "Built with CGO_ENABLED=1: dynamically linked, SQLite FTS5/RAG enabled"
 
       - name: Verify Linux binary
         run: |
@@ -155,7 +155,7 @@ jobs:
           CGO_ENABLED: 1
         run: |
           $VERSION = if (git describe --tags --always 2>$null) { git describe --tags --always } else { "dev" }
-          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench.exe ./cmd/server
+          go build -tags "fts5" -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench.exe ./cmd/server
 
       - name: Download Pi binary (embedded agent for setup wizard)
         shell: pwsh
@@ -210,7 +210,7 @@ jobs:
           CGO_ENABLED: 1
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-arm64 ./cmd/server
+          go build -tags "fts5" -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-arm64 ./cmd/server
 
       - name: Download Pi binary (embedded agent for setup wizard)
         env:
@@ -265,7 +265,7 @@ jobs:
           CXX: clang++ -target x86_64-apple-macos13.0
         run: |
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
-          go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-amd64 ./cmd/server
+          go build -tags "fts5" -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-amd64 ./cmd/server
 
       - name: Download Pi binary (embedded agent for setup wizard)
         env:

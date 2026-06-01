@@ -36,7 +36,7 @@ cd "$ROOT_DIR"
 # Step 1: Run tests with coverage (if not skipped)
 if [ "$SKIP_TEST" = false ]; then
   echo "==> Running Go tests with coverage..."
-  go test -coverprofile="$COVERAGE_PROFILE" ./... 2>&1
+  go test -tags "fts5" -coverprofile="$COVERAGE_PROFILE" ./... 2>&1
   echo ""
 fi
 
@@ -116,8 +116,10 @@ exempt_files = {
     "internal/ws/events.go",                # WebSocket handler exit path: conn.Close after client disconnect, timing-dependent
     "internal/ssh/server.go",               # SSH protocol-level paths (channel parse error, host key permissions, key save) untestable without protocol manipulation or root bypass
     "internal/rag/indexer.go",              # error logging paths require embedding/DB failures that need integration mock
-    "internal/rag/rag.go",                  # dimension mismatch path requires DuckDB schema manipulation
-    "internal/rag/store.go",                # DuckDB internal error paths (mkdir, close, column migration, search fallback)
+    "internal/rag/rag.go",                  # Init/Shutdown/StartIndexer/StartCleanupWorker require real DB + filesystem setup
+    "internal/rag/store_sqlite.go",         # SQLite internal error paths (file open, transaction rollback, FTS5 query errors)
+    "internal/rag/cleanup.go",              # realCleanupService delegates to service.DB which requires integration setup
+    "internal/rag/search.go",              # RAGSearch strategy branching requires mock embedder + cache state orchestration
     "internal/speech/common_tts.go",        # MkdirAll/temp file write error paths untestable as root
     "internal/terminal/session.go",         # WebSocket kick/PTY close paths require integration testing
     "internal/terminal/manager.go",         # WebSocket connect error path requires integration testing
@@ -137,7 +139,7 @@ def pass_fail(passed):
 
 # ── Get current per-package coverage ────────────────────────────
 result = subprocess.run(
-    ["go", "test", "-cover", "./..."],
+    ["go", "test", "-tags", "fts5", "-cover", "./..."],
     capture_output=True, text=True
 )
 output = result.stdout + result.stderr

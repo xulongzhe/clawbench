@@ -21,7 +21,7 @@ func InitSegmenter() error {
 }
 
 // SegmentText segments text for FTS indexing using CutSearch mode.
-// Returns space-separated tokens suitable for DuckDB FTS.
+// Returns space-separated tokens suitable for SQLite FTS5.
 // Falls back to original text if segmenter is not initialized.
 func SegmentText(text string) string {
 	if segmenter == nil {

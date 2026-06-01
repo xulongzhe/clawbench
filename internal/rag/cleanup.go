@@ -9,25 +9,38 @@ import (
 	"clawbench/internal/service"
 )
 
+// cleanupService defines the interface for session cleanup operations.
+// This allows testing without a real database connection.
+type cleanupService interface {
+	GetExpiredDeletedSessions(cutoff time.Time) ([]string, error)
+	PurgeDeletedData(sessionIDs []string) (sessionsPurged, messagesPurged int64, err error)
+}
+
 // CleanupWorker periodically purges soft-deleted data that has exceeded
 // the configured retention period. It deletes from both SQLite (chunks)
 // and SQLite (messages, sessions, raw responses).
 type CleanupWorker struct {
-	store   *Store
-	cfg     model.RAGConfig
-	stopCh  chan struct{}
-	doneCh  chan struct{}
-	mu      sync.Mutex
-	running bool
+	store    *Store
+	cfg      model.RAGConfig
+	stopCh   chan struct{}
+	doneCh   chan struct{}
+	mu       sync.Mutex
+	running  bool
+	svc      cleanupService // abstracted service layer for testability
+	startup  time.Duration  // delay before first cleanup run
+	interval time.Duration  // interval between cleanup runs
 }
 
 // NewCleanupWorker creates a new cleanup worker.
 func NewCleanupWorker(store *Store, cfg model.RAGConfig) *CleanupWorker {
 	return &CleanupWorker{
-		store:  store,
-		cfg:    cfg,
-		stopCh: make(chan struct{}),
-		doneCh: make(chan struct{}),
+		store:    store,
+		cfg:      cfg,
+		stopCh:   make(chan struct{}),
+		doneCh:   make(chan struct{}),
+		svc:      &realCleanupService{},
+		startup:  5 * time.Minute,
+		interval: 24 * time.Hour,
 	}
 }
 
@@ -67,20 +80,20 @@ func (w *CleanupWorker) Stop() {
 	slog.Info("rag cleanup worker stopped")
 }
 
-// run is the main cleanup loop. Runs once after a 5-minute delay on startup,
-// then every 24 hours.
+// run is the main cleanup loop. Runs once after a startup delay,
+// then every interval.
 func (w *CleanupWorker) run() {
 	defer close(w.doneCh)
 
 	select {
-	case <-time.After(5 * time.Minute):
+	case <-time.After(w.startup):
 	case <-w.stopCh:
 		return
 	}
 
 	w.cleanup()
 
-	ticker := time.NewTicker(24 * time.Hour)
+	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
 	for {
@@ -98,7 +111,7 @@ func (w *CleanupWorker) run() {
 func (w *CleanupWorker) cleanup() {
 	cutoff := time.Now().AddDate(0, 0, -w.cfg.RetentionDays)
 
-	sessionIDs, err := service.GetExpiredDeletedSessions(cutoff)
+	sessionIDs, err := w.svc.GetExpiredDeletedSessions(cutoff)
 	if err != nil {
 		slog.Error("rag cleanup: failed to query expired sessions", slog.String("err", err.Error()))
 		return
@@ -118,7 +131,7 @@ func (w *CleanupWorker) cleanup() {
 	}
 
 	// 2. Delete SQLite data (ai_raw_responses → chat_history → chat_sessions)
-	sessionsPurged, messagesPurged, err := service.PurgeDeletedData(sessionIDs)
+	sessionsPurged, messagesPurged, err := w.svc.PurgeDeletedData(sessionIDs)
 	if err != nil {
 		slog.Error("rag cleanup: failed to purge data", slog.String("err", err.Error()))
 		return
@@ -131,4 +144,15 @@ func (w *CleanupWorker) cleanup() {
 		slog.Int64("chunks", chunksPurged),
 		slog.Int("retention_days", w.cfg.RetentionDays),
 	)
+}
+
+// realCleanupService implements cleanupService using the real service package.
+type realCleanupService struct{}
+
+func (r *realCleanupService) GetExpiredDeletedSessions(cutoff time.Time) ([]string, error) {
+	return service.GetExpiredDeletedSessions(cutoff)
+}
+
+func (r *realCleanupService) PurgeDeletedData(sessionIDs []string) (int64, int64, error) {
+	return service.PurgeDeletedData(sessionIDs)
 }

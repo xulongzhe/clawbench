@@ -7,6 +7,8 @@ run:
   timeout: 5m
   tests: true
   go: "1.25"
+  build-tags:
+    - fts5
 
 linters:
   default: none
@@ -168,7 +170,7 @@ linters:
         linters:
           - goconst
 
-      # internal/rag: SQL string formatting is by design with DuckDB
+      # internal/rag: SQL string formatting is by design with SQLite
       - path: internal/rag/
         linters:
           - goconst
@@ -239,7 +241,7 @@ linters:
           - gosec
         text: "G402:"
 
-      # gosec: SQL string formatting in DuckDB - parameterized where possible
+      # gosec: SQL string formatting in SQLite - parameterized where possible
       - linters:
           - gosec
         text: "G201:"

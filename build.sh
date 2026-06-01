@@ -10,7 +10,7 @@ TARGET_OS=""
 TARGET_ARCH=""
 BUILD_ANDROID=""
 DOWNLOAD_PI=""
-BUILD_TAGS=""
+BUILD_TAGS="fts5"
 for arg in "$@"; do
     case "$arg" in
         --windows)
@@ -39,9 +39,6 @@ for arg in "$@"; do
             ;;
         --with-pi)
             DOWNLOAD_PI=1
-            ;;
-        --no-rag)
-            BUILD_TAGS="norag"
             ;;
     esac
 done

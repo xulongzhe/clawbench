@@ -69,7 +69,7 @@ func TestServeRAGSearch_EmptyResultsArray(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
 
-	// Setup a real DuckDB store + mock embedder
+	// Setup a real SQLite store + mock embedder
 	origStore := rag.GlobalStore
 	origEmbedder := rag.GlobalEmbedder
 	t.Cleanup(func() {
@@ -234,7 +234,7 @@ func TestServeRAGSearch_CrossProjectIsolation(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
 
-	// Setup a real DuckDB store + mock embedder
+	// Setup a real SQLite store + mock embedder
 	origStore := rag.GlobalStore
 	origEmbedder := rag.GlobalEmbedder
 	t.Cleanup(func() {
@@ -264,7 +264,7 @@ func TestServeRAGSearch_LocalhostGlobalSearch(t *testing.T) {
 	_, teardown := setupTestEnv(t)
 	defer teardown()
 
-	// Setup a real DuckDB store + mock embedder
+	// Setup a real SQLite store + mock embedder
 	origStore := rag.GlobalStore
 	origEmbedder := rag.GlobalEmbedder
 	t.Cleanup(func() {
