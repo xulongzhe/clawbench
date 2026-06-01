@@ -123,7 +123,7 @@ func TestSQLiteStore_InsertChunks_MixedEmbeddingAndNoEmbedding(t *testing.T) {
 func TestSQLiteStore_InsertChunks_RejectsNaNEmbedding(t *testing.T) {
 	store := setupSQLiteStore(t)
 	chunk := makeTestChunk("sess-nan", 1, 0, "test chunk with NaN embedding")
-	chunk.Embedding = makeTestEmbedding(1024)
+	chunk.Embedding = makeTestEmbedding()
 	chunk.Embedding[5] = math.NaN()
 
 	err := store.InsertChunks([]Chunk{chunk})
@@ -138,7 +138,7 @@ func TestSQLiteStore_InsertChunks_SyncsFTS(t *testing.T) {
 	chunk := Chunk{
 		SessionID: testSession1, MessageID: 1, ChunkText: "database query optimization",
 		ChunkTextSegmented: "database query optimization", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -158,14 +158,14 @@ func TestSQLiteStore_DeleteChunksBySessionIDs_SyncsFTS(t *testing.T) {
 		{
 			SessionID: "sess-a", MessageID: 1, ChunkText: "database query",
 			ChunkTextSegmented: "database query", ChunkIndex: 0,
-			TokenCount: 2, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			TokenCount: 2, Embedding: makeTestEmbedding(), HasEmbedding: true,
 			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
 		{
 			SessionID: "sess-b", MessageID: 2, ChunkText: "database search",
 			ChunkTextSegmented: "database search", ChunkIndex: 0,
-			TokenCount: 2, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			TokenCount: 2, Embedding: makeTestEmbedding(), HasEmbedding: true,
 			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
@@ -194,14 +194,14 @@ func TestSQLiteStore_SearchFTS_English(t *testing.T) {
 		{
 			SessionID: testSession1, MessageID: 1, ChunkText: testDBQueryOptimization,
 			ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
-			TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
 		{
 			SessionID: testSession2, MessageID: 2, ChunkText: "web server configuration",
 			ChunkTextSegmented: "web server configuration", ChunkIndex: 0,
-			TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
@@ -223,7 +223,7 @@ func TestSQLiteStore_SearchFTS_Chinese(t *testing.T) {
 		{
 			SessionID: testSession1, MessageID: 1, ChunkText: "使用SQLite进行全文检索",
 			ChunkTextSegmented: SegmentText("使用SQLite进行全文检索"), ChunkIndex: 0,
-			TokenCount: 10, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			TokenCount: 10, Embedding: makeTestEmbedding(), HasEmbedding: true,
 			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		},
@@ -251,14 +251,14 @@ func TestSQLiteStore_SearchFTS_FiltersByProject(t *testing.T) {
 	chunk1 := Chunk{
 		SessionID: testSession1, MessageID: 1, ChunkText: testDBQueryOptimization,
 		ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: "/project/a", Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
 		SessionID: testSession2, MessageID: 2, ChunkText: "database indexing strategies",
 		ChunkTextSegmented: "database indexing strategies", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: "/project/b", Backend: testBackendCodebuddy, Role: testRoleUser,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -275,7 +275,7 @@ func TestSQLiteStore_SearchFTS_FiltersByProject(t *testing.T) {
 
 func TestSQLiteStore_SearchSimple_Empty(t *testing.T) {
 	store := setupSQLiteStore(t)
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 5, "", "", "", "", "", "", "")
+	hits, err := store.SearchSimple(makeTestEmbedding(), 5, "", "", "", "", "", "", "")
 	assert.NoError(t, err)
 	assert.Empty(t, hits)
 }
@@ -285,7 +285,7 @@ func TestSQLiteStore_SearchSimple_WithResults(t *testing.T) {
 	insertTestChunksSQLite(t, store, 3)
 
 	// Search with the same embedding pattern
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", "", "", "", "", "", "")
+	hits, err := store.SearchSimple(makeTestEmbedding(), 10, "", "", "", "", "", "", "")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, hits, "should find results with matching embeddings")
 }
@@ -300,7 +300,7 @@ func TestSQLiteStore_SearchSimple_FiltersByProject(t *testing.T) {
 	err := store.InsertChunks([]Chunk{chunk1, chunk2})
 	require.NoError(t, err)
 
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "/project/a", "", "", "", "", "", "")
+	hits, err := store.SearchSimple(makeTestEmbedding(), 10, "/project/a", "", "", "", "", "", "")
 	assert.NoError(t, err)
 	assert.Len(t, hits, 1)
 	assert.Equal(t, "/project/a", hits[0].ProjectPath)
@@ -310,7 +310,7 @@ func TestSQLiteStore_SearchSimple_OrderByScore(t *testing.T) {
 	store := setupSQLiteStore(t)
 	insertTestChunksSQLite(t, store, 5)
 
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", "", "", "", "", "", "")
+	hits, err := store.SearchSimple(makeTestEmbedding(), 10, "", "", "", "", "", "", "")
 	assert.NoError(t, err)
 	for i := 1; i < len(hits); i++ {
 		assert.GreaterOrEqual(t, hits[i-1].Score, hits[i].Score,
@@ -322,14 +322,14 @@ func TestSQLiteStore_SearchSimple_RespectsLimit(t *testing.T) {
 	store := setupSQLiteStore(t)
 	insertTestChunksSQLite(t, store, 5)
 
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 2, "", "", "", "", "", "", "")
+	hits, err := store.SearchSimple(makeTestEmbedding(), 2, "", "", "", "", "", "", "")
 	assert.NoError(t, err)
 	assert.LessOrEqual(t, len(hits), 2)
 }
 
 func TestSQLiteStore_SearchSimple_RejectsInfEmbedding(t *testing.T) {
 	store := setupSQLiteStore(t)
-	queryEmbedding := makeTestEmbedding(1024)
+	queryEmbedding := makeTestEmbedding()
 	queryEmbedding[0] = math.Inf(1)
 
 	_, err := store.SearchSimple(queryEmbedding, 10, "", "", "", "", "", "", "")
@@ -344,7 +344,7 @@ func TestSQLiteStore_SearchHybrid_CombinesSources(t *testing.T) {
 	insertTestChunksSQLite(t, store, 5)
 
 	hits, err := store.SearchHybrid(
-		makeTestEmbedding(1024), "chunk text", 20, 5,
+		makeTestEmbedding(), "chunk text", 20, 5,
 		"", "", "", "", "", "", "",
 	)
 	assert.NoError(t, err)
@@ -422,7 +422,7 @@ func TestSQLiteStore_UpdateEmbedding(t *testing.T) {
 	err = store.db.QueryRowContext(context.Background(), "SELECT id FROM rag_chunks WHERE has_embedding = 0 LIMIT 1").Scan(&chunkID)
 	require.NoError(t, err)
 
-	embedding := makeTestEmbedding(1024)
+	embedding := makeTestEmbedding()
 	err = store.UpdateEmbedding(chunkID, embedding)
 	assert.NoError(t, err)
 
@@ -452,7 +452,7 @@ func TestSQLiteStore_UpdateEmbedding_RejectsNaNEmbedding(t *testing.T) {
 	err = store.db.QueryRowContext(context.Background(), "SELECT id FROM rag_chunks WHERE has_embedding = 0 LIMIT 1").Scan(&chunkID)
 	require.NoError(t, err)
 
-	nanEmb := makeTestEmbedding(1024)
+	nanEmb := makeTestEmbedding()
 	nanEmb[0] = math.NaN()
 	err = store.UpdateEmbedding(chunkID, nanEmb)
 	assert.Error(t, err)
@@ -588,7 +588,7 @@ func TestSQLiteStore_SearchSimple_FiltersByTimeRange(t *testing.T) {
 	require.NoError(t, err)
 
 	from := time.Now().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", "", "", "", "", from, "")
+	hits, err := store.SearchSimple(makeTestEmbedding(), 10, "", "", "", "", "", from, "")
 	assert.NoError(t, err)
 	for _, h := range hits {
 		assert.True(t, h.CreatedAt.After(time.Now().Add(-24*time.Hour)),
@@ -703,14 +703,14 @@ func TestSQLiteStore_SearchFTS_FiltersByBackend(t *testing.T) {
 	chunk1 := Chunk{
 		SessionID: testSession1, MessageID: 1, ChunkText: testDBQueryOptimization,
 		ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
 		SessionID: testSession2, MessageID: 2, ChunkText: "database indexing strategies",
 		ChunkTextSegmented: "database indexing strategies", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendCodebuddy, Role: testRoleUser,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -727,14 +727,14 @@ func TestSQLiteStore_SearchFTS_FiltersByRole(t *testing.T) {
 	chunk1 := Chunk{
 		SessionID: testSession1, MessageID: 1, ChunkText: testDBQueryOptimization,
 		ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
 		SessionID: testSession2, MessageID: 2, ChunkText: "database search method",
 		ChunkTextSegmented: "database search method", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleUser,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -751,14 +751,14 @@ func TestSQLiteStore_SearchFTS_FiltersBySessionID(t *testing.T) {
 	chunk1 := Chunk{
 		SessionID: testSession1, MessageID: 1, ChunkText: testDBQueryOptimization,
 		ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
 		SessionID: testSession2, MessageID: 2, ChunkText: "database indexing",
 		ChunkTextSegmented: "database indexing", ChunkIndex: 0,
-		TokenCount: 2, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 2, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -775,14 +775,14 @@ func TestSQLiteStore_SearchFTS_ExcludeSessionID(t *testing.T) {
 	chunk1 := Chunk{
 		SessionID: testSession1, MessageID: 1, ChunkText: testDBQueryOptimization,
 		ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
 	chunk2 := Chunk{
 		SessionID: testSession2, MessageID: 2, ChunkText: "database indexing",
 		ChunkTextSegmented: "database indexing", ChunkIndex: 0,
-		TokenCount: 2, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 2, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -800,14 +800,14 @@ func TestSQLiteStore_SearchFTS_FiltersByTimeRange(t *testing.T) {
 	oldChunk := Chunk{
 		SessionID: "sess-old", MessageID: 1, ChunkText: testDBQueryOptimization,
 		ChunkTextSegmented: testDBQueryOptimization, ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Add(-48 * time.Hour).Truncate(time.Second),
 	}
 	recentChunk := Chunk{
 		SessionID: "sess-recent", MessageID: 2, ChunkText: "database recent search",
 		ChunkTextSegmented: "database recent search", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Second),
 	}
@@ -835,7 +835,7 @@ func TestSQLiteStore_SearchSimple_FiltersByToTime(t *testing.T) {
 	require.NoError(t, store.InsertChunks([]Chunk{oldChunk, recentChunk}))
 
 	to := time.Now().Add(-24 * time.Hour).Format("2006-01-02 15:04:05")
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", "", "", "", "", "", to)
+	hits, err := store.SearchSimple(makeTestEmbedding(), 10, "", "", "", "", "", "", to)
 	assert.NoError(t, err)
 	for _, h := range hits {
 		assert.True(t, h.CreatedAt.Before(time.Now().Add(-23*time.Hour)),
@@ -851,7 +851,7 @@ func TestSQLiteStore_SearchHybrid_VectorOnlyFallback(t *testing.T) {
 
 	// Use a query that won't match FTS but vector search will return results
 	hits, err := store.SearchHybrid(
-		makeTestEmbedding(1024), "nonexistent_xyz_12345", 20, 5,
+		makeTestEmbedding(), "nonexistent_xyz_12345", 20, 5,
 		"", "", "", "", "", "", "",
 	)
 	assert.NoError(t, err)
@@ -864,7 +864,7 @@ func TestSQLiteStore_SearchHybrid_VectorFails_FTSSucceeds(t *testing.T) {
 	insertTestChunksSQLite(t, store, 3)
 
 	// Use invalid query embedding that will fail validation
-	infEmb := makeTestEmbedding(1024)
+	infEmb := makeTestEmbedding()
 	infEmb[0] = math.Inf(1)
 
 	// Vector search fails (invalid embedding) but FTS should succeed
@@ -939,7 +939,7 @@ func TestSQLiteStore_SearchSimple_AutoReloadsDirtyCache(t *testing.T) {
 	assert.True(t, store.cache.IsDirty())
 
 	// SearchSimple should auto-reload dirty cache
-	hits, err := store.SearchSimple(makeTestEmbedding(1024), 10, "", "", "", "", "", "", "")
+	hits, err := store.SearchSimple(makeTestEmbedding(), 10, "", "", "", "", "", "", "")
 	assert.NoError(t, err)
 	assert.NotEmpty(t, hits, "should find results after auto-reloading dirty cache")
 	assert.True(t, store.cache.IsReady(), "cache should be ready after auto-reload")

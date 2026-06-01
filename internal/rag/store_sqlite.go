@@ -53,19 +53,16 @@ type PendingChunk struct {
 type Store struct {
 	db    *sql.DB
 	cache *VectorCache
-	dirty bool // whether VectorCache needs incremental reload
 }
 
 // NewSQLiteStore creates a new SQLite-backed RAG store.
 // If dbPath is ":memory:", creates an in-memory database (for testing).
 // Uses shared cache mode for in-memory databases to allow cross-goroutine access.
 func NewSQLiteStore(dbPath string) (*Store, error) {
-	dsn := dbPath
+	dsn := dbPath + "?_busy_timeout=5000&_journal_mode=WAL"
 	if dbPath == ":memory:" {
 		// Shared cache required for in-memory DB to work across goroutines
 		dsn = "file::memory:?cache=shared&_busy_timeout=5000&_journal_mode=WAL"
-	} else {
-		dsn = dbPath + "?_busy_timeout=5000&_journal_mode=WAL"
 	}
 
 	db, err := sql.Open("sqlite3", dsn)
@@ -642,12 +639,14 @@ func (s *Store) DeleteChunksBySessionIDs(sessionIDs []string) (int64, error) {
 	}
 
 	// Delete FTS entries first (uses subquery to find IDs)
+	//nolint:gosec // G202: placeholders are parameterized (?, ?, ...), not raw input
 	_, err = tx.Exec("DELETE FROM rag_chunks_fts WHERE rowid IN (SELECT id FROM rag_chunks WHERE session_id IN ("+placeholders+"))", args...)
 	if err != nil {
 		return 0, fmt.Errorf("delete fts entries: %w", err)
 	}
 
 	// Delete main table
+	//nolint:gosec // G202: placeholders are parameterized (?, ?, ...), not raw input
 	result, err := tx.Exec("DELETE FROM rag_chunks WHERE session_id IN ("+placeholders+")", args...)
 	if err != nil {
 		return 0, fmt.Errorf("delete chunks: %w", err)

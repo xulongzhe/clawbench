@@ -35,7 +35,7 @@ func TestRAGSearch_FTSOnly_WhenNoEmbedder(t *testing.T) {
 	chunk := Chunk{
 		SessionID: "sess-1", MessageID: 1, ChunkText: "database query optimization",
 		ChunkTextSegmented: "database query optimization", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -62,7 +62,7 @@ func TestRAGSearch_Hybrid_WhenEmbedderHealthy(t *testing.T) {
 		chunks[i] = Chunk{
 			SessionID: "sess-1", MessageID: int64(i + 1), ChunkText: "database query optimization test",
 			ChunkTextSegmented: "database query optimization test", ChunkIndex: i,
-			TokenCount: 5, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+			TokenCount: 5, Embedding: makeTestEmbedding(), HasEmbedding: true,
 			ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 			CreatedAt: time.Now().Truncate(time.Millisecond),
 		}
@@ -104,7 +104,7 @@ func TestRAGSearch_CacheNotReady_FallbackToFTS(t *testing.T) {
 	chunk := Chunk{
 		SessionID: "sess-1", MessageID: 1, ChunkText: "database search test",
 		ChunkTextSegmented: "database search test", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -195,7 +195,7 @@ func TestRAGSearch_EmbeddingFails_FallbackToFTS(t *testing.T) {
 	chunk := Chunk{
 		SessionID: "sess-1", MessageID: 1, ChunkText: "database search test",
 		ChunkTextSegmented: "database search test", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -252,7 +252,7 @@ func TestRAGSearch_EmbedderHealthyButCacheNotReady(t *testing.T) {
 	chunk := Chunk{
 		SessionID: "sess-1", MessageID: 1, ChunkText: "database search test",
 		ChunkTextSegmented: "database search test", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}
@@ -314,7 +314,7 @@ func TestRAGSearch_EnrichesSessionTitles(t *testing.T) {
 	chunk := Chunk{
 		SessionID: "sess-1", MessageID: 1, ChunkText: "database query optimization",
 		ChunkTextSegmented: "database query optimization", ChunkIndex: 0,
-		TokenCount: 3, Embedding: makeTestEmbedding(1024), HasEmbedding: true,
+		TokenCount: 3, Embedding: makeTestEmbedding(), HasEmbedding: true,
 		ProjectPath: testProjectPath, Backend: testBackendClaude, Role: testRoleAssistant,
 		CreatedAt: time.Now().Truncate(time.Millisecond),
 	}

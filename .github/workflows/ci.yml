@@ -69,8 +69,10 @@ jobs:
 
       - name: Run coverage gate check
         run: |
+          set +e
           ./scripts/check-go-coverage.sh
           exit_code=$?
+          set -e
           if [ $exit_code -eq 2 ]; then
             echo "::warning::Tier 1 (Project) coverage gate failed — baseline drift, non-blocking"
             exit 0

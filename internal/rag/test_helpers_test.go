@@ -1,11 +1,7 @@
 package rag
 
 import (
-	"fmt"
-	"testing"
 	"time"
-
-	"github.com/stretchr/testify/require"
 )
 
 // Shared test constants to avoid goconst duplicates across test files.
@@ -34,10 +30,10 @@ const (
 	testEmbeddingTextHello  = "hello"
 )
 
-// makeTestEmbedding creates a float64 slice of the given dimension
+// makeTestEmbedding creates a 1024-dim float64 slice
 // with simple sequential values for testing.
-func makeTestEmbedding(dim int) []float64 {
-	emb := make([]float64, dim)
+func makeTestEmbedding() []float64 {
+	emb := make([]float64, 1024)
 	for i := range emb {
 		emb[i] = float64(i%100) * 0.01
 	}
@@ -53,27 +49,11 @@ func makeTestChunk(sessionID string, messageID int64, chunkIndex int, text strin
 		ChunkTextSegmented: SegmentText(text),
 		ChunkIndex:         chunkIndex,
 		TokenCount:         len(text) / 4,
-		Embedding:          makeTestEmbedding(1024),
+		Embedding:          makeTestEmbedding(),
 		HasEmbedding:       true,
 		ProjectPath:        testProjectPath,
 		Backend:            testBackendClaude,
 		Role:               testRoleAssistant,
 		CreatedAt:          time.Now().Truncate(time.Millisecond),
 	}
-}
-
-// insertTestChunks inserts n test chunks into the store.
-func insertTestChunks(t *testing.T, store *Store, n int) {
-	t.Helper()
-	chunks := make([]Chunk, n)
-	for i := range n {
-		chunks[i] = makeTestChunk(
-			"session-1",
-			int64(i+1),
-			i,
-			fmt.Sprintf("chunk text %d", i),
-		)
-	}
-	err := store.InsertChunks(chunks)
-	require.NoError(t, err, "InsertChunks should succeed")
 }

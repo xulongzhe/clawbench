@@ -200,13 +200,13 @@ func TestVectorCache_SetDim(t *testing.T) {
 func TestVectorCache_Clear(t *testing.T) {
 	cache := NewVectorCache(1024)
 	cache.SetVectors([]CachedVector{
-		{ChunkID: 1, SessionID: "s1", ProjectPath: "/p", Vector: makeTestEmbedding(1024)},
+		{ChunkID: 1, SessionID: "s1", ProjectPath: "/p", Vector: makeTestEmbedding()},
 	})
 	assert.True(t, cache.IsReady())
 
 	cache.Clear()
 	assert.False(t, cache.IsReady(), "clear should mark cache as not ready")
-	assert.Empty(t, cache.Search(makeTestEmbedding(1024), 5, "", "", "", "", ""))
+	assert.Empty(t, cache.Search(makeTestEmbedding(), 5, "", "", "", "", ""))
 }
 
 // ---------- VectorCache: MarkDirty / LoadIncremental ----------
@@ -258,8 +258,8 @@ func TestDeserializeEmbedding_WrongSize(t *testing.T) {
 
 func TestCosineSimilarity_LargeDimension(t *testing.T) {
 	// Test with realistic embedding dimension (1024)
-	a := makeTestEmbedding(1024)
-	b := makeTestEmbedding(1024)
+	a := makeTestEmbedding()
+	b := makeTestEmbedding()
 	score := cosineSimilarity(a, b)
 	assert.InDelta(t, 1.0, score, 1e-6, "identical large vectors should have similarity ~1.0")
 }
