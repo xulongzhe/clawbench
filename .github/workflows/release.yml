@@ -127,6 +127,11 @@ jobs:
           generate_release_notes: false
           files: pkg-linux/clawbench-linux-amd64.zip
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-package
+          path: pkg-linux/clawbench/
+
   build-windows:
     name: Build Windows amd64
     needs: build-frontend
@@ -330,9 +335,61 @@ jobs:
           files: |
             android/app/build/outputs/apk/release/clawbench-android.apk
 
+  docker:
+    name: Build & Push Docker Image
+    needs: build-linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-package
+          path: pkg-linux/clawbench/
+
+      - name: Prepare Docker build context
+        run: |
+          cp pkg-linux/clawbench/clawbench .
+          cp -r pkg-linux/clawbench/public .
+          mkdir -p docker-staging/pi
+          cp -r pkg-linux/clawbench/.clawbench/pi/* docker-staging/pi/
+          chmod +x ./clawbench
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   release-notes:
     name: Generate Release Notes
-    needs: [build-linux, build-windows, build-macos-arm64, build-macos-amd64, build-android]
+    needs: [build-linux, build-windows, build-macos-arm64, build-macos-amd64, build-android, docker]
     runs-on: ubuntu-latest
     permissions:
       contents: write

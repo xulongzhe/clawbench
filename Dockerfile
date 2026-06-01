@@ -1,13 +1,15 @@
 # ClawBench runtime image — runs the pre-built binary
 #
-# Prerequisites: run ./build.sh first (and ./build.sh --with-pi for setup wizard)
-#
-# Build & run (one step):
+# Build locally:
 #   ./scripts/docker-build.sh
 #
 # Or manually:
 #   docker build -t clawbench .
-#   docker run -p 20300:20300 -v clawbench-data:/data clawbench
+#   docker run -p 20000:20000 -v clawbench-data:/data clawbench
+#
+# Pull from GitHub Container Registry:
+#   docker pull ghcr.io/clawbench-dev/clawbench:latest
+#   docker run -d -p 20000:20000 -v clawbench-data:/data ghcr.io/clawbench-dev/clawbench:latest
 
 FROM ubuntu:24.04
 
@@ -25,13 +27,14 @@ COPY clawbench .
 COPY public/ ./public/
 
 # Copy Pi binary for setup wizard
-# Uses a staging directory created by scripts/docker-build.sh
+# Local build: scripts/docker-build.sh populates docker-staging/
+# CI build: release workflow populates docker-staging/ from build-linux artifact
 # If the staging dir is empty, COPY still succeeds (copies empty layer)
 COPY docker-staging/ .clawbench/
 
 # Data directory (mounted as volume for persistence)
 RUN mkdir -p /data/.clawbench
 
-EXPOSE 20300
+EXPOSE 20000
 
-ENTRYPOINT ["./clawbench", "--port", "20300", "--data-dir", "/data/.clawbench"]
+ENTRYPOINT ["./clawbench", "--port", "20000", "--data-dir", "/data/.clawbench"]
