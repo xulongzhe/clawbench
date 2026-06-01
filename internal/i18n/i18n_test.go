@@ -95,6 +95,7 @@ func TestT_AllKeysPresentInBothLanguages(t *testing.T) {
 	keys := []string{
 		"SessionNotRunning",
 		"SessionStreamNotFound",
+		"SessionStreamBusy",
 		"SessionLimitReached",
 		"SessionIdRequired",
 		"NewSession",

@@ -1143,10 +1143,9 @@ func TestSendSessionEvent_NoStream(t *testing.T) {
 func TestSendSessionEvent_FullChannel(t *testing.T) {
 	setupDB(t)
 	sid := "full-channel-test"
-	// Register stream (capacity is 256)
 	ch := service.RegisterSessionStream(sid)
 
-	// Fill the channel buffer
+	// Fill the channel buffer (capacity is 256)
 	for i := range 256 {
 		ok := service.SendSessionEvent(sid, ai.StreamEvent{Type: "content", Content: fmt.Sprintf("msg-%d", i)})
 		assert.True(t, ok)

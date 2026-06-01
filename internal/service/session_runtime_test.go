@@ -1008,16 +1008,21 @@ func TestGetSessionStream_NotRegistered(t *testing.T) {
 	assert.Nil(t, ch)
 }
 
-func TestGetSessionStream_BadType(t *testing.T) {
+func TestTryClaimSSEStream_BasicFlow(t *testing.T) {
 	cleanupStreams()
 	defer cleanupStreams()
 
-	// Store a non-channel value to test type assertion failure
-	sessionStreams.Store("bad-type", "not-a-channel")
+	RegisterSessionStream("claim-test")
+	defer UnregisterSessionStream("claim-test")
 
-	ch, ok := GetSessionStream("bad-type")
-	assert.False(t, ok, "should return false for wrong type")
-	assert.Nil(t, ch)
+	// First claim succeeds
+	assert.True(t, TryClaimSSEStream("claim-test"))
+	// Second claim fails
+	assert.False(t, TryClaimSSEStream("claim-test"))
+	// Release and reclaim
+	ReleaseSSEStream("claim-test")
+	assert.True(t, TryClaimSSEStream("claim-test"))
+	ReleaseSSEStream("claim-test")
 }
 
 // --- emitSessionEvent with nil ws manager ---

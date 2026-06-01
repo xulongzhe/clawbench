@@ -718,6 +718,64 @@ func TestAIChatStream_ClientDisconnectDuringStream(t *testing.T) {
 	assert.Equal(t, "disconnect", reason)
 }
 
+// ---------- SSE claim: reject second client when stream is busy ----------
+
+func TestAIChatStream_SecondClientRejected(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "stream-busy"
+	_ = setupStreamSession(sessionID)
+	defer cleanupStreamSession(sessionID)
+
+	// First client claims the stream
+	require.True(t, service.TryClaimSSEStream(sessionID), "first claim should succeed")
+	defer service.ReleaseSSEStream(sessionID)
+
+	// Second client should get an SSE error event with reason "sse_busy"
+	req := newRequest(t, http.MethodGet, "/api/ai/chat/stream?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(AIChatStream, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+	events := parseSSEEvents(w.Body.String())
+	assert.Len(t, events, 1)
+	assert.Equal(t, "error", events[0]["event"])
+	assert.Contains(t, events[0]["data"], "sse_busy")
+}
+
+func TestAIChatStream_ClaimReleasedAfterDisconnect(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	sessionID := "stream-claim-release"
+	ch := setupStreamSession(sessionID)
+	defer cleanupStreamSession(sessionID)
+
+	// First client connects and then disconnects (releases claim)
+	require.True(t, service.TryClaimSSEStream(sessionID))
+	service.ReleaseSSEStream(sessionID)
+
+	// Second client should now be able to claim the stream.
+	// Send a done event so the handler exits after connecting.
+	go func() {
+		ch <- ai.StreamEvent{Type: "done"}
+	}()
+
+	req := newRequest(t, http.MethodGet, "/api/ai/chat/stream?session_id="+sessionID, nil)
+	req = withProjectCookie(req, env.ProjectDir)
+	w := callHandler(AIChatStream, req)
+
+	events := parseSSEEvents(w.Body.String())
+	// Should NOT get sse_busy error — should get normal stream events (done in this case)
+	for _, e := range events {
+		assert.NotEqual(t, "error", e["event"], "should not get sse_busy error after claim released")
+	}
+	// Should see the done event
+	assert.Equal(t, "done", events[len(events)-1]["event"])
+}
+
 // ---------- Session ownership validation (ISS-180) ----------
 
 func TestAIChatStream_SessionBelongsToDifferentProject(t *testing.T) {

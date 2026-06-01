@@ -54,6 +54,21 @@ func AIChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Claim the SSE stream — only one client can consume the channel at a time.
+	// Go channels deliver each message to exactly one reader (competing consumers),
+	// so multiple SSE goroutines on the same channel would split content randomly.
+	// When a second client is rejected, the frontend falls back to HTTP polling
+	// (pollUntilDone) which reads from DB and is multi-reader safe.
+	if !service.TryClaimSSEStream(sessionID) {
+		errMsg := T(r, "SessionStreamBusy")
+		fmt.Fprintf(w, "event: error\ndata: {\"error\":%q,\"reason\":\"sse_busy\"}\n\n", errMsg)
+		if canFlush, ok := w.(http.Flusher); ok {
+			canFlush.Flush()
+		}
+		return
+	}
+	defer service.ReleaseSSEStream(sessionID)
+
 	// Get the stream channel
 	streamCh, ok := service.GetSessionStream(sessionID)
 	if !ok {

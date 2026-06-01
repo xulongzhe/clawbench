@@ -20,8 +20,17 @@ var (
 	activeMu       sync.Mutex
 )
 
-// Session stream channel management for SSE streaming
+// Session stream channel management for SSE streaming.
+// Each session has one channel (producer → single SSE consumer).
+// When multiple clients connect to the same session's SSE stream, only the first
+// gets the live channel; subsequent clients receive an SSE error event and fall
+// back to HTTP polling (which reads from DB and is multi-reader safe).
 var sessionStreams sync.Map // map[string]chan ai.StreamEvent
+
+// sessionSSEClaim tracks which sessions have an active SSE connection.
+// Prevents multiple goroutines from competing on the same channel (Go channels
+// deliver each message to exactly one reader, causing split content).
+var sessionSSEClaim sync.Map // map[string]bool
 
 // Session cancel functions for aborting AI responses
 var (
@@ -277,6 +286,21 @@ func RegisterSessionStream(sessionID string) chan ai.StreamEvent {
 	return ch
 }
 
+// TryClaimSSEStream atomically claims the SSE stream for a session.
+// Returns true if the claim was acquired (no other SSE handler is reading).
+// Returns false if another SSE handler is already consuming the stream.
+// The claim is released via ReleaseSSEStream when the handler exits.
+func TryClaimSSEStream(sessionID string) bool {
+	_, loaded := sessionSSEClaim.LoadOrStore(sessionID, true)
+	return !loaded
+}
+
+// ReleaseSSEStream releases the SSE stream claim for a session.
+// Called by the SSE handler on all exit paths (done, cancelled, error, disconnect).
+func ReleaseSSEStream(sessionID string) {
+	sessionSSEClaim.Delete(sessionID)
+}
+
 // GetSessionStream returns the stream channel for a session
 func GetSessionStream(sessionID string) (<-chan ai.StreamEvent, bool) {
 	val, ok := sessionStreams.Load(sessionID)
@@ -297,6 +321,8 @@ func UnregisterSessionStream(sessionID string) {
 			close(ch)
 		}
 	}
+	// Also release any lingering SSE claim
+	sessionSSEClaim.Delete(sessionID)
 }
 
 // SendSessionEvent sends an event to the session stream channel (non-blocking).
