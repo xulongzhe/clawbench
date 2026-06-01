@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -257,34 +256,9 @@ var validMossNanoBackends = map[string]bool{
 }
 
 // getBuildVersion returns a human-readable version string from build info.
-// When version.Version is set via -ldflags (from git describe), it combines
-// the semantic version with the VCS short SHA, e.g. "v1.0.0 (abc1234)".
-// getBuildVersion returns the version string injected at build time via -ldflags.
-// For release builds (HEAD on a tag), the format is: "v1.0.0"
-// For dev builds, the format is: "v0.30.0-33-ga636beb (2026-05-21 10:30:00)"
-// When not set (bare "go build"), falls back to VCS info or "dev".
+// Delegates to version.Get() which handles ldflags injection and VCS fallback.
 func getBuildVersion() string {
-	if version.Version != "" {
-		return version.Version
-	}
-	// Fallback: no ldflags injected (bare "go build") — use VCS info
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "dev"
-	}
-	var vcsRev string
-	for _, s := range info.Settings {
-		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
-			vcsRev = s.Value[:7]
-		}
-	}
-	if vcsRev != "" {
-		return vcsRev
-	}
-	if info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
-	}
-	return "dev"
+	return version.Get()
 }
 
 // maskAPIKey masks an API key for safe display: first 4 + *** + last 3 chars.

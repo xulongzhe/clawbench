@@ -139,6 +139,13 @@ func (s *Scheduler) TaskSummarizer() *summarize.TaskSummarizer {
 	return s.taskSummarizer
 }
 
+// TaskCount returns the number of registered cron tasks.
+func (s *Scheduler) TaskCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.entries)
+}
+
 // UnmarkTaskRunning removes the running flag for a task. Used for testing cleanup.
 func (s *Scheduler) UnmarkTaskRunning(taskID int64) {
 	s.taskRunning.Delete(taskID)

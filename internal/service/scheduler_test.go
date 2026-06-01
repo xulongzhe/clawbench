@@ -137,6 +137,48 @@ func TestNewScheduler(t *testing.T) {
 	assert.NotNil(t, s)
 }
 
+func TestTaskCount_Empty(t *testing.T) {
+	s, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	assert.Equal(t, 0, s.TaskCount())
+}
+
+func TestTaskCount_AfterAddTask(t *testing.T) {
+	s, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	err := s.LoadTasksFromDB("")
+	assert.NoError(t, err)
+
+	task := helperTask()
+	err = s.AddTask(task)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, s.TaskCount())
+}
+
+func TestTaskCount_AfterRemoveTask(t *testing.T) {
+	s, cleanup := setupScheduler(t)
+	defer cleanup()
+
+	err := s.LoadTasksFromDB("")
+	assert.NoError(t, err)
+
+	task := helperTask()
+	err = s.AddTask(task)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, s.TaskCount())
+
+	// Get the task ID from DB
+	tasks, err := service.GetTasks("")
+	assert.NoError(t, err)
+	assert.Len(t, tasks, 1)
+
+	s.RemoveTask(tasks[0].ID)
+	assert.Equal(t, 0, s.TaskCount())
+}
+
 // ---------- Start / Stop ----------
 
 func TestSchedulerStartStop(t *testing.T) {
