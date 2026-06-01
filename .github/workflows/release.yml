@@ -100,12 +100,25 @@ jobs:
           file clawbench-linux
           ldd clawbench-linux
 
+      - name: Download Pi binary (embedded agent for setup wizard)
+        env:
+          PI_VERSION: "0.78.0"
+        run: |
+          PI_URL="https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-linux-x64.tar.gz"
+          mkdir -p .clawbench/pi
+          curl -sL "$PI_URL" | tar xzf - -C .clawbench/pi --strip-components=1
+          chmod +x .clawbench/pi/pi
+          echo "$PI_VERSION" > .clawbench/pi/VERSION
+          echo "Pi v${PI_VERSION} downloaded"
+
       - name: Package Linux
         run: |
           mkdir -p pkg-linux/clawbench
           cp clawbench-linux pkg-linux/clawbench/clawbench
           cp -r public pkg-linux/clawbench/public
           cp -r config pkg-linux/clawbench/config
+          mkdir -p pkg-linux/clawbench/.clawbench
+          cp -r .clawbench/pi pkg-linux/clawbench/.clawbench/pi
           chmod +x pkg-linux/clawbench/clawbench
           cd pkg-linux && zip -r clawbench-linux-amd64.zip clawbench/
 
@@ -139,6 +152,21 @@ jobs:
           $VERSION = if (git describe --tags --always 2>$null) { git describe --tags --always } else { "dev" }
           go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench.exe ./cmd/server
 
+      - name: Download Pi binary (embedded agent for setup wizard)
+        shell: pwsh
+        env:
+          PI_VERSION: "0.78.0"
+        run: |
+          $PI_URL = "https://github.com/earendil-works/pi/releases/download/v${env:PI_VERSION}/pi-windows-x64.zip"
+          New-Item -ItemType Directory -Force -Path .clawbench\pi
+          $tmpZip = "$env:TEMP\pi-download.zip"
+          Invoke-WebRequest -Uri $PI_URL -OutFile $tmpZip
+          Expand-Archive -Path $tmpZip -DestinationPath "$env:TEMP\pi-download" -Force
+          Copy-Item -Recurse "$env:TEMP\pi-download\pi\*" ".clawbench\pi\" -Force
+          Remove-Item $tmpZip, "$env:TEMP\pi-download" -Recurse -Force
+          Set-Content -Path ".clawbench\pi\VERSION" -Value $env:PI_VERSION
+          Write-Host "Pi v${env:PI_VERSION} downloaded"
+
       - name: Package Windows
         shell: pwsh
         run: |
@@ -146,6 +174,8 @@ jobs:
           Copy-Item clawbench.exe pkg-windows/clawbench/
           Copy-Item -Recurse public pkg-windows/clawbench/public
           Copy-Item -Recurse config pkg-windows/clawbench/config
+          New-Item -ItemType Directory -Force -Path pkg-windows/clawbench/.clawbench
+          Copy-Item -Recurse .clawbench/pi pkg-windows/clawbench/.clawbench/pi
           Compress-Archive -Path pkg-windows/clawbench -DestinationPath pkg-windows/clawbench-windows-amd64.zip
 
       - uses: softprops/action-gh-release@v2
@@ -178,12 +208,25 @@ jobs:
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-arm64 ./cmd/server
 
+      - name: Download Pi binary (embedded agent for setup wizard)
+        env:
+          PI_VERSION: "0.78.0"
+        run: |
+          PI_URL="https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-arm64.tar.gz"
+          mkdir -p .clawbench/pi
+          curl -sL "$PI_URL" | tar xzf - -C .clawbench/pi --strip-components=1
+          chmod +x .clawbench/pi/pi
+          echo "$PI_VERSION" > .clawbench/pi/VERSION
+          echo "Pi v${PI_VERSION} downloaded"
+
       - name: Package macOS arm64
         run: |
           mkdir -p pkg-mac-arm64/clawbench
           cp clawbench-darwin-arm64 pkg-mac-arm64/clawbench/clawbench
           cp -r public pkg-mac-arm64/clawbench/public
           cp -r config pkg-mac-arm64/clawbench/config
+          mkdir -p pkg-mac-arm64/clawbench/.clawbench
+          cp -r .clawbench/pi pkg-mac-arm64/clawbench/.clawbench/pi
           chmod +x pkg-mac-arm64/clawbench/clawbench
           cd pkg-mac-arm64 && zip -r clawbench-darwin-arm64.zip clawbench/
 
@@ -220,12 +263,25 @@ jobs:
           VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
           go build -ldflags="-s -w -X clawbench/internal/version.Version=$VERSION" -o clawbench-darwin-amd64 ./cmd/server
 
+      - name: Download Pi binary (embedded agent for setup wizard)
+        env:
+          PI_VERSION: "0.78.0"
+        run: |
+          PI_URL="https://github.com/earendil-works/pi/releases/download/v${PI_VERSION}/pi-darwin-x64.tar.gz"
+          mkdir -p .clawbench/pi
+          curl -sL "$PI_URL" | tar xzf - -C .clawbench/pi --strip-components=1
+          chmod +x .clawbench/pi/pi
+          echo "$PI_VERSION" > .clawbench/pi/VERSION
+          echo "Pi v${PI_VERSION} downloaded"
+
       - name: Package macOS amd64
         run: |
           mkdir -p pkg-mac-amd64/clawbench
           cp clawbench-darwin-amd64 pkg-mac-amd64/clawbench/clawbench
           cp -r public pkg-mac-amd64/clawbench/public
           cp -r config pkg-mac-amd64/clawbench/config
+          mkdir -p pkg-mac-amd64/clawbench/.clawbench
+          cp -r .clawbench/pi pkg-mac-amd64/clawbench/.clawbench/pi
           chmod +x pkg-mac-amd64/clawbench/clawbench
           cd pkg-mac-amd64 && zip -r clawbench-darwin-amd64.zip clawbench/
 
