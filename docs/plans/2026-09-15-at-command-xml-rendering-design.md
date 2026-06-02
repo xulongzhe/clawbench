@@ -211,26 +211,9 @@ All data is in **child element text nodes** — never in tag attributes. Rationa
 </ask-question>
 ```
 
-Frontend interaction logic remains **unchanged** (click option → submit button). Only the parsing layer changes.
+Frontend interaction logic remains **unchanged** (click option → submit button). Only the parsing layer changes from JSON to XML.
 
-### Backward Compatibility for Historical Messages
-
-**Dual parsing strategy**: The frontend and backend parsers must support **both** XML and JSON formats inside `<ask-question>` tags. This is necessary because:
-
-1. Historical messages in the database contain JSON-format `<ask-question>` content
-2. If a user views old chat history, JSON-format messages must still render as interactive cards
-3. New AI output will use XML format (per the updated rules.md)
-
-**Parsing order**: Try XML first → if XML parsing fails (no `<item>` child elements found), fall back to JSON parsing. The existing `extractJSONCandidate()` function in `chat.go` serves as the JSON fallback path.
-
-**Backend `convertAskQuestionBlocks`**: The existing function in `chat.go` (line 1031) currently only parses JSON. It must be updated to try XML parsing first:
-
-1. Extract content between `<ask-question>` and `</ask-question>` (existing regex logic)
-2. Try parsing as XML: look for `<item>` child elements
-3. If XML parsing succeeds, build the `tool_use` ContentBlock from XML child elements
-4. If XML parsing fails, fall back to existing `extractJSONCandidate()` → JSON parsing
-
-**Frontend `parseAskQuestionContent`**: Similarly updated in `chatRenderUtils.ts` — try XML parsing first, fall back to JSON.
+**No backward compatibility**: Old JSON-format `<ask-question>` content is **not supported**. Both backend `convertAskQuestionBlocks()` and frontend `parseAskQuestionContent()` are replaced with XML-only parsing. Historical messages containing JSON-format `<ask-question>` will render as raw text — this is an intentional clean break to avoid maintaining dual parsers.
 
 ### `<rag-results>` (New)
 
@@ -429,12 +412,12 @@ When messages with `@` prefix are copied via `ContinueFromExecution` (which copi
 ### Phase 2: Frontend XML Parsing
 
 1. Add XML parser for `<rag-results>` tag using `DOMParser` — detection in `streamPerf.ts`, parsing in `chatRenderUtils.ts`
-2. Migrate `<ask-question>` parsing to support XML format (try XML first, fall back to JSON for backward compat)
+2. Replace `<ask-question>` parsing from JSON to XML-only (no backward compat)
 3. Add `<rag-results>` detection in `renderTextBlock()` (post-streaming only)
 4. Strip XML tags from rendered text
 5. Store parsed results in `blockRagResults` reactive state
 6. Clear `blockRagResults` on session switch
-7. Update backend `convertAskQuestionBlocks()` to try XML parsing first, fall back to JSON
+7. Replace backend `convertAskQuestionBlocks()` with XML-only parsing
 
 ### Phase 3: Frontend Card Rendering
 
@@ -467,10 +450,9 @@ When messages with `@` prefix are copied via `ContinueFromExecution` (which copi
 
 ## Testing Considerations
 
-- **XML parser**: Unit tests for both `<ask-question>` (XML + JSON fallback) and `<rag-results>` XML parsing, including malformed XML fallback (should show raw text gracefully)
+- **XML parser**: Unit tests for `<ask-question>` (XML only) and `<rag-results>` XML parsing, including malformed XML fallback (should show raw text gracefully)
 - **@ command detection**: Backend tests for `processAtCommand()` — verify injection only triggers on exact prefix match on `req.Message`, not on constructed `prompt` with file prefixes
 - **Queue message injection**: Backend tests for `@` command injection in `buildChatRequestFromQueue()` path
 - **Session resume**: Backend tests for count limit validation, soft-delete restore, project ownership check, RAG disabled error
 - **Autocomplete**: Frontend tests for menu trigger, filtering, selection, RAG availability filtering
-- **Historical JSON backward compat**: Frontend + backend tests for rendering old JSON-format `<ask-question>` content
 - **Empty query rejection**: Backend test for `@chatsearch ` with no query text
