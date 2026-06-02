@@ -14,6 +14,7 @@ import {
   stripScheduledTaskTags,
   detectAskQuestion,
   detectRagResults,
+  stripRagResultsTags,
   taskChanged,
   StaticBlockCache,
 } from '@/utils/streamPerf.ts'
@@ -144,7 +145,7 @@ export function useChatRender(options) {
       html = renderKatexInString(html)
     }
 
-    html = DOMPurify.sanitize(html, { ADD_TAGS: ['math', 'button'], ADD_ATTR: ['data-file-path', 'data-commit-sha', 'data-worktree-path', 'data-url', 'data-port', 'data-protocol', 'title'] })
+    html = DOMPurify.sanitize(html, { ADD_TAGS: ['math', 'button', 'rag-results', 'rag-item', 'session-id', 'session-title', 'created-at', 'summary'], ADD_ATTR: ['data-file-path', 'data-commit-sha', 'data-worktree-path', 'data-url', 'data-port', 'data-protocol', 'title'] })
     html = html.replace(/<table>/g, '<div class="table-wrap"><table>').replace(/<\/table>/g, '</table></div>')
 
     if (!skipEnhancements) {
@@ -257,7 +258,17 @@ export function useChatRender(options) {
         return afterAsk ? renderMarkdown(afterAsk) : ''
       }
       cleanText = stripScheduledTaskTags(cleanText)
-      return cleanText ? renderMarkdown(cleanText) : ''
+      // When rag-results is the only content, cleanText is empty.
+      // If blockRagResults was populated, the RAG card v-for will render
+      // independently of this return value — but the surrounding-text
+      // <div v-if="getBlockHtml(...)"> would hide an empty string.
+      // Returning a zero-width space ensures the block is not treated as
+      // completely empty, and prevents the entire message from disappearing
+      // when parseRagResultsContent fails and blockRagResults is unset.
+      if (!cleanText) {
+        return blockRagResults[ragKey] ? '\u200B' : ''
+      }
+      return renderMarkdown(cleanText)
     }
 
     if (askResult.found) {

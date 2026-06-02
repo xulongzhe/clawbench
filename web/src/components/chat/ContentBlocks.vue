@@ -1,11 +1,15 @@
 <template>
   <div class="content-blocks">
-    <!-- Summary mode: render summary as a single text block -->
-    <template v-if="showingSummary && summary">
-      <div v-html="renderTextBlock(summary, msgId, 0, false)"></div>
-    </template>
+    <!-- Summary mode: render summary as a single text block.
+         Using v-show for summary to avoid Vue Fragment patching issues when
+         switching between v-if/v-else branches with nested template v-for.
+         Previously, v-if/v-else with template wrappers caused the v-else
+         branch to render as an empty comment node because Vue 3's patch
+         algorithm fails to correctly transition between different Fragment
+         structures (summary div vs blocks template v-for). -->
+    <div v-show="showingSummary && summary" v-html="renderTextBlock(summary || '', msgId, 0, false)"></div>
     <!-- Original content mode -->
-    <template v-else>
+    <template v-if="!showingSummary || !summary">
     <template v-for="(block, bi) in blocks" :key="bi">
       <!-- Thinking block -->
       <div v-if="block.type === 'thinking'" class="chat-thinking" @click.stop="handleThinkingClick(block, bi)">

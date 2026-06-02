@@ -201,7 +201,7 @@ export function useChatSession(options: UseChatSessionOptions) {
       // rendering. extractScheduledTasks below will re-populate from current DB state.
       Object.keys(blockAskQuestions).forEach(k => delete blockAskQuestions[k])
       Object.keys(blockRagResults).forEach(k => delete blockRagResults[k])
-      messages.value = parseMessages(rawMsgs, onParseAssistantContent)
+      messages.value = parseMessages(rawMsgs, onParseAssistantContent, messages.value)
       totalMessages.value = data.total || messages.value.length
       currentSessionId.value = data.sessionId || ''
       currentSessionTitle.value = data.sessionTitle || ''

@@ -16,11 +16,24 @@ export function buildMessageSnapshot(rawMsgs: any[]): string {
 /**
  * Parse raw message objects from API into the format used by the UI.
  * Adds blocks, metadata, cancelled, fromDB fields as needed.
+ *
+ * @param rawMsgs - Raw message objects from the API
+ * @param onParseAssistantContent - Parser function for assistant message content
+ * @param existingMessages - Optional: current messages array, used to preserve
+ *   user-set showingSummary state across loadHistory refreshes. Without this,
+ *   every loadHistory call would reset showingSummary to true for messages
+ *   with summaries, discarding the user's explicit toggle to view original content.
  */
 export function parseMessages(
   rawMsgs: any[],
-  onParseAssistantContent: (content: string) => any
+  onParseAssistantContent: (content: string) => any,
+  existingMessages?: any[]
 ): any[] {
+  // Build lookup of existing showingSummary state by message ID
+  const existingSummaryState = existingMessages
+    ? new Map(existingMessages.map(m => [m.id, m.showingSummary]))
+    : null
+
   return rawMsgs.map(msg => {
     if (msg.role === 'assistant') {
       const { blocks, metadata, cancelled } = onParseAssistantContent(msg.content)
@@ -28,8 +41,13 @@ export function parseMessages(
       if (metadata) msg.metadata = metadata
       if (cancelled) msg.cancelled = cancelled
       if (msg.streaming) { msg.streaming = true; msg.fromDB = true }
-      // Auto-show summary for messages that have a non-empty summary
-      if (msg.summary != null && msg.summary !== '') {
+      // Preserve existing showingSummary state if the user explicitly toggled it.
+      // Only set the default (true when summary exists) for messages not yet seen.
+      const existingState = existingSummaryState?.get(msg.id)
+      if (existingState === true || existingState === false) {
+        // User has explicitly toggled this message — preserve their choice
+        msg.showingSummary = existingState
+      } else if (msg.summary != null && msg.summary !== '') {
         msg.showingSummary = true
       } else {
         msg.showingSummary = false

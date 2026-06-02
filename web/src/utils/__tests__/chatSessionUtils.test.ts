@@ -262,6 +262,69 @@ describe('parseMessages', () => {
     const result = parseMessages(msgs, mockParser)
     expect(result[0].showingSummary).toBe(false)
   })
+
+  // ── parseMessages preserves existing showingSummary state ──
+
+  it('preserves showingSummary=false from existingMessages when summary exists', () => {
+    const rawMsgs = [
+      { id: 'm1', role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'Hello' }] }), summary: 'A summary' },
+    ]
+    // User toggled to view original (showingSummary=false)
+    const existing = [
+      { id: 'm1', showingSummary: false },
+    ]
+    const result = parseMessages(rawMsgs, mockParser, existing)
+    expect(result[0].showingSummary).toBe(false)
+  })
+
+  it('preserves showingSummary=true from existingMessages when summary exists', () => {
+    const rawMsgs = [
+      { id: 'm1', role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'Hello' }] }), summary: 'A summary' },
+    ]
+    const existing = [
+      { id: 'm1', showingSummary: true },
+    ]
+    const result = parseMessages(rawMsgs, mockParser, existing)
+    expect(result[0].showingSummary).toBe(true)
+  })
+
+  it('sets default showingSummary=true when no existingMessages and summary exists', () => {
+    const rawMsgs = [
+      { id: 'm1', role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'Hello' }] }), summary: 'A summary' },
+    ]
+    const result = parseMessages(rawMsgs, mockParser)
+    expect(result[0].showingSummary).toBe(true)
+  })
+
+  it('sets default showingSummary when existingMessages has undefined showingSummary', () => {
+    const rawMsgs = [
+      { id: 'm1', role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'Hello' }] }), summary: 'A summary' },
+    ]
+    // existingMessages exists but this message has no showingSummary set yet
+    const existing = [
+      { id: 'm1' },
+    ]
+    const result = parseMessages(rawMsgs, mockParser, existing)
+    // showingSummary is undefined in existing, so use default (true for messages with summary)
+    expect(result[0].showingSummary).toBe(true)
+  })
+
+  it('preserves showingSummary for multiple messages independently', () => {
+    const rawMsgs = [
+      { id: 'm1', role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'A' }] }), summary: 'Summary A' },
+      { id: 'm2', role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'B' }] }), summary: 'Summary B' },
+      { id: 'm3', role: 'assistant', content: JSON.stringify({ blocks: [{ type: 'text', text: 'C' }] }), summary: 'Summary C' },
+    ]
+    const existing = [
+      { id: 'm1', showingSummary: false },  // User toggled to original
+      { id: 'm2', showingSummary: true },   // Still showing summary
+      // m3 not in existing (new message)
+    ]
+    const result = parseMessages(rawMsgs, mockParser, existing)
+    expect(result[0].showingSummary).toBe(false)  // Preserved user toggle
+    expect(result[1].showingSummary).toBe(true)   // Preserved
+    expect(result[2].showingSummary).toBe(true)   // Default for new message with summary
+  })
 })
 
 function customParser(content: string) {
