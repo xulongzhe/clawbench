@@ -20,6 +20,7 @@ import (
 	"clawbench/internal/ai"
 	"clawbench/internal/model"
 	"clawbench/internal/platform"
+	"clawbench/internal/rag"
 	"clawbench/internal/service"
 
 	"github.com/google/uuid"
@@ -301,6 +302,29 @@ func AIChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(fileAbsPaths) > 0 {
 		prompt = fmt.Sprintf("[User uploaded %d file(s): %s]\n%s", len(fileAbsPaths), strings.Join(fileAbsPaths, ", "), prompt)
+	}
+
+	// @ command injection: detect on raw req.Message, prepend template to prompt.
+	// Must happen after file path prefixes are added so the AI sees both
+	// the injected context and file context, but detection is on raw req.Message
+	// (since file prefixes would break the @ prefix check).
+	if strings.HasPrefix(req.Message, "@chatsearch ") {
+		// RAG availability check — GlobalStore is nil when RAG index is not ready
+		if rag.GlobalStore == nil {
+			writeLocalizedErrorf(w, r, http.StatusServiceUnavailable, "RAGNotReady")
+			return
+		}
+		// Empty query rejection
+		query := strings.TrimPrefix(req.Message, "@chatsearch ")
+		if strings.TrimSpace(query) == "" {
+			writeLocalizedErrorf(w, r, http.StatusBadRequest, "SearchQueryRequired")
+			return
+		}
+		atInjected := processAtCommand(req.Message, projectPath, sessionID)
+		prompt = atInjected + "\n\n" + prompt
+	} else if strings.HasPrefix(req.Message, "@task ") {
+		atInjected := processAtCommand(req.Message, projectPath, sessionID)
+		prompt = atInjected + "\n\n" + prompt
 	}
 
 	// allFiles already includes filePaths (frontend merges them before sending)
@@ -915,6 +939,11 @@ func buildChatRequestFromQueue(qMsg model.QueuedMessage, sessionID, projectPath,
 	}
 	if len(qMsg.Files) > 0 {
 		prompt = fmt.Sprintf("[User uploaded %d file(s): %s]\n%s", len(qMsg.Files), strings.Join(qMsg.Files, ", "), prompt)
+	}
+
+	// @ command injection for queued messages (same logic as primary message path)
+	if atInjected := processAtCommand(qMsg.Text, projectPath, sessionID); atInjected != qMsg.Text {
+		prompt = atInjected + "\n\n" + prompt
 	}
 
 	// Use session-persisted model (if user explicitly chose one) as modelOverride
