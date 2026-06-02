@@ -155,10 +155,10 @@ func TestExtractStringsFromReader_ReadError(t *testing.T) {
 
 // errorAfterReader returns data bytes then err on the next Read call.
 type errorAfterReader struct {
-	data  []byte
-	err   error
-	pos   int
-	done  bool
+	data []byte
+	err  error
+	pos  int
+	done bool
 }
 
 func (r *errorAfterReader) Read(p []byte) (int, error) {

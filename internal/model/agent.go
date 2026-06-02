@@ -213,8 +213,6 @@ func WriteAgentYAML(agent *Agent) error {
 }
 
 // commonRulesTemplate is the built-in system prompt prepended to all agents.
-//
-//nolint:goconst // template content with backticks
 var commonRulesTemplate = strings.Join([]string{
 	"## User Interaction (Highest Priority)",
 	"",

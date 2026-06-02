@@ -489,7 +489,7 @@ type codebuddyProduct struct {
 // file from the CLI installation directory. This JSON file contains the authoritative model
 // list with proper names and default status, making it far more reliable than --help output
 // (which launches a TUI that hangs without a TTY) or JS bundle scanning (which is fragile).
-func DiscoverCodebuddyModels() []AgentModel { //nolint:gocyclo // multi-format model discovery
+func DiscoverCodebuddyModels() []AgentModel {
 	// Resolve the real path for the codebuddy CLI, handling Windows .cmd wrappers
 	// Path is typically: .../node_modules/@tencent-ai/codebuddy-code/bin/codebuddy
 	realPath := platform.ResolveCLIPath("codebuddy")

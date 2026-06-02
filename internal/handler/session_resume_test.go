@@ -15,7 +15,7 @@ import (
 // --- POST /api/ai/session/resume tests ---
 
 func TestServeSessionResume_MethodNotAllowed(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/ai/session/resume", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/ai/session/resume", http.NoBody)
 	withProjectCookie(req, "/some/project")
 	w := httptest.NewRecorder()
 	ServeSessionResume(w, req)
