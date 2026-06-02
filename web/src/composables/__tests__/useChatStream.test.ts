@@ -1554,8 +1554,10 @@ describe('useChatStream', () => {
 
       es.simulateError()
 
-      // Non-recoverable: should fall back to polling
-      expect(forceCleanupStreamingState).toHaveBeenCalled()
+      // Non-recoverable: should fall back to polling (NOT forceCleanupStreamingState
+      // which would delete the streaming flag and cause pollUntilDone to fail)
+      // Verify loading stays true (session is still running, just using polling)
+      expect(options.loading.value).toBe(true)
     })
 
     it('should not attempt reconnect when readyState is CLOSED even if loading and sessionId exist', () => {
