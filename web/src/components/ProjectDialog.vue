@@ -7,7 +7,7 @@
     <!-- Browse nav -->
     <div class="dialog-nav">
       <div class="dialog-toolbar-row">
-        <button class="toolbar-btn" @click="doNewFolder" :title="t('projectDialog.newFolder')">
+        <button v-if="!isRootLevel" class="toolbar-btn" @click="doNewFolder" :title="t('projectDialog.newFolder')">
           <FolderPlus :size="16" />
         </button>
         <button class="toolbar-btn" @click="showHidden = !showHidden" :title="showHidden ? t('projectDialog.hideHiddenFiles') : t('projectDialog.showHiddenFiles')">
@@ -36,12 +36,14 @@
       >
         <Folder :size="28" class="item-icon-svg" />
         <span class="item-name">{{ item.name }}</span>
-        <button class="item-action-btn" @click.stop="doRename(item)" :title="t('common.rename')">
-          <Pencil :size="14" />
-        </button>
-        <button class="item-action-btn danger" @click.stop="doDelete(item)" :title="t('common.delete')">
-          <Trash2 :size="14" />
-        </button>
+        <template v-if="!isRootLevel">
+          <button class="item-action-btn" @click.stop="doRename(item)" :title="t('common.rename')">
+            <Pencil :size="14" />
+          </button>
+          <button class="item-action-btn danger" @click.stop="doDelete(item)" :title="t('common.delete')">
+            <Trash2 :size="14" />
+          </button>
+        </template>
       </div>
     </div>
 
@@ -82,7 +84,7 @@ const showHidden = ref(false)
 // Browse state
 const browsePath = ref('/')
 const browseItems = ref([])
-let currentBrowseAbs = ''
+const currentBrowseAbs = ref('')
 
 // Detect the separator used by the current base path (backslash on Windows, forward slash on Unix)
 function pathSep(base) {
@@ -121,6 +123,10 @@ function onBreadcrumbNavigate(path) {
   }
 }
 
+// Whether we're at the root/drive-list level (no parent directory above).
+// On Windows this is the drive letter listing; on Unix this is "/".
+const isRootLevel = computed(() => !currentBrowseAbs.value)
+
 const displayItems = computed(() => {
     const q = searchQuery.value.trim().toLowerCase()
     let dirs = browseItems.value.filter(d => !q || d.name.toLowerCase().includes(q))
@@ -128,7 +134,7 @@ const displayItems = computed(() => {
     return dirs.map(d => {
         const name = d.name
         // Build absolute path for the directory entry using correct separator
-        const absBase = currentBrowseAbs || ''
+        const absBase = currentBrowseAbs.value || ''
         const path = absBase ? pathJoin(absBase, name) : name
         return { name, path }
     })
@@ -148,11 +154,14 @@ async function loadBrowse() {
     loading.value = true
     searchQuery.value = ''
     try {
-        const resp = await fetch('/api/projects?path=' + encodeURIComponent(browsePath.value === '/' ? '' : browsePath.value))
+        const rawPath = browsePath.value
+        const apiPath = (!rawPath || rawPath === '/') ? '' : rawPath
+        const resp = await fetch('/api/projects?path=' + encodeURIComponent(apiPath))
         const data = await resp.json()
-        currentBrowseAbs = data.path || browsePath.value
-        // For breadcrumb, compute the relative path from first root
-        browsePath.value = currentBrowseAbs || '/'
+        // data.path is "" at the Windows drive-list level, or an absolute path otherwise.
+        // Preserve "" as-is so displayItems knows we're at root level (no pathJoin).
+        currentBrowseAbs.value = data.path ?? ''
+        browsePath.value = currentBrowseAbs.value || '/'
         browseItems.value = (data.items || []).filter(i => i.type === 'dir')
     } catch (_) {
         browseItems.value = []
@@ -184,7 +193,7 @@ async function doRename(item) {
         const resp = await fetch('/api/file/rename', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: pathJoin(currentBrowseAbs, item.name), name: newName })
+            body: JSON.stringify({ path: pathJoin(currentBrowseAbs.value, item.name), name: newName })
         })
         if (resp.ok) await loadBrowse()
         else {
@@ -200,7 +209,7 @@ async function doDelete(item) {
         const resp = await fetch('/api/file/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: pathJoin(currentBrowseAbs, item.name) })
+            body: JSON.stringify({ path: pathJoin(currentBrowseAbs.value, item.name) })
         })
         if (resp.ok) {
             selectedPath.value = ''
@@ -214,8 +223,8 @@ async function doDelete(item) {
 
 async function confirm() {
     let path = selectedPath.value
-    if (!path && currentBrowseAbs) {
-        path = currentBrowseAbs
+    if (!path && currentBrowseAbs.value) {
+        path = currentBrowseAbs.value
     }
     if (!path) return
     try {
