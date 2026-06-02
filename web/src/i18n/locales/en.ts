@@ -82,7 +82,7 @@ export default {
       placeholder: 'Type a message...',
       placeholderQueue: 'Type a message to enqueue...',
       placeholderOptional: 'Add description (optional)...',
-      placeholderQuickSend: 'Tap the green ⚡ button for quick send →',
+      placeholderQuickSend: 'Tap ⚡ to send preset commands →',
       placeholderAtCommand: "Type {'@'} for built-in commands",
       send: 'Send',
       enqueue: 'Enqueue',
