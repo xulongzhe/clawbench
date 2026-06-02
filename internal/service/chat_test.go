@@ -1905,6 +1905,49 @@ func TestGetSessionTitlesBatch_NonExistentID(t *testing.T) {
 	assert.False(t, ok, "non-existent ID should not appear in titles")
 }
 
+// ---------- GetSessionTitlesBatchIncludeDeleted ----------
+
+func TestGetSessionTitlesBatchIncludeDeleted_IncludesDeletedSessions(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Deleted Session Title")
+	_ = service.DeleteSession("/project", "claude", sid)
+
+	// Regular batch excludes deleted sessions
+	titles, err := service.GetSessionTitlesBatch([]string{sid})
+	assert.NoError(t, err)
+	_, ok := titles[sid]
+	assert.False(t, ok, "GetSessionTitlesBatch should exclude deleted sessions")
+
+	// IncludeDeleted variant includes deleted sessions
+	titlesInc, err := service.GetSessionTitlesBatchIncludeDeleted([]string{sid})
+	assert.NoError(t, err)
+	title, ok := titlesInc[sid]
+	assert.True(t, ok, "GetSessionTitlesBatchIncludeDeleted should include deleted sessions")
+	assert.Equal(t, "Deleted Session Title", title)
+}
+
+func TestGetSessionTitlesBatchIncludeDeleted_ExcludesEmptyTitles(t *testing.T) {
+	setupDB(t)
+
+	sid := helperCreateSession(t, "/project", "claude", "Has Title")
+	_, err := service.DB.Exec("UPDATE chat_sessions SET title = '' WHERE id = ?", sid)
+	assert.NoError(t, err)
+
+	titles, err := service.GetSessionTitlesBatchIncludeDeleted([]string{sid})
+	assert.NoError(t, err)
+	_, ok := titles[sid]
+	assert.False(t, ok, "empty title should not be included even in IncludeDeleted variant")
+}
+
+func TestGetSessionTitlesBatchIncludeDeleted_Empty(t *testing.T) {
+	setupDB(t)
+
+	titles, err := service.GetSessionTitlesBatchIncludeDeleted([]string{})
+	assert.NoError(t, err)
+	assert.Empty(t, titles)
+}
+
 // ---------- GetSessionInfo ----------
 
 func TestGetSessionInfo(t *testing.T) {

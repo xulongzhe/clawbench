@@ -127,14 +127,10 @@
     @send-message="handleToolSendMessage"
   />
   <!-- RAG search result detail drawer -->
-  <BottomSheet :open="!!ragDetailItem" auto @close="ragDetailItem = null">
+  <BottomSheet :open="!!ragDetailItem" :title="ragDetailItem ? (ragDetailItem.sessionTitle || t('chat.contentBlocks.ragUntitled')) : ''" auto @close="ragDetailItem = null">
     <template v-if="ragDetailItem">
       <div class="rag-detail-content">
-        <div class="rag-detail-header">
-          <span class="rag-detail-icon">🔍</span>
-          <span class="rag-detail-title">{{ ragDetailItem.sessionTitle || t('chat.contentBlocks.ragUntitled') }}</span>
-        </div>
-        <div v-if="ragDetailItem.createdAt" class="rag-detail-time">{{ ragDetailItem.createdAt }}</div>
+        <div v-if="ragDetailItem.createdAt" class="rag-detail-time">{{ render.formatDetailTime(ragDetailItem.createdAt) }}</div>
         <div v-if="ragDetailItem.summary" class="rag-detail-summary">{{ ragDetailItem.summary }}</div>
       </div>
       <div class="rag-detail-footer">
@@ -964,29 +960,6 @@ onUnmounted(() => {
 /* RAG detail drawer */
 .rag-detail-content {
   padding: 16px;
-}
-
-.rag-detail-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.rag-detail-icon {
-  font-size: 18px;
-}
-
-.rag-detail-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #8b5cf6;
-  line-height: 1.4;
-  word-break: break-word;
-}
-
-:root[data-theme="dark"] .rag-detail-title {
-  color: #a78bfa;
 }
 
 .rag-detail-time {

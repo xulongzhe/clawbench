@@ -23,7 +23,7 @@ Command flags:
 - --role: Filter by role (user/assistant)
 - --from / --to: Time range
 
-The search results include session_title for each match. Use it directly in your output.
+The search results include session_title for each match. You MUST copy the session_title value exactly as provided — do NOT omit it or leave it empty.
 
 After searching, you MUST output results using this XML format:
 

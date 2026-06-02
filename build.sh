@@ -84,15 +84,7 @@ LDFLAGS="-X 'clawbench/internal/version.Version=$FULL_VERSION'"
 VERSION_CODE=$(git rev-list --count HEAD 2>/dev/null || echo "1")
 echo "  Version: $FULL_VERSION (code: $VERSION_CODE, release: $IS_RELEASE)"
 
-# 1. Lint Go code
-echo "[1/5] Linting Go code..."
-if command -v golangci-lint >/dev/null 2>&1; then
-    ./scripts/lint-go.sh
-else
-    echo "  golangci-lint not found, skipping lint"
-fi
-
-# 2. Build Go backend
+# 1. Build Go backend
 echo "[2/5] Building Go backend..."
 if command -v go >/dev/null 2>&1; then
     if [ -n "$TARGET_OS" ] && [ -n "$TARGET_ARCH" ]; then

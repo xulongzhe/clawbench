@@ -174,7 +174,7 @@ func getSessionTitles(sessionIDs map[string]bool) map[string]string {
 	for id := range sessionIDs {
 		ids = append(ids, id)
 	}
-	titles, err := service.GetSessionTitlesBatch(ids)
+	titles, err := service.GetSessionTitlesBatchIncludeDeleted(ids)
 	if err != nil {
 		titles = make(map[string]string, len(sessionIDs))
 		for id := range sessionIDs {

@@ -99,7 +99,7 @@
             <span class="rag-title">{{ ragItem.sessionTitle || t('chat.contentBlocks.ragUntitled') }}</span>
           </div>
           <div v-if="ragItem.summary" class="rag-summary">{{ ragItem.summary }}</div>
-          <div v-if="ragItem.createdAt" class="rag-time">{{ ragItem.createdAt }}</div>
+          <div v-if="ragItem.createdAt" class="rag-time">{{ formatTime(ragItem.createdAt) }}</div>
         </div>
       </template>
       <!-- Text block with @ command badge (user message starting with @chatsearch/@task) -->
@@ -670,7 +670,6 @@ onUnmounted(() => {
   margin: 6px 0;
   border: 1px solid color-mix(in srgb, #8b5cf6 30%, var(--border-color, #dee2e6));
   border-radius: 8px;
-  overflow: hidden;
   background: color-mix(in srgb, #8b5cf6 6%, var(--bg-primary, #fff));
   cursor: pointer;
   transition: box-shadow 0.15s, border-color 0.15s;
@@ -691,6 +690,7 @@ onUnmounted(() => {
   font-weight: 600;
   font-size: 12px;
   border-bottom: 1px solid color-mix(in srgb, #8b5cf6 15%, var(--border-color, #dee2e6));
+  overflow: hidden;
 }
 
 :root[data-theme="dark"] .rag-header {
@@ -720,6 +720,8 @@ onUnmounted(() => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 .rag-time {
