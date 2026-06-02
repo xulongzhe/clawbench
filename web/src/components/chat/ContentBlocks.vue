@@ -11,12 +11,26 @@
     <!-- Original content mode -->
     <template v-if="!showingSummary || !summary">
     <template v-for="(block, bi) in blocks" :key="bi">
-      <!-- Thinking block -->
-      <div v-if="block.type === 'thinking'" class="chat-thinking" @click.stop="handleThinkingClick(block, bi)">
+      <!-- Thinking block: streaming shows inline content, collapsed shows clickable chip -->
+      <div v-if="block.type === 'thinking'"
+        :ref="isThinkingStreaming(block) ? (el) => setThinkingRef(bi, el) : undefined"
+        class="chat-thinking"
+        :class="{
+          'thinking-streaming': isThinkingStreaming(block),
+          'thinking-collapsed': !isThinkingStreaming(block),
+          'thinking-collapsing': !!collapsingThinking[bi],
+        }"
+        :style="collapsingThinking[bi] ? { maxHeight: collapsingMaxHeight[bi] + 'px' } : {}"
+        @click.stop="!isThinkingStreaming(block) && handleThinkingClick(block, bi)"
+      >
         <div class="thinking-header">
           <Brain :size="12" />
           <span class="thinking-label">{{ t('chat.message.deepThinking') }}</span>
+          <!-- Spinner during streaming -->
+          <span v-if="isThinkingStreaming(block)" class="thinking-spinner"></span>
         </div>
+        <!-- Inline streaming content: only visible during streaming or collapse animation -->
+        <div v-if="isThinkingStreaming(block) || !!collapsingThinking[bi]" class="thinking-inline-content" v-html="getThinkingHtml(bi, block)"></div>
       </div>
       <!-- Tool use block -->
       <template v-else-if="block.type === 'tool_use'">
@@ -119,11 +133,12 @@
 </template>
 
 <script setup>
-import { ref, watch, onUnmounted, computed } from 'vue'
+import { ref, watch, onUnmounted, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { handleToolAction, shouldAutoExpandTool } from '@/utils/renderToolDetail.ts'
 import { getToolIcon } from '@/utils/icons'
 import { Brain, ChevronRight, CheckCircle2, AlertCircle, AlertTriangle, XCircle } from 'lucide-vue-next'
+import { renderMarkdown } from '@/composables/useMarkdownRenderer.ts'
 import {
   isSevereWarning,
   getWarningText as getWarningTextUtil,
@@ -226,6 +241,65 @@ function handleThinkingClick(block, bi) {
   emit('show-thinking-detail', { text: block.text, msgId: props.msgId, blockIdx: bi })
 }
 
+/** Whether a thinking block should show inline streaming content.
+ *  Thinking blocks don't have a `done` property (unlike tool_use), so we rely
+ *  on the message-level `streaming` prop. All thinking blocks in a streaming
+ *  message are considered "streaming" and show inline content. */
+function isThinkingStreaming(block) {
+  return props.streaming
+}
+
+// ── Thinking block collapse animation state ──
+const collapsingThinking = ref({})   // { [blockIndex]: true } for blocks mid-collapse
+const collapsingMaxHeight = ref({})  // { [blockIndex]: maxHeightPx } for animation
+let _collapseElRefs = {}             // { [blockIndex]: HTMLElement } tracked during streaming
+
+/** Track thinking block element refs during streaming for collapse animation. */
+function setThinkingRef(bi, el) {
+  if (el) {
+    _collapseElRefs[bi] = el
+  } else {
+    delete _collapseElRefs[bi]
+  }
+}
+
+/** Trigger collapse animation for all streaming thinking blocks when streaming ends. */
+function startThinkingCollapse() {
+  const newCollapsing = {}
+  const newMaxHeights = {}
+
+  // Find all thinking blocks that were streaming and measure their height
+  for (const idxStr of Object.keys(_collapseElRefs)) {
+    const el = _collapseElRefs[idxStr]
+    if (el && el.scrollHeight) {
+      const fullHeight = el.scrollHeight
+      newCollapsing[idxStr] = true
+      newMaxHeights[idxStr] = fullHeight
+    }
+  }
+  _collapseElRefs = {}
+
+  if (Object.keys(newCollapsing).length > 0) {
+    collapsingThinking.value = newCollapsing
+    collapsingMaxHeight.value = newMaxHeights
+
+    // Next frame: transition to collapsed height
+    requestAnimationFrame(() => {
+      const updatedMaxHeights = {}
+      Object.keys(newCollapsing).forEach(idx => {
+        updatedMaxHeights[idx] = 28 // header-only height
+      })
+      collapsingMaxHeight.value = updatedMaxHeights
+
+      // After transition completes, clean up animation state
+      setTimeout(() => {
+        collapsingThinking.value = {}
+        collapsingMaxHeight.value = {}
+      }, 400) // match CSS transition duration
+    })
+  }
+}
+
 
 /** Click inside expanded tool-detail: dispatch to tool action handlers first, then fall through to generic behavior. */
 function handleToolDetailClick(event) {
@@ -260,6 +334,9 @@ function flushBlockHtml() {
     if (block.type === 'text') {
       // streaming=true: deferred rendering — pure markdown only
       newCache[i] = props.renderTextBlock(block.text, props.msgId, i, true)
+    } else if (block.type === 'thinking') {
+      // Thinking blocks use renderMarkdown during streaming
+      newCache[`t-${i}`] = renderMarkdown(block.text)
     }
   }
   blockHtmlCache.value = newCache
@@ -302,11 +379,36 @@ function getBlockHtml(bi, block) {
   return html
 }
 
+/** Get HTML for thinking block content during streaming (uses renderMarkdown with throttling). */
+function getThinkingHtml(bi, block) {
+  if (!props.streaming || !props.active) {
+    return renderMarkdown(block.text)
+  }
+  const cacheKey = `t-${bi}`
+  // Streaming: deferred rendering with throttling (same pattern as text blocks)
+  if (blockHtmlCache.value[cacheKey] !== undefined) {
+    if (!_throttleTimer) {
+      const newCache = { ...blockHtmlCache.value }
+      newCache[cacheKey] = renderMarkdown(block.text)
+      blockHtmlCache.value = newCache
+      _throttleTimer = setTimeout(flushBlockHtml, THROTTLE_MS)
+    } else {
+      _throttlePending = true
+    }
+    return blockHtmlCache.value[cacheKey]
+  }
+  const html = renderMarkdown(block.text)
+  blockHtmlCache.value = { ...blockHtmlCache.value, [cacheKey]: html }
+  return html
+}
+
 watch(() => props.streaming, (streaming, wasStreaming) => {
   if (wasStreaming && !streaming) {
     if (_throttleTimer) { clearTimeout(_throttleTimer); _throttleTimer = null }
     _throttlePending = false
     blockHtmlCache.value = {}
+    // Trigger collapse animation for thinking blocks that were streaming
+    nextTick(() => startThinkingCollapse())
   }
 })
 
@@ -436,7 +538,28 @@ onUnmounted(() => {
   border: 1px solid color-mix(in srgb, var(--text-secondary, #666) 18%, transparent);
   border-radius: 6px;
   margin: 4px 0;
+  overflow: hidden;
+}
+
+/* Collapsed state: clickable chip (header only) */
+.chat-thinking.thinking-collapsed {
   cursor: pointer;
+  max-height: 28px;
+  transition: max-height 0.35s ease-out;
+}
+
+.chat-thinking.thinking-collapsed:hover {
+  background: color-mix(in srgb, var(--text-secondary, #666) 14%, transparent);
+}
+
+/* Streaming state: inline content visible, no height constraint */
+.chat-thinking.thinking-streaming {
+  max-height: none;
+}
+
+/* Collapse animation state: transitioning from full to collapsed */
+.chat-thinking.thinking-collapsing {
+  transition: max-height 0.35s ease-out;
   overflow: hidden;
 }
 
@@ -453,15 +576,72 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
-/* Thinking overlay text */
-.content-blocks .thinking-overlay-text {
-  margin: 0;
-  font-family: 'SF Mono', 'Fira Code', Menlo, Monaco, monospace;
+.thinking-spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--border-color);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: tool-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+
+.thinking-inline-content {
+  padding: 0 8px 6px;
   font-size: 12px;
   line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
   color: var(--text-secondary);
+  word-break: break-word;
+}
+
+/* Markdown styles inside thinking inline content */
+.thinking-inline-content p { margin: 0 0 0.5em; }
+.thinking-inline-content pre {
+  margin: 0.5em 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-size: 11px;
+}
+.thinking-inline-content code {
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.thinking-inline-content pre code {
+  padding: 0;
+  background: none;
+}
+.thinking-inline-content blockquote {
+  margin: 0.5em 0;
+  padding: 4px 8px;
+  border-left: 2px solid var(--text-tertiary, #aaa);
+}
+.thinking-inline-content h1,
+.thinking-inline-content h2,
+.thinking-inline-content h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0.5em 0 0.3em;
+}
+.thinking-inline-content ul,
+.thinking-inline-content ol {
+  margin: 0.3em 0;
+  padding-left: 1.5em;
+}
+.thinking-inline-content table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 11px;
+}
+.thinking-inline-content th,
+.thinking-inline-content td {
+  border: 1px solid var(--border-color);
+  padding: 2px 6px;
+}
+.thinking-inline-content th {
+  background: color-mix(in srgb, var(--text-secondary) 8%, transparent);
+  font-weight: 600;
 }
 
 /* Tool calls display */

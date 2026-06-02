@@ -342,6 +342,8 @@ export function useChatStream(options: UseChatStreamOptions) {
       } else {
         blocks.push({ type: 'thinking', text: data.text })
       }
+      // Trigger debounced render for inline thinking content during streaming
+      debouncedRender()
       // Skip scroll when panel not visible
       if (isOpen.value) {
         onScrollBottom()
