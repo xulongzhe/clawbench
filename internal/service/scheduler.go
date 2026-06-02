@@ -569,25 +569,13 @@ func (s *Scheduler) executeTask(task *model.ScheduledTask, projectPath string, t
 	// ScheduledExecution flag prevents recursive task creation at the
 	// handler level: even if the AI outputs a <schedule-proposal> tag,
 	// the handler will not create a task from it.
-	//
-	// Rebuild system prompt without task-scheduler skill to prevent
-	// the AI from discovering scheduled task capability (anti-recursion).
+	// Anti-recursion is also enforced by the @task on-demand injection
+	// mechanism: task instructions are only injected when the user
+	// explicitly uses @task, so they never appear during scheduled execution.
 	systemPrompt := agent.SystemPrompt
 	// Replace {{PROJECT_PATH}} per-request with the actual project path for this task
 	if projectPath != "" {
 		systemPrompt = strings.ReplaceAll(systemPrompt, "{{PROJECT_PATH}}", projectPath)
-	}
-	scheduledCommon := model.BuildCommonPrompt(true)
-	normalCommon := model.BuildCommonPrompt(false)
-	if normalCommon != "" && strings.HasPrefix(systemPrompt, normalCommon) {
-		// Replace the common prompt prefix with the scheduled version
-		remaining := systemPrompt[len(normalCommon):]
-		if scheduledCommon != "" {
-			systemPrompt = scheduledCommon + remaining
-		} else {
-			// No skills at all in scheduled mode — strip the common prefix
-			systemPrompt = strings.TrimPrefix(remaining, "\n\n")
-		}
 	}
 
 	// Respect user's global model/thinking preference (from most recent session).

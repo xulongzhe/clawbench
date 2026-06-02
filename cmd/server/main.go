@@ -525,7 +525,7 @@ func main() { //nolint:gocognit,gocyclo // complex startup orchestration
 		slog.Warn("failed to migrate agents from YAML", slog.String("err", err.Error()))
 	}
 
-	// 2. Set ConfigDir for BuildCommonPrompt (replaces old agentsDir variable)
+	// 2. Set ConfigDir for WriteAgentYAML (deprecated, still needed for YAML agent migration)
 	model.ConfigDir = filepath.Dir(agentsDir)
 
 	// 3. Detect installed CLIs and write new agents to DB (replaces SyncDiscoverAgents)

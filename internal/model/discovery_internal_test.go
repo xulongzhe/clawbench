@@ -77,27 +77,13 @@ func TestCanDiscoverModels(t *testing.T) {
 	}
 }
 
-// --- BuildCommonPrompt edge cases (internal access to agentsDir) ---
+// --- BuildCommonPrompt edge cases ---
 
-func TestBuildCommonPrompt_NoConfigDir(t *testing.T) {
-	// When ConfigDir is empty, loadRules returns "", so BuildCommonPrompt returns ""
-	origDir := ConfigDir
-	ConfigDir = ""
-	t.Cleanup(func() { ConfigDir = origDir })
-
-	result := BuildCommonPrompt(false)
-	assert.Empty(t, result)
-}
-
-func TestBuildCommonPrompt_ScheduledRemovesMarkers(t *testing.T) {
-	// Verify that in scheduled mode, both the content AND markers are removed
-	origDir := ConfigDir
-	t.Cleanup(func() { ConfigDir = origDir })
-
-	// We can't easily test this from outside the package because agentsDir
-	// is unexported. This test verifies marker stripping behavior.
-	// (The external test TestBuildCommonPrompt_ScheduledRemovesSection
-	// already tests the full flow via LoadAgents.)
+func TestBuildCommonPrompt_ReturnsContent(t *testing.T) {
+	// BuildCommonPrompt always returns the embedded rules content
+	result := BuildCommonPrompt()
+	assert.NotEmpty(t, result)
+	assert.Contains(t, result, "User Interaction")
 }
 
 // --- DiscoverCodebuddyModels internal tests (cross-platform, no exec.LookPath) ---

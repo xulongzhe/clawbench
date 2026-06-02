@@ -233,8 +233,8 @@ func LoadAgentsIntoMemory(db *sql.DB) error {
 		return model.AgentList[i].ID < model.AgentList[j].ID
 	})
 
-	// Build common prompt from rules.md
-	commonPrompt := model.BuildCommonPrompt(false)
+	// Build common prompt from embedded rules
+	commonPrompt := model.BuildCommonPrompt()
 
 	// Prepend common prompt to each agent's system prompt
 	for _, agent := range model.Agents {

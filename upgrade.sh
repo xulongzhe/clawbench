@@ -43,7 +43,6 @@ SYNC_ENTRIES=(
     "clawbench"       # 主二进制
     "public"          # 前端静态资源
     "scripts"         # 辅助脚本
-    "config/rules.md" # 规则文件
     "config/config.example.yaml" # 示例配置
 )
 

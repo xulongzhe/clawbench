@@ -1757,7 +1757,7 @@ func MergeDiscoveredDataDB(db *sql.DB, cacheDir string, present map[string]bool)
 	}
 
 	// Build common prompt and prepend to each agent's system prompt
-	commonPrompt := BuildCommonPrompt(false)
+	commonPrompt := BuildCommonPrompt()
 	for _, agent := range Agents {
 		if commonPrompt != "" && agent.SystemPrompt != "" {
 			agent.SystemPrompt = commonPrompt + "\n\n" + agent.SystemPrompt

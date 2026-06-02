@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -89,7 +88,7 @@ var (
 	AgentList     []*Agent          // ordered list for API responses
 	ClawbenchBin  string            // absolute path to clawbench binary for {{CLAWBENCH_BIN}} replacement
 	ModelCacheDir string            // model cache directory, set by main.go at startup
-	ConfigDir     string            // config directory containing rules.md; set at startup, replaces agentsDir for loadRules
+	ConfigDir     string            // config directory containing agents/ YAML files; set at startup for WriteAgentYAML
 )
 
 // GetDefaultAgentID returns the default agent ID for new sessions.
@@ -107,13 +106,11 @@ func GetDefaultAgentID() string {
 }
 
 // LoadAgents reads all YAML files from the given directory and registers them as agents.
-// It loads rules.md (mandatory injection), builds a common prompt,
-// and prepends it to each agent's system prompt.
+// It builds the common prompt from embedded rules and prepends it to each agent's system prompt.
 func LoadAgents(dir string) error {
 	Agents = make(map[string]*Agent)
 	AgentList = nil
-	// Set ConfigDir to the parent of the agents directory (where rules.md lives)
-	// This is kept for backward compatibility during migration; will be removed after YAML loading is removed.
+	// Set ConfigDir to the parent of the agents directory (for WriteAgentYAML)
 	ConfigDir = filepath.Dir(dir)
 
 	entries, err := os.ReadDir(dir)
@@ -146,8 +143,8 @@ func LoadAgents(dir string) error {
 		return AgentList[i].ID < AgentList[j].ID
 	})
 
-	// Build common prompt from rules.md (always fully injected)
-	commonPrompt := BuildCommonPrompt(false)
+	// Build common prompt from embedded rules (always fully injected)
+	commonPrompt := BuildCommonPrompt()
 
 	// Prepend common prompt to each agent's system prompt
 	for _, agent := range Agents {
@@ -215,60 +212,108 @@ func WriteAgentYAML(agent *Agent) error {
 	return nil
 }
 
-// scheduledBlockRe matches the <!-- SCHEDULED_BEGIN --> ... <!-- SCHEDULED_END --> block in rules.md.
-var scheduledBlockRe = regexp.MustCompile(`(?s)\n*<!-- SCHEDULED_BEGIN -->\n(.*?)\n<!-- SCHEDULED_END -->\n*`)
+// commonRulesTemplate is the built-in system prompt prepended to all agents.
+//
+//nolint:goconst // template content with backticks
+var commonRulesTemplate = strings.Join([]string{
+	"## User Interaction (Highest Priority)",
+	"",
+	"**ALL questions, confirmations, choices, and option presentations directed at the user MUST use structured interactive questions. Plain text questions are ABSOLUTELY FORBIDDEN — no exceptions.**",
+	"",
+	"### What counts as a \"question\" (must use structured format)",
+	"",
+	"ANY output that expects or invites a user response, including but not limited to:",
+	"- Direct questions (\"Which approach do you prefer?\")",
+	"- Confirmation requests (\"Is this OK?\", \"Shall I proceed?\")",
+	"- Option presentations (\"You could use A, B, or C\")",
+	"- Implicit questions (\"Let me know if…\", \"Feel free to tell me…\")",
+	"- Trailing questions at the end of a response (\"Would you like me to…?\")",
+	"- Yes/no checks (\"Does this look right?\", \"Ready to continue?\")",
+	"- Parameter solicitations (\"What port should I use?\")",
+	"",
+	"**If the user needs to respond, it is a question. Use structured format. Period.**",
+	"",
+	"### How to ask questions",
+	"",
+	"- **ALWAYS** output an `<ask-question>` XML tag. This is the ONLY supported method.",
+	"- **NEVER** use the `" + "`AskUserQuestion`" + "` tool call — it will be rejected by the CLI and result in an error.",
+	"",
+	"XML format — all data in child element text nodes (no attributes):",
+	"",
+	"```",
+	"<ask-question>",
+	"  <item>",
+	"    <header>Approach</header>",
+	"    <multi-select>false</multi-select>",
+	"    <question>Which approach do you prefer?</question>",
+	"    <option>",
+	"      <label>Option A</label>",
+	"      <description>Fast but less safe</description>",
+	"    </option>",
+	"    <option>",
+	"      <label>Option B</label>",
+	"      <description>Safe but slower</description>",
+	"    </option>",
+	"  </item>",
+	"</ask-question>",
+	"```",
+	"",
+	"**Important:** Use XML child elements only — NO tag attributes, NO JSON. If parsing fails, child element text remains readable; attributes would be invisible.",
+	"",
+	"### Forbidden question methods",
+	"",
+	"❌ **NEVER** call the `" + "`AskUserQuestion`" + "` tool — the CLI runs headlessly and cannot present interactive questions, so the tool call will fail with an error. Always use the `<ask-question>` XML tag instead.",
+	"",
+	"### The ONLY exception",
+	"",
+	"Pure informational statements that require ZERO user action or response may be plain text. Example: \"I've saved the file to /tmp/output.txt.\" If you add any request for feedback to that statement, it becomes a question.",
+	"",
+	"### Forbidden patterns (DO NOT output these)",
+	"",
+	"❌ \"Which approach would you prefer?\" (plain text question)",
+	"❌ \"Shall I proceed with option A?\" (plain text confirmation)",
+	"❌ \"Let me know if you want me to continue.\" (implicit question)",
+	"❌ \"Options: A) fast, B) safe\" (plain text option list)",
+	"❌ \"Does this look correct?\" (trailing yes/no question)",
+	"❌ Plain text questions in any language",
+	"❌ Adding a question at the end of an otherwise informational response",
+	"",
+	"✅ Use `<ask-question>` XML tag for ALL of the above. ❌ Do NOT use the `" + "`AskUserQuestion`" + "` tool call.",
+	"",
+	"## Multi-Agent / Team Mode (Mandatory)",
+	"",
+	"All agents run as child processes of a single CLI session. If the lead agent exits, all sub-agents are killed immediately.",
+	"",
+	"**Mandatory rule: The lead agent MUST NOT exit until every sub-agent has completed.**",
+	"",
+	"- **Always use foreground mode** for sub-agents (blocks until return). Never use `" + "`run_in_background: true`" + "`.",
+	"- For parallelism, place multiple foreground Agent calls in the **same message** — they execute concurrently and all return before the lead continues.",
+	"- If a sub-agent appears stuck or fails, cancel/retry it before exiting — do not abandon it.",
+	"- Aggregate results only after all sub-agents have finished.",
+	"",
+	"## Media File Handling",
+	"",
+	"### Upload Path",
+	"",
+	"User-uploaded images: `" + "`.clawbench/uploads/filename.jpg`" + "` — use full path for image analysis.",
+	"",
+	"### Media Reading: Intent-First Rule",
+	"",
+	"**Never read/analyze a media file unless the user's intent is clear — doing so wastes tokens.**",
+	"",
+	"- **Read intent present** (e.g., \"look at this\", \"analyze this screenshot\") → Read and analyze.",
+	"- **No read intent** (e.g., user just sends a file) → **Do NOT read.** Acknowledge and ask what they want.",
+	"",
+	"### Media Generation: Output Rules",
+	"",
+	"1. **Call tool** → Use appropriate skill/plugin/capability",
+	"2. **Save file** → User-specified path, or `<project_root>/.clawbench/generated/` by default. File names: concise, English, type-prefixed (e.g., `" + "`img_`, `audio_`" + "`)",
+	"3. **Return format** → Markdown: `" + "`![desc](/api/local-file/<relative_path>)`" + "` for images, `" + "`[desc](/api/local-file/<relative_path>)`" + "` for audio. Must tell user the file path.",
+	"4. **Rules** → No absolute paths or external URLs. No spaces or special characters in paths.",
+}, "\n")
 
-// scheduledMarkerRe matches just the SCHEDULED_BEGIN/END comment lines (without the content between them).
-var scheduledMarkerRe = regexp.MustCompile(`\n*<!-- SCHEDULED_(BEGIN|END) -->\n*`)
-
-// BuildCommonPrompt generates the shared system prompt prepended to all agents.
-// It loads rules.md (mandatory rules, always fully injected).
-// When scheduled is true, the section wrapped in <!-- SCHEDULED_BEGIN/END --> markers
-// is removed to prevent the AI from discovering scheduled task capability during
-// a scheduled execution (anti-recursion).
-// In both modes, the HTML comment markers themselves are stripped from the output.
-func BuildCommonPrompt(scheduled bool) string {
-	rules := loadRules(ConfigDir)
-	if rules == "" {
-		return ""
-	}
-
-	if scheduled {
-		// Remove the entire SCHEDULED block (markers + content)
-		rules = scheduledBlockRe.ReplaceAllString(rules, "\n\n")
-	} else {
-		// Keep the content but strip the HTML comment markers
-		rules = scheduledMarkerRe.ReplaceAllString(rules, "\n\n")
-	}
-	rules = strings.TrimSpace(rules)
-
-	return rules
-}
-
-// loadRules reads config/rules.md from the given config directory,
-// replaces placeholders ({{PORT}}, {{AVAILABLE_AGENTS}}), and returns the content.
-func loadRules(configDir string) string {
-	data, err := os.ReadFile(filepath.Join(configDir, "rules.md"))
-	if err != nil {
-		return ""
-	}
-	content := strings.TrimSpace(string(data))
-
-	// Replace {{CLAWBENCH_BIN}} with absolute path to clawbench binary
-	if ClawbenchBin != "" {
-		content = strings.ReplaceAll(content, "{{CLAWBENCH_BIN}}", ClawbenchBin)
-	}
-
-	// Replace {{AVAILABLE_AGENTS}}
-	var agentLines []string
-	for _, a := range AgentList {
-		agentLines = append(agentLines, fmt.Sprintf("    - %s: %s", a.ID, a.Specialty))
-	}
-	content = strings.ReplaceAll(content, "{{AVAILABLE_AGENTS}}", strings.Join(agentLines, "\n"))
-
-	// Note: {{PROJECT_PATH}} is NOT replaced here — it is replaced per-request
-	// in buildChatRequest() and scheduler executeTask() with the actual project
-	// path from the cookie/database, not a static root path.
-
-	return content
+// BuildCommonPrompt generates the shared system prompt prepended to all agents
+// from the built-in rules template.
+func BuildCommonPrompt() string {
+	return strings.TrimSpace(commonRulesTemplate)
 }

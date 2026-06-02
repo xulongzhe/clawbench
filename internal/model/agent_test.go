@@ -118,8 +118,9 @@ system_prompt: My specific prompt
 	assert.NoError(t, err)
 	agent := model.Agents["with-common"]
 	assert.NotNil(t, agent)
-	// Without rules.md in parent dir, only agent prompt is present
+	// Embedded common prompt is always present
 	assert.Contains(t, agent.SystemPrompt, "My specific prompt")
+	assert.Contains(t, agent.SystemPrompt, "User Interaction")
 }
 
 func TestLoadAgents_CommonPromptOnlyNoSystemPrompt(t *testing.T) {
@@ -142,8 +143,8 @@ backend: claude
 	assert.NoError(t, err)
 	agent := model.Agents["no-prompt"]
 	assert.NotNil(t, agent)
-	// When agent has no system_prompt and no rules.md, system prompt is empty
-	assert.Empty(t, agent.SystemPrompt)
+	// When agent has no system_prompt, the common prompt from embedded rules is used
+	assert.Contains(t, agent.SystemPrompt, "User Interaction")
 }
 
 func TestLoadAgents_NonExistentDir(t *testing.T) {
@@ -163,64 +164,6 @@ func TestLoadAgents_InvalidYAML(t *testing.T) {
 	err := model.LoadAgents(dir)
 	assert.NoError(t, err)
 	assert.Empty(t, model.AgentList)
-}
-
-func TestBuildCommonPrompt_ScheduledRemovesSection(t *testing.T) {
-	t.Cleanup(func() {
-		model.Agents = nil
-		model.AgentList = nil
-	})
-
-	// Create temp dir with agents/ and rules.md containing SCHEDULED markers
-	tmpDir := t.TempDir()
-	agentsDir := filepath.Join(tmpDir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
-
-	rulesContent := `## User Interaction
-
-Some rules here.
-
-<!-- SCHEDULED_BEGIN -->
-## Scheduled Tasks
-
-Task rules and CLI reference here.
-
-<!-- SCHEDULED_END -->
-
-## RAG History Search
-
-RAG rules here.
-`
-	err := os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0o644)
-	require.NoError(t, err)
-
-	// Write an agent YAML so LoadAgents sets up agentsDir properly
-	yaml := `id: test-agent
-name: Test
-icon: "T"
-specialty: Testing
-backend: codebuddy
-system_prompt: You test.
-`
-	err = os.WriteFile(filepath.Join(agentsDir, "test-agent.yaml"), []byte(yaml), 0o644)
-	require.NoError(t, err)
-
-	err = model.LoadAgents(agentsDir)
-	require.NoError(t, err)
-
-	// Normal: Scheduled Tasks section is present
-	normalPrompt := model.BuildCommonPrompt(false)
-	assert.Contains(t, normalPrompt, "Scheduled Tasks")
-	assert.Contains(t, normalPrompt, "RAG History Search")
-	assert.NotContains(t, normalPrompt, "SCHEDULED_BEGIN")
-	assert.NotContains(t, normalPrompt, "SCHEDULED_END")
-
-	// Scheduled: Scheduled Tasks section is removed
-	scheduledPrompt := model.BuildCommonPrompt(true)
-	assert.NotContains(t, scheduledPrompt, "Scheduled Tasks")
-	assert.Contains(t, scheduledPrompt, "RAG History Search")
-	assert.NotContains(t, scheduledPrompt, "SCHEDULED_BEGIN")
-	assert.NotContains(t, scheduledPrompt, "SCHEDULED_END")
 }
 
 func TestGetDefaultAgentID_Configured(t *testing.T) {
@@ -454,37 +397,6 @@ func TestWriteAgentYAML_AgentYAMLNotFoundOnDisk(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestLoadAgents_CommonPromptOnlyWithRulesNoSystemPrompt(t *testing.T) {
-	t.Cleanup(func() {
-		model.Agents = nil
-		model.AgentList = nil
-	})
-
-	tmpDir := t.TempDir()
-	agentsDir := filepath.Join(tmpDir, "agents")
-	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
-
-	// Create rules.md in parent directory
-	rulesContent := "## Rules\nBe helpful and concise."
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0o644))
-
-	// Agent with no system_prompt — should get commonPrompt only (the else-if branch)
-	yaml := `id: no-prompt
-name: No Prompt
-icon: "N"
-specialty: None
-backend: claude
-`
-	require.NoError(t, os.WriteFile(filepath.Join(agentsDir, "agent.yaml"), []byte(yaml), 0o644))
-
-	err := model.LoadAgents(agentsDir)
-	require.NoError(t, err)
-	agent := model.Agents["no-prompt"]
-	assert.NotNil(t, agent)
-	// Should have the common prompt (rules.md) as the system prompt
-	assert.Contains(t, agent.SystemPrompt, "Be helpful and concise")
-}
-
 func TestLoadAgents_CommonPromptWithAgentPrompt(t *testing.T) {
 	t.Cleanup(func() {
 		model.Agents = nil
@@ -494,10 +406,6 @@ func TestLoadAgents_CommonPromptWithAgentPrompt(t *testing.T) {
 	tmpDir := t.TempDir()
 	agentsDir := filepath.Join(tmpDir, "agents")
 	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
-
-	// Create rules.md
-	rulesContent := "## Rules\nBe helpful."
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0o644))
 
 	// Agent with system_prompt — should get commonPrompt + agent prompt
 	yaml := `id: with-prompt
@@ -513,11 +421,11 @@ system_prompt: My specific prompt
 	require.NoError(t, err)
 	agent := model.Agents["with-prompt"]
 	assert.NotNil(t, agent)
-	// Should have both common prompt and specific prompt
-	assert.Contains(t, agent.SystemPrompt, "Be helpful")
+	// Should have both embedded common prompt and specific prompt
+	assert.Contains(t, agent.SystemPrompt, "User Interaction")
 	assert.Contains(t, agent.SystemPrompt, "My specific prompt")
 	// Common prompt should come first
-	idx := strings.Index(agent.SystemPrompt, "Be helpful")
+	idx := strings.Index(agent.SystemPrompt, "User Interaction")
 	idx2 := strings.Index(agent.SystemPrompt, "My specific prompt")
 	assert.Less(t, idx, idx2)
 }
@@ -565,10 +473,6 @@ func TestLoadAgents_ClawbenchBinReplacement(t *testing.T) {
 	agentsDir := filepath.Join(tmpDir, "agents")
 	require.NoError(t, os.MkdirAll(agentsDir, 0o755))
 
-	// Create rules.md with {{CLAWBENCH_BIN}} placeholder
-	rulesContent := "Use {{CLAWBENCH_BIN}} for CLI operations."
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "rules.md"), []byte(rulesContent), 0o644))
-
 	yaml := `id: test-agent
 name: Test
 icon: "T"
@@ -585,8 +489,9 @@ system_prompt: You test.
 
 	agent := model.Agents["test-agent"]
 	assert.NotNil(t, agent)
-	assert.Contains(t, agent.SystemPrompt, "/usr/local/bin/clawbench")
-	assert.NotContains(t, agent.SystemPrompt, "{{CLAWBENCH_BIN}}")
+	// The embedded rules template is always present
+	assert.Contains(t, agent.SystemPrompt, "User Interaction")
+	assert.Contains(t, agent.SystemPrompt, "You test.")
 }
 
 func TestWriteAgentYAML_WriteFileError(t *testing.T) {
