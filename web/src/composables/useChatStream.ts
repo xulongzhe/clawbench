@@ -167,40 +167,61 @@ export function useChatStream(options: UseChatStreamOptions) {
 
         if (!data.running) {
           stopPolling()
-          messages.value = latestMsgs
-          currentSessionId.value = data.sessionId || currentSessionId.value
-          // Only render and scroll when panel is visible
-          if (isOpen.value) {
-            onRenderNeeded(true)
-            onScrollBottom(true)
-          }
-          loading.value = false
-          onMessage()
-          onStreamEnd?.('done')
-          if (!isOpen.value) {
-            const lastMsg = messages.value[messages.value.length - 1]
-            if (lastMsg?.role === 'assistant') {
-              onToast(gt('chat.stream.aiReplied'), { icon: '🤖', duration: 5000, onClick: () => onOpen() })
-              onNotification(gt('chat.stream.aiReplied'), {
-                body: gt('chat.stream.clickToViewReply'),
-                onClick: () => onOpen()
-              })
+          // Use onLoadHistory() for the final load — it handles the full render
+          // pipeline (KaTeX, annotations, etc.) correctly for completed messages,
+          // and properly manages session state (model sync, expandedTools, etc.)
+          // This avoids the flickering caused by directly replacing messages.value
+          // which destroys and rebuilds the entire Vue component tree.
+          onLoadHistory().finally(() => {
+            loading.value = false
+            onMessage()
+            onStreamEnd?.('done')
+            if (!isOpen.value) {
+              const lastMsg = messages.value[messages.value.length - 1]
+              if (lastMsg?.role === 'assistant') {
+                onToast(gt('chat.stream.aiReplied'), { icon: '🤖', duration: 5000, onClick: () => onOpen() })
+                onNotification(gt('chat.stream.aiReplied'), {
+                  body: gt('chat.stream.clickToViewReply'),
+                  onClick: () => onOpen()
+                })
+              }
             }
-          }
+          })
           return
         }
-        // Session still running — update the streaming message with latest content
-        // so the user sees progress even while polling (not stuck on stale content)
+        // Session still running — incremental update: only mutate the streaming
+        // assistant message's blocks in place to avoid destroying/rebuilding the
+        // entire Vue component tree (which causes severe UI flickering every 2s).
         const lastAssistant = latestMsgs.findLast(m => m.role === 'assistant')
-        if (lastAssistant) {
+        const existingStreaming = messages.value.find((m: any) => m.role === 'assistant' && m.streaming)
+
+        if (lastAssistant && existingStreaming) {
+          // Update blocks in place — Vue tracks array mutations on reactive proxies,
+          // so ContentBlocks.vue picks up the change without a full component rebuild.
+          existingStreaming.blocks = lastAssistant.blocks
+          if (lastAssistant.metadata) existingStreaming.metadata = lastAssistant.metadata
+          if (lastAssistant.cancelled) existingStreaming.cancelled = lastAssistant.cancelled
+        } else if (lastAssistant && !existingStreaming) {
+          // No existing streaming message (shouldn't normally happen after
+          // forceCleanupStreamingState, but handle gracefully) — push new one
           lastAssistant.streaming = true
+          messages.value.push(lastAssistant)
         }
-        messages.value = latestMsgs
+
+        // Add any new non-streaming messages that appeared (e.g., queued user messages)
+        const existingIds = new Set(messages.value.map((m: any) => m.id).filter(Boolean))
+        for (const msg of latestMsgs) {
+          if (msg.id && !existingIds.has(msg.id) && msg !== lastAssistant) {
+            messages.value.push(msg)
+          }
+        }
+
         currentSessionId.value = data.sessionId || currentSessionId.value
-        // Only render and scroll when panel is visible
+        // Incremental render via debounce — same as the SSE streaming path.
+        // NOT onRenderNeeded(true) which triggers full pipeline (KaTeX, annotations)
+        // and causes flickering during streaming.
         if (isOpen.value) {
-          onRenderNeeded(true)
-          onScrollBottom()
+          debouncedRender()
         }
       } catch (err) {
         console.error('Polling error:', err)
