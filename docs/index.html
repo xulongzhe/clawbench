@@ -216,7 +216,7 @@
     </div>
     <div class="install-cmd-wrap active" id="tab-mac">
       <div class="install-cmd">
-        <code>curl -fsSL https://github.com/xulongzhe/clawbench/releases/latest/download/install.sh | bash</code>
+        <code>curl -fsSL https://github.com/xulongzhe/clawbench/releases/latest/download/clawbench-darwin-arm64.zip -o clawbench.zip && unzip clawbench.zip && ./clawbench</code>
         <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
         </button>
@@ -224,7 +224,7 @@
     </div>
     <div class="install-cmd-wrap" id="tab-linux">
       <div class="install-cmd">
-        <code>curl -fsSL https://github.com/xulongzhe/clawbench/releases/latest/download/install.sh | bash</code>
+        <code>curl -fsSL https://github.com/xulongzhe/clawbench/releases/latest/download/clawbench-linux-amd64.zip -o clawbench.zip && unzip clawbench.zip && ./clawbench</code>
         <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
         </button>
@@ -232,7 +232,7 @@
     </div>
     <div class="install-cmd-wrap" id="tab-win">
       <div class="install-cmd">
-        <code>irm https://github.com/xulongzhe/clawbench/releases/latest/download/install.ps1 | iex</code>
+        <code>curl -fsSL https://github.com/xulongzhe/clawbench/releases/latest/download/clawbench-windows-amd64.zip -o clawbench.zip && Expand-Archive clawbench.zip . && .\clawbench.exe</code>
         <button class="copy-btn" onclick="copyCmd(this)" aria-label="Copy">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
         </button>
