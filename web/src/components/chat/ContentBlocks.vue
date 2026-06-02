@@ -722,6 +722,23 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   word-break: break-word;
+  position: relative;
+}
+
+/* Fade-out gradient at bottom of clamped summary — hints at truncated content */
+.rag-summary::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1.4em;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, #8b5cf6 6%, var(--bg-primary, #fff)));
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .rag-summary::after {
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, #a78bfa 6%, var(--bg-primary, #1a1a1a)));
 }
 
 .rag-time {

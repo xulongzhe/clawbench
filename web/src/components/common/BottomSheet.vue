@@ -7,11 +7,11 @@
       :class="{ 'bs-leaving': leaving, 'bs-instant': instant }"
       @click.self="handleClose"
     >
-      <div class="bs-panel" :class="{ 'bs-leaving': leaving, 'bs-instant': instant, 'bs-compact': compact, 'bs-auto': auto }">
+      <div class="bs-panel" :class="{ 'bs-leaving': leaving, 'bs-instant': instant, 'bs-compact': compact, 'bs-auto': auto, 'bs-handle-only': handleOnly }">
         <!-- Header -->
-        <div v-if="!noHeader" class="bs-header" @click="handleClose">
+        <div v-if="!noHeader" class="bs-header" :class="{ 'bs-header-handle-only': handleOnly }" @click="handleClose">
           <div class="bs-handle" />
-          <slot name="header">
+          <slot v-if="!handleOnly" name="header">
             <span class="bs-title">{{ title }}</span>
           </slot>
         </div>
@@ -40,7 +40,8 @@ const props = defineProps({
   instant: Boolean,  // 立即关闭，无动画
   compact: Boolean,  // 紧凑模式，高度自适应内容，最大50%，无圆角
   auto: Boolean,     // 自适应模式，高度按内容需要，最大全屏
-  noHeader: Boolean, // 隐藏Header
+  noHeader: Boolean, // 隐藏Header（含手柄）
+  handleOnly: Boolean, // 仅显示拖拽手柄，无标题栏
 })
 
 const emit = defineEmits(['close'])
@@ -195,6 +196,18 @@ defineExpose({
   border-radius: 2px;
   background: var(--text-muted, #bbb);
   opacity: 0.5;
+}
+
+/* Handle-only header — compact, no box-shadow, centered handle */
+.bs-header-handle-only {
+  justify-content: center;
+  height: 12px;
+  padding: 0;
+  box-shadow: none;
+}
+
+.bs-header-handle-only .bs-handle {
+  top: 4px;
 }
 
 .bs-header-icon {

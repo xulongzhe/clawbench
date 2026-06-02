@@ -38,6 +38,21 @@ describe('BottomSheet', () => {
     expect(wrapper.find('.bs-header').exists()).toBe(false)
   })
 
+  it('shows handle-only header when handleOnly is true', async () => {
+    const wrapper = mountSheet({ handleOnly: true, title: 'Ignored Title' })
+
+    expect(wrapper.find('.bs-header').exists()).toBe(true)
+    expect(wrapper.find('.bs-header').classes()).toContain('bs-header-handle-only')
+    expect(wrapper.find('.bs-title').exists()).toBe(false)
+    expect(wrapper.find('.bs-handle').exists()).toBe(true)
+  })
+
+  it('noHeader takes precedence over handleOnly', async () => {
+    const wrapper = mountSheet({ noHeader: true, handleOnly: true })
+
+    expect(wrapper.find('.bs-header').exists()).toBe(false)
+  })
+
   it('uses header slot when provided', async () => {
     const wrapper = mountSheet({}, { header: '<span class="custom-hdr">Custom</span>' })
 

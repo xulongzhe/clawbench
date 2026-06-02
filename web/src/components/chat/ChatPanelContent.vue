@@ -127,9 +127,10 @@
     @send-message="handleToolSendMessage"
   />
   <!-- RAG search result detail drawer -->
-  <BottomSheet :open="!!ragDetailItem" :title="ragDetailItem ? (ragDetailItem.sessionTitle || t('chat.contentBlocks.ragUntitled')) : ''" auto @close="ragDetailItem = null">
+  <BottomSheet :open="!!ragDetailItem" handleOnly auto @close="ragDetailItem = null">
     <template v-if="ragDetailItem">
       <div class="rag-detail-content">
+        <div class="rag-detail-title">{{ ragDetailItem.sessionTitle || t('chat.contentBlocks.ragUntitled') }}</div>
         <div v-if="ragDetailItem.createdAt" class="rag-detail-time">{{ render.formatDetailTime(ragDetailItem.createdAt) }}</div>
         <div v-if="ragDetailItem.summary" class="rag-detail-summary">{{ ragDetailItem.summary }}</div>
       </div>
@@ -959,7 +960,16 @@ onUnmounted(() => {
 
 /* RAG detail drawer */
 .rag-detail-content {
-  padding: 16px;
+  padding: 8px 16px 16px;
+}
+
+.rag-detail-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 8px;
+  word-break: break-word;
 }
 
 .rag-detail-time {
