@@ -2,57 +2,56 @@ import { describe, it, expect } from 'vitest'
 import { isValidAskContent, detectAskQuestion, extractScheduledTaskIds, stripScheduledTaskTags, taskChanged, StaticBlockCache, SCHEDULED_TASK_RE } from '../streamPerf'
 
 describe('isValidAskContent', () => {
-  it('accepts standard JSON object with questions array', () => {
-    const raw = '{"questions":[{"question":"Pick one","header":"Choice","options":[{"label":"A","description":"Fast"}],"multiSelect":false}]}'
+  it('accepts XML with <item> containing <question> and <option>', () => {
+    const raw = '<item><header>Choice</header><multi-select>false</multi-select><question>Pick one</question><option><label>A</label><description>Fast</description></option></item>'
     expect(isValidAskContent(raw)).toBe(true)
   })
 
-  it('accepts parameter wrapper with bare questions array', () => {
-    const raw = '<parameter name="questions">[{"question":"Pick one","header":"Choice","options":[{"label":"A","description":"Fast"}],"multiSelect":false}]</parameter>'
+  it('accepts multiple <item> elements', () => {
+    const raw = '<item><header>H1</header><multi-select>false</multi-select><question>Q1</question><option><label>A</label></option></item><item><header>H2</header><multi-select>true</multi-select><question>Q2</question><option><label>B</label></option></item>'
     expect(isValidAskContent(raw)).toBe(true)
   })
 
-  it('accepts parameter wrapper with questions object', () => {
-    const raw = '<parameter name="questions">{"questions":[{"question":"Pick one","header":"Choice","options":[{"label":"A","description":"Fast"}],"multiSelect":false}]}</parameter>'
+  it('accepts <item> with attributes', () => {
+    const raw = '<item type="single"><header>Choice</header><multi-select>false</multi-select><question>Pick one</question><option><label>A</label></option></item>'
     expect(isValidAskContent(raw)).toBe(true)
   })
 
-  it('accepts bare questions array without wrapper', () => {
-    const raw = '[{"question":"Pick one","header":"Choice","options":[{"label":"A","description":"Fast"}],"multiSelect":false}]'
-    expect(isValidAskContent(raw)).toBe(true)
-  })
-
-  it('accepts markdown code fence with parameter wrapper', () => {
-    const raw = '```json\n<parameter name="questions">[{"question":"Pick one","header":"Choice","options":[{"label":"A","description":"Fast"}],"multiSelect":false}]</parameter>\n```'
-    expect(isValidAskContent(raw)).toBe(true)
-  })
-
-  it('rejects plain text (not JSON)', () => {
-    const raw = 'This is just text, not JSON at all'
+  it('rejects plain text (not XML)', () => {
+    const raw = 'This is just text, not XML at all'
     expect(isValidAskContent(raw)).toBe(false)
   })
 
-  it('rejects JSON object without questions field', () => {
-    const raw = '{"data":"something"}'
+  it('rejects XML without <question> tag', () => {
+    const raw = '<item><header>Choice</header><multi-select>false</multi-select><option><label>A</label></option></item>'
     expect(isValidAskContent(raw)).toBe(false)
   })
 
-  it('rejects empty array', () => {
-    const raw = '[]'
+  it('rejects XML without <option> tag', () => {
+    const raw = '<item><header>Choice</header><multi-select>false</multi-select><question>Which?</question></item>'
     expect(isValidAskContent(raw)).toBe(false)
+  })
+
+  it('rejects old JSON format', () => {
+    const raw = '{"questions":[{"question":"Pick one","header":"Choice","options":[{"label":"A"}]}]}'
+    expect(isValidAskContent(raw)).toBe(false)
+  })
+
+  it('rejects empty string', () => {
+    expect(isValidAskContent('')).toBe(false)
   })
 })
 
 describe('detectAskQuestion', () => {
-  it('detects standard <ask-question> with JSON object', () => {
-    const text = 'Some text before\n<ask-question>{"questions":[{"question":"Which?","header":"Choice","options":[{"label":"A","description":"Fast"}],"multiSelect":false}]}</ask-question>'
+  it('detects <ask-question> with XML <item> content', () => {
+    const text = 'Some text before\n<ask-question><item><header>Choice</header><multi-select>false</multi-select><question>Which?</question><option><label>A</label><description>Fast</description></option></item></ask-question>'
     const result = detectAskQuestion(text)
     expect(result.found).toBe(true)
     expect(result.startIdx).toBeGreaterThanOrEqual(0)
   })
 
-  it('detects <ask-question> with <parameter> wrapper and bare array', () => {
-    const text = '工作区是干净的。\n\n<ask-question>\n<parameter name="questions">[{"header": "下一步", "multiSelect": false, "options": [{"label": "推送到远程", "description": "推送提交"}, {"label": "取消", "description": "不做任何操作"}], "question": "你想做什么？"}]</parameter>\n</ask-question>'
+  it('detects <ask-question> with multiple <item> elements', () => {
+    const text = '工作区是干净的。\n\n<ask-question>\n<item><header>下一步</header><multi-select>false</multi-select><question>你想做什么？</question><option><label>推送到远程</label><description>推送提交</description></option><option><label>取消</label><description>不做任何操作</description></option></item>\n</ask-question>'
     const result = detectAskQuestion(text)
     expect(result.found).toBe(true)
     expect(result.startIdx).toBeGreaterThanOrEqual(0)
@@ -65,14 +64,19 @@ describe('detectAskQuestion', () => {
   })
 
   it('detects <ask-question> with obfuscated closing tag (fullwidth pipe)', () => {
-    // Real case from message 510: model emits </｜｜DSML｜｜question> instead of </ask-question>
-    const text = '`gh` 已给出设备认证码。需要在浏览器中完成登录：\n\n<ask-question>\n{"questions":[{"header":"GitHub 认证","multiSelect":false,"options":[{"label":"已打开链接","description":"我已在浏览器中完成认证，继续推送"},{"label":"我手动来","description":"我自己执行 gh auth login -w 完成登录后手动推送"}],"question":"请打开 https://github.com/login/device 并输入代码完成登录。完成后告诉我。"}]}\n</｜｜DSML｜｜question>'
+    // Real case: model emits </｜｜DSML｜｜question> instead of </ask-question>
+    const text = '`gh` 已给出设备认证码。需要在浏览器中完成登录：\n\n<ask-question>\n<item><header>GitHub 认证</header><multi-select>false</multi-select><question>请打开 https://github.com/login/device 并输入代码完成登录。完成后告诉我。</question><option><label>已打开链接</label><description>我已在浏览器中完成认证，继续推送</description></option><option><label>我手动来</label><description>我自己执行 gh auth login -w 完成登录后手动推送</description></option></item>\n</｜｜DSML｜｜question>'
     const result = detectAskQuestion(text)
     expect(result.found).toBe(true)
     expect(result.startIdx).toBeGreaterThanOrEqual(0)
     expect(result.content).toBeDefined()
-    // The content should be parseable as JSON with questions
     expect(isValidAskContent(result.content!)).toBe(true)
+  })
+
+  it('returns found=false when tag is present but content is not valid XML', () => {
+    const text = 'Forces structured <ask-question>random text without item tags</ask-question> for user interaction'
+    const result = detectAskQuestion(text)
+    expect(result.found).toBe(false)
   })
 })
 

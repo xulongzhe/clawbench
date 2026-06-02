@@ -52,35 +52,18 @@ export function stripScheduledTaskTags(text: string): string {
 // ────────────────────────────────────────────────────────────
 
 /**
- * Validate that <ask-question> content looks like a real JSON payload.
- * Strips markdown code fences, then checks JSON.parse succeeds with .questions array.
+ * Validate that <ask-question> content looks like a real structured payload.
+ * Supports XML format (with <item> child elements) — JSON format is no longer supported.
  * Only called post-streaming.
  */
 export function isValidAskContent(raw: string): boolean {
-  let probe = raw.trim()
-  if (probe.startsWith('```')) {
-    const nlIdx = probe.indexOf('\n')
-    if (nlIdx !== -1) probe = probe.slice(nlIdx + 1).trim()
-    const lastFence = probe.lastIndexOf('```')
-    if (lastFence !== -1) probe = probe.slice(0, lastFence).trim()
+  const probe = raw.trim()
+  // XML format: check for <item> child elements
+  if (probe.includes('<item>') || probe.includes('<item ')) {
+    // Basic validation: must have at least a <question> and <option> inside
+    return probe.includes('<question>') && probe.includes('<option>')
   }
-  // Strip leading XML tags that some models use to wrap the JSON payload
-  // (e.g. <parameter name="questions">). Must strip these before JSON.parse.
-  probe = probe.replace(/^\s*<[a-zA-Z_][\w.-]*(?:\s[^>]*)?>\s*/, '').trim()
-  // Strip trailing XML closing tags that some models append after the JSON payload
-  // (e.g. </parameter>). Loop because multiple closing tags may be present.
-  probe = probe.replace(/\s*<\/[a-zA-Z_][\w.-]*>\s*$/g, '').trim()
-  try {
-    const parsed = JSON.parse(probe)
-    if (!parsed) return false
-    // Accept {questions: [...]} object format
-    if (parsed.questions && Array.isArray(parsed.questions)) return true
-    // Accept bare array of questions (e.g. from <parameter name="questions"> wrappers)
-    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].question) return true
-    return false
-  } catch {
-    return false
-  }
+  return false
 }
 
 export interface AskQuestionResult {

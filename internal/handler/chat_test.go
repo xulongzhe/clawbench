@@ -1337,7 +1337,7 @@ func TestConvertAskQuestionBlocks_Deduplication(t *testing.T) {
 			Output: "Tool AskUserQuestion not found in agent cli.", Done: true,
 			Input: map[string]any{"questions": []any{}},
 		},
-		{Type: "text", Text: `<ask-question>{"questions":[{"question":"Which approach?","header":"Approach","options":[{"label":"A","description":"Fast"},{"label":"B","description":"Safe"}],"multiSelect":false}]}</ask-question>`},
+		{Type: "text", Text: `<ask-question><item><header>Approach</header><multi-select>false</multi-select><question>Which approach?</question><option><label>A</label><description>Fast</description></option><option><label>B</label><description>Safe</description></option></item></ask-question>`},
 		{Type: "warning", Text: "Tool AskUserQuestion not found in agent cli."},
 	}
 
@@ -1371,102 +1371,89 @@ func TestConvertAskQuestionBlocks_Deduplication(t *testing.T) {
 	}
 }
 
-func TestExtractJSONCandidate_ParameterWrapper(t *testing.T) {
+func TestExtractXMLCandidate(t *testing.T) {
 	tests := []struct {
-		name    string
-		raw     string
-		wantOK  bool
-		wantHas string // substring that should appear in the result
+		name   string
+		raw    string
+		wantOK bool
 	}{
 		{
-			name:    "standard JSON object",
-			raw:     `{"questions":[{"question":"Which approach?","header":"Approach","options":[{"label":"A","description":"Fast"}],"multiSelect":false}]}`,
-			wantOK:  true,
-			wantHas: `"questions"`,
+			name:   "XML with item elements",
+			raw:    `<item><header>Approach</header><multi-select>false</multi-select><question>Which?</question><option><label>A</label></option></item>`,
+			wantOK: true,
 		},
 		{
-			name:    "parameter wrapper with bare array",
-			raw:     `<parameter name="questions">[{"question":"Which approach?","header":"Approach","options":[{"label":"A","description":"Fast"}],"multiSelect":false}]</parameter>`,
-			wantOK:  true,
-			wantHas: `[{"question"`,
+			name:   "plain text without XML",
+			raw:    `This is just text, not XML at all`,
+			wantOK: false,
 		},
 		{
-			name:    "parameter wrapper with object",
-			raw:     `<parameter name="questions">{"questions":[{"question":"Pick one","header":"Choice","options":[{"label":"X","description":"Option X"}],"multiSelect":false}]}</parameter>`,
-			wantOK:  true,
-			wantHas: `"questions"`,
+			name:   "empty string",
+			raw:    ``,
+			wantOK: false,
 		},
 		{
-			name:    "bare array without wrapper",
-			raw:     `[{"question":"Pick one","header":"Choice","options":[{"label":"X","description":"Option X"}],"multiSelect":false}]`,
-			wantOK:  true,
-			wantHas: `[{"question"`,
+			name:   "XML without item elements",
+			raw:    `<something>else</something>`,
+			wantOK: false,
 		},
 		{
-			name:    "markdown code fence with parameter wrapper",
-			raw:     "```json\n<parameter name=\"questions\">[{\"question\":\"Pick one\",\"header\":\"Choice\",\"options\":[{\"label\":\"X\",\"description\":\"Option X\"}],\"multiSelect\":false}]</parameter>\n```",
-			wantOK:  true,
-			wantHas: `[{"question"`,
+			name:   "XML with item but no question",
+			raw:    `<item><header>H</header><option><label>A</label></option></item>`,
+			wantOK: false,
 		},
 		{
-			name:    "plain text (not JSON)",
-			raw:     `This is just text, not JSON at all`,
-			wantOK:  false,
-			wantHas: "",
+			name:   "XML with item but no option",
+			raw:    `<item><header>H</header><question>Q?</question></item>`,
+			wantOK: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extractJSONCandidate(tt.raw)
-			if tt.wantOK {
-				if got == "" {
-					t.Errorf("extractJSONCandidate() returned empty, expected valid JSON")
-				} else if tt.wantHas != "" && !strings.Contains(got, tt.wantHas) {
-					t.Errorf("extractJSONCandidate() = %q, want substring %q", got, tt.wantHas)
-				}
-			} else {
-				if got != "" {
-					t.Errorf("extractJSONCandidate() = %q, expected empty string", got)
-				}
+			got := extractXMLCandidate(tt.raw)
+			if tt.wantOK && got == "" {
+				t.Errorf("extractXMLCandidate() returned empty, expected valid XML")
+			}
+			if !tt.wantOK && got != "" {
+				t.Errorf("extractXMLCandidate() = %q, expected empty string", got)
 			}
 		})
 	}
 }
 
-func TestConvertAskQuestionBlocks_ParameterWrapper(t *testing.T) {
-	// When AI models wrap <ask-question> content with <parameter name="questions">
-	// <ask-question><parameter name="questions">[...]</parameter></ask-question>
-	// The converter should still produce a valid AskUserQuestion tool_use block.
+func TestConvertAskQuestionBlocks_XMLFormat(t *testing.T) {
 	blocks := []model.ContentBlock{
 		{Type: "text", Text: `工作区是干净的，没有未提交的修改。
 
 <ask-question>
-<parameter name="questions">[{"header": "下一步", "multiSelect": false, "options": [{"label": "推送到远程", "description": "将本地领先的 12 个提交推送到 origin/main"}, {"label": "创建新提交", "description": "先添加文件再提交"}, {"label": "取消", "description": "不做任何操作"}], "question": "工作区没有未提交的修改，你想做什么？"}]</parameter>
+<item>
+<header>下一步</header>
+<multi-select>false</multi-select>
+<question>工作区没有未提交的修改，你想做什么？</question>
+<option><label>推送到远程</label><description>将本地领先的 12 个提交推送到 origin/main</description></option>
+<option><label>创建新提交</label><description>先添加文件再提交</description></option>
+<option><label>取消</label><description>不做任何操作</description></option>
+</item>
 </ask-question>`},
 	}
 
 	result := convertAskQuestionBlocks(blocks)
 
-	// Should have: text block (with tag stripped) + AskUserQuestion tool_use block
 	foundAskQ := false
 	foundText := false
 	for _, b := range result {
 		if b.Type == "tool_use" && b.Name == "AskUserQuestion" {
 			foundAskQ = true
-			// Verify the questions array was correctly extracted
 			questions, ok := b.Input["questions"]
 			if !ok {
 				t.Error("AskUserQuestion block missing 'questions' field in input")
 			}
-			questionsArr, ok := questions.([]any)
+			questionsArr, ok := questions.([]map[string]any)
 			if !ok || len(questionsArr) == 0 {
 				t.Errorf("AskUserQuestion 'questions' should be non-empty array, got %v", questions)
 			}
-			firstQ, ok := questionsArr[0].(map[string]any)
-			if !ok {
-				t.Fatalf("First question should be a map, got %T", questionsArr[0])
-			}
+			firstQ := questionsArr[0]
 			if firstQ["header"] != "下一步" {
 				t.Errorf("First question header = %q, want %q", firstQ["header"], "下一步")
 			}
@@ -1492,10 +1479,9 @@ func TestConvertAskQuestionBlocks_ParameterWrapper(t *testing.T) {
 
 func TestConvertAskQuestionBlocks_ObfuscatedCloseTag(t *testing.T) {
 	// When AI models emit non-standard closing tags with fullwidth or obfuscated
-	// characters (e.g. </｜｜DSML｜｜question> instead of </ask-question>),
-	// the converter should still detect and convert the ask-question block.
+	// characters, the converter should still detect and convert the ask-question block.
 	blocks := []model.ContentBlock{
-		{Type: "text", Text: "`gh` 已给出设备认证码。需要在浏览器中完成登录：\n\n<ask-question>\n{\"questions\":[{\"header\":\"GitHub 认证\",\"multiSelect\":false,\"options\":[{\"label\":\"已打开链接\",\"description\":\"我已在浏览器中完成认证，继续推送\"},{\"label\":\"我手动来\",\"description\":\"我自己执行 gh auth login -w 完成登录后手动推送\"}],\"question\":\"请打开 https://github.com/login/device 并输入代码完成登录。完成后告诉我。\"}]}\n</｜｜DSML｜｜question>"},
+		{Type: "text", Text: "`gh` 已给出设备认证码。需要在浏览器中完成登录：\n\n<ask-question>\n<item><header>GitHub 认证</header><multi-select>false</multi-select><question>请完成登录。完成后告诉我。</question><option><label>已打开链接</label><description>我已在浏览器中完成认证</description></option><option><label>我手动来</label><description>我自己执行 gh auth login</description></option></item>\n</｜｜DSML｜｜question>"},
 	}
 
 	result := convertAskQuestionBlocks(blocks)
@@ -1508,7 +1494,7 @@ func TestConvertAskQuestionBlocks_ObfuscatedCloseTag(t *testing.T) {
 			if !ok {
 				t.Error("AskUserQuestion block missing 'questions' field in input")
 			}
-			questionsArr, ok := questions.([]any)
+			questionsArr, ok := questions.([]map[string]any)
 			if !ok || len(questionsArr) == 0 {
 				t.Errorf("AskUserQuestion 'questions' should be non-empty array, got %v", questions)
 			}
@@ -1519,7 +1505,6 @@ func TestConvertAskQuestionBlocks_ObfuscatedCloseTag(t *testing.T) {
 		t.Error("expected to find an AskUserQuestion tool_use block from obfuscated close tag")
 	}
 
-	// Also verify that the <ask-question> tag was stripped from the text block
 	for _, b := range result {
 		if b.Type == "text" && strings.Contains(b.Text, "<ask-question") {
 			t.Error("text block should have <ask-question> tag stripped after wrong-close conversion")

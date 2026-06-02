@@ -74,7 +74,7 @@ describe('renderTextBlock deferred rendering', () => {
   })
 
   it('streaming=false detects ask-question', () => {
-    const text = 'Pick one <ask-question>{"questions":[{"question":"Which?","header":"Pick","options":[{"label":"A","description":"Option A"}]}]}</ask-question>'
+    const text = 'Pick one <ask-question><item><header>Pick</header><multi-select>false</multi-select><question>Which?</question><option><label>A</label><description>Option A</description></option></item></ask-question>'
     const result = renderTextBlockDeferred(text, 'msg1', 0, false)
     expect(result.askFound).toBe(true)
   })
@@ -232,7 +232,7 @@ describe('detectAskQuestion (early exit optimization)', () => {
     expect(result.found).toBe(false)
   })
 
-  it('skips expensive matchAll+JSON.parse when tag is absent', () => {
+  it('skips expensive matchAll when tag is absent', () => {
     const matchAllSpy = vi.spyOn(String.prototype, 'matchAll')
     const text = 'Just a regular message with no special tags'
 
@@ -243,30 +243,30 @@ describe('detectAskQuestion (early exit optimization)', () => {
   })
 
   it('detects valid ask-question with proper closing tag', () => {
-    const text = 'Some text <ask-question>{"questions":[{"question":"Which?","header":"Pick","options":[{"label":"A","description":"Option A"}]}]}</ask-question>'
+    const text = 'Some text <ask-question><item><header>Pick</header><multi-select>false</multi-select><question>Which?</question><option><label>A</label><description>Option A</description></option></item></ask-question>'
     const result = detectAskQuestion(text)
     expect(result.found).toBe(true)
     expect(result.content).toBeDefined()
   })
 
-  it('returns found=false when tag is present but content is not valid JSON', () => {
-    const text = 'Forces structured <ask-question>XML tags</ask-question> for user interaction'
+  it('returns found=false when tag is present but content is not valid XML', () => {
+    const text = 'Forces structured <ask-question>random text without item tags</ask-question> for user interaction'
     const result = detectAskQuestion(text)
     expect(result.found).toBe(false)
   })
 })
 
 describe('isValidAskContent', () => {
-  it('returns true for valid JSON with questions array', () => {
-    expect(isValidAskContent('{"questions":[{"question":"Pick?","options":[]}]}')).toBe(true)
+  it('returns true for XML with <item> containing <question> and <option>', () => {
+    expect(isValidAskContent('<item><header>Choice</header><multi-select>false</multi-select><question>Pick?</question><option><label>A</label></option></item>')).toBe(true)
   })
 
-  it('returns false for JSON without questions array', () => {
-    expect(isValidAskContent('{"message":"hello"}')).toBe(false)
+  it('returns false for XML without <question> or <option>', () => {
+    expect(isValidAskContent('<item><header>Choice</header></item>')).toBe(false)
   })
 
-  it('returns false for non-JSON text', () => {
-    expect(isValidAskContent('XML tags for user interaction')).toBe(false)
+  it('returns false for non-XML text', () => {
+    expect(isValidAskContent('plain text without item tags')).toBe(false)
   })
 })
 

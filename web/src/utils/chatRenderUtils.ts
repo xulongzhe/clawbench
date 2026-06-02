@@ -3,6 +3,8 @@
  * These have no Vue reactivity dependencies and can be tested in isolation.
  */
 
+import { parseAskQuestionXML } from '@/utils/xmlParser.ts'
+
 /** Audio file extensions that should be converted to inline audio players */
 const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.wma', '.opus']
 
@@ -60,36 +62,12 @@ export function convertAudioLinks(html: string): string {
 }
 
 /**
- * Parse ask-question content: strip code fences, XML wrapper tags, parse JSON.
- * Handles bare array format by wrapping into {questions: [...]}.
+ * Parse ask-question content from XML format.
+ * No backward compatibility with JSON — XML-only parsing.
  * Returns null if parsing fails or no valid questions found.
  */
 export function parseAskQuestionContent(rawContent: string): { questions: any[] } | null {
-  try {
-    let askContent = rawContent.trim()
-    // Strip code fences
-    if (askContent.startsWith('```')) {
-      const nlIdx = askContent.indexOf('\n')
-      if (nlIdx !== -1) askContent = askContent.slice(nlIdx + 1).trim()
-      const lastFence = askContent.lastIndexOf('```')
-      if (lastFence !== -1) askContent = askContent.slice(0, lastFence).trim()
-    }
-    // Strip leading XML parameter tags
-    askContent = askContent.replace(/^\s*<[a-zA-Z_][\w.-]*(?:\s[^>]*)?>\s*/, '').trim()
-    // Strip trailing XML closing tags
-    askContent = askContent.replace(/\s*<\/[a-zA-Z_][\w.-]*>\s*$/g, '').trim()
-    let questions = JSON.parse(askContent)
-    // Handle bare array format
-    if (Array.isArray(questions) && questions.length > 0 && questions[0].question) {
-      questions = { questions }
-    }
-    if (questions.questions && Array.isArray(questions.questions)) {
-      return questions
-    }
-    return null
-  } catch {
-    return null
-  }
+  return parseAskQuestionXML(rawContent)
 }
 
 /** Export audio extensions for testing */

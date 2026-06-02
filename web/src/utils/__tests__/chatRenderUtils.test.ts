@@ -385,149 +385,94 @@ describe('convertAudioLinks', () => {
   })
 })
 
-// ─── parseAskQuestionContent ─────────────────────────────────────────────────
+// ─── parseAskQuestionContent (XML format) ────────────────────────────────────
 
 describe('parseAskQuestionContent', () => {
-  it('parses valid JSON with questions property', () => {
-    const input = JSON.stringify({
-      questions: [{ question: 'What?', options: ['A', 'B'] }],
-    })
+  it('parses XML format with single item', () => {
+    const input = `<item>
+    <header>Approach</header>
+    <multi-select>false</multi-select>
+    <question>Which approach?</question>
+    <option>
+      <label>Option A</label>
+      <description>Fast</description>
+    </option>
+    <option>
+      <label>Option B</label>
+      <description>Safe</description>
+    </option>
+  </item>`
     const result = parseAskQuestionContent(input)
-    expect(result).toEqual({
-      questions: [{ question: 'What?', options: ['A', 'B'] }],
-    })
+    expect(result).not.toBeNull()
+    expect(result!.questions).toHaveLength(1)
+    expect(result!.questions[0].header).toBe('Approach')
+    expect(result!.questions[0].multiSelect).toBe(false)
+    expect(result!.questions[0].question).toBe('Which approach?')
+    expect(result!.questions[0].options).toHaveLength(2)
+    expect(result!.questions[0].options[0].label).toBe('Option A')
+    expect(result!.questions[0].options[0].description).toBe('Fast')
   })
 
-  it('wraps bare array into {questions: [...]}', () => {
-    const input = JSON.stringify([{ question: 'Q1', options: ['A', 'B'] }])
+  it('parses multiple items', () => {
+    const input = `<item>
+    <header>Q1</header>
+    <multi-select>false</multi-select>
+    <question>First?</question>
+    <option><label>A</label></option>
+  </item>
+  <item>
+    <header>Q2</header>
+    <multi-select>true</multi-select>
+    <question>Second?</question>
+    <option><label>B</label></option>
+  </item>`
     const result = parseAskQuestionContent(input)
-    expect(result).toEqual({
-      questions: [{ question: 'Q1', options: ['A', 'B'] }],
-    })
+    expect(result).not.toBeNull()
+    expect(result!.questions).toHaveLength(2)
+    expect(result!.questions[1].multiSelect).toBe(true)
   })
 
-  it('strips code fence before parsing', () => {
-    const data = { questions: [{ question: 'Q?', options: [] }] }
-    const input = '```json\n' + JSON.stringify(data) + '\n```'
-    const result = parseAskQuestionContent(input)
-    expect(result).toEqual(data)
-  })
-
-  it('strips code fence without language hint', () => {
-    const data = { questions: [{ question: 'Q?', options: [] }] }
-    const input = '```\n' + JSON.stringify(data) + '\n```'
-    const result = parseAskQuestionContent(input)
-    expect(result).toEqual(data)
-  })
-
-  it('strips XML parameter wrapper before parsing', () => {
-    const data = { questions: [{ question: 'Q?', options: [] }] }
-    const input = `<parameter name="questions">${JSON.stringify(data)}</parameter>`
-    const result = parseAskQuestionContent(input)
-    expect(result).toEqual(data)
-  })
-
-  it('returns null for invalid JSON', () => {
-    expect(parseAskQuestionContent('not json at all')).toBeNull()
+  it('returns null for plain text', () => {
+    expect(parseAskQuestionContent('not xml at all')).toBeNull()
   })
 
   it('returns null for empty string', () => {
     expect(parseAskQuestionContent('')).toBeNull()
   })
 
-  it('returns null for JSON without questions property', () => {
-    expect(parseAskQuestionContent('{"data": [1, 2]}')).toBeNull()
+  it('returns null for XML without item elements', () => {
+    expect(parseAskQuestionContent('<something>else</something>')).toBeNull()
   })
 
-  it('returns null when questions property is not an array', () => {
-    expect(parseAskQuestionContent('{"questions": "not an array"}')).toBeNull()
-  })
-
-  it('returns null when questions property is a number', () => {
-    expect(parseAskQuestionContent('{"questions": 42}')).toBeNull()
-  })
-
-  it('handles code fence with language hint (```json)', () => {
-    const data = { questions: [{ question: 'Hello?', options: ['X', 'Y'] }] }
-    const input = '```json\n' + JSON.stringify(data) + '\n```'
-    expect(parseAskQuestionContent(input)).toEqual(data)
-  })
-
-  it('returns null for nested XML tags (only one leading tag is stripped)', () => {
-    const data = { questions: [{ question: 'Q?', options: [] }] }
-    const input = `<param name="foo"><parameter name="questions">${JSON.stringify(data)}</parameter></param>`
-    // Leading XML regex only strips ONE leading tag (<param name="foo">),
-    // leaving <parameter name="questions">... which makes JSON invalid → null
+  it('handles option without description', () => {
+    const input = `<item>
+    <header>Pick</header>
+    <multi-select>false</multi-select>
+    <question>Choose</question>
+    <option><label>Yes</label></option>
+  </item>`
     const result = parseAskQuestionContent(input)
-    expect(result).toBeNull()
+    expect(result).not.toBeNull()
+    expect(result!.questions[0].options[0].label).toBe('Yes')
+    expect(result!.questions[0].options[0].description).toBeUndefined()
   })
 
-  it('handles combination of code fence + XML wrapper', () => {
-    const data = { questions: [{ question: 'Q?', options: [] }] }
-    const inner = `<parameter name="questions">${JSON.stringify(data)}</parameter>`
-    const input = '```json\n' + inner + '\n```'
-    const result = parseAskQuestionContent(input)
-    expect(result).toEqual(data)
-  })
-
-  it('handles whitespace around content', () => {
-    const data = { questions: [{ question: 'Q?', options: [] }] }
-    const input = '   \n  ' + JSON.stringify(data) + '  \n  '
-    const result = parseAskQuestionContent(input)
-    expect(result).toEqual(data)
-  })
-
-  it('handles bare array with whitespace', () => {
-    const arr = [{ question: 'Q1', options: ['A'] }]
-    const input = '  \n ' + JSON.stringify(arr) + ' \n  '
-    const result = parseAskQuestionContent(input)
-    expect(result).toEqual({ questions: arr })
-  })
-
-  it('returns null for bare array without question property', () => {
-    const input = JSON.stringify([{ name: 'not a question' }])
+  it('returns null for item without question', () => {
+    const input = `<item>
+    <header>H</header>
+    <multi-select>false</multi-select>
+    <option><label>A</label></option>
+  </item>`
     expect(parseAskQuestionContent(input)).toBeNull()
   })
 
-  it('returns null for empty bare array', () => {
-    expect(parseAskQuestionContent('[]')).toBeNull()
-  })
-
-  it('returns null for bare array with empty first element', () => {
-    expect(parseAskQuestionContent('[{}]')).toBeNull()
-  })
-
-  it('preserves multiple questions in array', () => {
-    const data = {
-      questions: [
-        { question: 'Q1?', options: ['A', 'B'] },
-        { question: 'Q2?', options: ['C', 'D'] },
-      ],
-    }
-    const result = parseAskQuestionContent(JSON.stringify(data))
-    expect(result!.questions).toHaveLength(2)
-  })
-
-  it('handles questions with complex nested options', () => {
-    const data = {
-      questions: [{ question: 'Pick', options: [{ label: 'A', value: 1 }, 'simple'] }],
-    }
-    const result = parseAskQuestionContent(JSON.stringify(data))
-    expect(result).toEqual(data)
-  })
-
-  it('strips XML with hyphenated tag name', () => {
-    const data = { questions: [{ question: 'Q?', options: [] }] }
-    const input = `<ask-questions>${JSON.stringify(data)}</ask-questions>`
-    const result = parseAskQuestionContent(input)
-    expect(result).toEqual(data)
-  })
-
-  it('strips XML with dotted tag name', () => {
-    const data = { questions: [{ question: 'Q?', options: [] }] }
-    const input = `<param.name>${JSON.stringify(data)}</param.name>`
-    const result = parseAskQuestionContent(input)
-    expect(result).toEqual(data)
+  it('returns null for item without options', () => {
+    const input = `<item>
+    <header>H</header>
+    <multi-select>false</multi-select>
+    <question>Q?</question>
+  </item>`
+    expect(parseAskQuestionContent(input)).toBeNull()
   })
 })
 

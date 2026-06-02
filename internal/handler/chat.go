@@ -996,58 +996,101 @@ func stringsContainsAnyBlock(blocks []model.ContentBlock, substr string) bool {
 	return false
 }
 
-// extractJSONCandidate prepares a raw <ask-question> content string for JSON
-// parsing. It strips markdown code fences and trailing XML closing tags that
-// some models append after the JSON payload (e.g. "</user_query>"). Returns
-// the cleaned JSON string if the content looks like valid JSON (starts with
-// '{' or '['), or an empty string otherwise.
-func extractJSONCandidate(raw string) string {
+// extractXMLCandidate checks if the content between <ask-question> tags contains
+// XML with <item> child elements. Returns the raw XML content string if valid,
+// or empty string otherwise.
+func extractXMLCandidate(raw string) string {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return ""
 	}
-	// Strip markdown code fences (```json ... ```)
-	if strings.HasPrefix(trimmed, "```") {
-		if nl := strings.Index(trimmed, "\n"); nl != -1 {
-			trimmed = strings.TrimSpace(trimmed[nl+1:])
-		}
-		if idx := strings.LastIndex(trimmed, "```"); idx != -1 {
-			trimmed = strings.TrimSpace(trimmed[:idx])
-		}
+	// Must contain <item> element (XML format)
+	if !strings.Contains(trimmed, "<item>") && !strings.Contains(trimmed, "<item ") {
+		return ""
 	}
-	// Strip trailing XML closing tags that some models incorrectly append
-	// after the JSON payload (e.g. GLM-5.1 uses </user_query>).
-	reTrailingXML := regexp.MustCompile(`\s*</[a-zA-Z_][\w.-]*>\s*$`)
-	for reTrailingXML.MatchString(trimmed) {
-		trimmed = strings.TrimSpace(reTrailingXML.ReplaceAllString(trimmed, ""))
-	}
-	// Fallback: strip trailing closing tags with non-ASCII/obfuscated characters
-	// (e.g. </｜｜DSML｜｜question> with fullwidth pipe U+FF5C). The strict regex
-	// above won't match these, so use a permissive pattern as a second pass.
-	reTrailingXMLLoose := regexp.MustCompile(`\s*</[^>]+>\s*$`)
-	for reTrailingXMLLoose.MatchString(trimmed) {
-		prev := trimmed
-		trimmed = strings.TrimSpace(reTrailingXMLLoose.ReplaceAllString(trimmed, ""))
-		if trimmed == prev {
-			break
-		}
-	}
-	// Strip leading XML tags that some models use to wrap the JSON payload
-	// (e.g. <parameter name="questions">). These are parameter-style wrappers
-	// that enclose the JSON array/dict instead of placing it directly.
-	reLeadingXML := regexp.MustCompile(`^\s*<[a-zA-Z_][\w.-]*(?:\s[^>]*)?>\s*`)
-	if reLeadingXML.MatchString(trimmed) {
-		trimmed = strings.TrimSpace(reLeadingXML.ReplaceAllString(trimmed, ""))
-	}
-	// Validate that the content looks like JSON — must start with '{' or '['.
-	if !strings.HasPrefix(trimmed, "{") && !strings.HasPrefix(trimmed, "[") {
+	// Basic validation: must have <question> and <option>
+	if !strings.Contains(trimmed, "<question>") || !strings.Contains(trimmed, "<option>") {
 		return ""
 	}
 	return trimmed
 }
 
+// parseAskQuestionXML parses XML-format <ask-question> content into the
+// map[string]any format expected by ContentBlock.Input for "AskUserQuestion" tool.
+func parseAskQuestionXML(xmlContent string) map[string]any {
+	// Use regex to extract item elements (lightweight XML parsing for Go)
+	reItem := regexp.MustCompile(`(?s)<item>(.*?)</item>`)
+	reHeader := regexp.MustCompile(`(?s)<header>(.*?)</header>`)
+	reMultiSelect := regexp.MustCompile(`(?s)<multi-select>(.*?)</multi-select>`)
+	reQuestion := regexp.MustCompile(`(?s)<question>(.*?)</question>`)
+	reOption := regexp.MustCompile(`(?s)<option>(.*?)</option>`)
+	reLabel := regexp.MustCompile(`(?s)<label>(.*?)</label>`)
+	reDesc := regexp.MustCompile(`(?s)<description>(.*?)</description>`)
+
+	itemMatches := reItem.FindAllStringSubmatch(xmlContent, -1)
+	if len(itemMatches) == 0 {
+		return nil
+	}
+
+	var questions []map[string]any
+	for _, itemMatch := range itemMatches {
+		itemContent := itemMatch[1]
+
+		headerMatch := reHeader.FindStringSubmatch(itemContent)
+		header := ""
+		if headerMatch != nil {
+			header = strings.TrimSpace(headerMatch[1])
+		}
+
+		multiSelectMatch := reMultiSelect.FindStringSubmatch(itemContent)
+		multiSelect := false
+		if multiSelectMatch != nil {
+			multiSelect = strings.TrimSpace(multiSelectMatch[1]) == "true"
+		}
+
+		questionMatch := reQuestion.FindStringSubmatch(itemContent)
+		if questionMatch == nil {
+			continue
+		}
+		question := strings.TrimSpace(questionMatch[1])
+
+		optionMatches := reOption.FindAllStringSubmatch(itemContent, -1)
+		var options []map[string]any
+		for _, optMatch := range optionMatches {
+			optContent := optMatch[1]
+			labelMatch := reLabel.FindStringSubmatch(optContent)
+			if labelMatch == nil {
+				continue
+			}
+			opt := map[string]any{"label": strings.TrimSpace(labelMatch[1])}
+			descMatch := reDesc.FindStringSubmatch(optContent)
+			if descMatch != nil {
+				opt["description"] = strings.TrimSpace(descMatch[1])
+			}
+			options = append(options, opt)
+		}
+
+		if len(options) == 0 {
+			continue
+		}
+
+		questions = append(questions, map[string]any{
+			"header":      header,
+			"multiSelect": multiSelect,
+			"question":    question,
+			"options":     options,
+		})
+	}
+
+	if len(questions) == 0 {
+		return nil
+	}
+
+	return map[string]any{"questions": questions}
+}
+
 // convertAskQuestionBlocks detects <ask-question> tags in text ContentBlocks,
-// parses the JSON content, and converts them into tool_use ContentBlocks with
+// parses the XML content, and converts them into tool_use ContentBlocks with
 // name="AskUserQuestion". Tags are stripped from text; if no text remains the
 // block is replaced entirely, otherwise a new tool_use block is appended.
 //
@@ -1064,7 +1107,7 @@ func convertAskQuestionBlocks(blocks []model.ContentBlock) []model.ContentBlock 
 	reUnclosed := regexp.MustCompile(`<ask-question\b[^>]*>([\s\S]+)$`)
 
 	// findAskMatch tries three regex strategies (from strict to loose) to locate
-	// a valid <ask-question> tag in text. It returns the JSON content string and
+	// a valid <ask-question> tag in text. It returns the XML content string and
 	// the [start, end) byte positions of the full tag span in text (for removal).
 	// Matches are tried from last to first because earlier occurrences may be prose
 	// references rather than actual structured questions.
@@ -1074,7 +1117,7 @@ func convertAskQuestionBlocks(blocks []model.ContentBlock) []model.ContentBlock 
 			matches := re.FindAllStringSubmatchIndex(text, -1)
 			for j := len(matches) - 1; j >= 0; j-- {
 				pair := matches[j]
-				if candidate := extractJSONCandidate(text[pair[2]:pair[3]]); candidate != "" {
+				if candidate := extractXMLCandidate(text[pair[2]:pair[3]]); candidate != "" {
 					return candidate, pair[0], pair[1]
 				}
 			}
@@ -1095,20 +1138,15 @@ func convertAskQuestionBlocks(blocks []model.ContentBlock) []model.ContentBlock 
 			continue
 		}
 
-		jsonContent, tagStart, tagEnd := findAskMatch(block.Text)
-		if jsonContent == "" {
+		xmlContent, tagStart, tagEnd := findAskMatch(block.Text)
+		if xmlContent == "" {
 			continue
 		}
 
-		var input map[string]any
-		if err := json.Unmarshal([]byte(jsonContent), &input); err != nil {
-			var questionsArr []any
-			if err2 := json.Unmarshal([]byte(jsonContent), &questionsArr); err2 == nil && len(questionsArr) > 0 {
-				input = map[string]any{"questions": questionsArr}
-			} else {
-				slog.Error("failed to parse ask-question JSON", slog.String("error", err.Error()))
-				continue
-			}
+		input := parseAskQuestionXML(xmlContent)
+		if input == nil {
+			slog.Error("failed to parse ask-question XML")
+			continue
 		}
 
 		questions, ok := input["questions"]
@@ -1116,7 +1154,7 @@ func convertAskQuestionBlocks(blocks []model.ContentBlock) []model.ContentBlock 
 			slog.Error("ask-question missing 'questions' field")
 			continue
 		}
-		questionsArr, ok := questions.([]any)
+		questionsArr, ok := questions.([]map[string]any)
 		if !ok || len(questionsArr) == 0 {
 			slog.Error("ask-question 'questions' must be a non-empty array")
 			continue
