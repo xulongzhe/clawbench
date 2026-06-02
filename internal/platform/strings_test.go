@@ -2,6 +2,7 @@ package platform
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"runtime"
 	"strings"
@@ -132,6 +133,45 @@ func TestExtractStrings_NonExistentFile(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for non-existent file")
 	}
+}
+
+func TestExtractStringsFromReader_ReadError(t *testing.T) {
+	// Custom reader that returns valid data then a non-EOF error.
+	// bufio.ReaderSize is 64KB, so our small payload is buffered in one Read call.
+	// The reader must return data with the error on the same call so bufio
+	// propagates it when the buffered data is exhausted.
+	errReader := &errorAfterReader{
+		data: []byte("hello\x00world"),
+		err:  io.ErrUnexpectedEOF,
+	}
+
+	result := ExtractStringsFromReader(errReader, 3)
+
+	// Both "hello" and "world" are flushed on read error
+	if len(result) != 2 || result[0] != "hello" || result[1] != "world" {
+		t.Errorf("got %v, want [hello world]", result)
+	}
+}
+
+// errorAfterReader returns data bytes then err on the next Read call.
+type errorAfterReader struct {
+	data  []byte
+	err   error
+	pos   int
+	done  bool
+}
+
+func (r *errorAfterReader) Read(p []byte) (int, error) {
+	if r.pos >= len(r.data) {
+		if !r.done {
+			r.done = true
+			return 0, r.err
+		}
+		return 0, io.EOF
+	}
+	n := copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
 }
 
 func TestExtractStrings_LargeBinary(t *testing.T) {

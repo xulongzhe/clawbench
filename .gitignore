@@ -69,3 +69,4 @@ test-results/
 playwright-report/
 .nyc_output/
 coverage/e2e/
+stdout.log

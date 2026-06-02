@@ -206,6 +206,36 @@ func TestResolveCLIPath_NonCmdOnWindows(t *testing.T) {
 	}
 }
 
+func TestResolveCmdWrapper_NonExistentFile(t *testing.T) {
+	result := resolveCmdWrapper("/nonexistent/path/to/file.cmd")
+	if result != "" {
+		t.Errorf("expected empty string for non-existent file, got %q", result)
+	}
+}
+
+func TestResolveCmdWrapper_UnreadableFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission-based test unreliable on Windows")
+	}
+
+	tmpDir := t.TempDir()
+	cmdFile := filepath.Join(tmpDir, "unreadable.cmd")
+	if err := os.WriteFile(cmdFile, []byte("some content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Remove read permissions
+	if err := os.Chmod(cmdFile, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	// Re-enable permissions for cleanup (t.TempDir cleanup needs this)
+	t.Cleanup(func() { os.Chmod(cmdFile, 0o644) })
+
+	result := resolveCmdWrapper(cmdFile)
+	if result != "" {
+		t.Errorf("expected empty string for unreadable file, got %q", result)
+	}
+}
+
 func TestCmdEntryRe(t *testing.T) {
 	tests := []struct {
 		name     string

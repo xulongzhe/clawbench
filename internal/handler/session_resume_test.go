@@ -105,6 +105,50 @@ func TestServeSessionResume_ActiveSessionPassthrough(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestServeSessionResume_InvalidJSON(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/ai/session/resume", strings.NewReader("{invalid json"))
+	req.Header.Set("Content-Type", "application/json")
+	withProjectCookie(req, env.ProjectDir)
+	w := httptest.NewRecorder()
+	ServeSessionResume(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestServeSessionResume_SessionCountBelowLimit(t *testing.T) {
+	env, teardown := setupTestEnv(t)
+	defer teardown()
+
+	origMax := model.SessionMaxCount
+	model.SessionMaxCount = 10
+	defer func() { model.SessionMaxCount = origMax }()
+
+	// Create a soft-deleted session to resume
+	sessionID := "test-resume-below-limit"
+	_, err := service.DB.Exec(
+		"INSERT INTO chat_sessions (id, project_path, backend, title, deleted) VALUES (?, ?, 'claude', 'Deleted Session', 1)",
+		sessionID, env.ProjectDir,
+	)
+	assert.NoError(t, err)
+
+	body := `{"session_id": "test-resume-below-limit"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/ai/session/resume", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	withProjectCookie(req, env.ProjectDir)
+	w := httptest.NewRecorder()
+	ServeSessionResume(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var deleted int
+	err = service.DB.QueryRow("SELECT deleted FROM chat_sessions WHERE id = ?", sessionID).Scan(&deleted)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, deleted, "session should be restored (deleted=0)")
+}
+
 func TestServeSessionResume_CrossProjectDenied(t *testing.T) {
 	env, teardown := setupTestEnv(t)
 	defer teardown()
