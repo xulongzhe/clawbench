@@ -60,9 +60,11 @@ func ServeSessions(w http.ResponseWriter, r *http.Request) { //nolint:gocognit,g
 		for i := range sessions {
 			sessions[i].Running = runningSet[sessions[i].ID]
 		}
+		totalCount, _ := service.GetSessionCount(projectPath)
 		writeJSON(w, http.StatusOK, map[string]interface{}{
-			"sessions": sessions,
-			"hasMore":  hasMore,
+			"sessions":   sessions,
+			"hasMore":    hasMore,
+			"totalCount": totalCount,
 		})
 
 	case http.MethodPost:

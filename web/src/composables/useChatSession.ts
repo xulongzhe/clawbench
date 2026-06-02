@@ -21,6 +21,10 @@ export async function loadSessionsOnce() {
       const hasUnread = sessions.some((s: any) => s.unreadCount > 0 && s.id !== identity.currentSessionId.value)
       store.state.chatRunning = hasRunning
       store.state.chatUnread = hasUnread
+      // Update session count for header indicator
+      if (typeof data.totalCount === 'number') {
+        store.state.sessionCount = data.totalCount
+      }
       // Populate runningSessions set from API data
       identity.runningSessions.value.clear()
       for (const s of sessions) {
@@ -356,6 +360,7 @@ export function useChatSession(options: UseChatSessionOptions) {
       Object.keys(blockRagResults).forEach(k => delete blockRagResults[k])
       loading.value = false
       const maxCount = store.state.sessionMaxCount
+      if (typeof data.sessionCount === 'number') store.state.sessionCount = data.sessionCount
       toast.show(gt('chat.session.created', { count: data.sessionCount ?? '', max: maxCount }), { icon: '✨', type: 'success', duration: 1500 })
     } catch (err) {
       console.error('Failed to create session:', err)
@@ -386,6 +391,7 @@ export function useChatSession(options: UseChatSessionOptions) {
           await loadSessionsOnce()
         }
         const maxCount = store.state.sessionMaxCount
+        if (typeof data.sessionCount === 'number') store.state.sessionCount = data.sessionCount
         toast.show(gt('chat.session.deleted', { count: data.sessionCount ?? '', max: maxCount }), { icon: '🗑️', type: 'success', duration: 2000 })
       }
     } catch (err) {
@@ -527,6 +533,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         // Toast: only when a new session is actually created (not when restoring a deleted one)
         if (isNewlyCreated) {
           const maxCount = store.state.sessionMaxCount
+          if (typeof data.sessionCount === 'number') store.state.sessionCount = data.sessionCount
           toast.show(gt('chat.session.continued', { count: data.sessionCount ?? '', max: maxCount }), { icon: '💬', type: 'success', duration: 1500 })
         }
       }

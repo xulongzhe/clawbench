@@ -3,6 +3,12 @@
     <template #header>
       <Bot :size="16" class="bs-header-icon" />
       <span class="bs-header-title">{{ t('session.title') }}</span>
+      <div v-if="sessionMaxCount > 0" class="session-counter">
+        <div class="session-counter-bar">
+          <div class="session-counter-fill" :style="{ width: sessionPct + '%', background: sessionBarColor }"></div>
+          <span class="session-counter-text">{{ sessionCount }}/{{ sessionMaxCount }}</span>
+        </div>
+      </div>
       <button class="create-btn" @click.stop="handleCreateClick" :title="t('session.newSession')">
         <Plus :size="16" />
       </button>
@@ -110,6 +116,16 @@ const { agents, loadAgents, getAgentIcon, getAgentName, isDefaultAgent, getAgent
 const dialog = useDialog()
 const { runningSessionsVersion } = useSessionIdentity()
 
+// Session count indicator
+const sessionCount = computed(() => store.state.sessionCount)
+const sessionMaxCount = computed(() => store.state.sessionMaxCount)
+const sessionPct = computed(() => sessionMaxCount.value > 0 ? Math.min((sessionCount.value / sessionMaxCount.value) * 100, 100) : 0)
+const sessionBarColor = computed(() => {
+  if (sessionPct.value >= 80) return '#ef4444'
+  if (sessionPct.value >= 60) return '#f59e0b'
+  return 'var(--accent-color, #0066cc)'
+})
+
 /** Get the display name of an agent's default model. */
 function agentDefaultModelName(agentId) {
   return getAgentDefaultModelName(agentId)
@@ -167,6 +183,7 @@ async function loadSessions() {
     const data = await resp.json()
     sessions.value = data.sessions || []
     hasMore.value = !!data.hasMore
+    if (typeof data.totalCount === 'number') store.state.sessionCount = data.totalCount
   } catch (err) {
     console.error('Failed to load sessions:', err)
     sessions.value = []
@@ -234,6 +251,7 @@ async function deleteSession(sessionId) {
   // Optimistic local removal — no API reload needed while drawer is open.
   // Next open will do a full loadSessions() to catch any changes made while closed.
   sessions.value = sessions.value.filter(s => s.id !== sessionId)
+  if (store.state.sessionCount > 0) store.state.sessionCount--
 }
 
 function addSessionLocally(session) {
@@ -449,8 +467,45 @@ onUnmounted(() => {
   background: var(--bg-tertiary, #f0f0f0);
 }
 
-.create-btn {
+.session-counter {
   margin-left: auto;
+  flex-shrink: 0;
+}
+
+.session-counter-bar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  overflow: hidden;
+}
+
+.session-counter-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.session-counter-text {
+  position: relative;
+  z-index: 1;
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: 0.3px;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.create-btn {
+  margin-left: 6px;
   width: 24px;
   height: 24px;
   border: none;

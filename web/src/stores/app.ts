@@ -45,6 +45,7 @@ interface AppState {
     chatSessionPageSize: number
     chatCollapsedHeight: number
     sessionMaxCount: number
+    sessionCount: number
 
     // Recent projects config
     recentProjectsMaxCount: number
@@ -102,6 +103,7 @@ const state = reactive<AppState>({
     chatSessionPageSize: 10,
     chatCollapsedHeight: 150,
     sessionMaxCount: 10,
+    sessionCount: 0,
     recentProjectsMaxCount: 10,
     chatUnread: false,
     chatRunning: false,
@@ -197,6 +199,7 @@ function resetProjectState(): void {
     state.chatSessionPageSize = 10
     state.chatCollapsedHeight = 150
     state.sessionMaxCount = 10
+    state.sessionCount = 0
     state.recentProjectsMaxCount = 10
 }
 
