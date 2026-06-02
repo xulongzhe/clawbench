@@ -85,6 +85,28 @@
         </div>
         <div v-if="expandedTools[key(bi)] || true" class="tool-detail" data-tool-name="AskUserQuestion" @click="handleToolDetailClick" v-html="formatToolInput(blockAskQuestions[blockTaskKey(bi)], 'AskUserQuestion')"></div>
       </template>
+      <!-- RAG results card (from <rag-results> XML tag in text) — must come before generic text block -->
+      <template v-else-if="block.type === 'text' && blockRagResults[blockTaskKey(bi)]">
+        <!-- Surrounding text (with rag-results tag stripped) -->
+        <div v-if="getBlockHtml(bi, block)" v-html="getBlockHtml(bi, block)"></div>
+        <div v-for="(ragItem, ragIdx) in blockRagResults[blockTaskKey(bi)]" :key="ragIdx" class="rag-result-card">
+          <div class="rag-header">
+            <span class="rag-icon">🔍</span>
+            <span class="rag-title">{{ ragItem.sessionTitle || t('chat.contentBlocks.ragUntitled') }}</span>
+          </div>
+          <div v-if="ragItem.summary" class="rag-summary">{{ ragItem.summary }}</div>
+          <div v-if="ragItem.createdAt" class="rag-time">{{ ragItem.createdAt }}</div>
+          <button class="rag-resume-btn" @click.stop="handleResumeSession(ragItem.sessionId, ragItem.sessionTitle)">
+            {{ t('chat.contentBlocks.ragResume') }}
+            <ChevronRight :size="12" />
+          </button>
+        </div>
+      </template>
+      <!-- Text block with @ command badge (user message starting with @chatsearch/@task) -->
+      <template v-else-if="block.type === 'text' && extractAtCommand(block.text || '')">
+        <span class="at-command-badge">{{ extractAtCommand(block.text).command }}</span>
+        <span v-if="extractAtCommand(block.text).rest.trim()" class="at-command-rest">{{ extractAtCommand(block.text).rest.trim() }}</span>
+      </template>
       <!-- Text block: streaming uses throttled render to avoid UI freeze -->
       <div v-else-if="block.type === 'text'" v-html="getBlockHtml(bi, block)"></div>
     </template>
@@ -115,6 +137,7 @@ import {
   buildTaskKeyIndex,
   hasScheduledTasks as hasScheduledTasksUtil,
   scheduledTaskKeys as scheduledTaskKeysUtil,
+  extractAtCommand,
 } from '@/utils/contentBlocks.ts'
 
 const { t, locale } = useI18n()
@@ -155,6 +178,7 @@ const props = defineProps({
   expandedTools: { type: Object, default: () => ({}) },
   blockTasks: { type: Object, default: () => ({}) },
   blockAskQuestions: { type: Object, default: () => ({}) },
+  blockRagResults: { type: Object, default: () => ({}) },
   streaming: { type: Boolean, default: false },
   cancelled: { type: Boolean, default: false },
   summary: { type: String, default: null },
@@ -173,7 +197,7 @@ const props = defineProps({
   active: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush'])
+const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush', 'resume-session'])
 
 // Key helper: use msgId if available, otherwise msgIndex
 function key(bi) {
@@ -200,6 +224,11 @@ function scheduledTaskKeys(bi) {
 
 function handleThinkingClick(block, bi) {
   emit('show-thinking-detail', { text: block.text, msgId: props.msgId, blockIdx: bi })
+}
+
+/** Handle resume session button click in RAG result cards. */
+function handleResumeSession(sessionId, sessionTitle) {
+  emit('resume-session', { sessionId, sessionTitle })
 }
 
 /** Click inside expanded tool-detail: dispatch to tool action handlers first, then fall through to generic behavior. */
@@ -638,6 +667,110 @@ onUnmounted(() => {
 
 .stask-status-dot.status-completed {
   background: #9e9e9e;
+}
+
+/* RAG result card */
+.rag-result-card {
+  margin: 6px 0;
+  border: 1px solid color-mix(in srgb, #8b5cf6 30%, var(--border-color, #dee2e6));
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, #8b5cf6 6%, var(--bg-primary, #fff));
+}
+
+.rag-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, #8b5cf6 12%, transparent);
+  color: #8b5cf6;
+  font-weight: 600;
+  font-size: 12px;
+  border-bottom: 1px solid color-mix(in srgb, #8b5cf6 15%, var(--border-color, #dee2e6));
+}
+
+:root[data-theme="dark"] .rag-header {
+  color: #a78bfa;
+  background: color-mix(in srgb, #a78bfa 12%, transparent);
+  border-bottom-color: color-mix(in srgb, #a78bfa 15%, var(--border-color, #dee2e6));
+}
+
+.rag-icon {
+  margin-right: 4px;
+}
+
+.rag-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rag-summary {
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary, #495057);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rag-time {
+  padding: 0 12px 6px;
+  font-size: 11px;
+  color: var(--text-muted, #999);
+}
+
+.rag-resume-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  padding: 6px 0;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, #8b5cf6 15%, var(--border-color, #dee2e6));
+  background: none;
+  font-size: 12px;
+  color: #8b5cf6;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+:root[data-theme="dark"] .rag-resume-btn {
+  color: #a78bfa;
+}
+
+.rag-resume-btn:hover {
+  background: color-mix(in srgb, #8b5cf6 8%, var(--bg-secondary));
+}
+
+/* @ command badge in user messages */
+.at-command-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #8b5cf6 15%, transparent);
+  color: #8b5cf6;
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 4px;
+  vertical-align: baseline;
+  line-height: 1.6;
+}
+
+:root[data-theme="dark"] .at-command-badge {
+  background: color-mix(in srgb, #a78bfa 15%, transparent);
+  color: #a78bfa;
+}
+
+.at-command-rest {
+  /* Rest of the message text after the badge */
 }
 </style>
 

@@ -90,6 +90,11 @@ export default {
       stopGenerating: 'Stop generating',
       confirmStop: 'Confirm stop',
     },
+    atCommand: {
+      title: 'Commands',
+      chatsearchDesc: 'Search chat history',
+      taskDesc: 'Manage scheduled tasks',
+    },
     actions: {
       session: 'Chat',
       newSession: 'New',
@@ -258,6 +263,10 @@ export default {
         restart: 'Server restarted, AI response interrupted',
         panic: 'AI internal error, please retry',
       },
+      ragUntitled: 'Untitled Session',
+      ragResume: 'Resume Conversation',
+      ragResumeConfirm: 'Resume this conversation session?',
+      ragResumeFailed: 'Failed to resume session',
     },
     metadata: {
       title: 'Message Details',

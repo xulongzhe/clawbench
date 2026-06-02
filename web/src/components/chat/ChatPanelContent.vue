@@ -7,6 +7,7 @@
       :expandedTools="render.expandedTools.value"
       :blockTasks="render.blockTasks"
       :blockAskQuestions="render.blockAskQuestions"
+      :blockRagResults="render.blockRagResults"
       :agents="agentsList"
       :currentAgent="currentAgent"
       :currentSessionId="identity.currentSessionId.value"
@@ -28,6 +29,7 @@
       @remove-pending="manager.handleRemovePending"
       @render-flush="scrollBottom()"
       @toggle-summary="handleToggleSummary"
+      @resume-session="handleResumeSession"
     />
 
     <!-- Session switching overlay — placed here to cover the entire message area -->
@@ -123,6 +125,16 @@
     @file-open="handleFileOpenInOverlay"
     @send-message="handleToolSendMessage"
   />
+  <!-- Resume session confirmation bottom sheet -->
+  <BottomSheet :open="showResumeConfirm" @close="showResumeConfirm = false">
+    <div class="resume-confirm-content">
+      <p class="resume-confirm-text">{{ t('chat.contentBlocks.ragResumeConfirm', { title: resumeTarget.sessionTitle || t('chat.contentBlocks.ragUntitled') }) }}</p>
+      <div class="resume-confirm-actions">
+        <button class="resume-confirm-btn cancel" @click="showResumeConfirm = false">{{ t('common.cancel') }}</button>
+        <button class="resume-confirm-btn confirm" @click="confirmResumeSession">{{ t('common.confirm') }}</button>
+      </div>
+    </div>
+  </BottomSheet>
 </template>
 
 <script setup>
@@ -130,6 +142,7 @@ import { ref, computed, watch, onUnmounted, onMounted, inject, provide, toRef, n
 import { useI18n } from 'vue-i18n'
 import { gt } from '@/composables/useLocale'
 import HeaderMarquee from '@/components/common/HeaderMarquee.vue'
+import BottomSheet from '@/components/common/BottomSheet.vue'
 import ChatMetadataModal from './ChatMetadataModal.vue'
 import ToolDetailOverlay from './ToolDetailOverlay.vue'
 import ChatInputBar from './ChatInputBar.vue'
@@ -224,6 +237,7 @@ const session = useChatSession({
   inputDisabled,
   blockTasks: render.blockTasks,
   blockAskQuestions: render.blockAskQuestions,
+  blockRagResults: render.blockRagResults,
   expandedTools: render.expandedTools,
   onParseAssistantContent: (content) => render.parseAssistantContent(content),
   onExtractScheduledTasks: (msgs) => render.extractScheduledTasks(msgs),
@@ -650,6 +664,39 @@ function handleToggleSummary(msgId) {
     msg.showingSummary = !msg.showingSummary
 }
 
+// Resume a session from RAG search results card
+async function handleResumeSession({ sessionId, sessionTitle }) {
+    if (!sessionId) return
+    // Show confirmation bottom sheet
+    resumeTarget.value = { sessionId, sessionTitle: sessionTitle || '' }
+    showResumeConfirm.value = true
+}
+
+const showResumeConfirm = ref(false)
+const resumeTarget = ref({ sessionId: '', sessionTitle: '' })
+
+async function confirmResumeSession() {
+    showResumeConfirm.value = false
+    const { sessionId } = resumeTarget.value
+    if (!sessionId) return
+    try {
+        const resp = await fetch('/api/ai/session/resume', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: sessionId }),
+        })
+        if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}))
+            toast.show(data.error || t('chat.contentBlocks.ragResumeFailed'), { icon: '⚠️', type: 'error' })
+            return
+        }
+        // Navigate to the resumed session
+        await session.switchSession(sessionId)
+    } catch (err) {
+        toast.show(t('chat.contentBlocks.ragResumeFailed'), { icon: '⚠️', type: 'error' })
+    }
+}
+
 // Start one-time session load when component mounts
 onMounted(() => {
     // Request notification permission on mount
@@ -874,5 +921,45 @@ onUnmounted(() => {
 .session-indicator-leave-to {
   opacity: 0;
   transform: scale(0.95);
+}
+
+/* Resume session confirmation */
+.resume-confirm-content {
+  padding: 20px 16px;
+}
+
+.resume-confirm-text {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.resume-confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.resume-confirm-btn {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.resume-confirm-btn.cancel {
+  background: var(--bg-secondary, #e9ecef);
+  color: var(--text-primary, #212529);
+}
+
+.resume-confirm-btn.confirm {
+  background: #8b5cf6;
+  color: #fff;
+}
+
+.resume-confirm-btn:hover {
+  opacity: 0.85;
 }
 </style>

@@ -192,3 +192,26 @@ export function scheduledTaskKeys(
 ): string[] {
   return taskKeyIndex[bi] || []
 }
+
+// ────────────────────────────────────────────────────────────
+// @ command badge detection
+// ────────────────────────────────────────────────────────────
+
+/** Match @ command prefix at start of text: @chatsearch or @task followed by space */
+const AT_COMMAND_RE = /^(@chatsearch|@task)(\s[\s\S]*)?$/
+
+export interface AtCommandBadge {
+  command: string    // e.g. "@chatsearch"
+  rest: string       // e.g. " my query" (including the leading space) or ""
+}
+
+/**
+ * Extract @ command prefix from a text block.
+ * Returns null if the text doesn't start with an @ command.
+ */
+export function extractAtCommand(text: string): AtCommandBadge | null {
+  if (!text.startsWith('@')) return null
+  const match = text.match(AT_COMMAND_RE)
+  if (!match) return null
+  return { command: match[1], rest: match[2] || '' }
+}

@@ -12,6 +12,7 @@ import {
   buildTaskKeyIndex,
   hasScheduledTasks,
   scheduledTaskKeys,
+  extractAtCommand,
 } from '@/utils/contentBlocks.ts'
 
 // ── isSevereWarning ──
@@ -305,5 +306,48 @@ describe('scheduledTaskKeys', () => {
   })
   it('returns task keys for block', () => {
     expect(scheduledTaskKeys({ '1': ['abc-1-0', 'abc-1-1'] }, '1')).toEqual(['abc-1-0', 'abc-1-1'])
+  })
+})
+
+// ── extractAtCommand ──
+describe('extractAtCommand', () => {
+  it('extracts @chatsearch with query', () => {
+    const result = extractAtCommand('@chatsearch how to fix bug')
+    expect(result).not.toBeNull()
+    expect(result!.command).toBe('@chatsearch')
+    expect(result!.rest).toBe(' how to fix bug')
+  })
+
+  it('extracts @task with description', () => {
+    const result = extractAtCommand('@task run daily backup')
+    expect(result).not.toBeNull()
+    expect(result!.command).toBe('@task')
+    expect(result!.rest).toBe(' run daily backup')
+  })
+
+  it('extracts @chatsearch with trailing space only', () => {
+    const result = extractAtCommand('@chatsearch ')
+    expect(result).not.toBeNull()
+    expect(result!.command).toBe('@chatsearch')
+    expect(result!.rest).toBe(' ')
+  })
+
+  it('returns null for plain text', () => {
+    expect(extractAtCommand('hello world')).toBeNull()
+  })
+
+  it('returns null for text not starting with known command', () => {
+    expect(extractAtCommand('@other command')).toBeNull()
+  })
+
+  it('returns null for empty string', () => {
+    expect(extractAtCommand('')).toBeNull()
+  })
+
+  it('extracts command without rest text', () => {
+    const result = extractAtCommand('@task')
+    expect(result).not.toBeNull()
+    expect(result!.command).toBe('@task')
+    expect(result!.rest).toBe('')
   })
 })

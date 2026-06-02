@@ -38,6 +38,7 @@ export interface UseChatSessionOptions {
   inputDisabled: Ref<boolean>
   blockTasks: Record<string, any>
   blockAskQuestions: Record<string, any>
+  blockRagResults: Record<string, any>
   expandedTools: Ref<Record<string, boolean>>
   switching?: Ref<boolean>
   onParseAssistantContent: (content: string) => any
@@ -59,6 +60,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     inputDisabled,
     blockTasks,
     blockAskQuestions,
+    blockRagResults,
     expandedTools,
     onParseAssistantContent,
     onExtractScheduledTasks,
@@ -198,6 +200,7 @@ export function useChatSession(options: UseChatSessionOptions) {
       // to tool_use blocks, old entries keyed by text-block indices would cause duplicate
       // rendering. extractScheduledTasks below will re-populate from current DB state.
       Object.keys(blockAskQuestions).forEach(k => delete blockAskQuestions[k])
+      Object.keys(blockRagResults).forEach(k => delete blockRagResults[k])
       messages.value = parseMessages(rawMsgs, onParseAssistantContent)
       totalMessages.value = data.total || messages.value.length
       currentSessionId.value = data.sessionId || ''
@@ -271,6 +274,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     expandedTools.value = {}
     // Clear stale blockAskQuestions from previous session
     Object.keys(blockAskQuestions).forEach(k => delete blockAskQuestions[k])
+    Object.keys(blockRagResults).forEach(k => delete blockRagResults[k])
     try {
       // Load agents first so we can resolve agent names
       if (agents.value.length === 0) await loadAgents()
@@ -349,6 +353,7 @@ export function useChatSession(options: UseChatSessionOptions) {
       lastMessageSnapshot = ''  // New session — no messages yet
       Object.keys(blockTasks).forEach(k => delete blockTasks[k])
       Object.keys(blockAskQuestions).forEach(k => delete blockAskQuestions[k])
+      Object.keys(blockRagResults).forEach(k => delete blockRagResults[k])
       loading.value = false
       const maxCount = store.state.sessionMaxCount
       toast.show(gt('chat.session.created', { count: data.sessionCount ?? '', max: maxCount }), { icon: '✨', type: 'success', duration: 1500 })

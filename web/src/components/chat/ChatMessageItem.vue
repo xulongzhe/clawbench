@@ -14,6 +14,7 @@
         :expandedTools="expandedTools"
         :blockTasks="blockTasks"
         :blockAskQuestions="blockAskQuestions"
+        :blockRagResults="blockRagResults"
         :streaming="msg.streaming"
         :cancelled="msg.cancelled"
         :summary="msg.summary"
@@ -35,6 +36,7 @@
         @send-message="$emit('send-message', $event)"
         @render-flush="$emit('render-flush')"
         @toggle-summary="$emit('toggle-summary', msg.id)"
+        @resume-session="$emit('resume-session', $event)"
       />
     </div>
 
@@ -116,13 +118,14 @@ const props = defineProps({
   expandedTools: Object,
   blockTasks: Object,
   blockAskQuestions: Object,
+  blockRagResults: Object,
   agents: Array,
   shouldCollapse: Boolean,
   staticBlockCache: Object,
   active: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'expand', 'collapse', 'task-card-click', 'send-message', 'render-flush', 'toggle-summary'])
+const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'expand', 'collapse', 'task-card-click', 'send-message', 'render-flush', 'toggle-summary', 'resume-session'])
 
 const autoSpeech = inject('autoSpeech')
 const layoutRefreshKey = inject('layoutRefreshKey', ref(0))

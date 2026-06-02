@@ -156,6 +156,14 @@
         @switch-thinking-effort="handleSwitchThinkingEffort"
       />
       <QuickSendDialog :open="props.active && quickSendStore.showEditDialog.value" @close="quickSendStore.showEditDialog.value = false" />
+      <!-- @ command autocomplete menu -->
+      <PopupMenu v-model:show="showAtMenu" :target-element="textareaRef" :max-width="260" :max-height="200" :menu-items-count="atMenuItems.length">
+        <div class="at-menu-title">{{ t('chat.atCommand.title') }}</div>
+        <button v-for="cmd in atMenuItems" :key="cmd.key" class="at-menu-item" @mousedown.prevent="handleAtSelect(cmd)">
+          <span class="at-menu-label">{{ cmd.label }}</span>
+          <span class="at-menu-desc">{{ cmd.description }}</span>
+        </button>
+      </PopupMenu>
     </div>
   </div>
 </template>
@@ -226,6 +234,33 @@ const attachMenuRef = ref(null)
 const showQuickMenu = ref(false)
 const sendBtnRef = ref(null)
 const showModelModal = ref(false)
+
+// ── @ command autocomplete ──
+const showAtMenu = ref(false)
+const atCommands = [
+  { key: '@chatsearch', label: '@chatsearch', description: t('chat.atCommand.chatsearchDesc') },
+  { key: '@task', label: '@task', description: t('chat.atCommand.taskDesc') },
+]
+
+const atMenuItems = computed(() => {
+  const text = inputText.value
+  if (!text.startsWith('@')) return []
+  const query = text.toLowerCase()
+  return atCommands.filter(cmd => cmd.key.startsWith(query))
+})
+
+watch(atMenuItems, (items) => {
+  showAtMenu.value = items.length > 0 && inputText.value.startsWith('@') && !inputText.value.includes(' ')
+})
+
+function handleAtSelect(cmd) {
+  inputText.value = cmd.key + ' '
+  showAtMenu.value = false
+  nextTick(() => {
+    const el = textareaRef.value
+    if (el) el.focus()
+  })
+}
 
 // Keyboard detection for iOS (no adjustResize) — activates visualViewport monitoring
 // when textarea is focused so App.vue can compensate the layout.
@@ -1134,5 +1169,51 @@ defineExpose({
   width: 14px;
   height: 14px;
   flex-shrink: 0;
+}
+
+/* @ command autocomplete menu styles */
+.at-menu-title {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted, #999);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.at-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s;
+}
+
+.at-menu-item:hover {
+  background: var(--bg-secondary, #f1f3f5);
+}
+
+.at-menu-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8b5cf6;
+  white-space: nowrap;
+}
+
+:root[data-theme="dark"] .at-menu-label {
+  color: #a78bfa;
+}
+
+.at-menu-desc {
+  font-size: 12px;
+  color: var(--text-secondary, #495057);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

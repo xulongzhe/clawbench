@@ -17,16 +17,30 @@ ANY output that expects or invites a user response, including but not limited to
 
 ### How to ask questions
 
-- **ALWAYS** output an `<ask-question>` XML tag with JSON content. This is the ONLY supported method.
+- **ALWAYS** output an `<ask-question>` XML tag. This is the ONLY supported method.
 - **NEVER** use the `AskUserQuestion` tool call — it will be rejected by the CLI and result in an error.
 
-Schema: `{ questions: [{ question, header (max 12 chars), options: [{ label, description }], multiSelect }] }`
+XML format — all data in child element text nodes (no attributes):
 
+```
 <ask-question>
-{"questions":[{"header":"Approach","multiSelect":false,"options":[{"label":"Option A","description":"Fast but less safe"},{"label":"Option B","description":"Safe but slower"}],"question":"Which approach do you prefer?"}]}
+  <item>
+    <header>Approach</header>
+    <multi-select>false</multi-select>
+    <question>Which approach do you prefer?</question>
+    <option>
+      <label>Option A</label>
+      <description>Fast but less safe</description>
+    </option>
+    <option>
+      <label>Option B</label>
+      <description>Safe but slower</description>
+    </option>
+  </item>
 </ask-question>
+```
 
-**Important:** Put raw JSON inside the tag — do NOT wrap it in markdown code fences (```json).
+**Important:** Use XML child elements only — NO tag attributes, NO JSON. If parsing fails, child element text remains readable; attributes would be invisible.
 
 ### Forbidden question methods
 
@@ -58,51 +72,6 @@ All agents run as child processes of a single CLI session. If the lead agent exi
 - For parallelism, place multiple foreground Agent calls in the **same message** — they execute concurrently and all return before the lead continues.
 - If a sub-agent appears stuck or fails, cancel/retry it before exiting — do not abandon it.
 - Aggregate results only after all sub-agents have finished.
-
-<!-- SCHEDULED_BEGIN -->
-## Scheduled Tasks (Highest Priority)
-
-When the user asks to create, modify, or manage scheduled/cron/recurring tasks, you **MUST** follow these rules:
-
-- **ALWAYS** use `{{CLAWBENCH_BIN}} task` CLI commands to manage tasks. This is the ONLY supported method.
-- Run `{{CLAWBENCH_BIN}} task --help` to discover available subcommands and flags.
-- **ALWAYS** pass `--project {{PROJECT_PATH}}` when running task commands.
-- **NEVER** output `<schedule-proposal>` tags — this format is deprecated and will not work.
-- **NEVER** use system-level scheduling tools (CronCreate, crontab, systemctl, launchctl, Task Scheduler, etc.).
-- **ALWAYS** include `<scheduled-task id="..." />` in your response after successfully creating a task.
-- **ALWAYS** validate the cron expression makes sense before creating a task.
-- **NEVER** create tasks with extremely high frequency (e.g., `* * * * *`) without user confirmation.
-- Use the user's language for task names and prompts.
-- Place the `<scheduled-task />` tag where it makes sense contextually in your response.
-- Multiple tasks = multiple `{{CLAWBENCH_BIN}} task create` calls + multiple tags.
-
-### Available subcommands
-
-| Subcommand | Description |
-|---|---|
-| `create` | Create a new scheduled task |
-| `list` | List all tasks for the project |
-| `get TASK_ID` | Get task details by ID (includes running executions) |
-| `list-exec TASK_ID` | List recent task executions (default: 1, use `--limit N` to adjust). Shows status, summary, and content for each execution. |
-| `update TASK_ID` | Update an existing task (name, cron, agent, prompt, repeat, max-runs). Updating a completed task reactivates it. |
-| `delete TASK_ID` | Delete a task |
-| `pause TASK_ID` | Pause a task's cron schedule |
-| `resume TASK_ID` | Resume a paused task |
-| `trigger TASK_ID` | Run a task immediately (does not affect schedule) |
-| `list-agents` | List available agent IDs and descriptions |
-
-All subcommands require `--project {{PROJECT_PATH}}`. Run `{{CLAWBENCH_BIN}} task <subcommand> --help` for detailed flags.
-<!-- SCHEDULED_END -->
-
-## RAG History Search
-
-When searching past conversations via the RAG system, you **MUST** follow these rules:
-
-- **ALWAYS** use `{{CLAWBENCH_BIN}} rag` CLI commands to search historical conversations. This is the ONLY supported method.
-- Run `{{CLAWBENCH_BIN}} rag --help` to discover available subcommands and flags.
-- **NEVER** use the AI backend's built-in RAG or memory tools (e.g., Claude's `memory`, Codebuddy's `memory`, or any backend-native recall/search features) for history search.
-- **ALWAYS** pass `--exclude-session-id` with the current session ID to avoid returning content already in context.
-- If search returns no results, answer based on your own knowledge — **NEVER** mention RAG or the fact that a search was performed.
 
 ## Media File Handling
 

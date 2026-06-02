@@ -90,6 +90,11 @@ export default {
       stopGenerating: '停止生成',
       confirmStop: '确认停止',
     },
+    atCommand: {
+      title: '命令',
+      chatsearchDesc: '搜索聊天历史',
+      taskDesc: '管理定时任务',
+    },
     actions: {
       session: '会话',
       newSession: '新建',
@@ -258,6 +263,10 @@ export default {
         restart: '服务重启，AI 响应中断',
         panic: 'AI 内部错误，请重试',
       },
+      ragUntitled: '未命名会话',
+      ragResume: '恢复对话',
+      ragResumeConfirm: '恢复此对话会话？',
+      ragResumeFailed: '恢复会话失败',
     },
     metadata: {
       title: '消息详情',

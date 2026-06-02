@@ -44,6 +44,7 @@
       :expandedTools="expandedTools"
       :blockTasks="blockTasks"
       :blockAskQuestions="blockAskQuestions"
+      :blockRagResults="blockRagResults"
       :agents="agents"
       :shouldCollapse="isCollapsed(i, msg)"
       :staticBlockCache="staticBlockCache"
@@ -59,6 +60,7 @@
       @collapse="handleCollapse"
       @render-flush="emit('render-flush')"
       @toggle-summary="$emit('toggle-summary', $event)"
+      @resume-session="$emit('resume-session', $event)"
     />
     </div>
 
@@ -96,6 +98,7 @@ const props = defineProps({
   expandedTools: Object,
   blockTasks: Object,
   blockAskQuestions: Object,
+  blockRagResults: Object,
   agents: Array,
   currentAgent: Object,
   currentSessionId: String,
@@ -107,7 +110,7 @@ const props = defineProps({
   active: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'file-open', 'load-more', 'task-card-click', 'send-message', 'remove-pending', 'render-flush', 'toggle-summary'])
+const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'show-metadata', 'file-tag-click', 'file-open', 'load-more', 'task-card-click', 'send-message', 'remove-pending', 'render-flush', 'toggle-summary', 'resume-session'])
 
 const messagesRef = ref(null)
 const { handleDblClick } = useDoubleClickCopy()
