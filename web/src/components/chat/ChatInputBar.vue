@@ -84,7 +84,7 @@
           ref="textareaRef"
           v-model="inputText"
           :disabled="inputDisabled"
-          :placeholder="pendingFiles.length > 0 ? t('chat.input.placeholderOptional') : loading ? t('chat.input.placeholderQueue') : quickSendItems.length > 0 && !hasInputContent ? t('chat.input.placeholderQuickSend') : t('chat.input.placeholder')"
+          :placeholder="dynamicPlaceholder"
           rows="1"
           @keydown.enter.exact.prevent="$emit('send', inputText.trim())"
           @focus="onTextareaFocus"
@@ -187,6 +187,53 @@ const dialog = useDialog()
 const quickSendStore = useQuickSend()
 const { items: quickSendItems, fetchItems } = quickSendStore
 
+// ── Rotating placeholder ──
+const placeholderIndex = ref(0)
+let placeholderTimer = null
+
+// The candidate hints cycle when the textarea is empty, unfocused, and not in queue/upload mode.
+// When quickSendItems exist, the cycle includes the quick-send tip; otherwise it's skipped.
+const placeholderHints = computed(() => {
+  const hints = [t('chat.input.placeholder')]
+  if (quickSendItems.value.length > 0) {
+    hints.push(t('chat.input.placeholderQuickSend'))
+  }
+  hints.push(t('chat.input.placeholderAtCommand'))
+  return hints
+})
+
+function startPlaceholderRotation() {
+  stopPlaceholderRotation()
+  if (placeholderHints.value.length <= 1) return
+  placeholderTimer = setInterval(() => {
+    placeholderIndex.value = (placeholderIndex.value + 1) % placeholderHints.value.length
+  }, 4000)
+}
+
+function stopPlaceholderRotation() {
+  if (placeholderTimer) {
+    clearInterval(placeholderTimer)
+    placeholderTimer = null
+  }
+}
+
+// Reset index when hints change (e.g. quickSendItems loaded) so we don't go out of bounds
+watch(placeholderHints, () => {
+  if (placeholderIndex.value >= placeholderHints.value.length) {
+    placeholderIndex.value = 0
+  }
+})
+
+const isTextareaFocused = ref(false)
+
+const dynamicPlaceholder = computed(() => {
+  if (props.pendingFiles.length > 0) return t('chat.input.placeholderOptional')
+  if (props.loading) return t('chat.input.placeholderQueue')
+  if (isTextareaFocused.value) return t('chat.input.placeholder')
+  // Unfocused & empty: cycle through hints
+  return placeholderHints.value[placeholderIndex.value] || t('chat.input.placeholder')
+})
+
 const props = defineProps({
   inputDisabled: Boolean,
   loading: Boolean,
@@ -249,8 +296,13 @@ const atMenuItems = computed(() => {
   return atCommands.filter(cmd => cmd.key.startsWith(query))
 })
 
-watch(atMenuItems, (items) => {
-  showAtMenu.value = items.length > 0 && inputText.value.startsWith('@') && !inputText.value.includes(' ')
+// Directly control menu visibility from inputText changes
+watch(inputText, () => {
+  const text = inputText.value
+  const shouldShow = text.startsWith('@')
+    && !text.includes(' ')
+    && atMenuItems.value.length > 0
+  showAtMenu.value = shouldShow
 })
 
 function handleAtSelect(cmd) {
@@ -353,11 +405,23 @@ function autoResizeTextarea() {
 function onTextareaFocus() {
   chatKeyboard.activate()
   autoResizeTextarea()
+  isTextareaFocused.value = true
+  stopPlaceholderRotation()
 }
 
 function onTextareaBlur() {
   chatKeyboard.debounceDeactivate()
   autoResizeTextarea()
+  isTextareaFocused.value = false
+  // Start rotation when unfocused (only if empty input)
+  if (!inputText.value.trim()) {
+    startPlaceholderRotation()
+  }
+  // Close @ command menu when textarea loses focus (clicking menu items uses
+  // @mousedown.prevent so blur won't fire for those interactions)
+  nextTick(() => {
+    showAtMenu.value = false
+  })
 }
 
 // Watch inputText changes (both user input and programmatic changes like draft restore)
@@ -456,10 +520,12 @@ watch(showModelModal, (v) => { if (v) { showAttachMenu.value = false; showQuickM
 
 onMounted(() => {
   fetchItems()
+  startPlaceholderRotation()
 })
 
 onBeforeUnmount(() => {
   clearTimeout(stopPrimeTimer)
+  stopPlaceholderRotation()
 })
 
 // Reset stop confirmation state when loading ends (AI finished or cancelled)
