@@ -266,8 +266,9 @@ export default {
       },
       ragUntitled: '未命名会话',
       ragResume: '恢复对话',
-      ragResumeConfirm: '恢复此对话会话？',
+      ragResumeConfirm: '恢复此对话会话「{title}」？',
       ragResumeFailed: '恢复会话失败',
+      ragDetail: '搜索结果详情',
     },
     metadata: {
       title: '消息详情',

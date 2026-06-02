@@ -93,17 +93,13 @@
       <template v-else-if="block.type === 'text' && blockRagResults[blockTaskKey(bi)]">
         <!-- Surrounding text (with rag-results tag stripped) -->
         <div v-if="getBlockHtml(bi, block)" v-html="getBlockHtml(bi, block)"></div>
-        <div v-for="(ragItem, ragIdx) in blockRagResults[blockTaskKey(bi)]" :key="ragIdx" class="rag-result-card">
+        <div v-for="(ragItem, ragIdx) in blockRagResults[blockTaskKey(bi)]" :key="ragIdx" class="rag-result-card" @click.stop="emit('show-rag-detail', ragItem)">
           <div class="rag-header">
             <span class="rag-icon">🔍</span>
             <span class="rag-title">{{ ragItem.sessionTitle || t('chat.contentBlocks.ragUntitled') }}</span>
           </div>
           <div v-if="ragItem.summary" class="rag-summary">{{ ragItem.summary }}</div>
           <div v-if="ragItem.createdAt" class="rag-time">{{ ragItem.createdAt }}</div>
-          <button class="rag-resume-btn" @click.stop="handleResumeSession(ragItem.sessionId, ragItem.sessionTitle)">
-            {{ t('chat.contentBlocks.ragResume') }}
-            <ChevronRight :size="12" />
-          </button>
         </div>
       </template>
       <!-- Text block with @ command badge (user message starting with @chatsearch/@task) -->
@@ -201,7 +197,7 @@ const props = defineProps({
   active: { type: Boolean, default: true },
 })
 
-const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush', 'resume-session'])
+const emit = defineEmits(['toggle-tool', 'show-tool-detail', 'show-thinking-detail', 'task-card-click', 'send-message', 'render-flush', 'resume-session', 'show-rag-detail'])
 
 // Key helper: use msgId if available, otherwise msgIndex
 function key(bi) {
@@ -230,10 +226,6 @@ function handleThinkingClick(block, bi) {
   emit('show-thinking-detail', { text: block.text, msgId: props.msgId, blockIdx: bi })
 }
 
-/** Handle resume session button click in RAG result cards. */
-function handleResumeSession(sessionId, sessionTitle) {
-  emit('resume-session', { sessionId, sessionTitle })
-}
 
 /** Click inside expanded tool-detail: dispatch to tool action handlers first, then fall through to generic behavior. */
 function handleToolDetailClick(event) {
@@ -680,6 +672,13 @@ onUnmounted(() => {
   border-radius: 8px;
   overflow: hidden;
   background: color-mix(in srgb, #8b5cf6 6%, var(--bg-primary, #fff));
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.rag-result-card:hover {
+  border-color: color-mix(in srgb, #8b5cf6 50%, var(--border-color, #dee2e6));
+  box-shadow: 0 2px 8px color-mix(in srgb, #8b5cf6 15%, transparent);
 }
 
 .rag-header {
@@ -718,7 +717,7 @@ onUnmounted(() => {
   line-height: 1.5;
   color: var(--text-secondary, #495057);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -727,31 +726,6 @@ onUnmounted(() => {
   padding: 0 12px 6px;
   font-size: 11px;
   color: var(--text-muted, #999);
-}
-
-.rag-resume-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  width: 100%;
-  padding: 6px 0;
-  border: none;
-  border-top: 1px solid color-mix(in srgb, #8b5cf6 15%, var(--border-color, #dee2e6));
-  background: none;
-  font-size: 12px;
-  color: #8b5cf6;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-:root[data-theme="dark"] .rag-resume-btn {
-  color: #a78bfa;
-}
-
-.rag-resume-btn:hover {
-  background: color-mix(in srgb, #8b5cf6 8%, var(--bg-secondary));
 }
 
 /* @ command badge in user messages */

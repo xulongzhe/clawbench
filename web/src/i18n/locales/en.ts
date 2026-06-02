@@ -266,8 +266,9 @@ export default {
       },
       ragUntitled: 'Untitled Session',
       ragResume: 'Resume Conversation',
-      ragResumeConfirm: 'Resume this conversation session?',
+      ragResumeConfirm: 'Resume this conversation session "{title}"?',
       ragResumeFailed: 'Failed to resume session',
+      ragDetail: 'Search Result Details',
     },
     metadata: {
       title: 'Message Details',

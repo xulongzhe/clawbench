@@ -30,6 +30,7 @@
       @render-flush="scrollBottom()"
       @toggle-summary="handleToggleSummary"
       @resume-session="handleResumeSession"
+      @show-rag-detail="handleRagDetail"
     />
 
     <!-- Session switching overlay — placed here to cover the entire message area -->
@@ -125,15 +126,24 @@
     @file-open="handleFileOpenInOverlay"
     @send-message="handleToolSendMessage"
   />
-  <!-- Resume session confirmation bottom sheet -->
-  <BottomSheet :open="showResumeConfirm" @close="showResumeConfirm = false">
-    <div class="resume-confirm-content">
-      <p class="resume-confirm-text">{{ t('chat.contentBlocks.ragResumeConfirm', { title: resumeTarget.sessionTitle || t('chat.contentBlocks.ragUntitled') }) }}</p>
-      <div class="resume-confirm-actions">
-        <button class="resume-confirm-btn cancel" @click="showResumeConfirm = false">{{ t('common.cancel') }}</button>
-        <button class="resume-confirm-btn confirm" @click="confirmResumeSession">{{ t('common.confirm') }}</button>
+  <!-- RAG search result detail drawer -->
+  <BottomSheet :open="!!ragDetailItem" auto @close="ragDetailItem = null">
+    <template v-if="ragDetailItem">
+      <div class="rag-detail-content">
+        <div class="rag-detail-header">
+          <span class="rag-detail-icon">🔍</span>
+          <span class="rag-detail-title">{{ ragDetailItem.sessionTitle || t('chat.contentBlocks.ragUntitled') }}</span>
+        </div>
+        <div v-if="ragDetailItem.createdAt" class="rag-detail-time">{{ ragDetailItem.createdAt }}</div>
+        <div v-if="ragDetailItem.summary" class="rag-detail-summary">{{ ragDetailItem.summary }}</div>
       </div>
-    </div>
+      <div class="rag-detail-footer">
+        <button class="rag-detail-resume-btn" @click="handleResumeFromDetail">
+          {{ t('chat.contentBlocks.ragResume') }}
+          <ChevronRight :size="14" />
+        </button>
+      </div>
+    </template>
   </BottomSheet>
 </template>
 
@@ -166,6 +176,8 @@ import { useSwipeSession } from '@/composables/useSwipeSession.ts'
 import { useGlobalEvents } from '@/composables/useGlobalEvents'
 import { store } from '@/stores/app.ts'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer.ts'
+import { useDialog } from '@/composables/useDialog'
+import { ChevronRight } from 'lucide-vue-next'
 
 const { t } = useI18n()
 
@@ -215,6 +227,7 @@ const toolDetailOverlay = ref({
 const activeThinkingOverlay = ref(null) // { msgId, blockIdx } or null
 let thinkingRenderTimer = null
 const toast = useToast()
+const dialog = useDialog()
 const notification = useNotification()
 const autoSpeech = useAutoSpeech()
 const theme = inject('theme', ref('light'))
@@ -664,21 +677,47 @@ function handleToggleSummary(msgId) {
     msg.showingSummary = !msg.showingSummary
 }
 
-// Resume a session from RAG search results card
-async function handleResumeSession({ sessionId, sessionTitle }) {
-    if (!sessionId) return
-    // Show confirmation bottom sheet
-    resumeTarget.value = { sessionId, sessionTitle: sessionTitle || '' }
-    showResumeConfirm.value = true
+// RAG detail drawer
+const ragDetailItem = ref(null)
+
+function handleRagDetail(ragItem) {
+    ragDetailItem.value = ragItem
 }
 
-const showResumeConfirm = ref(false)
-const resumeTarget = ref({ sessionId: '', sessionTitle: '' })
+async function handleResumeFromDetail() {
+    const item = ragDetailItem.value
+    ragDetailItem.value = null
+    if (!item?.sessionId) return
+    const confirmed = await dialog.confirm(
+        t('chat.contentBlocks.ragResumeConfirm', { title: item.sessionTitle || t('chat.contentBlocks.ragUntitled') }),
+        { title: t('chat.contentBlocks.ragResume'), confirmText: t('common.confirm') }
+    )
+    if (!confirmed) return
+    try {
+        const resp = await fetch('/api/ai/session/resume', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ session_id: item.sessionId }),
+        })
+        if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}))
+            toast.show(data.error || t('chat.contentBlocks.ragResumeFailed'), { icon: '⚠️', type: 'error' })
+            return
+        }
+        await session.switchSession(item.sessionId)
+    } catch (err) {
+        toast.show(t('chat.contentBlocks.ragResumeFailed'), { icon: '⚠️', type: 'error' })
+    }
+}
 
-async function confirmResumeSession() {
-    showResumeConfirm.value = false
-    const { sessionId } = resumeTarget.value
+// Resume a session from RAG search results (direct event, no detail drawer)
+async function handleResumeSession({ sessionId, sessionTitle }) {
     if (!sessionId) return
+    const confirmed = await dialog.confirm(
+        t('chat.contentBlocks.ragResumeConfirm', { title: sessionTitle || t('chat.contentBlocks.ragUntitled') }),
+        { title: t('chat.contentBlocks.ragResume'), confirmText: t('common.confirm') }
+    )
+    if (!confirmed) return
     try {
         const resp = await fetch('/api/ai/session/resume', {
             method: 'POST',
@@ -690,7 +729,6 @@ async function confirmResumeSession() {
             toast.show(data.error || t('chat.contentBlocks.ragResumeFailed'), { icon: '⚠️', type: 'error' })
             return
         }
-        // Navigate to the resumed session
         await session.switchSession(sessionId)
     } catch (err) {
         toast.show(t('chat.contentBlocks.ragResumeFailed'), { icon: '⚠️', type: 'error' })
@@ -923,43 +961,79 @@ onUnmounted(() => {
   transform: scale(0.95);
 }
 
-/* Resume session confirmation */
-.resume-confirm-content {
-  padding: 20px 16px;
+/* RAG detail drawer */
+.rag-detail-content {
+  padding: 16px;
 }
 
-.resume-confirm-text {
-  margin: 0 0 16px;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.resume-confirm-actions {
+.rag-detail-header {
   display: flex;
-  gap: 10px;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.resume-confirm-btn {
-  padding: 8px 18px;
+.rag-detail-icon {
+  font-size: 18px;
+}
+
+.rag-detail-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #8b5cf6;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+:root[data-theme="dark"] .rag-detail-title {
+  color: #a78bfa;
+}
+
+.rag-detail-time {
+  font-size: 12px;
+  color: var(--text-muted, #999);
+  margin-bottom: 12px;
+}
+
+.rag-detail-summary {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary, #495057);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rag-detail-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color, #e5e5e5);
+}
+
+.rag-detail-resume-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
+  background: #8b5cf6;
+  color: #fff;
   font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   transition: opacity 0.15s;
 }
 
-.resume-confirm-btn.cancel {
-  background: var(--bg-secondary, #e9ecef);
-  color: var(--text-primary, #212529);
+:root[data-theme="dark"] .rag-detail-resume-btn {
+  background: #7c3aed;
 }
 
-.resume-confirm-btn.confirm {
-  background: #8b5cf6;
-  color: #fff;
-}
-
-.resume-confirm-btn:hover {
+.rag-detail-resume-btn:hover {
   opacity: 0.85;
+}
+
+.rag-detail-resume-btn:active {
+  opacity: 0.7;
 }
 </style>
