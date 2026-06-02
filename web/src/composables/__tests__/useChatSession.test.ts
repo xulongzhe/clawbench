@@ -171,6 +171,7 @@ function createSession() {
     inputDisabled: ref(false),
     blockTasks: {},
     blockAskQuestions: {},
+    blockRagResults: {},
     expandedTools: ref({}),
     onParseAssistantContent: vi.fn(),
     onExtractScheduledTasks: vi.fn(),
@@ -855,6 +856,7 @@ describe('switchSession', () => {
       inputDisabled,
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1250,6 +1252,7 @@ describe('loadHistory', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools,
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1309,6 +1312,7 @@ describe('loadHistory', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools,
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1364,6 +1368,7 @@ describe('loadHistory', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1401,6 +1406,7 @@ describe('loadHistory', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1429,6 +1435,7 @@ describe('loadHistory', () => {
     })
 
     const blockAskQuestions: Record<string, any> = { key1: 'val1', key2: 'val2' }
+    const blockRagResults: Record<string, any> = { key1: 'val1', key2: 'val2' }
     const options = {
       currentSessionId: ref('current-s1'),
       messages: ref([]),
@@ -1436,6 +1443,7 @@ describe('loadHistory', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions,
+      blockRagResults,
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1450,6 +1458,7 @@ describe('loadHistory', () => {
     await session.loadHistory(true, false, false)
 
     expect(Object.keys(blockAskQuestions).length).toBe(0)
+    expect(Object.keys(blockRagResults).length).toBe(0)
   })
 
   it('error path: shows toast, resets switching', async () => {
@@ -1523,6 +1532,7 @@ describe('createSession', () => {
       inputDisabled: ref(false),
       blockTasks: { task1: true },
       blockAskQuestions: { q1: true },
+      blockRagResults: { r1: true },
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1603,6 +1613,7 @@ describe('createSession', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1621,7 +1632,7 @@ describe('createSession', () => {
     expect(mockIdentity.currentAgentId).toBe('agent3')
   })
 
-  it('clears blockTasks and blockAskQuestions', async () => {
+  it('clears blockTasks, blockAskQuestions and blockRagResults', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({
@@ -1635,6 +1646,7 @@ describe('createSession', () => {
 
     const blockTasks: Record<string, any> = { t1: 'a', t2: 'b' }
     const blockAskQuestions: Record<string, any> = { q1: 'x', q2: 'y' }
+    const blockRagResults: Record<string, any> = { r1: 'z' }
     const options = {
       currentSessionId: ref('old'),
       messages: ref([]),
@@ -1642,6 +1654,7 @@ describe('createSession', () => {
       inputDisabled: ref(false),
       blockTasks,
       blockAskQuestions,
+      blockRagResults,
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1657,6 +1670,7 @@ describe('createSession', () => {
 
     expect(Object.keys(blockTasks).length).toBe(0)
     expect(Object.keys(blockAskQuestions).length).toBe(0)
+    expect(Object.keys(blockRagResults).length).toBe(0)
   })
 })
 
@@ -1711,6 +1725,7 @@ describe('deleteSession', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1761,6 +1776,7 @@ describe('deleteSession', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1793,6 +1809,7 @@ describe('deleteSession', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1926,6 +1943,7 @@ describe('startMsgCountPolling / stopMsgCountPolling', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -1979,6 +1997,7 @@ describe('handleVisibilityChange', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -2026,6 +2045,7 @@ describe('handleVisibilityChange', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -2057,6 +2077,7 @@ describe('handleVisibilityChange', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -2229,6 +2250,7 @@ describe('loadMoreMessages', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -2268,6 +2290,7 @@ describe('loadMoreMessages', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
@@ -2296,6 +2319,7 @@ describe('loadMoreMessages', () => {
       inputDisabled: ref(false),
       blockTasks: {},
       blockAskQuestions: {},
+    blockRagResults: {},
       expandedTools: ref({}),
       onParseAssistantContent: vi.fn(),
       onExtractScheduledTasks: vi.fn(),
